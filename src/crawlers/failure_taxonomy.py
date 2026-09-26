@@ -8,12 +8,20 @@ free-form exception message so operators can aggregate failures reliably.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import httpx
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
 
+from src.crawlers.result import CrawlOutcome
+
+if TYPE_CHECKING:
+    from src.crawlers.result import CrawlResult
+
 _HTTP_RATE_LIMIT = 429
+_HTTP_TIMEOUT = 408
 _HTTP_FORBIDDEN = (401, 403)
+_HTTP_SERVER_ERROR_FLOOR = 400
 
 
 class FailureStage(StrEnum):
@@ -111,10 +119,17 @@ _CLASSIFICATIONS: tuple[tuple[_ExceptionTypes, FailureStage, FailureCode], ...] 
 )
 
 
-def _http_status_code(status_code: int) -> FailureCode:
-    """Classify an HTTP status code as a fetch failure code."""
+def failure_code_for_status(status_code: int) -> FailureCode:
+    """Classify an HTTP status code as a fetch failure code.
+
+    `503` is a throttle signal for the adaptive limiter, but it is still a
+    server-side failure here: transport control policy and failure semantics are
+    kept apart so a code in the ledger means one thing only.
+    """
     if status_code == _HTTP_RATE_LIMIT:
         return FailureCode.FETCH_RATE_LIMITED
+    if status_code == _HTTP_TIMEOUT:
+        return FailureCode.FETCH_TIMEOUT
     if status_code in _HTTP_FORBIDDEN:
         return FailureCode.FETCH_BLOCKED
     return FailureCode.FETCH_HTTP_ERROR
@@ -123,10 +138,50 @@ def _http_status_code(status_code: int) -> FailureCode:
 def classify_failure(exc: BaseException) -> tuple[FailureStage, FailureCode]:
     """Map an exception to a ``(failure_stage, error_code)`` pair."""
     if isinstance(exc, httpx.HTTPStatusError):
-        return FailureStage.FETCH, _http_status_code(exc.response.status_code)
+        return FailureStage.FETCH, failure_code_for_status(exc.response.status_code)
     for exc_types, stage, code in _CLASSIFICATIONS:
         if isinstance(exc, exc_types):
             return stage, code
+    return FailureStage.UNKNOWN, FailureCode.UNKNOWN
+
+
+def classification_for_result(result: CrawlResult[object]) -> tuple[FailureStage, FailureCode] | None:
+    """Return the taxonomy pair for a crawler result, or ``None`` if it succeeded.
+
+    `failure_stage` is never read from the result. It is always derived from
+    `error_code` so a stage can never drift away from the code it describes.
+
+    The `error_code` policy is deliberately strict:
+
+    * ``None`` -- the producer predates the taxonomy, so fall back to what the
+      result can prove on its own (a failing status, or a known outcome).
+    * A known :class:`FailureCode` -- keep it as the canonical classification.
+    * An unknown string -- raise ``ValueError``. Quietly downgrading a typo such
+      as ``FETCH_TIMOUT`` to ``UNKNOWN`` would let the ledger, the dead letter
+      queue, and the metrics drift back into disagreeing about the same failure,
+      which is exactly what this function exists to prevent. Operational
+      best-effort defensiveness belongs to the metrics layer, not to the domain
+      taxonomy.
+
+    Returns:
+        ``(stage, code)`` for a failure, or ``None`` for ``SUCCESS``/``EMPTY``.
+
+    """
+    if result.outcome in {CrawlOutcome.SUCCESS, CrawlOutcome.EMPTY}:
+        return None
+
+    if result.error_code is not None:
+        code = FailureCode(result.error_code)
+        return stage_for_code(code), code
+
+    # Legacy fallback: only a failing status can be read as a fetch failure. A
+    # 2xx status alongside a failure outcome means the response arrived and was
+    # the wrong shape, so the status says nothing about the cause.
+    status = result.http_status
+    if status is not None and status >= _HTTP_SERVER_ERROR_FLOOR:
+        return FailureStage.FETCH, failure_code_for_status(status)
+    if result.outcome is CrawlOutcome.SCHEMA_CHANGED:
+        return FailureStage.PARSE, FailureCode.PARSE_INVALID_FORMAT
     return FailureStage.UNKNOWN, FailureCode.UNKNOWN
 
 
@@ -164,3 +219,15 @@ class CrawlPersistError(Exception):
         self.error_code = error_code.value
         self.failure_stage = failure_stage.value
         super().__init__(message)
+
+
+__all__ = [
+    "CrawlPersistError",
+    "FailureCode",
+    "FailureStage",
+    "classification_for_result",
+    "classify_failure",
+    "classify_persist_failure",
+    "failure_code_for_status",
+    "stage_for_code",
+]
