@@ -57,3 +57,42 @@ def test_retry_job_is_registered_in_scheduler() -> None:
     from src.scheduler import registry
 
     assert hasattr(registry, "crawl_dead_letter_retry_job")
+
+
+def test_batch_failure_is_retried_by_tenacity(monkeypatch) -> None:
+    """A batch-level failure must propagate so @retry actually retries (3 attempts)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("src.scheduler.alerting.apply_incidents", lambda *_a, **_k: None)
+
+    calls: list[int] = []
+
+    def _boom(*_args: object, **_kwargs: object) -> object:
+        calls.append(1)
+        raise SQLAlchemyError("db down")
+
+    with patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", _boom):
+        maintenance.crawl_dead_letter_retry_job()
+
+    assert len(calls) == 3
+
+
+def test_batch_failure_is_retried_by_tenacity_recovery(monkeypatch) -> None:
+    from sqlalchemy.exc import SQLAlchemyError
+
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("src.scheduler.alerting.apply_incidents", lambda *_a, **_k: None)
+
+    calls: list[int] = []
+
+    def _boom(*_args: object, **_kwargs: object) -> object:
+        calls.append(1)
+        raise SQLAlchemyError("db down")
+
+    with patch("src.services.crawl_dead_letter_recovery.recover_stuck_retrying", _boom):
+        maintenance.crawl_dead_letter_recovery_job()
+
+    assert len(calls) == 3

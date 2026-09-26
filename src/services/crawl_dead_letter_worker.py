@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 from src.db.engine import SessionLocal
 from src.models.crawl_dead_letter import DlqStatus
 from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository
-from src.services.crawl_dead_letter_service import retry_dead_letter
+from src.services.crawl_dead_letter_service import DlqNotFoundError, retry_dead_letter
+from src.services.crawl_dead_letter_state import InvalidDlqTransitionError
 from src.services.crawl_replay_dispatcher import ReplayDispatcher, build_default_dispatcher
 
 if TYPE_CHECKING:
@@ -35,6 +36,7 @@ class DlqWorkerSummary:
     resolved: int = 0
     pending: int = 0
     exhausted: int = 0
+    conflicted: int = 0
     errored: int = 0
 
     def to_dict(self) -> dict[str, int]:
@@ -44,6 +46,7 @@ class DlqWorkerSummary:
             "resolved": self.resolved,
             "pending": self.pending,
             "exhausted": self.exhausted,
+            "conflicted": self.conflicted,
             "errored": self.errored,
         }
 
@@ -70,10 +73,15 @@ def retry_due_dead_letters(
 
     active_dispatcher = dispatcher if dispatcher is not None else build_default_dispatcher()
 
-    resolved = pending = exhausted = errored = 0
+    resolved = pending = exhausted = conflicted = errored = 0
     for dlq_id in dlq_ids:
         try:
             result = retry_dead_letter(dlq_id, active_dispatcher, session_factory=factory)
+        except (InvalidDlqTransitionError, DlqNotFoundError):
+            # Another actor (operator CLI, prior worker pass) already claimed the letter.
+            conflicted += 1
+            logger.warning("DLQ retry worker skipped already-claimed letter dlq_id=%s", dlq_id)
+            continue
         except Exception:
             errored += 1
             logger.exception("DLQ retry worker failed for dlq_id=%s", dlq_id)
@@ -90,5 +98,6 @@ def retry_due_dead_letters(
         resolved=resolved,
         pending=pending,
         exhausted=exhausted,
+        conflicted=conflicted,
         errored=errored,
     )
