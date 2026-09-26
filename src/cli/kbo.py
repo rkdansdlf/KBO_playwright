@@ -129,6 +129,22 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_sync.add_argument("--concurrency", type=int, default=3, help="Max concurrent worker threads.")
     p_sync.add_argument("--reset-checkpoint", type=str, default=None, help="Reset checkpoint for table or 'ALL'.")
 
+    # 11. DLQ
+    p_dlq = subparsers.add_parser("dlq", help="Inspect and operate the crawl dead letter queue.")
+    p_dlq.add_argument(
+        "subcommand",
+        nargs="?",
+        help="status | stats | list | show | retry | requeue | ignore",
+    )
+    p_dlq.add_argument("dlq_id", nargs="?", help="Dead letter id for show/retry/requeue/ignore.")
+    p_dlq.add_argument("--status", type=str, default=None, help="Filter list by DLQ status.")
+    p_dlq.add_argument("--crawler", type=str, default=None, help="Filter list by crawler.")
+    p_dlq.add_argument("--error-code", dest="error_code", type=str, default=None, help="Filter list by error code.")
+    p_dlq.add_argument("--limit", type=int, default=50, help="List limit.")
+    p_dlq.add_argument("--reason", type=str, default=None, help="Reason for the ignore command.")
+    p_dlq.add_argument("--apply", action="store_true", help="Apply an operator mutation (retry/requeue/ignore).")
+    p_dlq.add_argument("--json", action="store_true", help="Output as JSON.")
+
 
 def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add RAG and simulation subparsers."""
@@ -352,6 +368,62 @@ def build_master_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _rag_dispatcher(sub_args: list[str]) -> int:
+    """Dispatch the ``kbo rag`` sub-subcommands lazily."""
+    if not sub_args:
+        print("Usage: kbo rag <query|evaluate|census> [options]")
+        return 1
+    subcmd = sub_args[0]
+    rest = sub_args[1:]
+    if subcmd == "query":
+        from src.cli.rag.query import main as q_main
+
+        return q_main(rest)
+    if subcmd == "evaluate":
+        from src.cli.rag.evaluate import main as eval_main
+
+        return eval_main(rest)
+    if subcmd == "census":
+        from src.cli.rag.census_rag_identity import main as census_main
+
+        return census_main(rest)
+    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")
+    return 1
+
+
+def _lazy_certify(args: list[str]) -> int:
+    """Import and dispatch the certification CLI on demand."""
+    try:
+        from src.cli.certify import main as certify_main
+
+        return certify_main(args)
+    except ImportError:
+        print("certify command not available: certification package not installed", file=sys.stderr)
+        return 1
+
+
+def _lazy_lineage(args: list[str]) -> int:
+    """Import and dispatch the lineage CLI on demand."""
+    try:
+        from src.cli.lineage import main as lineage_main
+
+        return lineage_main(args)
+    except ImportError:
+        print("lineage command not available: lineage package not installed", file=sys.stderr)
+        return 1
+
+
+def _lazy_dlq(args: list[str]) -> int:
+    """Import and dispatch the DLQ CLI on demand."""
+    try:
+        from src.cli.dlq import main as dlq_main
+
+        return dlq_main(args)
+    except ImportError:
+        print("dlq command not available", file=sys.stderr)
+        return 1
+
+
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     """Return map of subcommand strings to their respective module main entrypoints."""
     from src.cli.bulk_load import main as bulk_main
@@ -371,45 +443,6 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.sync.run_migrations import main as mig_main
     from src.cli.sync.sync_sqlite_to_oci import main as sync_main
     from src.cli.validate_config import main as conf_main
-
-    def _rag_dispatcher(sub_args: list[str]) -> int:
-        if not sub_args:
-            print("Usage: kbo rag <query|evaluate|census> [options]")
-            return 1
-        subcmd = sub_args[0]
-        rest = sub_args[1:]
-        if subcmd == "query":
-            from src.cli.rag.query import main as q_main
-
-            return q_main(rest)
-        if subcmd == "evaluate":
-            from src.cli.rag.evaluate import main as eval_main
-
-            return eval_main(rest)
-        if subcmd == "census":
-            from src.cli.rag.census_rag_identity import main as census_main
-
-            return census_main(rest)
-        print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")
-        return 1
-
-    def _lazy_certify(args: list[str]) -> int:
-        try:
-            from src.cli.certify import main as certify_main
-
-            return certify_main(args)
-        except ImportError:
-            print("certify command not available: certification package not installed", file=sys.stderr)
-            return 1
-
-    def _lazy_lineage(args: list[str]) -> int:
-        try:
-            from src.cli.lineage import main as lineage_main
-
-            return lineage_main(args)
-        except ImportError:
-            print("lineage command not available: lineage package not installed", file=sys.stderr)
-            return 1
 
     return {
         "workflow": wf_main,
@@ -433,6 +466,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "compare": cmp_main,
         "certify": _lazy_certify,
         "lineage": _lazy_lineage,
+        "dlq": _lazy_dlq,
         "formula": form_main,
     }
 
