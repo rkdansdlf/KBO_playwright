@@ -15,6 +15,7 @@ from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterReposit
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
 from src.services.crawl_dead_letter_recovery import (
     ACTION_EXHAUSTED,
+    ACTION_FINALIZED_INTERRUPTED,
     ACTION_INVARIANT_MISSING,
     ACTION_ORPHAN_RESCHEDULED,
     ACTION_RESCHEDULED,
@@ -169,6 +170,28 @@ def test_running_replay_is_skipped(session_factory: sessionmaker) -> None:
 
     assert results[0].action == ACTION_SKIPPED_ACTIVE
     assert _stored(session_factory, dlq_id).status == DlqStatus.RETRYING.value
+
+
+def test_stale_running_replay_is_finalized_interrupted(session_factory: sessionmaker) -> None:
+    dlq_id = _seed_stuck_letter(session_factory)
+    _seed_run(session_factory, status="running")
+    now = datetime.now(UTC).replace(tzinfo=None)
+    with session_factory() as session:
+        session.execute(update(CrawlExecutionRun).values(started_at=now - timedelta(hours=2)))
+        session.commit()
+
+    results = recover_stuck_retrying(
+        stale_before=_cutoff(),
+        run_stale_before=now - timedelta(minutes=1),
+        session_factory=session_factory,
+    )
+
+    assert results[0].action == ACTION_FINALIZED_INTERRUPTED
+    assert _stored(session_factory, dlq_id).status == DlqStatus.PENDING.value
+    with session_factory() as session:
+        run = session.query(CrawlExecutionRun).filter_by(run_id="run-b").one()
+        assert run.status == "failed"
+        assert run.error_code == "REPLAY_INTERRUPTED"
 
 
 def test_fresh_letter_is_not_selected(session_factory: sessionmaker) -> None:
