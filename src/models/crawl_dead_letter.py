@@ -71,6 +71,7 @@ class CrawlDeadLetter(Base, TimestampMixin):
             name="uq_crawl_dead_letters_incident",
         ),
         Index("idx_crawl_dead_letters_status_retry", "status", "next_retry_at"),
+        Index("idx_crawl_dead_letters_status_updated", "status", "updated_at"),
         Index("idx_crawl_dead_letters_original_run", "original_run_id"),
         Index("idx_crawl_dead_letters_crawler_status", "crawler", "status"),
         Index("idx_crawl_dead_letters_error_code", "error_code"),

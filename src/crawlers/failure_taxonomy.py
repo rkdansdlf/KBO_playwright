@@ -24,6 +24,7 @@ class FailureStage(StrEnum):
     VALIDATE = "validate"
     PERSIST = "persist"
     RECONCILE = "reconcile"
+    ORCHESTRATE = "orchestrate"
     UNKNOWN = "unknown"
 
 
@@ -45,6 +46,9 @@ class FailureCode(StrEnum):
     PERSIST_CONSTRAINT = "PERSIST_CONSTRAINT"
     PERSIST_CONNECTION = "PERSIST_CONNECTION"
     PERSIST_TIMEOUT = "PERSIST_TIMEOUT"
+
+    REPLAY_INTERRUPTED = "REPLAY_INTERRUPTED"
+    REPLAY_RUN_MISSING = "REPLAY_RUN_MISSING"
 
     SOURCE_PARTIAL = "SOURCE_PARTIAL"
     UNKNOWN = "UNKNOWN"
@@ -73,6 +77,12 @@ _PERSIST_CODES = frozenset(
         FailureCode.PERSIST_TIMEOUT,
     },
 )
+_ORCHESTRATE_CODES = frozenset(
+    {
+        FailureCode.REPLAY_INTERRUPTED,
+        FailureCode.REPLAY_RUN_MISSING,
+    },
+)
 
 
 def stage_for_code(code: FailureCode | str) -> FailureStage:
@@ -86,6 +96,8 @@ def stage_for_code(code: FailureCode | str) -> FailureStage:
         return FailureStage.VALIDATE
     if value in _PERSIST_CODES:
         return FailureStage.PERSIST
+    if value in _ORCHESTRATE_CODES:
+        return FailureStage.ORCHESTRATE
     return FailureStage.UNKNOWN
 
 
