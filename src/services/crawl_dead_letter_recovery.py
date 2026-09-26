@@ -22,6 +22,7 @@ from src.models.crawl_execution import RUN_STATUS_RUNNING, RUN_STATUS_SUCCESS
 from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository
 from src.services.crawl_dead_letter_service import CrawlDeadLetterService
+from src.utils.metrics import record_dlq_recovery_action
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -207,6 +208,7 @@ def _recover_one(
             service = CrawlDeadLetterService(session)
             letter = service.repository.get_by_dlq_id(dlq_id)
             if letter is None:
+                record_dlq_recovery_action(ACTION_INVARIANT_MISSING)
                 return RecoveryResult(
                     dlq_id, replay_run_id, "missing", "missing", ACTION_INVARIANT_MISSING, "letter disappeared"
                 )
@@ -230,12 +232,14 @@ def _recover_one(
                 result = service.finalize_retry(dlq_id, outcome)
                 session.commit()
                 after = result.status.value
+                action = _action_for(after, ACTION_FINALIZED_INTERRUPTED)
+                record_dlq_recovery_action(action)
                 return RecoveryResult(
                     dlq_id,
                     replay_run_id,
                     before,
                     after,
-                    _action_for(after, ACTION_FINALIZED_INTERRUPTED),
+                    action,
                     "stale running replay finalized",
                 )
 
@@ -243,7 +247,9 @@ def _recover_one(
             result = service.finalize_retry(dlq_id, outcome)
             session.commit()
             after = result.status.value
-            return RecoveryResult(dlq_id, replay_run_id, before, after, _action_for(after, preferred), reason)
+            action = _action_for(after, preferred)
+            record_dlq_recovery_action(action)
+            return RecoveryResult(dlq_id, replay_run_id, before, after, action, reason)
     except Exception:
         logger.exception("Failed to recover stuck dead letter dlq_id=%s", dlq_id)
         return RecoveryResult(dlq_id, replay_run_id, "unknown", "unknown", ACTION_FAILED, "recovery error")

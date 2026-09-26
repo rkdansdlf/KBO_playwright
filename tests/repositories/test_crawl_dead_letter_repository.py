@@ -148,6 +148,62 @@ class TestQueries:
         assert pending.dlq_id == "p"
 
 
+class TestOperationalQueries:
+    def test_count_by_status_crawler(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        retrying = repo.create_dead_letter(_spec(dlq_id="a"))
+        repo.mark_retrying(retrying)
+        repo.create_dead_letter(_spec(dlq_id="b", target_id="other"))
+        repo.create_dead_letter(_spec(dlq_id="c", crawler="schedule", original_run_id="run-x"))
+
+        rows = {(status, crawler): count for status, crawler, count in repo.count_by_status_crawler()}
+        assert rows[("retrying", "awards")] == 1
+        assert rows[("pending", "awards")] == 1
+        assert rows[("pending", "schedule")] == 1
+
+    def test_count_due_respects_next_retry(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        now = datetime(2026, 9, 26, 12, 0, 0)
+        due = repo.create_dead_letter(_spec(dlq_id="due"))
+        later = repo.create_dead_letter(_spec(dlq_id="later", target_id="other"))
+        repo.set_next_retry_at(due, now - timedelta(minutes=1))
+        repo.set_next_retry_at(later, now + timedelta(hours=1))
+        assert repo.count_due(now=now) == 1
+
+    def test_count_stale_retrying(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        cutoff = datetime(2026, 9, 26, 12, 0, 0)
+        stale = repo.create_dead_letter(_spec(dlq_id="stale"))
+        repo.mark_retrying(stale)
+        fresh = repo.create_dead_letter(_spec(dlq_id="fresh", target_id="other"))
+        repo.mark_retrying(fresh)
+        session.execute(
+            update(CrawlDeadLetter)
+            .where(CrawlDeadLetter.dlq_id == "stale")
+            .values(updated_at=cutoff - timedelta(minutes=5)),
+        )
+        session.execute(
+            update(CrawlDeadLetter)
+            .where(CrawlDeadLetter.dlq_id == "fresh")
+            .values(updated_at=cutoff + timedelta(minutes=5)),
+        )
+        session.flush()
+        assert repo.count_stale_retrying(stale_before=cutoff) == 1
+
+    def test_oldest_pending_created_at(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        old = datetime(2026, 9, 20, 0, 0, 0)
+        first = repo.create_dead_letter(_spec(dlq_id="old"))
+        repo.create_dead_letter(_spec(dlq_id="new", target_id="other"))
+        session.execute(update(CrawlDeadLetter).where(CrawlDeadLetter.dlq_id == "old").values(created_at=old))
+        session.flush()
+        assert repo.oldest_pending_created_at() == old
+        assert first.status == DlqStatus.PENDING.value
+
+    def test_oldest_pending_returns_none_when_empty(self, session: Session) -> None:
+        assert CrawlDeadLetterRepository(session).oldest_pending_created_at() is None
+
+
 class TestLifecycleMutations:
     def test_mark_retrying_and_increment(self, session: Session) -> None:
         repo = CrawlDeadLetterRepository(session)

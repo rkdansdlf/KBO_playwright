@@ -29,6 +29,11 @@ from src.services.crawl_dead_letter_state import (
     next_status_after_retry,
 )
 from src.services.crawl_retry_policy import DEFAULT_MAX_RETRIES, decide
+from src.utils.metrics import (
+    record_dlq_enqueued,
+    record_dlq_retry_attempt,
+    record_dlq_retry_outcome,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,6 +107,7 @@ class CrawlDeadLetterService:
 
         decision = decide(spec.error_code, retry_count=0)
         letter = self.repository.create_dead_letter(spec)
+        record_dlq_enqueued(spec.crawler, spec.error_code)
         if not decision.retryable:
             self.repository.set_next_retry_at(letter, None)
             self.repository.mark_ignored(letter)
@@ -117,6 +123,7 @@ class CrawlDeadLetterService:
         self.repository.increment_retry(letter)
         replay_run_id = uuid4().hex
         self.repository.link_replay_run(letter, replay_run_id)
+        record_dlq_retry_attempt()
         return letter, replay_run_id
 
     def finalize_retry(self, dlq_id: str, outcome: ReplayOutcomeLike) -> DlqRetryResult:
@@ -140,6 +147,7 @@ class CrawlDeadLetterService:
             self._schedule_next_attempt(letter, outcome)
             status = DlqStatus(letter.status)
 
+        record_dlq_retry_outcome(letter.crawler, status.value)
         return DlqRetryResult(
             dlq_id=letter.dlq_id,
             replay_run_id=outcome.replay_run_id,
