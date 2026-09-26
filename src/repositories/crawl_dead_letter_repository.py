@@ -284,13 +284,16 @@ class CrawlDeadLetterRepository:
         *,
         crawler: str | None = None,
         status: str | None = None,
+        error_code: str | None = None,
         limit: int = 50,
     ) -> list[CrawlDeadLetter]:
-        """Return recent letters, optionally filtered by crawler and status."""
+        """Return recent letters, optionally filtered by crawler, status, error code."""
         stmt = select(CrawlDeadLetter)
         if crawler is not None:
             stmt = stmt.where(CrawlDeadLetter.crawler == crawler)
         if status is not None:
             stmt = stmt.where(CrawlDeadLetter.status == status)
+        if error_code is not None:
+            stmt = stmt.where(CrawlDeadLetter.error_code == error_code)
         stmt = stmt.order_by(CrawlDeadLetter.id.desc()).limit(limit)
         return list(self.session.execute(stmt).scalars().all())
