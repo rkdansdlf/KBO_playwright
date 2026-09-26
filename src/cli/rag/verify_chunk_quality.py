@@ -29,8 +29,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from dotenv import load_dotenv
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import contextlib
@@ -40,9 +38,12 @@ from src.db.engine import get_rag_index_session
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-load_dotenv()
+
+from src.config.env_loader import load_project_env
 
 logger = logging.getLogger(__name__)
+
+load_project_env()
 
 # Quality thresholds
 MIN_AVG_LENGTH = 100  # chars

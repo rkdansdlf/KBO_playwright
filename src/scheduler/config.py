@@ -10,16 +10,16 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from dotenv import load_dotenv
 from requests import RequestException
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
 from src.db.engine import DATABASE_URL
 from src.utils.lock import LockAcquisitionError
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(PROJECT_ROOT / ".env")
+load_project_env(PROJECT_ROOT / ".env")
 
 # Configure logging
 log_path = Path("logs/scheduler.log")

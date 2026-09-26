@@ -13,10 +13,11 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
+
+from src.config.env_loader import load_project_env
 
 logger = logging.getLogger(__name__)
-load_dotenv()
+load_project_env()
 
 METADATA_ENRICHMENT_EXCEPTIONS = (httpx.HTTPError, json.JSONDecodeError, RuntimeError, ValueError, TypeError, OSError)
 MIN_ENRICHMENT_CONTENT_LENGTH = 50

@@ -14,9 +14,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from dotenv import load_dotenv
 from sqlalchemy import text
 
+from src.config.env_loader import load_project_env
 from src.constants import DATE_STR_LEN
 from src.db.engine import SessionLocal
 
@@ -227,7 +227,7 @@ def repair_candidates(
 
 def main() -> int:
     """Run the main entry point for this CLI command."""
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_project_env(PROJECT_ROOT / ".env")
     args = parse_args()
 
     with SessionLocal() as session:

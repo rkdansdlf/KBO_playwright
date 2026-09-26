@@ -16,6 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Block automatic `.env` loading before anything under `src/` is imported.
+# Several src modules call `load_project_env()` at module scope; without this,
+# importing `src.db.engine` alone injects a developer's real provider keys and
+# Telegram chat ids into the worker process, which makes test outcomes depend on
+# import order rather than on the code under test.
+#
+# The literal is duplicated rather than imported on purpose: importing
+# `src.config.env_loader` here would make the flag depend on `src` import order.
+# `tests/test_env_loading_contract.py` asserts the two stay in sync.
+os.environ["KBO_ENV_FILE_LOADING"] = "0"
+
 sqlite3.register_adapter(date, lambda value: value.isoformat())
 sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 

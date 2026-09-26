@@ -16,14 +16,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit
 
-from dotenv import load_dotenv
 from sqlalchemy import text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-load_dotenv(PROJECT_ROOT / ".env")
+from src.config.env_loader import load_project_env
+
+load_project_env(PROJECT_ROOT / ".env")
 
 from src.db.engine import create_engine_for_url
 from src.sync.checkpoint import SyncCheckpoint

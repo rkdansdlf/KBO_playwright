@@ -11,15 +11,16 @@ import logging
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
+from src.config.env_loader import load_project_env
 from src.urls import GAME_CENTER
 from src.utils.playwright_retry import SEL_TIMEOUT
 
 logger = logging.getLogger(__name__)
-load_dotenv()
+
+load_project_env()
 
 
 class KboAuthenticator:

@@ -37,10 +37,10 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-from dotenv import load_dotenv
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
 from src.sync.checkpoint import CheckpointManager
 from src.sync.oracle_writer import TABLE_COL_OVERRIDE, TABLE_OVERRIDE, OracleWriter
 from src.sync.table_dag import TABLE_REGISTRY, SyncStrategy
@@ -768,7 +768,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the SQLite to Oracle initial-load CLI."""
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    load_dotenv()
+    load_project_env()
 
     sqlite_url = _resolve_source_url(args.source_url)
     try:

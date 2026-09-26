@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-from dotenv import load_dotenv
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
 from src.constants import KST
 from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
@@ -35,9 +35,9 @@ from src.services.markdown_document_loader import (
 )
 from src.utils.alerting import SlackWebhookClient
 
-load_dotenv()
-
 logger = logging.getLogger(__name__)
+
+load_project_env()
 PIPELINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 
 

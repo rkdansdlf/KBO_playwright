@@ -13,10 +13,10 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from dotenv import load_dotenv
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.config.env_loader import load_project_env
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -666,7 +666,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     """
     _configure_cli_logging()
 
-    load_dotenv()
+    load_project_env()
     parser = argparse.ArgumentParser(description="Check KBO database status and data integrity")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
     parser.add_argument("--p0", action="store_true", help="Run P0 game-data readiness check")
