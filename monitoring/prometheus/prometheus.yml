@@ -4,6 +4,7 @@ global:
 
 rule_files:
   - "/etc/prometheus/alert_rules.yml"
+  - "/etc/prometheus/alert_rules_crawler.yml"
 
 alerting:
   alertmanagers:
@@ -16,3 +17,7 @@ scrape_configs:
     scrape_interval: 10s
     static_configs:
       - targets: ["scheduler:8000"]
+  - job_name: "kbo-api-server"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["api-server:8000"]

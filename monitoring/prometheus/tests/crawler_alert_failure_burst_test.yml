@@ -1,0 +1,65 @@
+# Rule-level tests for KboCrawlerFailureBurst in monitoring/prometheus/alert_rules_crawler.yml.
+#
+# `promtool check rules` validates syntax and structure only; it cannot tell you
+# that a rule never fires. These fixtures assert the actual alerting behaviour,
+# including the cases that must stay quiet.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_failure_burst_test.yml
+#
+# Note: promtool does not accept a per-test `evaluation_interval`, so each rule
+# has its own fixture. The evaluation interval has to match the sample interval:
+# a 1m rule interval over hourly samples never reaches the firing state here.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_failures_total{crawler="awards", error_code="FETCH_RATE_LIMITED", failure_stage="fetch"}'
+        values: '0x18 4x10'
+    alert_rule_test:
+      # Below the threshold before the burst: quiet.
+      - eval_time: 10m
+        alertname: KboCrawlerFailureBurst
+        exp_alerts: []
+      # Four failures inside the 15m window, held past the 5m pending period.
+      - eval_time: 25m
+        alertname: KboCrawlerFailureBurst
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: awards
+            exp_annotations:
+              summary: "크롤러 실패 급증: awards"
+              description: "최근 15분 동안 awards 실패가 4회 발생했습니다."
+
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_failures_total{crawler="awards", error_code="FETCH_RATE_LIMITED", failure_stage="fetch"}'
+        values: '0x18 3x10'
+    alert_rule_test:
+      # Three failures is at, not above, the threshold of 3.
+      - eval_time: 25m
+        alertname: KboCrawlerFailureBurst
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      # A healthy crawler alongside a failing one: only the failing one alerts.
+      - series: 'kbo_crawl_failures_total{crawler="team_events", error_code="FETCH_TIMEOUT", failure_stage="fetch"}'
+        values: '0x18 9x10'
+      - series: 'kbo_crawl_failures_total{crawler="awards", error_code="FETCH_TIMEOUT", failure_stage="fetch"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: KboCrawlerFailureBurst
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: team_events
+            exp_annotations:
+              summary: "크롤러 실패 급증: team_events"
+              description: "최근 15분 동안 team_events 실패가 9회 발생했습니다."
