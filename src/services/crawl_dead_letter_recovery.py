@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from src.crawlers.failure_taxonomy import FailureCode, FailureStage
 from src.db.engine import SessionLocal
 from src.models.crawl_dead_letter import DlqStatus
-from src.models.crawl_execution import RUN_STATUS_SUCCESS
+from src.models.crawl_execution import RUN_STATUS_RUNNING, RUN_STATUS_SUCCESS
 from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository
 from src.services.crawl_dead_letter_service import CrawlDeadLetterService
@@ -31,10 +31,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_STALE_RETRYING_SECONDS = 1800
+DEFAULT_RUN_STALE_SECONDS = 3600
 
 ACTION_RESOLVED = "resolved"
 ACTION_RESCHEDULED = "rescheduled"
 ACTION_EXHAUSTED = "exhausted"
+ACTION_FINALIZED_INTERRUPTED = "finalized_interrupted"
 ACTION_ORPHAN_RESCHEDULED = "orphan_rescheduled"
 ACTION_INVARIANT_MISSING = "invariant_missing"
 ACTION_SKIPPED_ACTIVE = "skipped_active"
@@ -72,6 +74,7 @@ class _RunSnapshot:
     status: str
     error_code: str | None
     error_message: str | None
+    started_at: datetime | None
 
 
 def _utcnow() -> datetime:
@@ -134,20 +137,40 @@ def _build_outcome(replay_run_id: str | None, snapshot: _RunSnapshot | None) -> 
     )
 
 
+def _finalize_interrupted_run(session: Session, run_id: str) -> None:
+    """Mark a stale ``running`` replay run as interrupted so it is not left hanging."""
+    repository = CrawlExecutionRepository(session)
+    run = repository.get_by_run_id(run_id)
+    if run is None or run.status != RUN_STATUS_RUNNING:
+        return
+    repository.mark_failed(
+        run,
+        error_code=FailureCode.REPLAY_INTERRUPTED.value,
+        error_message="replay interrupted before finalize",
+    )
+
+
 def recover_stuck_retrying(
     *,
     stale_before: datetime | None = None,
+    run_stale_before: datetime | None = None,
     limit: int = 100,
     session_factory: Callable[[], Session] | None = None,
 ) -> list[RecoveryResult]:
     """Reconcile dead letters stuck in ``retrying`` since ``stale_before``.
 
     Each letter is handled in its own transaction so a single failure cannot
-    abort the batch. Active (still running) replays are left untouched.
+    abort the batch. A still-running replay is left untouched until its execution
+    run is older than ``run_stale_before``; only then is it finalized as
+    interrupted (to avoid duplicate replays).
     """
     factory: Callable[[], Session] = session_factory or SessionLocal
-    cutoff = stale_before or _utcnow() - timedelta(
+    now = _utcnow()
+    cutoff = stale_before or now - timedelta(
         seconds=_env_seconds("DLQ_STALE_RETRYING_SECONDS", DEFAULT_STALE_RETRYING_SECONDS),
+    )
+    run_cutoff = run_stale_before or now - timedelta(
+        seconds=_env_seconds("DLQ_RUN_STALE_SECONDS", DEFAULT_RUN_STALE_SECONDS),
     )
 
     with factory() as session:
@@ -156,14 +179,19 @@ def recover_stuck_retrying(
         run_ids = {run_id for _, run_id in candidates if run_id}
         runs = CrawlExecutionRepository(session).get_by_run_ids(run_ids)
         snapshots = {
-            run_id: _RunSnapshot(status=run.status, error_code=run.error_code, error_message=run.error_message)
+            run_id: _RunSnapshot(
+                status=run.status,
+                error_code=run.error_code,
+                error_message=run.error_message,
+                started_at=run.started_at,
+            )
             for run_id, run in runs.items()
         }
 
     results: list[RecoveryResult] = []
     for dlq_id, replay_run_id in candidates:
         snapshot = snapshots.get(replay_run_id) if replay_run_id else None
-        results.append(_recover_one(factory, dlq_id, replay_run_id, snapshot))
+        results.append(_recover_one(factory, dlq_id, replay_run_id, snapshot, run_cutoff))
     return results
 
 
@@ -172,6 +200,7 @@ def _recover_one(
     dlq_id: str,
     replay_run_id: str | None,
     snapshot: _RunSnapshot | None,
+    run_stale_before: datetime,
 ) -> RecoveryResult:
     try:
         with factory() as session:
@@ -183,9 +212,31 @@ def _recover_one(
                 )
             before = letter.status
 
-            if snapshot is not None and snapshot.status == "running":
+            if snapshot is not None and snapshot.status == RUN_STATUS_RUNNING:
+                if snapshot.started_at is None or snapshot.started_at > run_stale_before:
+                    return RecoveryResult(
+                        dlq_id, replay_run_id, before, before, ACTION_SKIPPED_ACTIVE, "replay still running"
+                    )
+                if replay_run_id is not None:
+                    _finalize_interrupted_run(session, replay_run_id)
+                outcome = _Outcome(
+                    success=False,
+                    replay_run_id=replay_run_id or "",
+                    status="failed",
+                    error_message="replay interrupted",
+                    error_code=FailureCode.REPLAY_INTERRUPTED.value,
+                    failure_stage=FailureStage.ORCHESTRATE.value,
+                )
+                result = service.finalize_retry(dlq_id, outcome)
+                session.commit()
+                after = result.status.value
                 return RecoveryResult(
-                    dlq_id, replay_run_id, before, before, ACTION_SKIPPED_ACTIVE, "replay still running"
+                    dlq_id,
+                    replay_run_id,
+                    before,
+                    after,
+                    _action_for(after, ACTION_FINALIZED_INTERRUPTED),
+                    "stale running replay finalized",
                 )
 
             outcome, preferred, reason = _build_outcome(replay_run_id, snapshot)
