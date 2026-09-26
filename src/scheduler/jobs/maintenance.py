@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -26,6 +27,9 @@ from src.scheduler.locks import (
 )
 
 logger = logging.getLogger("src.scheduler.jobs.maintenance")
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # Write-intent gates required by build_rag_index._write_target_errors for the
 # production Oracle RAG target. Scoped to this job only so manual CLI builds
@@ -602,8 +606,13 @@ def schema_drift_check_job() -> None:
             logger.exception("Schema drift check failed")
 
 
-def _drift_alert_severity(drifts: list[object]) -> AlertSeverity:
-    """Map the worst ``DriftSeverity`` onto an alert severity."""
+def _drift_alert_severity(drifts: Sequence[object]) -> AlertSeverity:
+    """Map the worst ``DriftSeverity`` onto an alert severity.
+
+    ``Sequence`` rather than ``list``: this only reads its input, and the read-only
+    contract is covariant, so a concrete ``list[SchemaDriftItem]`` is accepted. ``list``
+    is invariant and would reject it, even though every element is an ``object``.
+    """
     from src.db.drift_dto import DriftSeverity
 
     severities = {getattr(drift, "severity", DriftSeverity.LOW) for drift in drifts}
