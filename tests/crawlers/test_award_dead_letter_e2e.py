@@ -18,12 +18,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.crawlers.award_crawler import AwardCrawler, AwardRecord
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.services.crawl_dead_letter_service import CrawlDeadLetterService, retry_dead_letter
 from src.services.crawl_replay_dispatcher import build_default_dispatcher
-from src.utils.request_policy import RequestPolicy
 
 EMPTY_HTML = "<html></html>"
 
@@ -51,24 +52,29 @@ def session(session_factory: sessionmaker) -> Iterator[Session]:
 
 @pytest.fixture
 def patched_award_crawler(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    """Fake award source fetching with a mutable yagoonara availability flag."""
+    """Fake award source fetching with a mutable yagoonara availability flag.
+
+    The source methods return classified results rather than raising, matching
+    what `CrawlerHttpClient` does, so the ledger records the transport's code.
+    """
     state: dict[str, object] = {"yagoonara_ok": False, "wiki_calls": 0}
 
-    async def fake_wiki(self: AwardCrawler, title: str) -> BeautifulSoup:
+    async def fake_wiki(self: AwardCrawler, title: str) -> CrawlResult[BeautifulSoup]:
         state["wiki_calls"] = int(state["wiki_calls"]) + 1
-        return BeautifulSoup(EMPTY_HTML, "html.parser")
+        return CrawlResult.success(BeautifulSoup(EMPTY_HTML, "html.parser"), http_status=200)
 
-    async def fake_yagoonara(self: AwardCrawler) -> BeautifulSoup:
+    async def fake_yagoonara(self: AwardCrawler) -> CrawlResult[BeautifulSoup]:
         if not state["yagoonara_ok"]:
-            raise httpx.ConnectError("offline")
-        return BeautifulSoup(EMPTY_HTML, "html.parser")
-
-    async def no_delay(self: RequestPolicy, *, host: str) -> None:
-        return None
+            exc = httpx.ConnectError("offline")
+            return CrawlResult.failure(
+                CrawlOutcome.RETRYABLE_ERROR,
+                error=f"{type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_HTTP_ERROR.value,
+            )
+        return CrawlResult.success(BeautifulSoup(EMPTY_HTML, "html.parser"), http_status=200)
 
     monkeypatch.setattr(AwardCrawler, "_fetch_wiki_page", fake_wiki)
     monkeypatch.setattr(AwardCrawler, "_fetch_yagoonara", fake_yagoonara)
-    monkeypatch.setattr(RequestPolicy, "delay_async", no_delay)
     return state
 
 

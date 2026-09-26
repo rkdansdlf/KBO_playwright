@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from bs4 import BeautifulSoup
-
 from sqlalchemy.exc import IntegrityError
 
 from src.crawlers.award_crawler import (
@@ -24,11 +24,34 @@ from src.crawlers.award_crawler import (
     _extract_year,
     _split_pairs,
 )
-from src.crawlers.failure_taxonomy import CrawlPersistError
+from src.crawlers.failure_taxonomy import CrawlPersistError, classify_failure
+from src.crawlers.http_client import CrawlerHttpClient
+from src.crawlers.result import CrawlOutcome, CrawlResult
 
 
 def _soup(html: str) -> BeautifulSoup:
     return BeautifulSoup(html, "html.parser")
+
+
+def _ok(payload: BeautifulSoup) -> CrawlResult[BeautifulSoup]:
+    """A successful source result, as `CrawlerHttpClient` would return one."""
+    return CrawlResult.success(payload, http_status=200)
+
+
+def _transport_failure(exc: BaseException) -> CrawlResult[Any]:
+    """A failed source result carrying the taxonomy code the transport assigned.
+
+    Failures are returned, not raised, so these replace the old
+    `side_effect=httpx.ConnectError(...)` style mocks. The code is derived the
+    same way the real client derives it, which keeps the tests honest about what
+    the ledger will record.
+    """
+    _, code = classify_failure(exc)
+    return CrawlResult.failure(
+        CrawlOutcome.RETRYABLE_ERROR,
+        error=f"{type(exc).__name__}: {exc}",
+        error_code=code.value,
+    )
 
 
 @contextmanager
@@ -588,9 +611,7 @@ class TestSave:
 
 class TestCrawlOrchestration:
     def _crawler(self) -> AwardCrawler:
-        crawler = AwardCrawler()
-        crawler.policy = SimpleNamespace(delay_async=AsyncMock())
-        return crawler
+        return AwardCrawler()
 
     def _soups(self) -> dict[str, BeautifulSoup]:
         return {
@@ -600,17 +621,27 @@ class TestCrawlOrchestration:
             "KBO 수비상": _soup(DEFENSE_HTML),
         }
 
+    def test_the_crawler_does_not_own_throttling(self) -> None:
+        """`CrawlerHttpClient` already throttles, retries, and breaks the circuit.
+
+        A second per-crawler delay would double every wait and hide the adaptive
+        backoff, so the crawler must not carry its own policy.
+        """
+        crawler = self._crawler()
+
+        assert not hasattr(crawler, "policy")
+        assert isinstance(crawler._http, CrawlerHttpClient)
+
     @pytest.mark.asyncio
-    async def test_crawl_all_sources_and_delays(self) -> None:
+    async def test_crawl_all_sources(self) -> None:
         crawler = self._crawler()
         soups = self._soups()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
-        crawler._fetch_yagoonara = AsyncMock(return_value=BeautifulSoup(YAGOO_HTML, "html.parser"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(soups[title]))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_ok(_soup(YAGOO_HTML)))
 
         records = await crawler.crawl()
 
         assert len(records) == 3 + 2 + 8 + 3 + 4
-        assert crawler.policy.delay_async.await_count == 5
         assert {r.award_type for r in records} == {
             "MVP",
             "신인상",
@@ -627,26 +658,25 @@ class TestCrawlOrchestration:
         crawler = self._crawler()
         soups = self._soups()
 
-        async def fake_fetch(title: str) -> BeautifulSoup:
+        async def fake_fetch(title: str) -> CrawlResult[BeautifulSoup]:
             if title == "KBO 신인상":
-                raise ValueError("boom")
-            return soups[title]
+                return _transport_failure(ValueError("boom"))
+            return _ok(soups[title])
 
         crawler._fetch_wiki_page = AsyncMock(side_effect=fake_fetch)
-        crawler._fetch_yagoonara = AsyncMock(return_value=BeautifulSoup(YAGOO_HTML, "html.parser"))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_ok(_soup(YAGOO_HTML)))
 
         records = await crawler.crawl()
 
         assert len(records) == 3 + 8 + 3 + 4
-        assert crawler.policy.delay_async.await_count == 5
         assert any(run.error for run in crawler.source_runs)
 
     @pytest.mark.asyncio
     async def test_yagoonara_failure_warns_and_keeps_wiki(self) -> None:
         crawler = self._crawler()
         soups = self._soups()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
-        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(soups[title]))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_transport_failure(httpx.ConnectError("offline")))
 
         records = await crawler.crawl()
 
@@ -656,15 +686,14 @@ class TestCrawlOrchestration:
     async def test_crawl_type_filter_limits_wiki_and_yagoonara(self) -> None:
         crawler = self._crawler()
         soups = self._soups()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
-        crawler._fetch_yagoonara = AsyncMock(return_value=BeautifulSoup(YAGOO_HTML, "html.parser"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(soups[title]))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_ok(_soup(YAGOO_HTML)))
 
         records = await crawler.crawl(types={"MVP"})
 
         assert crawler._fetch_wiki_page.await_count == 1
         assert len(records) == 3
         assert all(r.award_type == "MVP" for r in records)
-        assert crawler.policy.delay_async.await_count == 2
 
     @pytest.mark.asyncio
     async def test_run_passes_types_to_crawl(self) -> None:
@@ -680,8 +709,8 @@ class TestCrawlOrchestration:
     @pytest.mark.asyncio
     async def test_run_dry_run_returns_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
         crawler = self._crawler()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _soup("<html></html>"))
-        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(_soup("<html></html>")))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_transport_failure(httpx.ConnectError("offline")))
         with (
             patch("src.crawlers.award_crawler.track_crawl_run", _noop_track),
             patch("src.crawlers.award_crawler.enqueue_failure", _fake_enqueue),
@@ -714,8 +743,8 @@ class TestCrawlOrchestration:
         session_factory = sessionmaker(bind=engine, expire_on_commit=False)
 
         crawler = self._crawler()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _soup("<html></html>"))
-        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(_soup("<html></html>")))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_transport_failure(httpx.ConnectError("offline")))
 
         with (
             patch("src.services.crawl_run_service.SessionLocal", session_factory),
@@ -746,8 +775,8 @@ class TestCrawlOrchestration:
 
         crawler = self._crawler()
         soups = self._soups()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
-        crawler._fetch_yagoonara = AsyncMock(side_effect=httpx.ConnectError("offline"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(soups[title]))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_transport_failure(httpx.ConnectError("offline")))
 
         with (
             patch("src.services.crawl_run_service.SessionLocal", session_factory),
@@ -782,8 +811,8 @@ class TestCrawlOrchestration:
 
         crawler = self._crawler()
         soups = self._soups()
-        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: soups[title])
-        crawler._fetch_yagoonara = AsyncMock(return_value=BeautifulSoup(YAGOO_HTML, "html.parser"))
+        crawler._fetch_wiki_page = AsyncMock(side_effect=lambda title: _ok(soups[title]))
+        crawler._fetch_yagoonara = AsyncMock(return_value=_ok(_soup(YAGOO_HTML)))
 
         with (
             patch("src.services.crawl_run_service.SessionLocal", session_factory),
