@@ -43,7 +43,6 @@ GRANDFATHERED = frozenset(
         "src/cli/pipelines/run_daily_update.py",
         "src/cli/reports/dashboard_report.py",
         "src/cli/reports/freshness_gate.py",
-        "src/cli/reports/gap_report.py",
         "src/cli/reports/generate_quality_report.py",
         "src/cli/reports/morning_pbp_report.py",
         "src/cli/sync/sqlite_integrity_guard.py",
@@ -71,7 +70,6 @@ CLASSIFICATION: dict[str, str] = {
     "src/cli/reports/dashboard_report.py": "B",
     "src/cli/reports/generate_quality_report.py": "B",
     "src/cli/reports/morning_pbp_report.py": "B",
-    "src/cli/reports/gap_report.py": "B",
     "scripts/verification/audit_fallback_stats.py": "B",
     # B: domain service that composes messages and must delegate delivery
     "src/services/notification_service.py": "B",

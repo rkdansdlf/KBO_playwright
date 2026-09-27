@@ -29,7 +29,9 @@ from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.notifications.bridge import apply_incidents
-from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
+from src.utils.alerting import GAP_EMOJI_MAP
 from src.validators.season_team_code import audit_season_team_codes
 from src.validators.standings_integrity import validate_standings_integrity
 
@@ -58,6 +60,96 @@ _GAP_SOURCE_MAP: dict[str, AlertSource] = {
     "STANDINGS": AlertSource.QUALITY,
     "SEASON_TEAM_CODE": AlertSource.QUALITY,
 }
+
+
+def _format_gap_summary(report: dict[str, Any]) -> str:
+    """Render the daily gap-report digest body.
+
+    Extracted from the transport layer so the summary is built by the domain
+    that owns the report and delivered through :func:`send_notification`.
+    """
+    generated_at = report.get("generated_at", "")
+    gaps = report.get("gaps", {})
+
+    def _sev(gap: dict[str, Any]) -> str:
+        if gap.get("error"):
+            return "error"
+        if gap.get("alert") is False:
+            return "ok"
+        if not gap.get("ok", True):
+            return "warning"
+        return "ok"
+
+    def _icon(sev: str) -> str:
+        return "✅" if sev == "ok" else "⚠️" if sev == "warning" else "❌"
+
+    relay = gaps.get("RELAY", {})
+    relay_sev = _sev(relay)
+    relay_txt = f"{relay.get('missing_count', 0)}건 누락" if relay_sev != "ok" else "0건 누락 (정상)"
+
+    profile = gaps.get("PROFILE", {})
+    profile_sev = _sev(profile)
+    profile_txt = f"{profile.get('missing_count', 0)}명 누락" if profile_sev != "ok" else "0명 누락 (정상)"
+
+    id_res = gaps.get("ID_RESOLUTION", {})
+    id_sev = _sev(id_res)
+    id_txt = f"{id_res.get('total', 0)}건 NULL" if id_sev != "ok" else "0건 NULL (정상)"
+
+    fresh = gaps.get("FRESHNESS", {})
+    fresh_sev = _sev(fresh)
+    fresh_txt = f"{fresh.get('total_issues', 0)}건 이슈" if fresh_sev != "ok" else "정상"
+
+    standings = gaps.get("STANDINGS", {})
+    standings_sev = _sev(standings)
+    standings_txt = f"{standings.get('mismatches', 0)}건 불일치" if standings_sev != "ok" else "정상"
+
+    pa = gaps.get("PA_FORMULA", {})
+    pa_sev = _sev(pa)
+    pa_txt = f"{pa.get('violation_count', 0)}건 위반" if pa_sev != "ok" else "0건 위반 (정상)"
+
+    team = gaps.get("TEAM_STATS", {})
+    team_sev = _sev(team)
+    team_txt = f"{team.get('total', 0)}건 불일치" if team_sev != "ok" else "0건 불일치 (정상)"
+
+    stale = gaps.get("STALENESS", {})
+    stale_sev = _sev(stale)
+    stale_txt = f"{stale.get('stale_count', 0)}건 지연" if stale_sev != "ok" else "정상"
+
+    team_code = gaps.get("SEASON_TEAM_CODE", {})
+    team_code_sev = _sev(team_code)
+    team_code_txt = (
+        f"{team_code.get('total_null', 0)}건 NULL (임계치 {team_code.get('alert_threshold_rate', 10.0)}%)"
+        if team_code_sev != "ok"
+        else "정상"
+    )
+
+    checked = (relay, profile, id_res, fresh, standings, pa, team, stale, team_code)
+    ok_count = sum(1 for g in checked if _sev(g) == "ok")
+    warn_count = sum(1 for g in checked if _sev(g) == "warning")
+    err_count = sum(1 for g in checked if _sev(g) == "error")
+
+    summary_line = f"정상 {ok_count}개"
+    if warn_count:
+        summary_line += f", 경고 {warn_count}개"
+    if err_count:
+        summary_line += f", 오류 {err_count}개"
+
+    return (
+        "📊 <b>KBO 데이터 수율 (Gap Report) 일일 요약</b>\n"
+        f"📅 일시: <code>{generated_at[:19]}</code>\n\n"
+        "<b>[수집 누락 현황]</b>\n"
+        f"• {_icon(relay_sev)} 💾 <b>문자중계 (RELAY):</b> {relay_txt}\n"
+        f"• {_icon(profile_sev)} 👤 <b>선수 사진 (PROFILE):</b> {profile_txt}\n"
+        f"• {_icon(id_sev)} 🔍 <b>NULL 선수 ID (ID_RESOLUTION):</b> {id_txt}\n\n"
+        "<b>[데이터 품질 현황]</b>\n"
+        f"• {_icon(fresh_sev)} ⚡ <b>P0 데이터 (FRESHNESS):</b> {fresh_txt}\n"
+        f"• {_icon(standings_sev)} 🏆 <b>순위표 (STANDINGS):</b> {standings_txt}\n"
+        f"• {_icon(pa_sev)} 📊 <b>타석 공통 공식 (PA_FORMULA):</b> {pa_txt}\n"
+        f"• {_icon(team_sev)} 🏁 <b>팀 통계 (TEAM_STATS):</b> {team_txt}\n"
+        f"• {_icon(stale_sev)} ⏳ <b>데이터 신선도 (STALENESS):</b> {stale_txt}\n"
+        f"• {_icon(team_code_sev)} 🏷️ <b>팀 코드 (SEASON_TEAM_CODE):</b> {team_code_txt}\n\n"
+        f"<b>전체 상태:</b> {summary_line}"
+    )
 
 
 def _season_team_code_alert_rate() -> float:
@@ -599,7 +691,12 @@ def run_gap_report(
         send_gap_alerts(report)
 
     if send_summary and not dry_run:
-        SlackWebhookClient.send_gap_summary_alert(report)
+        send_notification(
+            "KBO 데이터 수율 (Gap Report) 일일 요약",
+            _format_gap_summary(report),
+            priority=NotificationPriority.NORMAL,
+            notification_type="gap_summary",
+        )
 
     return report
 
