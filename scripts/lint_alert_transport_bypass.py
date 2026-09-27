@@ -37,13 +37,11 @@ ALLOWED_FILES = frozenset(
 GRANDFATHERED = frozenset(
     {
         "scripts/scheduler.py",
-        "scripts/verification/audit_fallback_stats.py",
         "src/cli/backfill/auto_healer.py",
         "src/cli/live/live_crawler.py",
         "src/cli/pipelines/run_daily_update.py",
         "src/cli/reports/freshness_gate.py",
         "src/cli/sync/sqlite_integrity_guard.py",
-        "src/services/notification_service.py",
     }
 )
 
@@ -64,9 +62,7 @@ CLASSIFICATION: dict[str, str] = {
     "src/cli/reports/freshness_gate.py": "A",
     "src/cli/pipelines/run_daily_update.py": "A",
     # B: stateless notifications / digests
-    "scripts/verification/audit_fallback_stats.py": "B",
     # B: domain service that composes messages and must delegate delivery
-    "src/services/notification_service.py": "B",
     # C: wrapper / bootstrap re-export
     "scripts/scheduler.py": "C",
 }

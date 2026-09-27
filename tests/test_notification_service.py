@@ -47,7 +47,7 @@ def test_notification_service_dry_run(db_session: Session) -> None:
 
     service = NotificationService(db_session)
 
-    with patch("src.utils.alerting.TelegramBotClient.send_message", return_value=True) as mock_send:
+    with patch.object(NotificationService, "_deliver", return_value=True) as mock_send:
         res = service.send_milestone_daily_summary(season=2026, channels=["telegram"])
         assert res["milestone_count"] == 1
         assert res["dispatched_channels"]["telegram"] is True
@@ -58,7 +58,7 @@ def test_game_preview_report_dispatch(db_session: Session) -> None:
     """Test game preview report dispatch via TelegramBotClient."""
     service = NotificationService(db_session)
 
-    with patch("src.utils.alerting.TelegramBotClient.send_message", return_value=True) as mock_send:
+    with patch.object(NotificationService, "_deliver", return_value=True) as mock_send:
         res = service.send_game_preview_report(away_team="LG", home_team="KIA", season=2026, channels=["telegram"])
         assert res["matchup"] == "LG vs KIA"
         assert res["dispatched_channels"]["telegram"] is True

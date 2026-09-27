@@ -104,7 +104,7 @@ def test_audit_batting_remediation_within_threshold(tmp_path):
         patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
         patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+        with patch("scripts.verification.audit_fallback_stats.send_notification") as mock_send_alert:
             # 1. Run audit with fix=False -> Should NOT fix it, but send warning alert
             audit_module.StatAudit.audit_batting(2025, "regular", fix=False)
 
@@ -196,7 +196,7 @@ def test_audit_batting_remediation_aborted_by_max_mismatches(tmp_path):
         patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
         patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+        with patch("scripts.verification.audit_fallback_stats.send_notification") as mock_send_alert:
             # Run audit with fix=True, but max_mismatches=1 -> Should abort!
             audit_module.StatAudit.audit_batting(2025, "regular", fix=True, max_mismatches=1, max_game_diff=5)
 
@@ -283,7 +283,7 @@ def test_audit_batting_remediation_aborted_by_max_game_diff(tmp_path):
         patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
         patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+        with patch("scripts.verification.audit_fallback_stats.send_notification") as mock_send_alert:
             # Run audit with fix=True, but max_game_diff=15 -> Should abort!
             audit_module.StatAudit.audit_batting(2025, "regular", fix=True, max_mismatches=5, max_game_diff=15)
 
@@ -370,7 +370,7 @@ def test_audit_pitching_remediation_within_threshold(tmp_path):
         patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
         patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+        with patch("scripts.verification.audit_fallback_stats.send_notification") as mock_send_alert:
             audit_module.StatAudit.audit_pitching(2025, "regular", fix=True, max_mismatches=2, max_game_diff=5)
 
             with TestSessionLocal() as session:
@@ -456,7 +456,7 @@ def test_audit_pitching_remediation_aborted_by_max_innings_outs_diff(tmp_path):
         patch.object(safe_bat_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
         patch.object(safe_pitch_repo, "get_db_session", _mock_get_db_session(TestSessionLocal)),
     ):
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+        with patch("scripts.verification.audit_fallback_stats.send_notification") as mock_send_alert:
             audit_module.StatAudit.audit_pitching(
                 2025,
                 "regular",

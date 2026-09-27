@@ -10,9 +10,11 @@ from sqlalchemy import select
 
 from src.constants import KST
 from src.models.game import Game
+from src.notifications.dispatcher import NotificationDispatcher
+from src.notifications.dto import NotificationChannel, NotificationMessage, NotificationPriority
+from src.notifications.recorder import DeliveryRecorder
 from src.services.context_aggregator import ContextAggregator
 from src.services.game_preview_generator import GamePreviewGenerator
-from src.utils.alerting import SlackWebhookClient, TelegramBotClient
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -34,8 +36,33 @@ class NotificationService:
         self.aggregator = ContextAggregator(session)
         self.preview_generator = GamePreviewGenerator(session)
 
+    def _deliver(
+        self,
+        channel: NotificationChannel,
+        message: str,
+        recipient_id: str | None = None,
+    ) -> bool:
+        """Deliver a single message on an explicit channel through the dispatcher.
+
+        The channel is pinned rather than priority-routed because callers of
+        this service report Telegram and Slack outcomes separately.
+        """
+        from src.db.engine import SessionLocal
+
+        dispatcher = NotificationDispatcher(recorder=DeliveryRecorder(SessionLocal))
+        result = dispatcher.dispatch(
+            NotificationMessage(
+                title="KBO Notification",
+                body=message,
+                priority=NotificationPriority.NORMAL,
+                channel=channel,
+                recipient_id=recipient_id,
+            ),
+        )
+        return result.status in ("SENT", "DRY_RUN")
+
     def send_telegram_message(self, message: str, chat_id: str | None = None) -> bool:
-        """Send message via TelegramBotClient.
+        """Send message to the Telegram channel.
 
         Args:
             message: Formatted text message.
@@ -45,10 +72,10 @@ class NotificationService:
             True if sent successfully, False otherwise.
 
         """
-        return TelegramBotClient.send_message(message=message, chat_id=chat_id)
+        return self._deliver(NotificationChannel.TELEGRAM, message, chat_id)
 
     def send_slack_message(self, message: str) -> bool:
-        """Send message via SlackWebhookClient.
+        """Send message to the Slack channel.
 
         Args:
             message: Text message.
@@ -57,7 +84,7 @@ class NotificationService:
             True if sent successfully, False otherwise.
 
         """
-        return SlackWebhookClient.send_alert(message=message)
+        return self._deliver(NotificationChannel.SLACK, message)
 
     def send_today_all_pregame_alerts(
         self,
