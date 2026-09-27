@@ -33,6 +33,9 @@ from src.constants import KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
+from src.notifications.standalone import send_notification
 from src.repositories.game_repository import update_game_status
 from src.services.game_collection_service import (
     GameCollectionConfig,
@@ -42,7 +45,6 @@ from src.services.game_collection_service import (
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
-from src.utils.alerting import SlackWebhookClient, TelegramBotClient
 from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 
 if TYPE_CHECKING:
@@ -288,21 +290,22 @@ def _send_healer_start_alert(
         summary_parts.append(f"*{len(pa_formula_games)}* PA formula violation games")
 
     date_range = f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
-    SlackWebhookClient.send_alert(
-        f"Pipeline Anomaly: {total} games detected for auto-healing.",
-        blocks=[
-            {"type": "header", "text": {"type": "plain_text", "text": "⚠️ KBO Pipeline Anomaly"}},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"Found {' and '.join(summary_parts)} for auto-healing.\n"
-                        f"Affected dates: {date_range}\n\n"
-                        "*Auto-Healing initiated.*"
-                    ),
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.RECOVERY,
+                component="auto_healer",
+                severity=AlertSeverity.WARNING,
+                title=f"Pipeline Anomaly: {total} games detected for auto-healing.",
+                message=f"Found {' and '.join(summary_parts)} for auto-healing.\nAffected dates: {date_range}",
+                incident_key=f"auto_healer:anomaly:{anomaly_dates[0]}",
+                metadata={
+                    "total": total,
+                    "stuck": len(stuck_games),
+                    "inconsistent": len(inconsistent_games),
+                    "pa_formula": len(pa_formula_games or []),
                 },
-            },
+            ),
         ],
     )
 
@@ -488,11 +491,22 @@ def _log_healer_summary(results: dict[str, int], *, dry_run: bool) -> None:
         KBO_AUTO_HEALER_UNRESOLVED_TOTAL.labels(type="stuck").inc(unresolved)
 
     unresolved_count = results.get("unresolved", 0)
+    incident_key = "auto_healer:unresolved"
     if unresolved_count == 0:
-        SlackWebhookClient.send_alert(f"✅ Auto-healing complete. {results['completed']} games recovered.")
+        apply_incidents([], resolve_keys=[incident_key])
     else:
-        SlackWebhookClient.send_alert(
-            f"⚠️ Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed.",
+        apply_incidents(
+            [
+                AlertEvent(
+                    source=AlertSource.RECOVERY,
+                    component="auto_healer_unresolved",
+                    severity=AlertSeverity.WARNING,
+                    title="Auto-healing completed with unresolved games",
+                    message=(f"Auto-healing complete. {results['completed']} recovered, {unresolved_count} failed."),
+                    incident_key=incident_key,
+                    metadata={"completed": results.get("completed", 0), "unresolved": unresolved_count},
+                ),
+            ],
         )
 
 
@@ -711,7 +725,12 @@ async def run_pbp_healer_async(
             f"<pre>{game_lines}</pre>\n\n"
             f"🔧 자동 재크롤 시작..."
         )
-        TelegramBotClient.send_message(discovery_msg)
+        send_notification(
+            "PBP 검증 실패 게임 발견",
+            discovery_msg,
+            notification_type="pbp_healer_discovery",
+            metadata={"found": found, "date_range": date_range},
+        )
 
     if dry_run:
         logger.info("[DRY-RUN] 재크롤 생략. 실제 복구는 --pbp 없이 실행하거나 dry-run 플래그 제거.")
@@ -771,7 +790,12 @@ async def run_pbp_healer_async(
             f"<b>실패 게임:</b>\n<pre>{failed_lines}</pre>"
         )
 
-    TelegramBotClient.send_message(result_msg)
+    send_notification(
+        "PBP 자동 치유 완료",
+        result_msg,
+        notification_type="pbp_healer_result",
+        metadata={"found": found, "recovered": recovered, "failed": failed},
+    )
     logger.info("\n📊 [PBP Healer] 완료 — 발견 %s, 복구 %s, 실패 %s", found, recovered, failed)
 
     _record_pbp_healer_metrics(recovered, failed)
