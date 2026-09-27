@@ -360,7 +360,7 @@ class TestPhase106FLockSkipMonitoring:
     def test_lock_skip_monitor_detects_threshold_exceeded_and_sends_alert(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """lock_skip_monitor_job sends a Slack alert when skip count delta >= threshold."""
+        """lock_skip_monitor_job opens an incident when skip delta >= threshold."""
         mock_sample = MagicMock()
         mock_sample.name = "kbo_scheduler_lock_skip_total"
         mock_sample.labels = {"job_id": "crawl_p1p2_data", "lock": "sqlite_writer"}
@@ -372,26 +372,27 @@ class TestPhase106FLockSkipMonitoring:
         mock_counter = MagicMock()
         mock_counter.collect.return_value = [mock_metric]
 
-        mock_slack = MagicMock()
+        mock_apply = MagicMock()
 
         for mod_name in ("scripts.scheduler", "src.scheduler", "src.scheduler.locks"):
             if mod_name in sys.modules:
                 monkeypatch.setattr(f"{mod_name}.KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter, raising=False)
-                monkeypatch.setattr(f"{mod_name}.SlackWebhookClient", mock_slack, raising=False)
                 monkeypatch.setattr(f"{mod_name}.LOCK_SKIP_ALERT_THRESHOLD", 5, raising=False)
                 monkeypatch.setattr(
                     f"{mod_name}._LAST_LOCK_SKIP", {("crawl_p1p2_data", "sqlite_writer"): 0.0}, raising=False
                 )
+        monkeypatch.setattr("src.notifications.bridge.apply_incidents", mock_apply, raising=False)
 
         lock_skip_monitor_job()
 
-        mock_slack.send_alert.assert_called_once()
-        sent_message = mock_slack.send_alert.call_args[0][0]
-        assert "crawl_p1p2_data" in sent_message
-        assert "skipped 10 times" in sent_message
+        events = mock_apply.call_args.args[0]
+        assert len(events) == 1
+        assert events[0].incident_key == "scheduler:lock_skip:crawl_p1p2_data:sqlite_writer"
+        assert "10" in events[0].message
+        assert mock_apply.call_args.kwargs["reconcile_prefix"] == "scheduler:lock_skip:"
 
     def test_lock_skip_monitor_no_alert_when_below_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """lock_skip_monitor_job does not alert when skip count delta < threshold."""
+        """lock_skip_monitor_job opens no incident when skip delta < threshold."""
         mock_sample = MagicMock()
         mock_sample.name = "kbo_scheduler_lock_skip_total"
         mock_sample.labels = {"job_id": "crawl_daily_games", "lock": "sqlite_writer"}
@@ -403,20 +404,20 @@ class TestPhase106FLockSkipMonitoring:
         mock_counter = MagicMock()
         mock_counter.collect.return_value = [mock_metric]
 
-        mock_slack = MagicMock()
+        mock_apply = MagicMock()
 
         for mod_name in ("scripts.scheduler", "src.scheduler", "src.scheduler.locks"):
             if mod_name in sys.modules:
                 monkeypatch.setattr(f"{mod_name}.KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter, raising=False)
-                monkeypatch.setattr(f"{mod_name}.SlackWebhookClient", mock_slack, raising=False)
                 monkeypatch.setattr(f"{mod_name}.LOCK_SKIP_ALERT_THRESHOLD", 5, raising=False)
                 monkeypatch.setattr(
                     f"{mod_name}._LAST_LOCK_SKIP", {("crawl_daily_games", "sqlite_writer"): 0.0}, raising=False
                 )
+        monkeypatch.setattr("src.notifications.bridge.apply_incidents", mock_apply, raising=False)
 
         lock_skip_monitor_job()
 
-        mock_slack.send_alert.assert_not_called()
+        assert mock_apply.call_args.args[0] == []
 
     def test_lock_skip_monitor_handles_unregistered_metrics_gracefully(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """lock_skip_monitor_job exits cleanly when counter raises during collect."""

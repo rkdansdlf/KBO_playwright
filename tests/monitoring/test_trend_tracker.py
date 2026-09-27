@@ -332,9 +332,10 @@ class TestPrintTrendSummary:
 class TestSendDegradationAlert:
     def test_no_degradations_no_alert(self, tmp_path: Path) -> None:
         tracker = TrendTracker(report_dir=tmp_path)
-        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
+        with patch("src.notifications.bridge.apply_incidents") as apply:
             tracker.send_degradation_alert(days=14)
-            mock_client.send_alert.assert_not_called()
+            assert apply.call_args.args[0] == []
+            assert apply.call_args.kwargs["reconcile_prefix"] == "quality:trend:"
 
     def test_sends_alert_when_degraded(self, tmp_path: Path) -> None:
         r1 = _make_report(_date_str(10), {"relay_integrity": {"recent_missing_count": 10}})
@@ -342,12 +343,12 @@ class TestSendDegradationAlert:
         _write_report(tmp_path, r1)
         _write_report(tmp_path, r2)
         tracker = TrendTracker(report_dir=tmp_path)
-        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
-            mock_client.send_alert = MagicMock(return_value=True)
+        with patch("src.notifications.bridge.apply_incidents") as apply:
             tracker.send_degradation_alert(days=30)
-            mock_client.send_alert.assert_called_once()
-            call_args = mock_client.send_alert.call_args[0]
-            assert "열화" in call_args[0] or "degradation" in call_args[0].lower()
+            events = apply.call_args.args[0]
+            assert len(events) == 1
+            assert "열화" in events[0].title
+            assert events[0].incident_key.startswith("quality:trend:")
 
     def test_pa_violation_triggers_alert(self, tmp_path: Path) -> None:
         r1 = _make_report(_date_str(10), {"relay_integrity": {"recent_missing_count": 10}})
@@ -355,7 +356,6 @@ class TestSendDegradationAlert:
         _write_report(tmp_path, r1)
         _write_report(tmp_path, r2)
         tracker = TrendTracker(report_dir=tmp_path)
-        with patch("src.monitoring.trend_tracker.SlackWebhookClient") as mock_client:
-            mock_client.send_alert = MagicMock(return_value=True)
+        with patch("src.notifications.bridge.apply_incidents") as apply:
             tracker.send_degradation_alert(days=30)
-            mock_client.send_alert.assert_called_once()
+            assert len(apply.call_args.args[0]) == 1

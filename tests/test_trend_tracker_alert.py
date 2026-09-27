@@ -37,12 +37,12 @@ def test_send_degradation_alert_triggered(tmp_path):
 
     tracker = TrendTracker(report_dir=tmp_path)
 
-    with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+    with patch("src.notifications.bridge.apply_incidents") as apply:
         tracker.send_degradation_alert(days=2)
-        assert mock_send_alert.call_count == 1
-        msg = mock_send_alert.call_args[0][0]
-        assert "열화 감지" in msg
-        assert "recent_missing_count" in msg
+        assert len(apply.call_args.args[0]) == 1
+        event = apply.call_args.args[0][0]
+        assert "열화" in event.title
+        assert event.incident_key == "quality:trend:metrics.relay_integrity.recent_missing_count"
 
 
 def test_detect_degradations_supports_completed_count_when_explicit(tmp_path):
@@ -112,9 +112,9 @@ def test_send_degradation_alert_ignores_completed_count_by_default(tmp_path):
 
     tracker = TrendTracker(report_dir=tmp_path)
 
-    with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+    with patch("src.notifications.bridge.apply_incidents") as apply:
         tracker.send_degradation_alert(days=2)
-        assert mock_send_alert.call_count == 0
+        assert apply.call_args.args[0] == []
 
 
 def test_load_reports_dedupes_by_metrics_date_with_latest_generated_at(tmp_path):
@@ -178,6 +178,6 @@ def test_send_degradation_alert_quiet_when_healthy(tmp_path):
 
     tracker = TrendTracker(report_dir=tmp_path)
 
-    with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send_alert:
+    with patch("src.notifications.bridge.apply_incidents") as apply:
         tracker.send_degradation_alert(days=2)
-        assert mock_send_alert.call_count == 0
+        assert apply.call_args.args[0] == []

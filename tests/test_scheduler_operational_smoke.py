@@ -63,6 +63,8 @@ def test_dead_scheduler_pid_is_cleared_and_replaced(tmp_path, monkeypatch) -> No
 
 
 def test_lock_skip_monitor_handles_counter_reset(monkeypatch) -> None:
+    from unittest.mock import patch
+
     key = ("crawl_congestion", "sqlite_writer")
     sample = SimpleNamespace(
         name="kbo_scheduler_lock_skip_total",
@@ -71,33 +73,31 @@ def test_lock_skip_monitor_handles_counter_reset(monkeypatch) -> None:
     )
     counter = MagicMock()
     counter.collect.return_value = [SimpleNamespace(samples=[sample])]
-    alert = MagicMock()
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", counter)
     monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {key: 10.0})
     monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
 
-    scheduler.lock_skip_monitor_job()
+    with patch("src.notifications.bridge.apply_incidents") as apply:
+        scheduler.lock_skip_monitor_job()
+        assert scheduler._LAST_LOCK_SKIP[key] == 2.0
+        assert apply.call_args.args[0] == []
 
-    assert scheduler._LAST_LOCK_SKIP[key] == 2.0
-    alert.assert_not_called()
-
-    sample.value = 8.0
-    scheduler.lock_skip_monitor_job()
-
-    alert.assert_called_once()
+        sample.value = 8.0
+        scheduler.lock_skip_monitor_job()
+        assert len(apply.call_args.args[0]) == 1
 
 
 def test_lock_skip_monitor_returns_when_metrics_collection_fails(monkeypatch) -> None:
+    from unittest.mock import patch
+
     counter = MagicMock()
     counter.collect.side_effect = RuntimeError("metrics unavailable")
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", counter)
-    alert = MagicMock()
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
 
-    scheduler.lock_skip_monitor_job()
+    with patch("src.notifications.bridge.apply_incidents") as apply:
+        scheduler.lock_skip_monitor_job()
 
-    alert.assert_not_called()
+    apply.assert_not_called()
 
 
 def test_scheduler_job_lock_converts_tier_lock_error_to_skip() -> None:

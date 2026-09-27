@@ -22,7 +22,6 @@ from src.scheduler.config import (
     SQLITE_WRITE_LOCK_TIMEOUT_SECONDS,
     _scheduler_uses_sqlite_database,
 )
-from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import ForceProcessLock, LockAcquisitionError, ProcessLock
 from src.utils.metrics import KBO_SCHEDULER_LOCK_SKIP_TOTAL
 
@@ -39,6 +38,9 @@ SQLITE_WRITE_LOCK = ForceProcessLock("sqlite_writer")
 
 # Last observed cumulative skip totals, keyed by (job_id, lock), for delta computation.
 _LAST_LOCK_SKIP: dict[tuple[str, str], float] = {}
+
+#: Namespace for lock-contention incidents, used to reconcile on recovery.
+LOCK_SKIP_KEY_PREFIX = "scheduler:lock_skip:"
 
 
 def _scheduler_pid_alive(pid: int) -> bool:
@@ -234,7 +236,7 @@ def _scheduler_job_lock(
 
 
 def lock_skip_monitor_job() -> None:
-    """Monitor lock skip rate and alert via Slack when threshold is exceeded."""
+    """Monitor lock skip rate and open an incident when threshold is exceeded."""
     logger.info("=== Checking Scheduler Lock Skip Rate ===")
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     last_skips = getattr(mod, "_LAST_LOCK_SKIP", _LAST_LOCK_SKIP) if mod else _LAST_LOCK_SKIP
@@ -246,7 +248,6 @@ def lock_skip_monitor_job() -> None:
         if mod
         else KBO_SCHEDULER_LOCK_SKIP_TOTAL
     )
-    slack_client = getattr(mod, "SlackWebhookClient", SlackWebhookClient) if mod else SlackWebhookClient
 
     try:
         try:
@@ -256,7 +257,11 @@ def lock_skip_monitor_job() -> None:
             return
         if not metrics:
             return
-        alerts: list[str] = []
+
+        from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+        from src.notifications.bridge import apply_incidents
+
+        events: list[AlertEvent] = []
         for metric in metrics:
             for sample in getattr(metric, "samples", []):
                 if sample.name != "kbo_scheduler_lock_skip_total":
@@ -269,8 +274,6 @@ def lock_skip_monitor_job() -> None:
                 delta = current_value - prev_value
                 last_skips[key] = current_value
                 if delta >= threshold:
-                    msg = f"• Job <code>{job_id}</code> skipped {int(delta)} times on lock <code>{lock_name}</code>"
-                    alerts.append(msg)
                     logger.warning(
                         "[LockSkipAlert] High lock contention: job=%s lock=%s skips_in_interval=%d (threshold=%d)",
                         job_id,
@@ -278,13 +281,28 @@ def lock_skip_monitor_job() -> None:
                         int(delta),
                         threshold,
                     )
-        if alerts:
-            details = f"High lock contention detected in the last 15 minutes (threshold: {threshold}):\n" + "\n".join(
-                alerts
-            )
-            slack_client.send_alert(
-                f"⚠️ <b>Scheduler Lock Skip Alert</b>\n{details}",
-            )
+                    events.append(
+                        AlertEvent(
+                            source=AlertSource.SCHEDULER,
+                            component=f"lock:{lock_name}",
+                            severity=AlertSeverity.WARNING,
+                            title=f"스케줄러 락 경합: {job_id}",
+                            message=f"{int(delta)}회 스킵 (lock={lock_name}, threshold={threshold})",
+                            incident_key=f"{LOCK_SKIP_KEY_PREFIX}{job_id}:{lock_name}",
+                            metadata={
+                                "job_id": job_id,
+                                "lock": lock_name,
+                                "skips_in_interval": int(delta),
+                                "threshold": threshold,
+                            },
+                        ),
+                    )
+
+        # Reconcile only within the lock-skip namespace; a run with no
+        # over-threshold keys recovers the previous ones.
+        apply_incidents(events, reconcile_prefix=LOCK_SKIP_KEY_PREFIX)
+        if events:
+            logger.warning("[LockSkipAlert] Opened/renewed %d lock-skip incident(s)", len(events))
         else:
             logger.info("=== Lock Skip Rate Check Passed (no excessive skips) ===")
     except ALERT_EXCEPTIONS:

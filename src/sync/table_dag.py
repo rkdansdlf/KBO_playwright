@@ -252,6 +252,7 @@ TABLE_REGISTRY: list[TableMeta] = [
     TableMeta("crawl_execution_runs", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["run_id"]),
     TableMeta("crawl_dead_letters", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["dlq_id"]),
     TableMeta("notification_incidents", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["incident_key"]),
+    TableMeta("notification_deliveries", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["id"]),
     TableMeta("matchup_batter_home_away", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_splits", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_stadium_split", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),

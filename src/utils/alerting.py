@@ -1,20 +1,37 @@
-"""유틸리티: alerting."""
+"""유틸리티: alerting.
+
+Transport adapters for the in-process alert manager. These classes speak HTTP to
+Telegram and Slack and nothing more — routing, dedup, cooldown and lifecycle live
+in :mod:`src.notifications`. Application code should publish an
+:class:`src.notifications.alert_dto.AlertEvent` instead of calling these
+directly; a repository lint gate enforces that boundary.
+"""
 
 from __future__ import annotations
 
 import logging
 import os
+import time
+from dataclasses import dataclass
+from enum import StrEnum
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from src.utils.metrics import record_notification_dispatch
+
 logger = logging.getLogger(__name__)
 
 ALERTING_EXCEPTIONS = (httpx.HTTPError, OSError, TimeoutError, ValueError, TypeError)
 GAP_ALERT_DETAIL_LIMIT = 15
 
+DEFAULT_ALERT_DELIVERY_ATTEMPTS = 3
+DEFAULT_ALERT_DELIVERY_BACKOFF_SECONDS = 0.5
+
+#: Deprecated: kept importable for compatibility. The canonical routing table now
+#: lives in :data:`src.notifications.policy.DESTINATION_ENV_MAP`.
 GAP_EMOJI_MAP: dict[str, str] = {
     "FRESHNESS": "\u2757",
     "P0": "\u26a1",
@@ -27,6 +44,7 @@ GAP_EMOJI_MAP: dict[str, str] = {
     "STANDINGS": "\U0001f3c5",
 }
 
+#: Deprecated: see :data:`GAP_EMOJI_MAP`.
 GAP_CATEGORY_ENV_MAP: dict[str, str] = {
     "FRESHNESS": "TELEGRAM_CHAT_ID_FRESHNESS",
     "P0": "TELEGRAM_CHAT_ID_P0",
@@ -40,80 +58,229 @@ GAP_CATEGORY_ENV_MAP: dict[str, str] = {
 }
 
 
+class DeliveryOutcome(StrEnum):
+    """Tri-state delivery result.
+
+    Distinguishing ``SKIPPED_UNCONFIGURED`` from ``SENT`` is what lets the alert
+    manager send a recovery notice exactly once: an unconfigured channel must
+    never be mistaken for a successful delivery.
+    """
+
+    SENT = "SENT"
+    SKIPPED_UNCONFIGURED = "SKIPPED_UNCONFIGURED"
+    FAILED = "FAILED"
+
+
+@dataclass(frozen=True)
+class DeliveryResult:
+    """Outcome of a single transport delivery attempt."""
+
+    channel: str
+    outcome: DeliveryOutcome
+    attempts: int = 0
+    duration_seconds: float = 0.0
+    error: str | None = None
+
+    @property
+    def delivered(self) -> bool:
+        """Return whether the message reached the channel."""
+        return self.outcome is DeliveryOutcome.SENT
+
+    @property
+    def skipped(self) -> bool:
+        """Return whether delivery was skipped because the channel is unconfigured."""
+        return self.outcome is DeliveryOutcome.SKIPPED_UNCONFIGURED
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _post_with_retry(
+    url: str,
+    *,
+    payload: dict[str, Any],
+    timeout: float,
+    attempts: int,
+    backoff: float,
+) -> tuple[bool, int, str | None]:
+    """POST a JSON payload with bounded exponential backoff.
+
+    Returns ``(ok, attempts_used, error)``. The explicit ``timeout`` is the hang
+    guard: a stalled endpoint can never block a scheduler job indefinitely.
+    """
+    last_error: str | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = httpx.post(url, json=payload, timeout=timeout)
+        except ALERTING_EXCEPTIONS as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+        else:
+            if response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT):
+                return True, attempt, None
+            last_error = f"HTTP {response.status_code}"
+        if attempt < attempts:
+            time.sleep(backoff * (2 ** (attempt - 1)))
+    return False, attempts, last_error
+
+
+def _delivery_attempts() -> int:
+    return max(1, _env_int("ALERT_DELIVERY_ATTEMPTS", DEFAULT_ALERT_DELIVERY_ATTEMPTS))
+
+
+def _delivery_backoff() -> float:
+    return max(0.0, _env_float("ALERT_DELIVERY_BACKOFF_SECONDS", DEFAULT_ALERT_DELIVERY_BACKOFF_SECONDS))
+
+
 class TelegramBotClient:
     """Send notifications via Telegram Bot API."""
 
     @staticmethod
-    def send_message(message: str, chat_id: str | None = None) -> bool:
-        """Send an alert message to a Telegram chat.
-
-        Uses TELEGRAM_CHAT_ID by default, or the provided chat_id override.
-        Requires TELEGRAM_BOT_TOKEN.
-
-        Args:
-            message: Message.
-            chat_id: Chat ID.
-            message: Message.
-            chat_id: Chat ID.
-
-        """
+    def deliver(message: str, chat_id: str | None = None) -> DeliveryResult:
+        """Deliver a message to Telegram, retrying transient failures."""
+        start = time.monotonic()
         token = os.getenv("TELEGRAM_BOT_TOKEN")
+        resolved_chat = chat_id or os.getenv("TELEGRAM_CHAT_ID")
 
-        chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
+        if not token or not resolved_chat:
+            result = DeliveryResult(channel="telegram", outcome=DeliveryOutcome.SKIPPED_UNCONFIGURED)
+            record_notification_dispatch("telegram", result.outcome.value, 0.0)
+            return result
 
-        if not token or not chat_id:
-            return False
-
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
-
+        payload = {"chat_id": resolved_chat, "text": message, "parse_mode": "HTML"}
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        try:
-            response = httpx.post(url, json=payload, timeout=10)
-            return bool(response.status_code == HTTPStatus.OK)
-        except ALERTING_EXCEPTIONS:
-            logger.exception("Failed to send Telegram message")
-            return False
+        ok, attempts, error = _post_with_retry(
+            url,
+            payload=payload,
+            timeout=10.0,
+            attempts=_delivery_attempts(),
+            backoff=_delivery_backoff(),
+        )
+        duration = time.monotonic() - start
+        outcome = DeliveryOutcome.SENT if ok else DeliveryOutcome.FAILED
+        record_notification_dispatch("telegram", outcome.value, duration)
+        if not ok:
+            logger.warning("Telegram delivery failed after %d attempt(s): %s", attempts, error)
+        return DeliveryResult(
+            channel="telegram",
+            outcome=outcome,
+            attempts=attempts,
+            duration_seconds=duration,
+            error=error,
+        )
+
+    @staticmethod
+    def send_message(message: str, chat_id: str | None = None) -> bool:
+        """Send a message to Telegram, returning whether it was delivered.
+
+        Compatibility façade over :meth:`deliver`.
+        """
+        return TelegramBotClient.deliver(message, chat_id=chat_id).delivered
 
 
 class SlackWebhookClient:
-    """Send notifications. Now prioritizes Telegram if configured."""
+    """Send notifications, preferring Telegram when configured."""
 
     @staticmethod
-    def send_alert(message: str, blocks: list[Any] | None = None) -> bool:
-        """Send an alert message.
+    def deliver(message: str, blocks: list[Any] | None = None) -> DeliveryResult:
+        """Deliver via Telegram, then Slack, reporting the actual outcome."""
+        telegram = TelegramBotClient.deliver(message)
+        if telegram.delivered:
+            return telegram
 
-        Tries Telegram first, falls back to Slack if configured.
-
-        Args:
-            message: Message.
-            blocks: Blocks.
-            message: Message.
-            blocks: Blocks.
-
-        """
-        # Try Telegram first
-
-        if TelegramBotClient.send_message(message):
-            return True
-
-        # Fallback to Slack
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
         if not webhook_url:
+            outcome = DeliveryOutcome.SKIPPED_UNCONFIGURED
             if not os.getenv("TELEGRAM_BOT_TOKEN"):
                 logger.info("[ALERT-SKIP] No alerting (Slack/Telegram) configured. Message: %s", message)
-            return True
+            else:
+                outcome = DeliveryOutcome.FAILED
+            record_notification_dispatch("slack", outcome.value, 0.0)
+            return DeliveryResult(channel="slack", outcome=outcome)
 
         payload: dict[str, Any] = {"text": message}
         if blocks:
             payload["blocks"] = blocks
 
-        try:
-            response = httpx.post(webhook_url, json=payload, timeout=5)
-        except ALERTING_EXCEPTIONS:
-            logger.exception("Failed to send Slack webhook")
-            return False
-        else:
-            return response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
+        start = time.monotonic()
+        ok, attempts, error = _post_with_retry(
+            webhook_url,
+            payload=payload,
+            timeout=5.0,
+            attempts=_delivery_attempts(),
+            backoff=_delivery_backoff(),
+        )
+        duration = time.monotonic() - start
+        outcome = DeliveryOutcome.SENT if ok else DeliveryOutcome.FAILED
+        record_notification_dispatch("slack", outcome.value, duration)
+        return DeliveryResult(
+            channel="slack",
+            outcome=outcome,
+            attempts=attempts,
+            duration_seconds=duration,
+            error=error,
+        )
+
+    @staticmethod
+    def deliver_webhook(message: str, blocks: list[Any] | None = None) -> DeliveryResult:
+        """Deliver directly to the configured Slack webhook without a Telegram leg.
+
+        The dispatcher needs a Slack-only path so that a CRITICAL fan-out to
+        ``(Telegram, Slack)`` does not send Telegram twice.
+        """
+        webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+        if not webhook_url:
+            result = DeliveryResult(channel="slack", outcome=DeliveryOutcome.SKIPPED_UNCONFIGURED)
+            record_notification_dispatch("slack", result.outcome.value, 0.0)
+            return result
+
+        payload: dict[str, Any] = {"text": message}
+        if blocks:
+            payload["blocks"] = blocks
+
+        start = time.monotonic()
+        ok, attempts, error = _post_with_retry(
+            webhook_url,
+            payload=payload,
+            timeout=5.0,
+            attempts=_delivery_attempts(),
+            backoff=_delivery_backoff(),
+        )
+        duration = time.monotonic() - start
+        outcome = DeliveryOutcome.SENT if ok else DeliveryOutcome.FAILED
+        record_notification_dispatch("slack", outcome.value, duration)
+        return DeliveryResult(
+            channel="slack",
+            outcome=outcome,
+            attempts=attempts,
+            duration_seconds=duration,
+            error=error,
+        )
+
+    @staticmethod
+    def send_alert(message: str, blocks: list[Any] | None = None) -> bool:
+        """Send an alert, returning ``False`` only on a genuine delivery failure.
+
+        Compatibility façade preserving the historical fail-open behaviour: an
+        unconfigured channel is not treated as a failure.
+        """
+        return SlackWebhookClient.deliver(message, blocks=blocks).outcome is not DeliveryOutcome.FAILED
 
     @staticmethod
     def send_gap_alert(gap_type: str, summary: str, details: list[str] | None = None) -> bool:
@@ -138,24 +305,30 @@ class SlackWebhookClient:
                 body += f"\n... and {len(details) - GAP_ALERT_DETAIL_LIMIT} more"
         message = header + ("\n\n" + body if body else "")
 
-        chat_env = GAP_CATEGORY_ENV_MAP.get(gap_type)
-        chat_id = os.getenv(chat_env) if chat_env else None
+        from src.notifications.policy import resolve_chat_id
 
-        if TelegramBotClient.send_message(message, chat_id=chat_id):
+        chat_id = resolve_chat_id(gap_type)
+
+        telegram = TelegramBotClient.deliver(message, chat_id=chat_id)
+        if telegram.delivered:
             return True
 
         webhook_url = os.getenv("SLACK_WEBHOOK_URL")
         if not webhook_url:
-            return True
+            return not telegram.delivered and telegram.outcome is DeliveryOutcome.SKIPPED_UNCONFIGURED
+
         slack_msg = f"*{emoji} KBO {gap_type} Gap*\n{summary}"
-        payload = {"text": slack_msg}
-        try:
-            response = httpx.post(webhook_url, json=payload, timeout=5)
-        except ALERTING_EXCEPTIONS:
-            logger.exception("Failed to send Slack gap alert")
-            return False
-        else:
-            return response.status_code in (HTTPStatus.OK, HTTPStatus.NO_CONTENT)
+        ok, _, error = _post_with_retry(
+            webhook_url,
+            payload={"text": slack_msg},
+            timeout=5.0,
+            attempts=_delivery_attempts(),
+            backoff=_delivery_backoff(),
+        )
+        record_notification_dispatch("slack", "SENT" if ok else "FAILED", 0.0)
+        if not ok:
+            logger.warning("Slack gap alert failed: %s", error)
+        return ok
 
     @staticmethod
     def send_error_alert(traceback_msg: str) -> bool:
@@ -303,3 +476,39 @@ class SlackWebhookClient:
         if chat_id and TelegramBotClient.send_message(message, chat_id=chat_id):
             return True
         return SlackWebhookClient.send_alert(message)
+
+
+class GenericWebhookClient:
+    """POST alert messages as JSON to a generic ``ALERT_WEBHOOK_URL``."""
+
+    @staticmethod
+    def deliver(message: str, *, payload: dict[str, Any] | None = None) -> DeliveryResult:
+        """Deliver a JSON payload to the configured generic webhook."""
+        url = os.getenv("ALERT_WEBHOOK_URL")
+        if not url:
+            result = DeliveryResult(channel="webhook", outcome=DeliveryOutcome.SKIPPED_UNCONFIGURED)
+            record_notification_dispatch("webhook", result.outcome.value, 0.0)
+            return result
+
+        body = {"text": message}
+        if payload:
+            body.update(payload)
+
+        start = time.monotonic()
+        ok, attempts, error = _post_with_retry(
+            url,
+            payload=body,
+            timeout=5.0,
+            attempts=_delivery_attempts(),
+            backoff=_delivery_backoff(),
+        )
+        duration = time.monotonic() - start
+        outcome = DeliveryOutcome.SENT if ok else DeliveryOutcome.FAILED
+        record_notification_dispatch("webhook", outcome.value, duration)
+        return DeliveryResult(
+            channel="webhook",
+            outcome=outcome,
+            attempts=attempts,
+            duration_seconds=duration,
+            error=error,
+        )

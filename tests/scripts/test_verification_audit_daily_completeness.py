@@ -302,7 +302,7 @@ class TestAuditCompleteness:
 class TestMain:
     def test_missing_env_db_url_returns_2(self):
         with (
-            patch.dict(os.environ, {}, clear=True),
+            patch.dict(os.environ, {"KBO_ENV_FILE_LOADING": "0"}, clear=True),
             patch("scripts.verification.audit_daily_completeness.load_dotenv"),
             patch("scripts.verification.audit_daily_completeness.audit_completeness") as mock_audit,
             patch("sys.argv", ["audit_daily_completeness.py", "--db-url", "env:DATABASE_URL"]),
@@ -312,7 +312,7 @@ class TestMain:
 
     def test_invalid_date_returns_2(self):
         with (
-            patch.dict(os.environ, {"DATABASE_URL": "sqlite:///test"}, clear=True),
+            patch.dict(os.environ, {"DATABASE_URL": "sqlite:///test", "KBO_ENV_FILE_LOADING": "0"}, clear=True),
             patch("scripts.verification.audit_daily_completeness.load_dotenv"),
             patch("scripts.verification.audit_daily_completeness.audit_completeness") as mock_audit,
             patch("sys.argv", ["audit_daily_completeness.py", "--date", "invalid"]),

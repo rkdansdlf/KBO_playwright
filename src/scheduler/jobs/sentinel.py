@@ -7,16 +7,19 @@ import logging
 import requests
 from requests import RequestException
 
+from src.notifications.bridge import apply_incidents
 from src.scheduler.alerting import alert_warning
-from src.scheduler.config import ALERT_EXCEPTIONS, SCHEDULER_JOB_EXCEPTIONS
+from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
 
 logger = logging.getLogger("src.scheduler.jobs.sentinel")
 
 HTTP_STATUS_OK = 200
 
+SELECTOR_DRIFT_KEY = "drift:selector:schedule"
+
 
 def selector_drift_sentinel_job() -> None:
-    """Daily Canary Check for KBO Website Selector Drift."""
+    """Daily canary check for KBO website selector drift."""
     try:
         from src.monitoring.selector_drift_sentinel import (
             PageContract,
@@ -39,26 +42,44 @@ def selector_drift_sentinel_job() -> None:
             return
 
         report = sentinel.check_html("schedule", response.text)
-        if report.is_healthy:
-            logger.info("[Sentinel] Schedule page contract healthy (drift check passed).")
-            return
-
-        logger.warning(
-            "[Sentinel] Selector drift detected on schedule page: missing_selectors=%s mismatched_columns=%s",
-            list(report.missing_selectors),
-            list(report.mismatched_columns),
-        )
-        try:
-            from src.utils.alerting import SlackWebhookClient
-
-            SlackWebhookClient.send_alert(
-                f"⚠️ Selector drift detected on KBO schedule page: "
-                f"missing={list(report.missing_selectors)} columns={list(report.mismatched_columns)}",
-            )
-        except ALERT_EXCEPTIONS:
-            logger.exception("[Sentinel] Failed to send drift alert")
+        _publish_selector_drift(report)
     except (RequestException, RuntimeError, ValueError, TypeError, OSError):
         logger.exception("[Sentinel] Selector drift canary check failed")
+
+
+def _publish_selector_drift(report: object) -> None:
+    """Open or recover the schedule selector-drift incident."""
+    from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+
+    if getattr(report, "is_healthy", False):
+        logger.info("[Sentinel] Schedule page contract healthy (drift check passed).")
+        apply_incidents([], resolve_keys=[SELECTOR_DRIFT_KEY])
+        return
+
+    missing = list(getattr(report, "missing_selectors", []) or [])
+    mismatched = list(getattr(report, "mismatched_columns", []) or [])
+    logger.warning(
+        "[Sentinel] Selector drift detected on schedule page: missing_selectors=%s mismatched_columns=%s",
+        missing,
+        mismatched,
+    )
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.DRIFT,
+                component="selector:schedule",
+                severity=AlertSeverity.ERROR,
+                title="KBO 스케줄 페이지 selector drift 감지",
+                message=f"missing={missing} columns={mismatched}",
+                incident_key=SELECTOR_DRIFT_KEY,
+                remediation=(
+                    "python3 -m src.cli.crawler_selector_gate "
+                    "--config Docs/references/crawler_selector_gate.json --json",
+                ),
+                metadata={"missing_count": len(missing), "mismatched_count": len(mismatched)},
+            ),
+        ],
+    )
 
 
 def rag_audit_sentinel_job() -> None:

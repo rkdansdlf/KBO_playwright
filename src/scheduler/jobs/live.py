@@ -21,14 +21,12 @@ from src.db.engine import DATABASE_URL, SessionLocal
 from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_error
 from src.scheduler.alerting import alert_failure, alert_success
 from src.scheduler.config import (
-    ALERT_EXCEPTIONS,
     FALSE_ENV_VALUES,
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
     _env_enabled,
 )
 from src.scheduler.locks import LIVE_LOCK, _sqlite_writer_lock
-from src.utils.alerting import SlackWebhookClient
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -188,6 +186,42 @@ def _live_refresh_max_games_per_cycle() -> int | None:
     return val if val > 0 else None
 
 
+def _pregame_incident_key(target_date: str) -> str:
+    """Return the semantic incident key for a date's pregame coverage."""
+    return f"freshness:pregame:{target_date}"
+
+
+def _publish_pregame_incident(target_date: str, starters_missing: int, preview_missing: int) -> None:
+    """Open or refresh the pregame-missing incident for a date."""
+    from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+    from src.notifications.bridge import apply_incidents
+
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.FRESHNESS,
+                component=f"pregame:{target_date}",
+                severity=AlertSeverity.WARNING,
+                title=f"프리게임 라인업/프리뷰 누락: {target_date}",
+                message=f"starters_missing={starters_missing}, preview_missing={preview_missing}",
+                incident_key=_pregame_incident_key(target_date),
+                metadata={
+                    "target_date": target_date,
+                    "starters_missing": starters_missing,
+                    "preview_missing": preview_missing,
+                },
+            ),
+        ],
+    )
+
+
+def _resolve_pregame_incident(target_date: str) -> None:
+    """Recover the pregame-missing incident once a date is fully covered."""
+    from src.notifications.bridge import apply_incidents
+
+    apply_incidents([], resolve_keys=[_pregame_incident_key(target_date)])
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=30, max=120),
@@ -201,24 +235,22 @@ def _process_pregame_date(
 ) -> int:
     scheduled_count, starters_missing, preview_missing = _pregame_refresh_summary(target_date)
     if scheduled_count == 0:
+        _resolve_pregame_incident(target_date)
         return 0
     if refresh_only_missing and starters_missing == 0 and preview_missing == 0:
         _STATE.missing_pregame_alerted_dates.discard(target_date)
+        _resolve_pregame_incident(target_date)
         logger.info("Skipping pregame refresh for target_date=%s (all present)", target_date)
         return 0
     saved_ids = asyncio.run(run_preview_batch(target_date))
     post = _pregame_refresh_summary(target_date)
     if post[0] and (post[1] > 0 or post[2] > 0):
-        if alert_on_missing and target_date not in _STATE.missing_pregame_alerted_dates:
-            try:
-                SlackWebhookClient.send_alert(
-                    f"Pregame missing remains for {target_date}: starters_missing={post[1]}, preview_missing={post[2]}"
-                )
-            except ALERT_EXCEPTIONS:
-                logger.exception("Failed to send pregame missing alert for target_date=%s", target_date)
+        if alert_on_missing:
+            _publish_pregame_incident(target_date, post[1], post[2])
             _STATE.missing_pregame_alerted_dates.add(target_date)
     else:
         _STATE.missing_pregame_alerted_dates.discard(target_date)
+        _resolve_pregame_incident(target_date)
     if scheduled_count and not saved_ids:
         logger.warning(
             "Pregame refresh saved no preview rows for %s: scheduled=%d, saved=0.", target_date, scheduled_count

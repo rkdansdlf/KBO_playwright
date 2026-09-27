@@ -27,75 +27,70 @@ def _retry_state(exc):
     )
 
 
-def test_alert_failure_sends_alert_and_does_not_raise(monkeypatch):
-    sent = []
-    exc = RuntimeError("boom")
+def test_alert_failure_publishes_incident(monkeypatch):
+    captured = []
+    import src.scheduler.alerting as alerting
 
-    monkeypatch.setattr(
-        scheduler.SlackWebhookClient,
-        "send_error_alert",
-        lambda message: sent.append(message) or True,
-    )
+    monkeypatch.setattr(alerting, "apply_incidents", lambda events, **kw: captured.append((events, kw)))
 
-    result = scheduler.alert_failure(_retry_state(exc))
+    result = scheduler.alert_failure(_retry_state(RuntimeError("boom")))
 
     assert result is None
-    assert len(sent) == 1
-    assert "sample_job" in sent[0]
-    assert "boom" in sent[0]
+    events, _kwargs = captured[0]
+    assert len(events) == 1
+    assert events[0].incident_key == "scheduler:sample_job:failed"
+    assert events[0].source.value == "scheduler"
+    assert "boom" in events[0].message
 
 
 def test_alert_failure_handles_alert_error_gracefully(monkeypatch):
-    exc = ValueError("alert transport failed too")
+    import src.notifications.bridge as bridge
 
-    def _raise_alert(_message):
-        raise OSError("slack down")
+    def _broken_session_factory():
+        raise OSError("db down")
 
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_error_alert", _raise_alert)
+    monkeypatch.setattr(bridge, "SessionLocal", _broken_session_factory)
 
-    result = scheduler.alert_failure(_retry_state(exc))
+    result = scheduler.alert_failure(_retry_state(ValueError("alert transport failed too")))
 
     assert result is None
 
 
-def test_alert_success_is_optional_and_non_blocking(monkeypatch):
-    calls = []
+def test_alert_success_resolves_and_respects_notify_flag(monkeypatch):
+    captured = []
+    import src.scheduler.alerting as alerting
+
+    monkeypatch.setattr(alerting, "apply_incidents", lambda events, **kw: captured.append((events, kw)))
 
     monkeypatch.delenv("NOTIFY_SUCCESS", raising=False)
-    monkeypatch.setattr(
-        scheduler.SlackWebhookClient,
-        "send_alert",
-        lambda message: calls.append(message) or True,
-    )
-
-    scheduler.alert_success("sample_job")
-    assert calls == []
-
-    monkeypatch.setenv("NOTIFY_SUCCESS", "1")
-
-    def _raise_success(_message):
-        calls.append("called")
-        raise OSError("slack down")
-
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", _raise_success)
     scheduler.alert_success("sample_job")
 
-    assert calls == ["called"]
-
-
-def test_alert_success_includes_optional_details(monkeypatch):
-    calls = []
+    events, kwargs = captured[0]
+    assert events == []
+    assert set(kwargs["resolve_keys"]) == {
+        "scheduler:sample_job:warning",
+        "scheduler:sample_job:failed",
+    }
+    assert kwargs["dry_run"] is True
 
     monkeypatch.setenv("NOTIFY_SUCCESS", "1")
-    monkeypatch.setattr(
-        scheduler.SlackWebhookClient,
-        "send_alert",
-        lambda message: calls.append(message) or True,
-    )
+    scheduler.alert_success("sample_job")
+    assert captured[1][1]["dry_run"] is False
 
-    scheduler.alert_success("sample_job", "detail_failures=incomplete_detail=1")
 
-    assert calls == ["✅ KBO Job sample_job completed successfully.\ndetail_failures=incomplete_detail=1"]
+def test_alert_warning_publishes_incident(monkeypatch):
+    captured = []
+    import src.scheduler.alerting as alerting
+
+    monkeypatch.setattr(alerting, "apply_incidents", lambda events, **kw: captured.append(events))
+
+    scheduler.alert_warning("crawl_p1p2_data_job", "lock contention")
+
+    events = captured[0]
+    assert len(events) == 1
+    assert events[0].incident_key == "scheduler:crawl_p1p2_data_job:warning"
+    assert events[0].severity.value == "WARNING"
+    assert "lock contention" in events[0].message
 
 
 def test_live_refresh_uses_bounded_default_shard(monkeypatch):
@@ -207,69 +202,42 @@ def test_main_registers_morning_jobs_with_expected_cron(monkeypatch, tmp_path):
     assert ids_to_kwargs["crawl_live_refresh_night"]["max_instances"] == 1
 
 
-def test_job_lifecycle_listener_throttles_rapid_consecutive_alerts(monkeypatch):
-    from apscheduler.events import EVENT_JOB_ERROR
-    from src.scheduler import metrics
-
-    sent = []
-    monkeypatch.setattr(
-        metrics.SlackWebhookClient,
-        "send_error_alert",
-        lambda message: sent.append(message) or True,
-    )
-    metrics._LAST_ALERT_SENT_AT.clear()
-
-    event = SimpleNamespace(
-        code=EVENT_JOB_ERROR,
-        job_id="crawl_live_refresh_day",
-        exception=RuntimeError("DPY-6000: connection refused"),
-    )
-
-    # 1. First error -> sends alert
-    metrics.job_lifecycle_listener(event)
-    assert len(sent) == 1
-
-    # 2. Second immediate error -> throttled (not sent)
-    metrics.job_lifecycle_listener(event)
-    assert len(sent) == 1
-
-    # 3. Simulate cooldown expired (305s elapsed)
-    metrics._LAST_ALERT_SENT_AT["crawl_live_refresh_day"] -= 305
-    metrics.job_lifecycle_listener(event)
-    assert len(sent) == 2
-
-
-def test_job_lifecycle_listener_resets_throttle_after_success(monkeypatch):
+def test_job_lifecycle_listener_publishes_failure_incident(monkeypatch):
     from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
     from src.scheduler import metrics
 
-    sent = []
-    monkeypatch.setattr(
-        metrics.SlackWebhookClient,
-        "send_error_alert",
-        lambda message: sent.append(message) or True,
-    )
-    metrics._LAST_ALERT_SENT_AT.clear()
+    captured = []
+    monkeypatch.setattr(metrics, "apply_incidents", lambda events, **kw: captured.append((events, kw)))
+    monkeypatch.setattr(metrics.sentry_sdk, "capture_exception", lambda exc: None)
+    metrics.job_start_times.clear()
 
     err_event = SimpleNamespace(
         code=EVENT_JOB_ERROR,
         job_id="crawl_live_refresh_day",
         exception=RuntimeError("DPY-6000: connection refused"),
     )
-    ok_event = SimpleNamespace(
-        code=EVENT_JOB_EXECUTED,
-        job_id="crawl_live_refresh_day",
-    )
-
-    # First error
     metrics.job_lifecycle_listener(err_event)
-    assert len(sent) == 1
-    assert "crawl_live_refresh_day" in metrics._LAST_ALERT_SENT_AT
 
-    # Successful execution resets cooldown
+    events, _kwargs = captured[0]
+    assert events[0].incident_key == "scheduler:crawl_live_refresh_day:failed"
+    assert events[0].severity.value == "ERROR"
+    assert "DPY-6000" in events[0].message
+    assert events[0].metadata["job"] == "crawl_live_refresh_day"
+
+    ok_event = SimpleNamespace(code=EVENT_JOB_EXECUTED, job_id="crawl_live_refresh_day")
     metrics.job_lifecycle_listener(ok_event)
-    assert "crawl_live_refresh_day" not in metrics._LAST_ALERT_SENT_AT
 
-    # Subsequent error immediately sends alert again
-    metrics.job_lifecycle_listener(err_event)
-    assert len(sent) == 2
+    assert captured[1][1]["resolve_keys"] == ["scheduler:crawl_live_refresh_day:failed"]
+
+
+def test_job_lifecycle_listener_ignores_error_without_exception(monkeypatch):
+    from apscheduler.events import EVENT_JOB_ERROR
+    from src.scheduler import metrics
+
+    captured = []
+    monkeypatch.setattr(metrics, "apply_incidents", lambda events, **kw: captured.append(events))
+    metrics.job_start_times.clear()
+
+    metrics.job_lifecycle_listener(SimpleNamespace(code=EVENT_JOB_ERROR, job_id="x", exception=None))
+
+    assert captured == []

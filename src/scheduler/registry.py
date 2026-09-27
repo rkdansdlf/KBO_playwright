@@ -53,6 +53,7 @@ from src.scheduler.jobs.maintenance import (
     crawl_retired_players_job,
     data_integrity_check_job,
     heal_unverified_pbp_job,
+    notification_retention_job,
     rag_identity_drift_job,
     recalc_milestones_and_rag_job,
     relay_state_cleanup_job,
@@ -318,6 +319,12 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
         (schema_drift_check_job, trigger_cls(hour=6, minute=35), "schema_drift_check", 3600),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
+        (
+            notification_retention_job,
+            trigger_cls(day_of_week="sun", hour=3, minute=0),
+            "notification_retention_weekly",
+            3600,
+        ),
         (
             cleanup_stale_data_job,
             trigger_cls(day_of_week="sun", hour=2, minute=30),

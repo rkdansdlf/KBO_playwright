@@ -33,6 +33,7 @@ from src.cli.gap_report import (
     run_gap_report,
     send_gap_alerts,
 )
+from src.notifications.alert_dto import AlertSeverity
 from src.validators.season_team_code import SeasonTeamCodeAudit
 
 
@@ -89,7 +90,7 @@ class TestGapReport:
             assert "선수 사진 (PROFILE)" in message
             assert "NULL 선수 ID (ID_RESOLUTION)" in message
 
-    def test_send_gap_alerts_formats_relay(self):
+    def test_send_gap_alerts_publishes_relay_incident(self):
         report = {
             "gaps": {
                 "RELAY": {
@@ -100,12 +101,20 @@ class TestGapReport:
             },
         }
 
-        with patch("src.cli.gap_report.SlackWebhookClient.send_gap_alert") as mock:
+        with patch("src.cli.gap_report.apply_incidents") as mock:
             send_gap_alerts(report)
 
-        mock.assert_called_once_with("RELAY", "6 games missing PBP", ["G1", "G2", "G3", "G4", "G5"])
+        events = mock.call_args.args[0]
+        assert len(events) == 1
+        event = events[0]
+        assert event.incident_key == "gap:RELAY"
+        assert event.component == "RELAY"
+        assert event.severity == AlertSeverity.WARNING
+        assert event.message == "6 games missing PBP"
+        assert event.remediation == ("G1", "G2", "G3", "G4", "G5")
+        assert mock.call_args.kwargs["resolve_keys"] == []
 
-    def test_send_gap_alerts_formats_freshness(self):
+    def test_send_gap_alerts_publishes_freshness_incident(self):
         report = {
             "gaps": {
                 "FRESHNESS": {
@@ -116,16 +125,14 @@ class TestGapReport:
             },
         }
 
-        with patch("src.cli.gap_report.SlackWebhookClient.send_gap_alert") as mock:
+        with patch("src.cli.gap_report.apply_incidents") as mock:
             send_gap_alerts(report)
 
-        mock.assert_called_once_with(
-            "FRESHNESS",
-            "3 total issues, detail: 2 games, relay: 1 games",
-            ["detail: G1", "detail: G2", "relay: G3"],
-        )
+        event = mock.call_args.args[0][0]
+        assert event.incident_key == "gap:FRESHNESS"
+        assert event.message == "3 total issues, detail: 2 games, relay: 1 games"
 
-    def test_send_gap_alerts_formats_team_stats_and_skips_ok(self):
+    def test_send_gap_alerts_publishes_team_stats_and_resolves_ok(self):
         report = {
             "gaps": {
                 "TEAM_STATS": {
@@ -142,14 +149,28 @@ class TestGapReport:
             },
         }
 
-        with patch("src.cli.gap_report.SlackWebhookClient.send_gap_alert") as mock:
+        with patch("src.cli.gap_report.apply_incidents") as mock:
             send_gap_alerts(report)
 
-        mock.assert_called_once_with(
-            "TEAM_STATS",
-            "2 team stat mismatches, batting=1, pitching=1",
-            ["타격 [LG]: hits mismatch", "  H +1", "  AB -1", "투수 [SS]: era mismatch", "  ER +2"],
+        events = mock.call_args.args[0]
+        assert [e.incident_key for e in events] == ["gap:TEAM_STATS"]
+        assert events[0].message == "2 team stat mismatches, batting=1, pitching=1"
+        assert events[0].remediation == (
+            "타격 [LG]: hits mismatch",
+            "  H +1",
+            "  AB -1",
+            "투수 [SS]: era mismatch",
+            "  ER +2",
         )
+        assert mock.call_args.kwargs["resolve_keys"] == ["gap:PROFILE"]
+
+    def test_send_gap_alerts_error_severity(self):
+        report = {"gaps": {"RELAY": {"ok": False, "error": "connection lost"}}}
+
+        with patch("src.cli.gap_report.apply_incidents") as mock:
+            send_gap_alerts(report)
+
+        assert mock.call_args.args[0][0].severity == AlertSeverity.ERROR
 
 
 class TestCheckRelayGaps:
