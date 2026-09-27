@@ -319,15 +319,20 @@ class TestRunGapReport:
 class TestSendGapAlertsEdgeCases:
     def test_skips_ok_categories(self):
         report = {"gaps": {"RELAY": {"ok": True, "missing_count": 0}}}
-        with patch("src.cli.gap_report.SlackWebhookClient.send_gap_alert") as mock:
+        with patch("src.cli.gap_report.apply_incidents") as mock:
             send_gap_alerts(report)
-            mock.assert_not_called()
+
+        # An ok gap resolves instead of alerting: no events are published.
+        assert mock.call_args.args[0] == []
+        assert mock.call_args.kwargs["resolve_keys"] == ["gap:RELAY"]
 
     def test_empty_gaps(self):
         report = {"gaps": {}}
-        with patch("src.cli.gap_report.SlackWebhookClient.send_gap_alert") as mock:
+        with patch("src.cli.gap_report.apply_incidents") as mock:
             send_gap_alerts(report)
-            mock.assert_not_called()
+
+        assert mock.call_args.args[0] == []
+        assert mock.call_args.kwargs["resolve_keys"] == []
 
 
 class TestCheckPaFormulaGaps:
