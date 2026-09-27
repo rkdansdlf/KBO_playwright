@@ -1,16 +1,21 @@
-"""Job lifecycle listener and metrics reporting for the KBO scheduler."""
+"""Job lifecycle listener and metrics reporting for the KBO scheduler.
+
+The listener records Prometheus metrics and captures exceptions in Sentry. Job
+failures are published as incidents (``scheduler:<job>:failed``) so that dedup,
+cooldown and RECOVERED delivery are owned by the incident pipeline rather than a
+bespoke in-memory throttle.
+"""
 
 from __future__ import annotations
 
 import logging
-import os
 import time
 
 import sentry_sdk
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SUBMITTED
 
-from src.scheduler.config import ALERT_EXCEPTIONS
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 from src.utils.metrics import (
     KBO_SCHEDULER_JOB_DURATION_SECONDS,
     KBO_SCHEDULER_JOB_TOTAL,
@@ -19,8 +24,12 @@ from src.utils.metrics import (
 logger = logging.getLogger("src.scheduler.metrics")
 
 job_start_times: dict[str, float] = {}
-_LAST_ALERT_SENT_AT: dict[str, float] = {}
-ALERT_THROTTLE_SECONDS = float(os.getenv("SCHEDULER_ALERT_THROTTLE_SECONDS", "300"))
+
+_TRACEBACK_LIMIT = 2000
+
+
+def _scheduler_failure_key(job_id: str) -> str:
+    return f"scheduler:{job_id}:failed"
 
 
 def job_lifecycle_listener(event: object) -> None:
@@ -37,37 +46,40 @@ def job_lifecycle_listener(event: object) -> None:
 
         KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="success").inc()
         KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
-        _LAST_ALERT_SENT_AT.pop(job_id, None)
+        apply_incidents([], resolve_keys=[_scheduler_failure_key(job_id)])
 
     elif event_code == EVENT_JOB_ERROR:
-        start_time = job_start_times.pop(job_id, None)
-        duration = time.time() - start_time if start_time else 0.0
+        _handle_job_error(event, job_id)
 
-        KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="failure").inc()
-        KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
 
-        exc = getattr(event, "exception", None)
-        if exc:
-            import traceback
+def _handle_job_error(event: object, job_id: str) -> None:
+    """Record a failure, capture it in Sentry, and publish an incident."""
+    start_time = job_start_times.pop(job_id, None)
+    duration = time.time() - start_time if start_time else 0.0
 
-            tb = "".join(traceback.format_exception(type(exc), exc, getattr(exc, "__traceback__", None)))
-            logger.error("Job %s failed: %s", job_id, exc)
+    KBO_SCHEDULER_JOB_TOTAL.labels(job_id=job_id, status="failure").inc()
+    KBO_SCHEDULER_JOB_DURATION_SECONDS.labels(job_id=job_id).observe(duration)
 
-            sentry_sdk.capture_exception(exc)
+    exc = getattr(event, "exception", None)
+    if not exc:
+        return
 
-            now = time.time()
-            last_alert_time = _LAST_ALERT_SENT_AT.get(job_id, 0.0)
-            if now - last_alert_time < ALERT_THROTTLE_SECONDS:
-                logger.warning(
-                    "Throttling Slack alert for failed job %s (last alert sent %.1fs ago, cooldown is %ds)",
-                    job_id,
-                    now - last_alert_time,
-                    int(ALERT_THROTTLE_SECONDS),
-                )
-                return
+    import traceback
 
-            _LAST_ALERT_SENT_AT[job_id] = now
-            try:
-                SlackWebhookClient.send_error_alert(f"🚨 <b>Scheduler Job Failed: {job_id}</b>\nError: {exc}\n\n{tb}")
-            except ALERT_EXCEPTIONS:
-                logger.exception("Failed to send Slack alert for failed job %s", job_id)
+    tb = "".join(traceback.format_exception(type(exc), exc, getattr(exc, "__traceback__", None)))
+    logger.error("Job %s failed: %s", job_id, exc)
+    sentry_sdk.capture_exception(exc)
+
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.SCHEDULER,
+                component=job_id,
+                severity=AlertSeverity.ERROR,
+                title=f"스케줄러 잡 실패: {job_id}",
+                message=f"{type(exc).__name__}: {exc}\n\n{tb[:_TRACEBACK_LIMIT]}",
+                incident_key=_scheduler_failure_key(job_id),
+                metadata={"job": job_id, "exception_type": type(exc).__name__},
+            ),
+        ],
+    )

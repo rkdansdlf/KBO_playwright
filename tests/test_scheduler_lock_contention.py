@@ -152,6 +152,7 @@ def test_tier_job_skips_on_lock_timeout(monkeypatch) -> None:
 
 def test_lock_skip_monitor_alerts_when_threshold_exceeded(monkeypatch) -> None:
     from types import SimpleNamespace
+    from unittest.mock import patch
 
     sample = SimpleNamespace(
         name="kbo_scheduler_lock_skip_total",
@@ -164,16 +165,20 @@ def test_lock_skip_monitor_alerts_when_threshold_exceeded(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
     monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
     monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
-    alert = MagicMock()
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
 
-    scheduler.lock_skip_monitor_job()
+    with patch("src.notifications.bridge.apply_incidents") as apply:
+        scheduler.lock_skip_monitor_job()
 
-    alert.assert_called_once()
+    events = apply.call_args.args[0]
+    assert len(events) == 1
+    assert events[0].incident_key == "scheduler:lock_skip:crawl_congestion:sqlite_writer"
+    assert events[0].severity.value == "WARNING"
+    assert apply.call_args.kwargs["reconcile_prefix"] == "scheduler:lock_skip:"
 
 
 def test_lock_skip_monitor_no_alert_below_threshold(monkeypatch) -> None:
     from types import SimpleNamespace
+    from unittest.mock import patch
 
     sample = SimpleNamespace(
         name="kbo_scheduler_lock_skip_total",
@@ -186,16 +191,17 @@ def test_lock_skip_monitor_no_alert_below_threshold(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
     monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
     monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
-    alert = MagicMock()
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
 
-    scheduler.lock_skip_monitor_job()
+    with patch("src.notifications.bridge.apply_incidents") as apply:
+        scheduler.lock_skip_monitor_job()
 
-    alert.assert_not_called()
+    assert apply.call_args.args[0] == []
+    assert apply.call_args.kwargs["reconcile_prefix"] == "scheduler:lock_skip:"
 
 
 def test_lock_skip_monitor_ignores_counter_created_sample(monkeypatch) -> None:
     from types import SimpleNamespace
+    from unittest.mock import patch
 
     labels = {"job_id": "crawl_congestion", "lock": "sqlite_writer"}
     metric = SimpleNamespace(
@@ -209,9 +215,8 @@ def test_lock_skip_monitor_ignores_counter_created_sample(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "KBO_SCHEDULER_LOCK_SKIP_TOTAL", mock_counter)
     monkeypatch.setattr(scheduler, "_LAST_LOCK_SKIP", {})
     monkeypatch.setattr(scheduler, "LOCK_SKIP_ALERT_THRESHOLD", 5.0)
-    alert = MagicMock()
-    monkeypatch.setattr(scheduler.SlackWebhookClient, "send_alert", alert)
 
-    scheduler.lock_skip_monitor_job()
+    with patch("src.notifications.bridge.apply_incidents") as apply:
+        scheduler.lock_skip_monitor_job()
 
-    alert.assert_not_called()
+    assert apply.call_args.args[0] == []

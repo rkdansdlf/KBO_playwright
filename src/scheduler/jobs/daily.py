@@ -22,6 +22,7 @@ from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.cli.pipelines.run_daily_update import format_stability_alert_summary
 from src.cli.pipelines.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
     KST,
@@ -137,6 +138,69 @@ def _run_legacy_daily_update(
     wait=wait_exponential(multiplier=1, min=30, max=300),
     retry_error_callback=alert_failure,
 )
+def _failed_stage_ids(report: object) -> set[str]:
+    """Return the stage ids that finished in the FAILED state."""
+    from src.orchestration.dto import StageExecutionStatus
+
+    failed: set[str] = set()
+    for stage in getattr(report, "stage_results", []) or []:
+        if getattr(stage, "status", None) == StageExecutionStatus.FAILED:
+            failed.add(str(getattr(stage, "stage_id", "")))
+    return failed
+
+
+def _publish_quality_incident(report: object) -> None:
+    """Open or recover the ``quality:daily`` incident from the DAG quality stage."""
+    from src.notifications.bridge import apply_incidents
+
+    stage = next(
+        (s for s in (getattr(report, "stage_results", []) or []) if getattr(s, "stage_id", "") == "quality_gate"),
+        None,
+    )
+    if stage is None:
+        return
+
+    key = "quality:daily"
+    quality_report = (getattr(stage, "artifacts", None) or {}).get("quality_report")
+    if quality_report is None:
+        apply_incidents(
+            [
+                AlertEvent(
+                    source=AlertSource.QUALITY,
+                    component="daily",
+                    severity=AlertSeverity.ERROR,
+                    title="데이터 품질 게이트 실행 실패",
+                    message=str(getattr(stage, "error_message", None) or "quality gate produced no report"),
+                    incident_key=key,
+                ),
+            ],
+        )
+        return
+
+    status = str(getattr(quality_report, "overall_status", "FAIL"))
+    if status == "PASS":
+        apply_incidents([], resolve_keys=[key])
+        return
+
+    score = getattr(quality_report, "quality_score", "?")
+    hints = tuple(getattr(quality_report, "remediation_hints", []) or ())
+    severity = AlertSeverity.WARNING if status == "WARN" else AlertSeverity.ERROR
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.QUALITY,
+                component="daily",
+                severity=severity,
+                title=f"데이터 품질 게이트 {status}",
+                message=f"quality score {score}/100",
+                incident_key=key,
+                remediation=hints,
+                metadata={"overall_status": status, "quality_score": score},
+            ),
+        ],
+    )
+
+
 def crawl_daily_games() -> None:
     """Daily job: Run unified daily update entrypoint with dependency tracking.
 
@@ -188,17 +252,24 @@ def crawl_daily_games() -> None:
                     report.total_stages,
                 )
 
+                _publish_quality_incident(report)
+
                 if report.overall_status == "SUCCESS":
                     msg = f"Daily DAG Sync completed ({report.completed_stages}/{report.total_stages} stages)"
                     alert_succ("crawl_daily_games", msg)
                     _update_job_status("crawl_daily_games", JobStatus.SUCCESS, msg)
                 elif report.overall_status == "PARTIAL_FAILURE":
-                    msg = (
-                        f"Daily DAG Sync partial failure "
-                        f"({report.failed_stages} failed, {report.skipped_stages} skipped)"
-                    )
-                    alert_warn("crawl_daily_games", msg)
-                    _update_job_status("crawl_daily_games", JobStatus.FAILURE, msg)
+                    other_failures = _failed_stage_ids(report) - {"quality_gate"}
+                    if other_failures:
+                        msg = (
+                            f"Daily DAG Sync partial failure "
+                            f"({report.failed_stages} failed, {report.skipped_stages} skipped)"
+                        )
+                        alert_warn("crawl_daily_games", msg)
+                        _update_job_status("crawl_daily_games", JobStatus.FAILURE, msg)
+                    else:
+                        msg = "Daily DAG Sync quality gate warning (incident-tracked)"
+                        _update_job_status("crawl_daily_games", JobStatus.FAILURE, msg)
                 else:
                     err_msg = f"Master DAG Daily Sync failed: {report.overall_status}"
                     _update_job_status("crawl_daily_games", JobStatus.FAILURE, err_msg)

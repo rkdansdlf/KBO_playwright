@@ -36,6 +36,7 @@ class NotificationMessage:
     recipient_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: str = ""
+    notification_type: str = "notification"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert notification message to dictionary."""
@@ -47,6 +48,7 @@ class NotificationMessage:
             "recipient_id": self.recipient_id,
             "metadata": self.metadata,
             "timestamp": self.timestamp,
+            "notification_type": self.notification_type,
         }
 
 
@@ -55,9 +57,11 @@ class NotificationDispatchResult:
     """Outcome of dispatching a single notification."""
 
     channel: NotificationChannel
-    status: str  # SENT, FAILED, SUPPRESSED, DRY_RUN
+    status: str  # SENT, FAILED, SUPPRESSED, SKIPPED_UNCONFIGURED, DRY_RUN
     duration_seconds: float = 0.0
     error_message: str | None = None
+    attempt_count: int = 1
+    destination: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert dispatch result to dictionary."""
@@ -66,6 +70,8 @@ class NotificationDispatchResult:
             "status": self.status,
             "duration_seconds": round(self.duration_seconds, 3),
             "error_message": self.error_message,
+            "attempt_count": self.attempt_count,
+            "destination": self.destination,
         }
 
 
@@ -77,6 +83,7 @@ class NotificationBatchReport:
     sent_count: int
     failed_count: int
     suppressed_count: int
+    skipped_count: int = 0
     results: list[NotificationDispatchResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -86,5 +93,6 @@ class NotificationBatchReport:
             "sent_count": self.sent_count,
             "failed_count": self.failed_count,
             "suppressed_count": self.suppressed_count,
+            "skipped_count": self.skipped_count,
             "results": [r.to_dict() for r in self.results],
         }

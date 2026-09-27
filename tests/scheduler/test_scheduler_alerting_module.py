@@ -11,28 +11,41 @@ from src.scheduler.alerting import (
 )
 
 
-def test_alert_failure():
+def test_alert_failure_publishes_failed_incident():
     mock_retry_state = MagicMock()
     mock_retry_state.fn.__name__ = "test_func"
     mock_retry_state.attempt_number = 3
     mock_retry_state.outcome.exception.return_value = RuntimeError("Crash")
 
-    with patch("src.utils.alerting.SlackWebhookClient.send_error_alert") as mock_slack:
+    with patch("src.scheduler.alerting.apply_incidents") as mock_apply:
         alert_failure(mock_retry_state)
-        mock_slack.assert_called_once()
-        assert "test_func" in mock_slack.call_args[0][0]
+
+    events = mock_apply.call_args.args[0]
+    assert len(events) == 1
+    assert events[0].incident_key == "scheduler:test_func:failed"
+    assert events[0].component == "test_func"
+    assert "Crash" in events[0].message
 
 
-def test_alert_warning():
-    with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_slack:
+def test_alert_warning_publishes_warning_incident():
+    with patch("src.scheduler.alerting.apply_incidents") as mock_apply:
         alert_warning("warn_job", "some warning")
-        mock_slack.assert_called_once()
-        assert "warn_job" in mock_slack.call_args[0][0]
+
+    events = mock_apply.call_args.args[0]
+    assert len(events) == 1
+    assert events[0].incident_key == "scheduler:warn_job:warning"
+    assert events[0].component == "warn_job"
+    assert "some warning" in events[0].message
 
 
-def test_alert_success(monkeypatch):
+def test_alert_success_resolves_incidents(monkeypatch):
     monkeypatch.setenv("NOTIFY_SUCCESS", "1")
-    with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_slack:
+    with patch("src.scheduler.alerting.apply_incidents") as mock_apply:
         alert_success("success_job", "finished")
-        mock_slack.assert_called_once()
-        assert "success_job" in mock_slack.call_args[0][0]
+
+    assert mock_apply.call_args.args[0] == []
+    assert mock_apply.call_args.kwargs["resolve_keys"] == [
+        "scheduler:success_job:warning",
+        "scheduler:success_job:failed",
+    ]
+    assert mock_apply.call_args.kwargs["dry_run"] is False

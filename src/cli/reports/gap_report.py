@@ -27,6 +27,8 @@ from src.cli.reports.monitor_data_freshness import check_freshness
 from src.constants import MIN_KBO_PLAYER_ID
 from src.db.engine import SessionLocal
 from src.models.game import GamePlayByPlay
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 from src.utils.alerting import GAP_EMOJI_MAP, SlackWebhookClient
 from src.validators.season_team_code import audit_season_team_codes
 from src.validators.standings_integrity import validate_standings_integrity
@@ -38,6 +40,24 @@ logger = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_SEASON_TEAM_CODE_ALERT_RATE = 10.0
 NOTICE_STALE_HOURS = 72.0
+
+#: Which alert source owns each gap type (one signal, one owner).
+_GAP_SOURCE_MAP: dict[str, AlertSource] = {
+    "FRESHNESS": AlertSource.FRESHNESS,
+    "STALENESS": AlertSource.FRESHNESS,
+    "P0": AlertSource.FRESHNESS,
+    "NOTICES": AlertSource.FRESHNESS,
+    "RELAY": AlertSource.REPORT,
+    "PROFILE": AlertSource.REPORT,
+    "MILESTONES": AlertSource.REPORT,
+    "FUTURES": AlertSource.REPORT,
+    "SPLITS": AlertSource.REPORT,
+    "ID_RESOLUTION": AlertSource.QUALITY,
+    "PA_FORMULA": AlertSource.QUALITY,
+    "TEAM_STATS": AlertSource.QUALITY,
+    "STANDINGS": AlertSource.QUALITY,
+    "SEASON_TEAM_CODE": AlertSource.QUALITY,
+}
 
 
 def _season_team_code_alert_rate() -> float:
@@ -482,21 +502,42 @@ def _gap_detail_items(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
 
 
 def send_gap_alerts(report: dict[str, Any]) -> None:
-    """Send gap-type-aware alerts for each non-ok gap in the report.
+    """Publish each non-ok gap as an incident and recover the gaps that now pass.
+
+    Incidents are keyed ``gap:<TYPE>`` so a persistent gap re-notifies only after
+    its cooldown and a recovered gap emits exactly one RESOLVED message.
 
     Args:
         report: Report.
 
     """
+    events: list[AlertEvent] = []
+    resolve_keys: list[str] = []
+
     for gap_type, gap_data in report.get("gaps", {}).items():
+        key = f"gap:{gap_type}"
         severity = _gap_severity(gap_data)
         if severity == "ok":
+            resolve_keys.append(key)
             continue
 
         summary_parts = _gap_summary_parts(gap_type, gap_data)
         summary = ", ".join(summary_parts) if summary_parts else "Unknown gap"
         detail_items = _gap_detail_items(gap_type, gap_data)
-        SlackWebhookClient.send_gap_alert(gap_type, summary, detail_items)
+        events.append(
+            AlertEvent(
+                source=_GAP_SOURCE_MAP.get(gap_type, AlertSource.REPORT),
+                component=gap_type,
+                severity=AlertSeverity.ERROR if severity == "error" else AlertSeverity.WARNING,
+                title=f"{gap_type} 데이터 갭 감지",
+                message=summary,
+                incident_key=key,
+                remediation=tuple(detail_items[:5]),
+                metadata={"gap_type": gap_type, "detail_count": len(detail_items)},
+            ),
+        )
+
+    apply_incidents(events, resolve_keys=resolve_keys)
 
 
 def format_report_summary(report: dict[str, Any]) -> str:

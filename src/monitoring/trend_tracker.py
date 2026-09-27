@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from src.constants import DATE_STR_LEN, KST
-from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_datetime_str
 
 logger = logging.getLogger(__name__)
+
+#: Namespace for trend-degradation incidents, used to reconcile on recovery.
+TREND_KEY_PREFIX = "quality:trend:"
 
 QUALITY_REPORT_DIR = Path("logs/quality_reports")
 TREND_DIRECTION_MIN_VALUES = 3
@@ -216,12 +218,12 @@ class TrendTracker:
         logger.info("")
 
     def send_degradation_alert(self, days: int = 14) -> None:
-        """Detect metric degradations over the last `days` days and send an alert.
+        """Detect metric degradations over the last `days` days and open incidents.
 
-        via Telegram/Slack if any are found. Stays quiet when everything is healthy.
+        A healthy run reconciles the trend-incident namespace, so a metric that
+        recovers is reported as RECOVERED exactly once.
 
         Args:
-            days: Days.
             days: Days.
 
         """
@@ -230,15 +232,34 @@ class TrendTracker:
             "metrics.pa_formula_integrity.violation_count": 0.0,  # Any increase in violations
         }
         degradations = self.detect_degradations(default_thresholds, days=days)
-        if not degradations:
-            return  # Nothing to alert about
+        self._publish_degradation_incidents(degradations, days)
 
-        lines = ""
-        for d in degradations:
-            arrow = "↗" if d["pct_change"] > 0 else "↘"
-            lines += (
-                f"  {arrow} {d['metric']}\n    {d['first']} → {d['last']} ({d['pct_change']:+.1f}%) [{d['severity']}]\n"
+    def _publish_degradation_incidents(self, degradations: list[dict[str, Any]], days: int) -> None:
+        """Open/refresh a quality-trend incident per degraded metric."""
+        from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+        from src.notifications.bridge import apply_incidents
+
+        events: list[AlertEvent] = []
+        for degradation in degradations:
+            metric = str(degradation["metric"])
+            logger.warning(
+                "Degradation detected: %s %+.1f%% (%s)",
+                metric,
+                degradation["pct_change"],
+                degradation["severity"],
             )
-
-        msg = f"<b>📉 KBO 데이터 품질 열화 감지 (최근 {days}일)</b>\n\n{lines}\n상세 확인이 필요합니다."
-        SlackWebhookClient.send_alert(msg)
+            events.append(
+                AlertEvent(
+                    source=AlertSource.QUALITY,
+                    component=metric,
+                    severity=AlertSeverity.WARNING,
+                    title=f"KBO 데이터 품질 열화: {metric}",
+                    message=(
+                        f"{degradation['first']} → {degradation['last']} "
+                        f"({degradation['pct_change']:+.1f}%) [{degradation['severity']}]"
+                    ),
+                    incident_key=f"{TREND_KEY_PREFIX}{metric}",
+                    metadata={"days": days, "pct_change": degradation["pct_change"]},
+                ),
+            )
+        apply_incidents(events, reconcile_prefix=TREND_KEY_PREFIX)
