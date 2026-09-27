@@ -148,13 +148,24 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_dlq.add_argument("--apply", action="store_true", help="Apply an operator mutation (retry/requeue/ignore).")
     p_dlq.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    # 12. Crawl execution runs
+
+def _add_crawl_and_snapshot_subparsers(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add crawl-run replay and raw snapshot replay subparsers."""
     p_crawl = subparsers.add_parser("crawl", help="Operate on crawl execution runs.")
     crawl_subs = p_crawl.add_subparsers(dest="crawl_command")
     p_replay = crawl_subs.add_parser("replay", help="Replay a past crawl run independently.")
     p_replay.add_argument("--run-id", dest="run_id", default=None, help="Original execution run id.")
     p_replay.add_argument("--apply", action="store_true", help="Execute the replay.")
     p_replay.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    p_snapshot = subparsers.add_parser("snapshot", help="Operate on stored raw source snapshots.")
+    snap_subs = p_snapshot.add_subparsers(dest="snapshot_command")
+    p_snap_replay = snap_subs.add_parser("replay", help="Replay stored snapshots through their parsers (read-only).")
+    p_snap_replay.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot.")
+    p_snap_replay.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    p_snap_replay.add_argument("--json", action="store_true", help="Emit JSON.")
 
 
 def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -373,6 +384,7 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_core_subparsers(subparsers)
     _add_maintenance_and_config_subparsers(subparsers)
     _add_data_and_ops_subparsers(subparsers)
+    _add_crawl_and_snapshot_subparsers(subparsers)
     _add_advanced_subparsers(subparsers)
     _add_cert_and_lineage_subparsers(subparsers)
 
@@ -448,6 +460,19 @@ def _lazy_crawl(args: list[str]) -> int:
     return 1
 
 
+def _lazy_snapshot(args: list[str]) -> int:
+    """Import and dispatch the raw snapshot CLI on demand."""
+    if args and args[0] == "replay":
+        try:
+            from src.cli.snapshot_replay import main as snap_main
+        except ImportError:
+            print("snapshot replay command not available", file=sys.stderr)
+            return 1
+        return snap_main(args[1:])
+    print("Usage: kbo snapshot <replay> ...", file=sys.stderr)
+    return 1
+
+
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     """Return map of subcommand strings to their respective module main entrypoints."""
     from src.cli.bulk_load import main as bulk_main
@@ -492,6 +517,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "lineage": _lazy_lineage,
         "dlq": _lazy_dlq,
         "crawl": _lazy_crawl,
+        "snapshot": _lazy_snapshot,
         "formula": form_main,
     }
 
