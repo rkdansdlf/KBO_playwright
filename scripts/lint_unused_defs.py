@@ -58,7 +58,9 @@ def _reference_files() -> list[Path]:
         )
     except (subprocess.SubprocessError, OSError):
         return [path for root in REFERENCE_ROOTS for path in Path(root).rglob("*") if path.is_file()]
-    return [Path(line) for line in result.stdout.splitlines() if line.endswith(REFERENCE_SUFFIXES)]
+    return [
+        Path(line) for line in result.stdout.splitlines() if line.endswith(REFERENCE_SUFFIXES) and Path(line).is_file()
+    ]
 
 
 def _reference_counts() -> dict[str, int]:
