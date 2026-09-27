@@ -180,7 +180,7 @@ class TestRunPBPHealerAsync:
 
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message") as mock_tg,
+            patch("src.cli.auto_healer.send_notification") as mock_tg,
         ):
             from src.cli.auto_healer import run_pbp_healer_async
 
@@ -195,7 +195,7 @@ class TestRunPBPHealerAsync:
         """When no unverified games, function returns early without Telegram."""
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=[]),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message") as mock_tg,
+            patch("src.cli.auto_healer.send_notification") as mock_tg,
         ):
             from src.cli.auto_healer import run_pbp_healer_async
 
@@ -217,7 +217,7 @@ class TestRunPBPHealerAsync:
         ]
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message") as mock_tg,
+            patch("src.cli.auto_healer.send_notification") as mock_tg,
             patch(
                 _RECOVER_PATH,
                 AsyncMock(
@@ -237,7 +237,7 @@ class TestRunPBPHealerAsync:
         assert result["failed"] == 0
         # discovery + result
         assert mock_tg.call_count == 2
-        result_msg = mock_tg.call_args_list[1][0][0]
+        result_msg = mock_tg.call_args_list[1][0][1]
         assert "복구" in result_msg
 
     def test_kbo_returns_no_data_marks_failed(self):
@@ -254,7 +254,7 @@ class TestRunPBPHealerAsync:
 
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message") as mock_tg,
+            patch("src.cli.auto_healer.send_notification") as mock_tg,
             patch(_RECOVER_PATH, AsyncMock(return_value=SimpleNamespace(saved_games=0, report_rows=[]))),
         ):
             from src.cli.auto_healer import run_pbp_healer_async
@@ -265,7 +265,7 @@ class TestRunPBPHealerAsync:
         assert result["recovered"] == 0
         assert result["failed"] == 1
         assert mock_tg.call_count == 2
-        failure_msg = mock_tg.call_args_list[1][0][0]
+        failure_msg = mock_tg.call_args_list[1][0][1]
         assert "실패" in failure_msg
 
     def test_revalidation_failure_counts_as_failed(self):
@@ -281,7 +281,7 @@ class TestRunPBPHealerAsync:
         ]
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message"),
+            patch("src.cli.auto_healer.send_notification"),
             patch(_RECOVER_PATH, AsyncMock(return_value=SimpleNamespace(saved_games=0, report_rows=[]))),
         ):
             from src.cli.auto_healer import run_pbp_healer_async
@@ -295,7 +295,7 @@ class TestRunPBPHealerAsync:
         """When target_game_ids given, _find_unverified_pbp_games is NOT called."""
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games") as mock_scan,
-            patch("src.cli.auto_healer.TelegramBotClient.send_message"),
+            patch("src.cli.auto_healer.send_notification"),
             patch("src.cli.auto_healer.SessionLocal") as mock_sl,
         ):
             mock_session = MagicMock()
@@ -324,7 +324,7 @@ class TestRunPBPHealerAsync:
 
         with (
             patch("src.cli.auto_healer._find_unverified_pbp_games", return_value=fake_games),
-            patch("src.cli.auto_healer.TelegramBotClient.send_message"),
+            patch("src.cli.auto_healer.send_notification"),
             patch(_RECOVER_PATH, AsyncMock(return_value=SimpleNamespace(saved_games=0, report_rows=[]))),
         ):
             from src.cli.auto_healer import run_pbp_healer_async

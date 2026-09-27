@@ -169,19 +169,20 @@ class TestLogHealerSummary:
         assert "5" in caplog.text
 
     def test_logs_summary_no_dry_run_success(self, caplog):
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             with caplog.at_level(logging.INFO):
                 _log_healer_summary({"completed": 5, "unresolved": 0}, dry_run=False)
         assert "Auto-Healer Summary" in caplog.text
-        mock_slack.send_alert.assert_called_once()
+        assert mock_apply.call_args.args[0] == []
+        assert mock_apply.call_args.kwargs["resolve_keys"] == ["auto_healer:unresolved"]
 
     def test_logs_summary_no_dry_run_with_failures(self, caplog):
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             with caplog.at_level(logging.INFO):
                 _log_healer_summary({"completed": 3, "unresolved": 2}, dry_run=False)
-        mock_slack.send_alert.assert_called_once()
-        call_args = mock_slack.send_alert.call_args[0][0]
-        assert "2" in call_args
+        events = mock_apply.call_args.args[0]
+        assert len(events) == 1
+        assert "2" in events[0].message
 
 
 class TestLogAnomalySummary:
@@ -263,58 +264,56 @@ class TestSendHealerStartAlert:
         mock_game.game_id = "G1"
         mock_game.game_status = "SCHEDULED"
 
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _send_healer_start_alert(
                 total=1,
                 stuck_games=[mock_game],
                 inconsistent_games=[],
                 anomaly_dates=["2025-06-15"],
             )
-        mock_slack.send_alert.assert_called_once()
-        call_args = mock_slack.send_alert.call_args[0]
-        assert "1" in call_args[0] or "1" in str(call_args[1])
+        events = mock_apply.call_args.args[0]
+        assert len(events) == 1
+        assert "1" in events[0].title
 
     def test_sends_with_inconsistent_games(self):
         mock_game = MagicMock()
         mock_game.game_id = "G2"
         mock_game.game_status = "COMPLETED"
 
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _send_healer_start_alert(
                 total=1,
                 stuck_games=[],
                 inconsistent_games=[mock_game],
                 anomaly_dates=["2025-06-15"],
             )
-        mock_slack.send_alert.assert_called_once()
+        assert len(mock_apply.call_args.args[0]) == 1
 
     def test_sends_with_both(self):
         mock_game = MagicMock()
 
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _send_healer_start_alert(
                 total=2,
                 stuck_games=[mock_game],
                 inconsistent_games=[mock_game],
                 anomaly_dates=["2025-06-15"],
             )
-        mock_slack.send_alert.assert_called_once()
+        assert len(mock_apply.call_args.args[0]) == 1
 
     def test_date_range_format(self):
         mock_game = MagicMock()
 
-        with patch("src.cli.auto_healer.SlackWebhookClient") as mock_slack:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _send_healer_start_alert(
                 total=1,
                 stuck_games=[mock_game],
                 inconsistent_games=[],
                 anomaly_dates=["2025-06-15", "2025-06-16"],
             )
-        mock_slack.send_alert.assert_called_once()
-        blocks = mock_slack.send_alert.call_args[1].get("blocks", [])
-        if blocks:
-            text = str(blocks[1])
-            assert "~" in text or "2025-06-15" in text
+        events = mock_apply.call_args.args[0]
+        assert len(events) == 1
+        assert "2025-06-15" in events[0].message
 
 
 class TestFindRecoveryTargets:
@@ -609,7 +608,7 @@ class TestRunPbpHealerAsync:
             "src.cli.auto_healer._find_unverified_pbp_games",
             return_value=[{"game_id": "G1", "away_team": "LG", "home_team": "SSG", "error_reason": "x"}],
         ):
-            with patch("src.cli.auto_healer.TelegramBotClient"):
+            with patch("src.cli.auto_healer.send_notification"):
                 result = await run_pbp_healer_async(dry_run=True)
                 assert result["found"] == 1
                 assert result["skipped"] == 1
@@ -626,7 +625,7 @@ class TestRunPbpHealerAsync:
             mock_row.source_payload = None
             mock_session.execute.return_value.fetchall.return_value = [mock_row]
 
-            with patch("src.cli.auto_healer.TelegramBotClient") as mock_tg:
+            with patch("src.cli.auto_healer.send_notification") as mock_tg:
                 with patch(
                     "src.services.relay_recovery_service.recover_relay_data",
                     new_callable=AsyncMock,
@@ -638,7 +637,7 @@ class TestRunPbpHealerAsync:
                     result = await run_pbp_healer_async(dry_run=False, target_game_ids=["20250615LGSS0"])
                     assert result["found"] == 1
                     assert result["recovered"] == 1
-                    mock_tg.send_message.assert_called()
+                    mock_tg.assert_called()
 
     async def test_partial_recovery(self):
         with patch(
@@ -654,7 +653,7 @@ class TestRunPbpHealerAsync:
                 {"game_id": "G2", "game_date": "2025-06-15", "away_team": "KT", "home_team": "NC", "error_reason": "y"},
             ],
         ):
-            with patch("src.cli.auto_healer.TelegramBotClient"):
+            with patch("src.cli.auto_healer.send_notification"):
                 with patch(
                     "src.services.relay_recovery_service.recover_relay_data",
                     new_callable=AsyncMock,

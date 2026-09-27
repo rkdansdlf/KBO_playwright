@@ -63,15 +63,21 @@ class TestLogHealerSummary:
     def test_success_alert(self) -> None:
         from src.cli.auto_healer import _log_healer_summary
 
-        with patch("src.cli.auto_healer.SlackWebhookClient.send_alert") as mock_send:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _log_healer_summary({"completed": 5, "unresolved": 0}, dry_run=False)
-            mock_send.assert_called_once()
+
+        # A clean run resolves the unresolved incident instead of alerting.
+        mock_apply.assert_called_once()
+        assert mock_apply.call_args.args[0] == []
+        assert mock_apply.call_args.kwargs["resolve_keys"] == ["auto_healer:unresolved"]
 
     def test_unresolved_alert(self) -> None:
         from src.cli.auto_healer import _log_healer_summary
 
-        with patch("src.cli.auto_healer.SlackWebhookClient.send_alert") as mock_send:
+        with patch("src.cli.auto_healer.apply_incidents") as mock_apply:
             _log_healer_summary({"completed": 3, "unresolved": 2}, dry_run=False)
-            mock_send.assert_called_once()
-            call_args = mock_send.call_args[0][0]
-            assert "2" in call_args
+
+        events = mock_apply.call_args.args[0]
+        assert len(events) == 1
+        assert events[0].incident_key == "auto_healer:unresolved"
+        assert "2" in events[0].message

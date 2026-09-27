@@ -151,7 +151,7 @@ class TestPbpHealerOrchestration:
         }
         telegram = MagicMock()
         monkeypatch.setattr(auto_healer, "_find_unverified_pbp_games", MagicMock(return_value=[result]))
-        monkeypatch.setattr(auto_healer, "TelegramBotClient", telegram)
+        monkeypatch.setattr(auto_healer, "send_notification", telegram)
 
         assert asyncio.run(auto_healer.run_pbp_healer_async(dry_run=True)) == {
             "found": 1,
@@ -159,7 +159,7 @@ class TestPbpHealerOrchestration:
             "failed": 0,
             "skipped": 1,
         }
-        telegram.send_message.assert_not_called()
+        telegram.assert_not_called()
 
     def test_recovers_pbp_and_reports_partial_failure(self, monkeypatch):
         results = [
@@ -170,7 +170,7 @@ class TestPbpHealerOrchestration:
         telegram = MagicMock()
         recover = AsyncMock(return_value=recovery_result)
         monkeypatch.setattr(auto_healer, "_find_unverified_pbp_games", MagicMock(return_value=results))
-        monkeypatch.setattr(auto_healer, "TelegramBotClient", telegram)
+        monkeypatch.setattr(auto_healer, "send_notification", telegram)
         monkeypatch.setattr("src.services.relay_recovery_service.recover_relay_data", recover)
         monkeypatch.setattr("src.sources.relay.derive_bucket_id", lambda game_id: f"bucket:{game_id}")
 
@@ -178,7 +178,7 @@ class TestPbpHealerOrchestration:
 
         assert result == {"found": 2, "recovered": 1, "failed": 1, "skipped": 0}
         recover.assert_awaited_once()
-        assert telegram.send_message.call_count == 2
+        assert telegram.call_count == 2
 
 
 class TestHealerCli:
