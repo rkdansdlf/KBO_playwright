@@ -1,34 +1,20 @@
 from datetime import date
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
+from src.crawlers.circuit_breaker import circuit_registry
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.crawlers.roster_transaction_crawler import ROSTER_CRAWLER_NAME, RosterTransactionCrawler
 
 
 @pytest.fixture(autouse=True)
 def allow_kbo_source(monkeypatch):
     monkeypatch.setattr("src.crawlers.roster_transaction_crawler.compliance.is_allowed", AsyncMock(return_value=True))
-
-
-class FakeAsyncClient:
-    def __init__(self, response):
-        self.response = response
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
-
-    async def get(self, url):
-        return self.response
-
-
-class ErrorAsyncClient(FakeAsyncClient):
-    async def get(self, url):
-        raise httpx.HTTPError("request failed")
 
 
 class FakeResponseContext:
@@ -91,7 +77,9 @@ class TestRun:
         data = [{"player_name": "mobile result"}]
 
         with (
-            patch.object(crawler, "_crawl_mobile_page", new=AsyncMock(return_value=data)) as mobile,
+            patch.object(
+                crawler, "_crawl_mobile_page", new=AsyncMock(return_value=CrawlResult.success(data))
+            ) as mobile,
             patch.object(crawler, "_crawl_desktop_page", new=AsyncMock()) as desktop,
             patch.object(crawler, "_save_to_db") as save,
         ):
@@ -108,8 +96,20 @@ class TestRun:
         data = [{"player_name": "desktop result"}]
 
         with (
-            patch.object(crawler, "_crawl_mobile_page", new=AsyncMock(return_value=[])),
-            patch.object(crawler, "_crawl_desktop_page", new=AsyncMock(return_value=data)) as desktop,
+            patch.object(
+                crawler,
+                "_crawl_mobile_page",
+                new=AsyncMock(
+                    return_value=CrawlResult.failure(
+                        CrawlOutcome.PERMANENT_ERROR,
+                        error="boom",
+                        error_code=FailureCode.FETCH_TIMEOUT.value,
+                    ),
+                ),
+            ),
+            patch.object(
+                crawler, "_crawl_desktop_page", new=AsyncMock(return_value=CrawlResult.success(data))
+            ) as desktop,
             patch.object(crawler, "_save_to_db") as save,
         ):
             result = await crawler.run(target_date="2025-06-15")
@@ -219,7 +219,12 @@ class TestParseMobileHtml:
         result = self.crawler._parse_mobile_html(html, date(2025, 6, 15))
         assert len(result) == 0
 
-    def test_skips_unknown_team_blocks(self):
+    def test_unknown_team_blocks_yield_no_rows_but_are_reported(self):
+        """The rows are still empty, but the block was seen and not understood.
+
+        Callers must be able to tell that apart from a quiet day, which is why
+        the analysis carries the team counts rather than the list alone.
+        """
         html = """
         <h3>오늘자 선수 등록현황</h3>
         <strong class="team">알 수 없는 팀</strong>
@@ -227,6 +232,12 @@ class TestParseMobileHtml:
         """
 
         assert self.crawler._parse_mobile_html(html, date(2025, 6, 15)) == []
+
+        analysis = self.crawler._analyze_mobile_html(html, date(2025, 6, 15))
+        assert analysis.structure_seen is True
+        assert analysis.team_blocks == 1
+        assert analysis.mapped_teams == 0
+        assert analysis.unknown_teams == ["알 수 없는 팀"]
 
 
 class TestParseAlternateMobile:
@@ -257,55 +268,193 @@ class TestParseAlternateMobile:
 
 
 class TestCrawlMobilePage:
+    """The mobile fetch classifies its outcome instead of returning a bare list.
+
+    Three states used to collapse into `[]`: a genuine quiet day, an HTTP
+    failure, and a page that no longer has the expected structure. Only the first
+    is data.
+    """
+
+    def _crawler(self, handler) -> RosterTransactionCrawler:
+        client = CrawlerHttpClient(
+            name=ROSTER_CRAWLER_NAME,
+            policy=HttpPolicy(base_delay_seconds=0.0, max_attempts=1, max_backoff_seconds=0.0),
+        )
+
+        @asynccontextmanager
+        async def _mock_client():
+            async with httpx.AsyncClient(
+                headers=client.default_headers,
+                timeout=client.timeout,
+                transport=httpx.MockTransport(handler),
+                follow_redirects=True,
+            ) as raw:
+                yield raw
+
+        client._client = _mock_client
+        circuit_registry.reset_all()
+        return RosterTransactionCrawler(http_client=client)
+
     @pytest.mark.asyncio
-    async def test_success_records_raw_page_and_parses_html(self):
-        crawler = RosterTransactionCrawler()
-        response = MagicMock(status_code=200, text="<html>mobile</html>")
-        parsed = [{"player_name": "parsed"}]
+    async def test_rows_produce_a_success_result(self):
+        html = '<html>오늘자 선수 등록현황<strong class="team">LG</strong><ul><li>김현수</li></ul></html>'
+        crawler = self._crawler(lambda request: httpx.Response(200, text=html))
 
-        with (
-            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
-            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
-            patch.object(crawler, "_parse_mobile_html", return_value=parsed) as parse,
-        ):
-            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
 
-        assert result == parsed
-        parse.assert_called_once_with("<html>mobile</html>", date(2025, 6, 15))
-        assert crawler._raw_pages == [
-            {
-                "source_key": "kbo_today_roster",
-                "url": "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx?searchDate=2025-06-15",
-                "html": "<html>mobile</html>",
-                "status_code": 200,
-            },
-        ]
+        assert result.ok
+        assert [row["player_name"] for row in result.data] == ["김현수"]
+        assert crawler._raw_pages[0]["status_code"] == 200
 
     @pytest.mark.asyncio
-    async def test_non_ok_response_returns_empty(self):
-        crawler = RosterTransactionCrawler()
-        response = MagicMock(status_code=503, text="unavailable")
+    async def test_a_valid_page_with_no_rows_is_empty_not_a_failure(self):
+        """The core of this track: a quiet day must not look like an outage."""
+        html = "<html>오늘자 선수 등록현황<ul></ul></html>"
+        crawler = self._crawler(lambda request: httpx.Response(200, text=html))
 
-        with (
-            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=FakeAsyncClient(response)),
-            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
-        ):
-            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
 
-        assert result == []
+        assert result.outcome is CrawlOutcome.EMPTY
+        assert result.error_code is None
+
+    @pytest.mark.asyncio
+    async def test_a_missing_section_is_a_selector_miss(self):
+        crawler = self._crawler(lambda request: httpx.Response(200, text="<html>redesigned</html>"))
+
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result.error_code == FailureCode.PARSE_SELECTOR_MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_only_unknown_team_names_is_a_normalization_failure(self):
+        """A block we cannot read is a parser failure, not an empty day."""
+        html = '<html>오늘자 선수 등록현황<strong class="team">어떤구단</strong><ul><li>홍길동</li></ul></html>'
+        crawler = self._crawler(lambda request: httpx.Response(200, text=html))
+
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result.error_code == FailureCode.PARSE_SELECTOR_MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_a_known_team_with_an_unknown_one_still_succeeds(self):
+        html = (
+            "<html>오늘자 선수 등록현황"
+            '<strong class="team">LG</strong><ul><li>김현수</li></ul>'
+            '<strong class="team">어떤구단</strong><ul><li>홍길동</li></ul>'
+            "</html>"
+        )
+        crawler = self._crawler(lambda request: httpx.Response(200, text=html))
+
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result.ok
+        assert [row["player_name"] for row in result.data] == ["김현수"]
+
+    @pytest.mark.asyncio
+    async def test_a_server_error_is_a_classified_fetch_failure(self):
+        crawler = self._crawler(lambda request: httpx.Response(503, text="unavailable"))
+
+        result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+
+        assert result.error_code == FailureCode.FETCH_HTTP_ERROR.value
         assert crawler._raw_pages == []
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_empty(self):
-        crawler = RosterTransactionCrawler()
+    async def test_a_timeout_is_a_timeout(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("slow")
 
-        with (
-            patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient", return_value=ErrorAsyncClient(None)),
-            patch("src.crawlers.roster_transaction_crawler.throttle.wait", new=AsyncMock()),
-        ):
-            result = await crawler._crawl_mobile_page(date(2025, 6, 15))
+        result = await self._crawler(handler)._crawl_mobile_page(date(2025, 6, 15))
 
-        assert result == []
+        assert result.error_code == FailureCode.FETCH_TIMEOUT.value
+
+    @pytest.mark.asyncio
+    async def test_a_rate_limit_is_not_a_generic_http_error(self):
+        result = await self._crawler(lambda r: httpx.Response(429, text="slow down"))._crawl_mobile_page(
+            date(2025, 6, 15),
+        )
+
+        assert result.error_code == FailureCode.FETCH_RATE_LIMITED.value
+
+
+class TestResolveCrawl:
+    """The fallback is for a source that cannot answer, not one with no data."""
+
+    def _crawler(self) -> RosterTransactionCrawler:
+        return RosterTransactionCrawler()
+
+    def _failure(self, code: str) -> CrawlResult[list[dict]]:
+        return CrawlResult.failure(CrawlOutcome.PERMANENT_ERROR, error="boom", error_code=code)
+
+    @pytest.mark.asyncio
+    async def test_a_quiet_day_never_triggers_the_fallback(self):
+        crawler = self._crawler()
+        crawler._crawl_mobile_page = AsyncMock(return_value=CrawlResult.empty())  # type: ignore[method-assign]
+        crawler._crawl_desktop_page = AsyncMock()  # type: ignore[method-assign]
+
+        result = await crawler._resolve_crawl(date(2025, 6, 15))
+
+        assert result.outcome is CrawlOutcome.EMPTY
+        crawler._crawl_desktop_page.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_unreadable_page_triggers_the_fallback(self):
+        crawler = self._crawler()
+        rows = [{"player_name": "from desktop"}]
+        crawler._crawl_mobile_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.PARSE_SELECTOR_MISSING.value),
+        )
+        crawler._crawl_desktop_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=CrawlResult.success(rows),
+        )
+
+        result = await crawler._resolve_crawl(date(2025, 6, 15))
+
+        assert result.ok
+        assert result.data == rows
+
+    @pytest.mark.asyncio
+    async def test_a_fallback_empty_day_still_resolves_to_empty(self):
+        """A confirmed quiet day on the fallback path is data, not a failure."""
+        crawler = self._crawler()
+        crawler._crawl_mobile_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.FETCH_TIMEOUT.value),
+        )
+        crawler._crawl_desktop_page = AsyncMock(return_value=CrawlResult.empty())  # type: ignore[method-assign]
+
+        result = await crawler._resolve_crawl(date(2025, 6, 15))
+
+        assert result.outcome is CrawlOutcome.EMPTY
+        assert result.error_code is None
+
+    @pytest.mark.asyncio
+    async def test_both_failing_keeps_the_primary_code(self):
+        crawler = self._crawler()
+        crawler._crawl_mobile_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.FETCH_TIMEOUT.value),
+        )
+        crawler._crawl_desktop_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.FETCH_BLOCKED.value),
+        )
+
+        result = await crawler._resolve_crawl(date(2025, 6, 15))
+
+        assert result.error_code == FailureCode.FETCH_TIMEOUT.value
+        assert FailureCode.FETCH_BLOCKED.value in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_an_uninformative_primary_yields_to_a_real_fallback_code(self):
+        crawler = self._crawler()
+        crawler._crawl_mobile_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.UNKNOWN.value),
+        )
+        crawler._crawl_desktop_page = AsyncMock(  # type: ignore[method-assign]
+            return_value=self._failure(FailureCode.FETCH_RATE_LIMITED.value),
+        )
+
+        result = await crawler._resolve_crawl(date(2025, 6, 15))
+
+        assert result.error_code == FailureCode.FETCH_RATE_LIMITED.value
 
 
 class TestSaveToDb:
@@ -433,7 +582,8 @@ class TestDesktopCrawl:
         ):
             result = await crawler._crawl_desktop_page(date(2025, 6, 15))
 
-        assert len(result) == 1
+        assert result.ok
+        assert len(result.data) == 1
         pool.start.assert_awaited_once()
         pool.release.assert_awaited_once_with(page)
         pool.close.assert_awaited_once()
@@ -461,7 +611,9 @@ class TestDesktopCrawl:
         ):
             result = await crawler._crawl_desktop_page(date(2025, 6, 15))
 
-        assert result == []
+        # Every team yielded no rows without raising: a confirmed quiet desktop day.
+        assert result.outcome is CrawlOutcome.EMPTY
+        assert result.error_code is None
         pool.release.assert_awaited_once_with(page)
         pool.close.assert_awaited_once()
 

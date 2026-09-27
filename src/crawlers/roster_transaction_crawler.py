@@ -11,12 +11,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
-import httpx
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -24,6 +22,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.base import BasePlaywrightCrawler
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.db.engine import SessionLocal
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -33,13 +34,15 @@ from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SHORT_TIMEOUT
 from src.utils.request_policy import RequestPolicy
-from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
     from src.utils.playwright_pool import AsyncPlaywrightPool
     from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+
+ROSTER_CRAWLER_NAME = "roster_transactions"
+ROSTER_TARGET_TYPE = "roster_date"
 
 ROSTER_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -66,6 +69,24 @@ TEAM_CODES = [
 ]
 
 
+@dataclass(frozen=True)
+class _MobileParse:
+    """What the mobile page proved, beyond the rows it yielded.
+
+    The rows alone cannot distinguish "no transactions today" from "the page
+    changed": both come back as an empty list. `structure_seen` records that a
+    section this parser expects was actually present, and the team counts show
+    whether a block was found but could not be read. `EMPTY` is only claimed
+    when the structure was positively confirmed.
+    """
+
+    transactions: list[dict[str, Any]] = field(default_factory=list)
+    structure_seen: bool = False
+    team_blocks: int = 0
+    mapped_teams: int = 0
+    unknown_teams: list[str] = field(default_factory=list)
+
+
 class RosterTransactionCrawler(BasePlaywrightCrawler):
     """RosterTransactionCrawler class."""
 
@@ -74,6 +95,7 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
         request_delay: float = 1.0,
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
+        http_client: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize RosterTransactionCrawler.
 
@@ -81,12 +103,20 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             request_delay: Request Delay.
             pool: Connection pool for async operations.
             policy: Optional request policy.
+            http_client: HTTP transport. Defaults to a client that owns
+                throttling, retry, and the circuit breaker. Tests inject a client
+                backed by a mock transport.
 
         """
         super().__init__(request_delay=request_delay, pool=pool, policy=policy)
         self.mobile_url = "https://m.koreabaseball.com/Kbo/PlayerAdd.aspx"
         self.register_url = REGISTER
         self._raw_pages: list[dict] = []
+        self._http = http_client or CrawlerHttpClient(
+            name=ROSTER_CRAWLER_NAME,
+            headers=dict(HEADERS),
+            policy=HttpPolicy(timeout_seconds=15.0),
+        )
 
     async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
         """Run run.
@@ -111,11 +141,10 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             log_source_limited("roster_transaction", self.mobile_url)
             return []
 
-        # Try mobile page first (simpler, structured)
-        data = await self._crawl_mobile_page(crawl_date)
-        if not data:
-            # Fallback to desktop page via Playwright
-            data = await self._crawl_desktop_page(crawl_date)
+        result = await self._resolve_crawl(crawl_date)
+        data = result.data or []
+        if not result.ok and result.outcome is not CrawlOutcome.EMPTY:
+            logger.error("[ROSTER] %s unresolved: %s", crawl_date, result.error)
 
         logger.info("[ROSTER] %s: %s transactions found", crawl_date, len(data))
         if save:
@@ -126,29 +155,141 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
 
         return data
 
-    async def _crawl_mobile_page(self, target_date: date) -> list[dict[str, Any]]:
-        url = f"{self.mobile_url}?searchDate={target_date.strftime('%Y-%m-%d')}"
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            try:
-                host = urlparse(url).hostname or "koreabaseball.com"
-                await throttle.wait(host)
-                resp = await client.get(url)
-                if resp.status_code != HTTPStatus.OK:
-                    return []
-                html = resp.text
-                self._raw_pages.append(
-                    {
-                        "source_key": "kbo_today_roster",
-                        "url": url,
-                        "html": html,
-                        "status_code": resp.status_code,
-                    },
-                )
-            except httpx.HTTPError:
-                logger.exception("Mobile roster page fetch failed")
-                return []
+    async def _resolve_crawl(self, crawl_date: date) -> CrawlResult[list[dict[str, Any]]]:
+        """Run the mobile source, falling back to desktop only when it cannot answer.
 
-        return self._parse_mobile_html(html, target_date)
+        The fallback is for a source that could not be read, never for a source
+        that legitimately has nothing. A confirmed quiet day resolves to `EMPTY`
+        without launching a browser.
+
+        The mobile page is the primary attempt, so its code is the canonical
+        cause when both fail: a replay starts from the primary again. The
+        fallback's own code is only promoted when the primary had nothing
+        meaningful to say, and its detail is always preserved in the message.
+
+        Args:
+            crawl_date: Date to crawl.
+
+        Returns:
+            The resolved result for the date.
+
+        """
+        primary = await self._crawl_mobile_page(crawl_date)
+        if primary.ok or primary.outcome is CrawlOutcome.EMPTY:
+            return primary
+
+        logger.warning(
+            "[ROSTER] %s mobile unusable (%s: %s), trying desktop fallback",
+            crawl_date,
+            primary.error_code or primary.outcome,
+            primary.error,
+        )
+        fallback = await self._crawl_desktop_page(crawl_date)
+        if fallback.ok or fallback.outcome is CrawlOutcome.EMPTY:
+            # The desktop page produced the data, so the date is answered. The
+            # primary's failure is not the run's outcome and earns no dead letter.
+            return fallback
+
+        return CrawlResult.failure(
+            CrawlOutcome.PERMANENT_ERROR,
+            error=(
+                f"mobile[{primary.error_code or primary.outcome}]: {primary.error}; "
+                f"desktop[{fallback.error_code or fallback.outcome}]: {fallback.error}"
+            ),
+            error_code=self._canonical_failure_code(primary, fallback),
+        )
+
+    @staticmethod
+    def _canonical_failure_code(
+        primary: CrawlResult[Any],
+        fallback: CrawlResult[Any],
+    ) -> str:
+        """Pick the code that describes why both sources failed.
+
+        A meaningful primary classification wins, since a replay retries the
+        primary first. `UNKNOWN` and a missing code are placeholders rather than
+        findings, so a specific fallback classification is preferred over them.
+        """
+        meaningful = {
+            None,
+            FailureCode.UNKNOWN.value,
+        }
+        if primary.error_code not in meaningful:
+            return primary.error_code or FailureCode.UNKNOWN.value
+        return fallback.error_code or primary.error_code or FailureCode.UNKNOWN.value
+
+    async def _crawl_mobile_page(self, target_date: date) -> CrawlResult[list[dict[str, Any]]]:
+        """Fetch and parse the mobile roster page for one date.
+
+        Distinguishes four outcomes that used to collapse into an empty list:
+
+        * rows found -> ``SUCCESS``
+        * expected structure confirmed but no rows -> ``EMPTY`` (a real quiet day)
+        * a block was found but no team could be resolved -> ``PARSE_SELECTOR_MISSING``
+        * no expected structure at all -> ``PARSE_SELECTOR_MISSING``
+
+        Only the first two are "the source answered". The rest mean the page can no
+        longer be read and the caller should try the desktop fallback instead of
+        storing zero rows.
+
+        Args:
+            target_date: Date to crawl.
+
+        Returns:
+            A classified result carrying the transactions.
+
+        """
+        url = f"{self.mobile_url}?searchDate={target_date.strftime('%Y-%m-%d')}"
+        result = await self._http.fetch_text(url)
+        if not result.ok:
+            return CrawlResult[Any](
+                outcome=result.outcome,
+                data=None,
+                http_status=result.http_status,
+                attempts=result.attempts,
+                elapsed_seconds=result.elapsed_seconds,
+                retry_after=result.retry_after,
+                error=result.error,
+                error_code=result.error_code,
+                url=url,
+            )
+
+        html = result.data
+        self._raw_pages.append(
+            {
+                "source_key": "kbo_today_roster",
+                "url": url,
+                "html": html,
+                "status_code": result.http_status,
+            },
+        )
+        analysis = self._analyze_mobile_html(html, target_date)
+        if analysis.transactions:
+            return CrawlResult.success(analysis.transactions, http_status=result.http_status)
+
+        if analysis.mapped_teams == 0 and (analysis.team_blocks > 0 or not analysis.structure_seen):
+            reason = (
+                f"no expected section and no resolvable team block "
+                f"(teams seen={analysis.team_blocks}, unknown={analysis.unknown_teams or 'n/a'})"
+            )
+            logger.error("[ROSTER] %s mobile page unreadable for %s: %s", self.mobile_url, target_date, reason)
+            return CrawlResult.failure(
+                CrawlOutcome.SCHEMA_CHANGED,
+                error=reason,
+                error_code=FailureCode.PARSE_SELECTOR_MISSING.value,
+                http_status=result.http_status,
+                url=url,
+            )
+
+        if analysis.unknown_teams:
+            logger.warning(
+                "[ROSTER] %s unmapped team names for %s: %s",
+                self.mobile_url,
+                target_date,
+                ", ".join(analysis.unknown_teams),
+            )
+        logger.info("[ROSTER] %s: valid page, 0 transactions for %s", self.mobile_url, target_date)
+        return CrawlResult.empty(http_status=result.http_status)
 
     def _parse_mobile_html(self, html: str, target_date: date) -> list[dict[str, Any]]:
         """Parse the mobile KBO registration page.
@@ -156,12 +297,24 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
         Args:
             html: Html.
             target_date: Target date for the operation.
-            html: Html.
-            target_date: Target date for the operation.
+
+        Returns:
+            The transactions found, which may be empty for a valid quiet page.
 
         """
-        transactions = []
+        return self._analyze_mobile_html(html, target_date).transactions
 
+    def _analyze_mobile_html(self, html: str, target_date: date) -> _MobileParse:
+        """Parse the mobile page and report what the page proved.
+
+        Args:
+            html: Mobile page HTML.
+            target_date: Target date for the operation.
+
+        Returns:
+            The rows plus the structural evidence used to classify an empty page.
+
+        """
         # Split into registered and deregistered sections
         registered_section = ""
         deregistered_section = ""
@@ -176,23 +329,48 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             deregistered_section = dereg_match.group(0)
 
         if not registered_section and not deregistered_section:
-            # Try alternate layout
-            return self._parse_alternate_mobile(html, target_date)
+            # No primary layout. The alternate parser is legacy compatibility, and
+            # without a marker of its own it cannot confirm a quiet day.
+            return self._analyze_alternate_mobile(html, target_date)
+
+        return self._analyze_sections(
+            (registered_section, deregistered_section),
+            target_date,
+            structure_seen=True,
+        )
+
+    def _analyze_sections(
+        self,
+        sections: tuple[str, str],
+        target_date: date,
+        *,
+        structure_seen: bool,
+    ) -> _MobileParse:
+        """Extract transactions from the registered/deregistered sections."""
+        transactions: list[dict[str, Any]] = []
+        registered_section, deregistered_section = sections
+        team_blocks = 0
+        mapped_teams = 0
+        unknown_teams: list[str] = []
 
         for section_text, action in [(registered_section, "registered"), (deregistered_section, "deregistered")]:
             if not section_text:
                 continue
 
             # Find team blocks within section
-            team_blocks = re.findall(
+            found_blocks = re.findall(
                 r'<strong[^>]*class="team"[^>]*>([^<]+)</strong>\s*<ul[^>]*>(.*?)</ul>',
                 section_text,
                 re.DOTALL,
             )
-            for team_name_raw, list_html in team_blocks:
-                team_code = self._map_team_name(team_name_raw.strip())
+            team_blocks += len(found_blocks)
+            for team_name_raw, list_html in found_blocks:
+                raw_team = team_name_raw.strip()
+                team_code = self._map_team_name(raw_team)
                 if not team_code:
+                    unknown_teams.append(raw_team)
                     continue
+                mapped_teams += 1
 
                 # Extract player names and IDs from list items
                 player_items = re.findall(
@@ -218,7 +396,13 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
                         },
                     )
 
-        return transactions
+        return _MobileParse(
+            transactions=transactions,
+            structure_seen=structure_seen,
+            team_blocks=team_blocks,
+            mapped_teams=mapped_teams,
+            unknown_teams=unknown_teams,
+        )
 
     def _parse_alternate_mobile(self, html: str, target_date: date) -> list[dict[str, Any]]:
         """Fallback parser for alternate mobile page layout.
@@ -226,21 +410,35 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
         Args:
             html: Html.
             target_date: Target date for the operation.
-            html: Html.
-            target_date: Target date for the operation.
+
+        Returns:
+            The transactions found, which may be empty for a valid quiet page.
 
         """
-        transactions = []
+        return self._analyze_alternate_mobile(html, target_date).transactions
+
+    def _analyze_alternate_mobile(self, html: str, target_date: date) -> _MobileParse:
+        """Parse the table-based alternate layout and report what it proved."""
+        transactions: list[dict[str, Any]] = []
 
         # Look for table-based layout
         current_team = None
         current_action = None
+        team_blocks = 0
+        mapped_teams = 0
+        unknown_teams: list[str] = []
 
         for raw_line in html.split("\n"):
             line = raw_line.strip()
             team_match = re.search(r'class="team"[^>]*>\s*([^<]+)', line)
             if team_match:
-                current_team = self._map_team_name(team_match.group(1).strip())
+                team_blocks += 1
+                raw_team = team_match.group(1).strip()
+                current_team = self._map_team_name(raw_team)
+                if not current_team:
+                    unknown_teams.append(raw_team)
+                else:
+                    mapped_teams += 1
                 continue
 
             if "등록" in line and ("선수" in line or "현황" in line):
@@ -269,57 +467,96 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
                         },
                     )
 
-        return transactions
+        # The alternate layout has no section header to confirm a quiet day, so
+        # `structure_seen` stays false: a zero-row result here is unconfirmed and
+        # must not be reported as a legitimate empty.
+        return _MobileParse(
+            transactions=transactions,
+            structure_seen=False,
+            team_blocks=team_blocks,
+            mapped_teams=mapped_teams,
+            unknown_teams=unknown_teams,
+        )
 
-    async def _crawl_desktop_page(self, target_date: date) -> list[dict[str, Any]]:
+    async def _crawl_desktop_page(self, target_date: date) -> CrawlResult[list[dict[str, Any]]]:
         """Fallback: crawl the desktop ASP.NET page.
+
+        Per-team failures are tolerated, because one team's widget failing does
+        not invalidate the other nine. Every team failing does, so the count is
+        tracked rather than inferred from an empty result.
 
         Args:
             target_date: Target date for the operation.
 
+        Returns:
+            A classified result carrying the transactions.
+
         """
-        transactions = []
+        transactions: list[dict[str, Any]] = []
 
         if not await compliance.is_allowed(self.register_url):
             log_source_limited("roster_transaction", self.register_url)
-            return []
-
-        async with self.page_context() as page:
-            await self.goto_with_retry(page, self.register_url, timeout=NAV_TIMEOUT)
-
-            date_str = target_date.strftime("%Y%m%d")
-            await page.evaluate(
-                f"document.getElementById('cphContents_cphContents_cphContents_hfSearchDate').value = '{date_str}';",
-            )
-            try:
-                async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
-                    await page.evaluate(
-                        "__doPostBack('ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect', '')",
-                    )
-            except TimeoutError:
-                logger.warning("Calendar select postback timeout, continuing")
-            await page.wait_for_timeout(2000)
-
-            desktop_html = await page.content()
-            self._raw_pages.append(
-                {
-                    "source_key": "kbo_player_register",
-                    "url": self.register_url,
-                    "html": desktop_html,
-                    "status_code": 200,
-                },
+            # Unlike the mobile-only case, the run has already lost its primary
+            # source, so a blocked fallback leaves the date with no data at all.
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"desktop fallback blocked by compliance policy: {self.register_url}",
+                error_code=FailureCode.FETCH_BLOCKED.value,
             )
 
-            for site_code, db_code in TEAM_CODES:
+        failed_teams = 0
+        try:
+            async with self.page_context() as page:
+                await self.goto_with_retry(page, self.register_url, timeout=NAV_TIMEOUT)
+
+                date_str = target_date.strftime("%Y%m%d")
+                date_input = "cphContents_cphContents_cphContents_hfSearchDate"
+                await page.evaluate(
+                    f"document.getElementById('{date_input}').value = '{date_str}';",
+                )
+                calendar_button = "ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$btnCalendarSelect"
                 try:
-                    await page.evaluate(f"fnSearchChange('{site_code}')")
-                    await page.wait_for_timeout(500)
-                    daily = await self._extract_desktop_roster(page, db_code, target_date)
-                    transactions.extend(daily)
-                except ROSTER_CRAWL_EXCEPTIONS:
-                    logger.exception("Desktop roster team %s failed", site_code)
+                    async with page.expect_response(lambda r: "Register.aspx" in r.url, timeout=SHORT_TIMEOUT):
+                        await page.evaluate(f"__doPostBack('{calendar_button}', '')")
+                except TimeoutError:
+                    logger.warning("Calendar select postback timeout, continuing")
+                await page.wait_for_timeout(2000)
 
-        return transactions
+                desktop_html = await page.content()
+                self._raw_pages.append(
+                    {
+                        "source_key": "kbo_player_register",
+                        "url": self.register_url,
+                        "html": desktop_html,
+                        "status_code": 200,
+                    },
+                )
+
+                for site_code, db_code in TEAM_CODES:
+                    try:
+                        await page.evaluate(f"fnSearchChange('{site_code}')")
+                        await page.wait_for_timeout(500)
+                        daily = await self._extract_desktop_roster(page, db_code, target_date)
+                        transactions.extend(daily)
+                    except ROSTER_CRAWL_EXCEPTIONS:
+                        failed_teams += 1
+                        logger.exception("Desktop roster team %s failed", site_code)
+        except ROSTER_CRAWL_EXCEPTIONS as exc:
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"desktop fallback failed: {type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_HTTP_ERROR.value,
+            )
+
+        if failed_teams == len(TEAM_CODES):
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"desktop fallback failed for all {failed_teams} teams",
+                error_code=FailureCode.PARSE_SELECTOR_MISSING.value,
+            )
+        if transactions:
+            return CrawlResult.success(transactions)
+        return CrawlResult.empty()
 
     async def _extract_desktop_roster(self, page: Page, team_code: str, roster_date: date) -> list[dict[str, Any]]:
         script = """
