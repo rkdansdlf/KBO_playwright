@@ -58,6 +58,7 @@ from src.scheduler.jobs.maintenance import (
     recalc_milestones_and_rag_job,
     relay_state_cleanup_job,
     schema_drift_check_job,
+    snapshot_drift_check_job,
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
     trim_scheduler_logs_job,
@@ -318,6 +319,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
         (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
         (schema_drift_check_job, trigger_cls(hour=6, minute=35), "schema_drift_check", 3600),
+        (snapshot_drift_check_job, trigger_cls(hour=6, minute=45), "snapshot_drift_check", 3600),
         (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
         (
             notification_retention_job,

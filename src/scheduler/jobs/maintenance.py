@@ -741,3 +741,54 @@ def crawl_dead_letter_retry_job() -> None:
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter retry failed")
             raise
+
+
+SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
+
+
+@_with_lock_skip_guard
+def snapshot_drift_check_job() -> None:
+    """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Snapshot Drift Check ===")
+        try:
+            from src.notifications.bridge import apply_incidents
+            from src.services.snapshot_replay import summarize_snapshot_drift, validate_recent_snapshots
+
+            limit = _env_int("SNAPSHOT_DRIFT_SAMPLE_LIMIT", 100)
+            drift_max = _env_int("SNAPSHOT_DRIFT_MAX", 0)
+            fail_max = _env_int("SNAPSHOT_DRIFT_FAIL_MAX", 5)
+            summary = summarize_snapshot_drift(
+                validate_recent_snapshots(limit=limit),
+                drift_max=drift_max,
+                fail_max=fail_max,
+            )
+            logger.info("=== Snapshot Drift Summary: %s ===", summary.to_dict())
+
+            if summary.ok:
+                apply_incidents([], resolve_keys=[SNAPSHOT_DRIFT_INCIDENT_KEY])
+                return
+
+            severity = AlertSeverity.ERROR if summary.drifted > drift_max else AlertSeverity.WARNING
+            remediation = tuple(f"kbo snapshot validate --snapshot-id {sid}" for sid in summary.drifted_ids[:5])
+            apply_incidents(
+                [
+                    AlertEvent(
+                        source=AlertSource.DRIFT,
+                        component="snapshot",
+                        severity=severity,
+                        title=f"스냅샷 파서 드리프트 {summary.drifted}건 / 실패 {summary.failed}건",
+                        message=str(summary.to_dict()),
+                        incident_key=SNAPSHOT_DRIFT_INCIDENT_KEY,
+                        remediation=remediation,
+                        metadata={
+                            "total": summary.total,
+                            "drifted": summary.drifted,
+                            "failed": summary.failed,
+                            "with_baseline": summary.with_baseline,
+                        },
+                    ),
+                ],
+            )
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Snapshot drift check failed")
