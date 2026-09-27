@@ -234,14 +234,18 @@ async def test_staff_register_is_source_limited_before_browser_start() -> None:
 async def test_roster_transaction_is_source_limited_before_http_request() -> None:
     from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 
+    crawler = RosterTransactionCrawler()
     with (
         patch("src.crawlers.roster_transaction_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)),
-        patch("src.crawlers.roster_transaction_crawler.httpx.AsyncClient") as client,
+        patch.object(crawler._http, "fetch_text", new=AsyncMock()) as fetch,
+        patch.object(crawler, "_crawl_desktop_page", new=AsyncMock()) as desktop,
     ):
-        result = await RosterTransactionCrawler().run(target_date="2026-08-01")
+        result = await crawler.run(target_date="2026-08-01")
 
     assert result == []
-    client.assert_not_called()
+    # Neither source may be contacted once compliance has denied the target.
+    fetch.assert_not_called()
+    desktop.assert_not_awaited()
 
 
 @pytest.mark.asyncio
