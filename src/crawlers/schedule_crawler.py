@@ -17,9 +17,14 @@ from playwright.async_api import Page
 
 from src.constants import DATE_STR_LEN, KST
 from src.crawlers.base import BasePlaywrightCrawler
-from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.models.crawl_execution import RUN_STATUS_FAILED
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
@@ -137,45 +142,135 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         suffix = series_id if series_id is not None else "all"
         return f"{year}-{month:02d}:{suffix}"
 
-    async def crawl_schedule(self, year: int, month: int, series_id: str | None = None) -> list[dict]:
+    async def crawl_schedule(
+        self,
+        year: int,
+        month: int,
+        series_id: str | None = None,
+        *,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> list[dict]:
         """지정된 연도와 월의 경기 일정을 크롤링하는 메인 메서드.
+
+        The unit of work is a month, so the ledger row is a month. A month fails
+        only when neither the Naver API nor the KBO page could answer it; the
+        schedule feeds nearly every other crawl, so a silent gap here would go on
+        to look like missing data everywhere downstream.
 
         Args:
             year: 시즌 연도 (예: 2024)
             month: 월 (1-12)
             series_id: 시리즈 ID (옵션)
+            run_spec: 사전에 만들어 둔 ledger 명세 (replay가 전달).
+            record_dead_letters: 실패한 달을 DLQ에 넣을지.
 
         Returns:
             경기 정보 딕셔너리가 담긴 리스트.
 
         """
         logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
+        target = f"{year}-{month:02d}"
+        spec = run_spec or CrawlRunSpec(
+            crawler=SCHEDULE_CRAWLER_NAME,
+            target_type=SCHEDULE_TARGET_TYPE,
+            target_id=target,
+            season=year,
+            source_url=self.base_url,
+        )
 
+        with track_crawl_run(spec) as run:
+            result = await self._resolve_month(year, month, series_id)
+            games = result.data or []
+            run.records_read = len(games)
+            if not result.ok and result.outcome is not CrawlOutcome.EMPTY:
+                run.status = RUN_STATUS_FAILED
+                run.error_code = result.error_code or FailureCode.UNKNOWN.value
+                run.error_message = result.error
+                if record_dead_letters:
+                    self._enqueue_dead_letter(run.run_id, target, result)
+                return games
+            return games
+
+    async def _resolve_month(
+        self,
+        year: int,
+        month: int,
+        series_id: str | None = None,
+    ) -> CrawlResult[list[dict]]:
+        """Resolve one month from the Naver API, falling back to the KBO page.
+
+        The browser is for a source that could not answer, never for one that
+        legitimately has no games.
+
+        Args:
+            year: Season year.
+            month: Month (1-12).
+            series_id: Optional series filter, which skips the Naver path.
+
+        Returns:
+            The resolved result for the month.
+
+        """
         if series_id in (None, "0"):
             naver = await self._crawl_naver_month(year, month)
             if naver.ok:
                 logger.info("✅ Found %s games (Naver API)", len(naver.data or []))
-                return naver.data or []
+                return naver
             if naver.outcome is CrawlOutcome.EMPTY:
                 # Every day answered and none of them had a game: an off-season
                 # month is data, not an outage. The browser would only confirm it.
                 logger.info("Naver reports no games for %s-%02d; not falling back", year, month)
-                return []
+                return naver
 
         schedule_key = self._schedule_key(year, month, series_id)
         if not await self._kbo_fallback_allowed(schedule_key):
-            return []
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error="kbo schedule fallback blocked by robots policy",
+                error_code=FailureCode.FETCH_BLOCKED.value,
+            )
         logger.info("Naver schedule unusable for %s-%02d, falling back to KBO page", year, month)
 
-        async with self.page_context() as page:
-            try:
+        try:
+            async with self.page_context() as page:
                 games = await self._crawl_month(page, year, month, series_id=series_id)
-            except SCHEDULE_CRAWLER_EXCEPTIONS:
-                logger.exception("❌ Error crawling schedule")
-                return []
-            else:
-                logger.info("✅ Found %s games", len(games))
-                return games
+        except SCHEDULE_CRAWLER_EXCEPTIONS as exc:
+            logger.exception("❌ Error crawling schedule")
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"kbo schedule page failed: {type(exc).__name__}: {exc}",
+                error_code=FailureCode.FETCH_HTTP_ERROR.value,
+            )
+        logger.info("✅ Found %s games", len(games))
+        # A page that renders with no rows is an off-season month, not a failure.
+        return CrawlResult.success(games) if games else CrawlResult.empty()
+
+    def _enqueue_dead_letter(
+        self,
+        original_run_id: str,
+        target: str,
+        result: CrawlResult[Any],
+    ) -> None:
+        """Enqueue one dead letter for a month that could not be obtained."""
+        code = result.error_code or FailureCode.UNKNOWN.value
+        try:
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=original_run_id,
+                    crawler=SCHEDULE_CRAWLER_NAME,
+                    target_type=SCHEDULE_TARGET_TYPE,
+                    # The month is the replay unit, so it is the target identity.
+                    target_id=target,
+                    source_url=self.base_url,
+                    # Derived from the code, never supplied beside it.
+                    failure_stage=stage_for_code(code).value,
+                    error_code=code,
+                    error_message=result.error,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to enqueue dead letter for schedule %s", target)
 
     async def crawl_season(
         self,

@@ -22,6 +22,11 @@ from src.crawlers.roster_transaction_crawler import (
     ROSTER_TARGET_TYPE,
     RosterTransactionCrawler,
 )
+from src.crawlers.schedule_crawler import (
+    SCHEDULE_CRAWLER_NAME,
+    SCHEDULE_TARGET_TYPE,
+    ScheduleCrawler,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
@@ -31,6 +36,9 @@ if TYPE_CHECKING:
     from src.models.crawl_dead_letter import CrawlDeadLetter
 
 logger = logging.getLogger(__name__)
+
+#: A calendar month, used to sanity-check a replay target before crawling it.
+MAX_SCHEDULE_MONTH = 12
 
 
 @dataclass(frozen=True)
@@ -177,9 +185,75 @@ def _replay_roster_transactions(dead_letter: CrawlDeadLetter, replay_run_id: str
     )
 
 
+def _replay_schedule(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
+    """Replay one schedule month and report the replay run status.
+
+    The dead letter's `target_id` is the `YYYY-MM` month, which is the whole
+    replay unit. An empty month is a legitimate result, so a replay that confirms
+    an off-season month succeeds rather than failing again.
+    """
+    year, month = _month_of(dead_letter.target_id)
+    spec = CrawlRunSpec(
+        crawler=SCHEDULE_CRAWLER_NAME,
+        target_type=dead_letter.target_type or SCHEDULE_TARGET_TYPE,
+        target_id=dead_letter.target_id,
+        season=dead_letter.season or year,
+        source_url=dead_letter.source_url,
+        parent_run_id=dead_letter.original_run_id,
+        replay_of_run_id=dead_letter.original_run_id,
+        run_id=replay_run_id,
+    )
+    run_coro_blocking(_execute_schedule_replay(ScheduleCrawler(), spec, year, month))
+
+    with SessionLocal() as session:
+        run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
+    if run is None:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="missing",
+            error_message="replay run was not recorded",
+        )
+    success = run.status == RUN_STATUS_SUCCESS
+    return ReplayOutcome(
+        success=success,
+        replay_run_id=replay_run_id,
+        status=run.status,
+        error_message=None if success else run.error_message,
+        error_code=None if success else run.error_code,
+    )
+
+
+def _month_of(target_id: str | None) -> tuple[int | None, int]:
+    """Parse a ``YYYY-MM`` replay target into a year and month.
+
+    An unparseable target is a data problem, not a reason to crash the dispatcher,
+    so the year is left unset and the crawl falls back to its default date.
+    """
+    if not target_id or "-" not in target_id:
+        return None, 0
+    year_text, _, month_text = target_id.partition("-")
+    if not (year_text.isdigit() and month_text[:2].isdigit()):
+        return None, 0
+    return int(year_text), int(month_text[:2])
+
+
+async def _execute_schedule_replay(
+    crawler: ScheduleCrawler,
+    spec: CrawlRunSpec,
+    year: int | None,
+    month: int,
+) -> None:
+    """Re-crawl one month, recording the replay run against the letter's unit."""
+    if year is None or not 1 <= month <= MAX_SCHEDULE_MONTH:
+        return
+    await crawler.crawl_schedule(year, month, run_spec=spec, record_dead_letters=False)
+
+
 def build_default_dispatcher() -> ReplayDispatcher:
     """Build a dispatcher with the Phase B canary handlers registered."""
     dispatcher = ReplayDispatcher()
     dispatcher.register(AWARD_CRAWLER_NAME, _replay_awards)
     dispatcher.register(ROSTER_CRAWLER_NAME, _replay_roster_transactions)
+    dispatcher.register(SCHEDULE_CRAWLER_NAME, _replay_schedule)
     return dispatcher

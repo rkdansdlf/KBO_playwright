@@ -108,7 +108,7 @@ class TestReplayRegistrationMatchesTheDispatcher:
 
 
 class TestMigratedCrawlersStayMigrated:
-    @pytest.mark.parametrize("module", ["award_crawler", "roster_transaction_crawler"])
+    @pytest.mark.parametrize("module", ["award_crawler", "roster_transaction_crawler", "schedule_crawler"])
     def test_the_chain_is_closed(self, module: str) -> None:
         row = _row(module)
 
@@ -119,8 +119,8 @@ class TestMigratedCrawlersStayMigrated:
         assert row.facts.dead_letter
         assert row.facts.replay
 
-    @pytest.mark.parametrize("module", ["award_crawler", "roster_transaction_crawler"])
-    def test_neither_throttles_manually(self, module: str) -> None:
+    @pytest.mark.parametrize("module", ["award_crawler", "roster_transaction_crawler", "schedule_crawler"])
+    def test_none_of_them_throttles_manually(self, module: str) -> None:
         """A second wait doubles every delay and hides the adaptive backoff."""
         assert not _row(module).facts.owns_throttle
 
@@ -138,6 +138,15 @@ class TestMigratedCrawlersStayMigrated:
 
         assert row.design is not None
         assert row.design.granularity is Granularity.DATE
+        assert row.design.empty is EmptySemantics.TYPED_CONFIRMED
+        assert row.design.fallback is Fallback.BROWSER
+
+    def test_schedule_keeps_a_confirmed_empty(self) -> None:
+        """An off-season month is common, so EMPTY may not be claimed on a guess."""
+        row = _row("schedule_crawler")
+
+        assert row.design is not None
+        assert row.design.granularity is Granularity.MONTH
         assert row.design.empty is EmptySemantics.TYPED_CONFIRMED
         assert row.design.fallback is Fallback.BROWSER
 
@@ -273,7 +282,7 @@ class TestRoadmap:
     def test_adopted_crawlers_are_not_recommended_again(self, matrix: AdoptionMatrix) -> None:
         order = [row.module for row in matrix.roadmap()]
 
-        for module in ("award_crawler", "roster_transaction_crawler"):
+        for module in ("award_crawler", "roster_transaction_crawler", "schedule_crawler"):
             assert module not in order
 
     def test_data_only_modules_are_left_out(self, matrix: AdoptionMatrix) -> None:
@@ -298,17 +307,18 @@ class TestRendering:
     def test_markdown_shows_the_adopted_set(self, matrix: AdoptionMatrix) -> None:
         rendered = render_markdown(matrix)
 
-        assert "Fully adopted (2)" in rendered
+        assert "Fully adopted (3)" in rendered
         assert "`award_crawler`" in rendered
 
     def test_json_is_serializable(self, matrix: AdoptionMatrix) -> None:
         payload = json.loads(json.dumps(matrix.to_dict()))
 
         assert payload["summary"]["total"] == len(matrix.rows)
-        assert payload["summary"]["fully_adopted"] == 2
+        assert payload["summary"]["fully_adopted"] == 3
         # An adopted crawler is not recommended for migration again.
-        assert "award_crawler" not in payload["roadmap"]
-        assert payload["roadmap"][0] == "schedule_crawler"
+        for module in ("award_crawler", "roster_transaction_crawler", "schedule_crawler"):
+            assert module not in payload["roadmap"]
+        assert payload["roadmap"][0] == "game_detail_crawler"
 
     def test_summary_counts_match_the_rows(self, matrix: AdoptionMatrix) -> None:
         summary = matrix.to_dict()["summary"]
