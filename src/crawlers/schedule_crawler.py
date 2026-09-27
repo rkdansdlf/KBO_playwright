@@ -12,12 +12,14 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-import httpx
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.constants import DATE_STR_LEN, KST
 from src.crawlers.base import BasePlaywrightCrawler
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
@@ -42,6 +44,9 @@ if TYPE_CHECKING:
     from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
+SCHEDULE_CRAWLER_NAME = "schedule"
+SCHEDULE_TARGET_TYPE = "schedule_month"
+
 SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 NAVER_SCHEDULE_API_URL = "https://api-gw.sports.naver.com/schedule/today-games"
@@ -92,6 +97,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         request_delay: float = 1.5,
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
+        http_client: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize a new instance.
 
@@ -99,11 +105,21 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             request_delay: Request Delay.
             pool: Connection pool for async operations.
             policy: Policy.
+            http_client: Naver API transport. Defaults to a client that owns
+                throttling, retry, and the circuit breaker. Tests inject a client
+                backed by a mock transport.
 
         """
         super().__init__(request_delay=request_delay, pool=pool, policy=policy)
         self.base_url = SCHEDULE
         self._last_failure_reason: dict[str, str] = {}
+        # Only the Naver API goes through this client; the KBO schedule page is
+        # still a browser crawl, so it keeps using the Playwright policy.
+        self._http = http_client or CrawlerHttpClient(
+            name=SCHEDULE_CRAWLER_NAME,
+            headers=dict(NAVER_SPORTS_HEADERS),
+            policy=HttpPolicy(timeout_seconds=20.0, max_attempts=2),
+        )
 
     def get_last_failure_reason(self, key: str) -> str | None:
         """Get last failure reason.
@@ -136,17 +152,20 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         logger.info("🔍 Crawling schedule for %s-%02d (Series: %s)...", year, month, series_id)
 
         if series_id in (None, "0"):
-            naver_games = await self._crawl_naver_month(year, month)
-            if naver_games:
-                logger.info("✅ Found %s games (Naver API)", len(naver_games))
-                return naver_games
-            if naver_games == []:
-                logger.info("Naver schedule returned no games for %s-%02d", year, month)
+            naver = await self._crawl_naver_month(year, month)
+            if naver.ok:
+                logger.info("✅ Found %s games (Naver API)", len(naver.data or []))
+                return naver.data or []
+            if naver.outcome is CrawlOutcome.EMPTY:
+                # Every day answered and none of them had a game: an off-season
+                # month is data, not an outage. The browser would only confirm it.
+                logger.info("Naver reports no games for %s-%02d; not falling back", year, month)
+                return []
 
         schedule_key = self._schedule_key(year, month, series_id)
         if not await self._kbo_fallback_allowed(schedule_key):
             return []
-        logger.info("Naver schedule unavailable for %s-%02d, falling back to KBO page", year, month)
+        logger.info("Naver schedule unusable for %s-%02d, falling back to KBO page", year, month)
 
         async with self.page_context() as page:
             try:
@@ -179,9 +198,13 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         for month in months:
             if series_id in (None, "0"):
-                naver_games = await self._crawl_naver_month(year, month)
-                if naver_games:
-                    all_games.extend(naver_games)
+                naver = await self._crawl_naver_month(year, month)
+                if naver.ok:
+                    all_games.extend(naver.data or [])
+                    continue
+                if naver.outcome is CrawlOutcome.EMPTY:
+                    # An off-season month needs no browser confirmation.
+                    logger.info("Naver reports no games for %s-%02d; skipping browser", year, month)
                     continue
             browser_months.append(month)
 
@@ -263,16 +286,24 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         return True, "ok"
 
-    async def _crawl_naver_month(self, year: int, month: int) -> list[dict] | None:
+    async def _crawl_naver_month(self, year: int, month: int) -> CrawlResult[list[dict]]:
         """Fetch a month of games from the Naver sports schedule API.
+
+        The API is queried day by day, so a month is only trustworthy when every
+        day answered. That is what separates the three outcomes the caller cares
+        about:
+
+        * games found -> ``SUCCESS``
+        * every day answered with no games -> ``EMPTY``, a real off-season month
+        * any day failed -> a failure, because the month is incomplete and the KBO
+          page should be tried instead of reporting a partial month as fact
 
         Args:
             year: Season year.
             month: Month (1-12).
 
         Returns:
-            Schedule payloads, or None when the API is unreachable (caller falls
-            back to the KBO schedule page).
+            A classified result carrying the schedule payloads.
 
         """
         crawl_key = self._schedule_key(year, month, "naver")
@@ -280,31 +311,53 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         games: list[dict] = []
         dh_counts: dict[tuple[str, str, str], int] = {}
-        try:
-            async with httpx.AsyncClient(timeout=20.0, headers=NAVER_SPORTS_HEADERS) as client:
-                for day in range(1, calendar.monthrange(year, month)[1] + 1):
-                    await self.policy.delay_async(host="api-gw.sports.naver.com")
-                    params = {
-                        "sectionId": "kbaseball",
-                        "categoryId": "kbo",
-                        "seasonYear": str(year),
-                        "date": f"{year}-{month:02d}-{day:02d}",
-                    }
-                    resp = await client.get(NAVER_SCHEDULE_API_URL, params=params)
-                    resp.raise_for_status()
-                    raw_games = (resp.json().get("result") or {}).get("games") or []
-                    for raw in raw_games:
-                        game = self._naver_game_to_payload(raw, year, month, dh_counts)
-                        if game is not None:
-                            games.append(game)
-        except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError):
-            logger.exception("Naver schedule API failed for %s-%02d", year, month)
-            self._last_failure_reason[crawl_key] = "naver_api_failure"
-            return None
+        total_days = calendar.monthrange(year, month)[1]
+        failed_days = 0
+        first_code: str | None = None
 
+        for day in range(1, total_days + 1):
+            result = await self._http.fetch_json(
+                NAVER_SCHEDULE_API_URL,
+                params={
+                    "sectionId": "kbaseball",
+                    "categoryId": "kbo",
+                    "seasonYear": str(year),
+                    "date": f"{year}-{month:02d}-{day:02d}",
+                },
+            )
+            if result.outcome is CrawlOutcome.EMPTY:
+                # A date with no games is an answer, not an outage. Treating it
+                # as a failure would send every off-season day to the browser.
+                continue
+            if not result.ok:
+                failed_days += 1
+                if first_code is None:
+                    first_code = result.error_code
+                logger.warning(
+                    "Naver schedule day %s-%02d-%02d failed: %s",
+                    year,
+                    month,
+                    day,
+                    result.error,
+                )
+                continue
+            raw_games = (result.data.get("result") or {}).get("games") or []
+            for raw in raw_games:
+                game = self._naver_game_to_payload(raw, year, month, dh_counts)
+                if game is not None:
+                    games.append(game)
+
+        if failed_days:
+            self._last_failure_reason[crawl_key] = "naver_api_failure"
+            return CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"{failed_days} of {total_days} days failed (first: {first_code})",
+                error_code=first_code or FailureCode.FETCH_HTTP_ERROR.value,
+            )
         if not games:
             self._last_failure_reason[crawl_key] = "naver_api_empty"
-        return games
+            return CrawlResult.empty()
+        return CrawlResult.success(games)
 
     def _naver_game_to_payload(
         self,
