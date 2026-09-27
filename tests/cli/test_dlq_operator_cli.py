@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -25,6 +26,14 @@ def _letter(*, status: str = "pending", next_retry_at: datetime | None = None) -
     return SimpleNamespace(dlq_id="dlq-1", status=status, next_retry_at=next_retry_at, crawler="awards")
 
 
+def _due() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
+
+
+def _future() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1)
+
+
 def _patch_letter(monkeypatch: pytest.MonkeyPatch, letter: object) -> None:
     monkeypatch.setattr("src.cli.dlq_operator.get_db_session", _fake_session)
     monkeypatch.setattr(
@@ -34,8 +43,9 @@ def _patch_letter(monkeypatch: pytest.MonkeyPatch, letter: object) -> None:
     monkeypatch.setattr("src.cli.dlq_operator.publish_dlq_state_metrics", lambda **_kwargs: None)
 
 
-def test_retry_preview_without_apply(monkeypatch, capsys) -> None:
+def test_preview_validates_and_does_not_mutate(monkeypatch, capsys) -> None:
     monkeypatch.delenv("KBO_ALLOW_DLQ_MUTATION", raising=False)
+    _patch_letter(monkeypatch, _letter(next_retry_at=_due()))
     called: list[int] = []
     monkeypatch.setattr("src.cli.dlq_operator.retry_dead_letter", lambda *a, **k: called.append(1))
     assert operator_main(["retry", "dlq-1"]) == 0
@@ -43,8 +53,27 @@ def test_retry_preview_without_apply(monkeypatch, capsys) -> None:
     assert "would retry" in capsys.readouterr().out
 
 
+def test_preview_missing_id_returns_not_found(monkeypatch, capsys) -> None:
+    _patch_letter(monkeypatch, None)
+    assert operator_main(["retry", "missing"]) == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_preview_resolved_is_invalid(monkeypatch, capsys) -> None:
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.RESOLVED.value))
+    assert operator_main(["retry", "dlq-1"]) == 2
+    assert "pending" in capsys.readouterr().err
+
+
+def test_preview_not_due_is_invalid(monkeypatch, capsys) -> None:
+    _patch_letter(monkeypatch, _letter(next_retry_at=_future()))
+    assert operator_main(["retry", "dlq-1"]) == 2
+    assert "not due" in capsys.readouterr().err
+
+
 def test_apply_without_env_is_denied(monkeypatch, capsys) -> None:
     monkeypatch.delenv("KBO_ALLOW_DLQ_MUTATION", raising=False)
+    _patch_letter(monkeypatch, _letter(next_retry_at=_due()))
     called: list[int] = []
     monkeypatch.setattr("src.cli.dlq_operator.retry_dead_letter", lambda *a, **k: called.append(1))
     assert operator_main(["retry", "dlq-1", "--apply"]) == 3
@@ -52,65 +81,69 @@ def test_apply_without_env_is_denied(monkeypatch, capsys) -> None:
     assert "KBO_ALLOW_DLQ_MUTATION" in capsys.readouterr().err
 
 
-def test_retry_apply_success(monkeypatch, capsys) -> None:
+def test_retry_apply_success_json(monkeypatch, capsys) -> None:
     monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    _patch_letter(monkeypatch, _letter(next_retry_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)))
+    _patch_letter(monkeypatch, _letter(next_retry_at=_due()))
     monkeypatch.setattr(
         "src.cli.dlq_operator.retry_dead_letter",
         lambda *_a, **_k: SimpleNamespace(status=DlqStatus.RESOLVED, success=True),
     )
-    assert operator_main(["retry", "dlq-1", "--apply"]) == 0
-    assert "resolved" in capsys.readouterr().out
+    assert operator_main(["retry", "dlq-1", "--apply", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"action": "retry", "dlq_id": "dlq-1", "applied": True, "status": "resolved"}
 
 
-def test_retry_not_found(monkeypatch, capsys) -> None:
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (InvalidDlqTransitionError("retrying", "retrying"), 2),
+        (DlqNotFoundError("dlq-1"), 1),
+    ],
+)
+def test_retry_race_is_classified(monkeypatch, error, expected) -> None:
     monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    _patch_letter(monkeypatch, None)
-    assert operator_main(["retry", "missing", "--apply"]) == 1
-    assert "not found" in capsys.readouterr().err
+    _patch_letter(monkeypatch, _letter(next_retry_at=_due()))
+
+    def _boom(*_a: object, **_k: object) -> object:
+        raise error
+
+    monkeypatch.setattr("src.cli.dlq_operator.retry_dead_letter", _boom)
+    assert operator_main(["retry", "dlq-1", "--apply"]) == expected
 
 
-def test_retry_rejects_non_pending(monkeypatch, capsys) -> None:
-    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    _patch_letter(monkeypatch, _letter(status=DlqStatus.RESOLVED.value))
-    assert operator_main(["retry", "dlq-1", "--apply"]) == 2
-    assert "pending" in capsys.readouterr().err
-
-
-def test_retry_rejects_not_due(monkeypatch, capsys) -> None:
-    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    _patch_letter(monkeypatch, _letter(next_retry_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1)))
-    assert operator_main(["retry", "dlq-1", "--apply"]) == 2
-    assert "not due" in capsys.readouterr().err
-
-
-def test_requeue_success(monkeypatch, capsys) -> None:
-    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    monkeypatch.setattr("src.cli.dlq_operator.get_db_session", _fake_session)
+def test_requeue_preview_validates_without_mutation(monkeypatch, capsys) -> None:
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.IGNORED.value))
     service = MagicMock()
     monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
-    monkeypatch.setattr("src.cli.dlq_operator.publish_dlq_state_metrics", lambda **_kwargs: None)
-    assert operator_main(["requeue", "dlq-1", "--apply"]) == 0
-    service.requeue.assert_called_once_with("dlq-1")
-    assert "requeued" in capsys.readouterr().out
+    assert operator_main(["requeue", "dlq-1"]) == 0
+    service.requeue.assert_not_called()
+    assert "would requeue" in capsys.readouterr().out
 
 
-def test_requeue_invalid_state(monkeypatch, capsys) -> None:
+def test_requeue_rejects_pending(monkeypatch, capsys) -> None:
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.PENDING.value))
+    assert operator_main(["requeue", "dlq-1"]) == 2
+    assert "ignored/exhausted" in capsys.readouterr().err
+
+
+def test_requeue_apply_json_envelope(monkeypatch, capsys) -> None:
     monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    monkeypatch.setattr("src.cli.dlq_operator.get_db_session", _fake_session)
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.EXHAUSTED.value))
+    service = MagicMock()
+    monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
+    assert operator_main(["requeue", "dlq-1", "--apply", "--json"]) == 0
+    service.requeue.assert_called_once_with("dlq-1")
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"action": "requeue", "dlq_id": "dlq-1", "applied": True, "status": "pending"}
+
+
+def test_requeue_race_invalid_state(monkeypatch) -> None:
+    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.EXHAUSTED.value))
     service = MagicMock()
     service.requeue.side_effect = InvalidDlqTransitionError("resolved", "pending")
     monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
     assert operator_main(["requeue", "dlq-1", "--apply"]) == 2
-
-
-def test_requeue_not_found(monkeypatch) -> None:
-    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    monkeypatch.setattr("src.cli.dlq_operator.get_db_session", _fake_session)
-    service = MagicMock()
-    service.requeue.side_effect = DlqNotFoundError("dlq-1")
-    monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
-    assert operator_main(["requeue", "dlq-1", "--apply"]) == 1
 
 
 def test_ignore_pending_only(monkeypatch, capsys) -> None:
@@ -125,9 +158,18 @@ def test_ignore_pending_only(monkeypatch, capsys) -> None:
     service.mark_ignored.assert_called_once_with("dlq-1", reason="noise")
 
 
+def test_ignore_json_envelope(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.PENDING.value))
+    monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: MagicMock())
+    assert operator_main(["ignore", "dlq-1", "--apply", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"action": "ignore", "dlq_id": "dlq-1", "applied": True, "status": "ignored"}
+
+
 def test_master_cli_routes_operator_command(monkeypatch) -> None:
     monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
-    _patch_letter(monkeypatch, _letter(next_retry_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)))
+    _patch_letter(monkeypatch, _letter(next_retry_at=_due()))
     monkeypatch.setattr(
         "src.cli.dlq_operator.retry_dead_letter",
         lambda *_a, **_k: SimpleNamespace(status=DlqStatus.RESOLVED, success=True),

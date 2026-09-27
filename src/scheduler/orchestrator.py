@@ -145,9 +145,23 @@ class SchedulerOrchestrator:
             lock_report=lock_report,
         )
 
+    @staticmethod
+    def _refresh_dlq_metrics_on_startup() -> None:
+        """Best-effort DLQ gauge refresh so /metrics is not stale after a restart."""
+        try:
+            from src.db.engine import DB_SESSION_EXCEPTIONS
+            from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics
+        except ImportError:
+            return
+        try:
+            publish_dlq_state_metrics()
+        except DB_SESSION_EXCEPTIONS:
+            logger.exception("Failed to refresh DLQ metrics on startup")
+
     def start(self) -> None:
         """Start the scheduler execution loop."""
         self.lock_manager.ensure_single_instance()
+        self._refresh_dlq_metrics_on_startup()
         logger.info("Starting scheduler (%s mode)...", "background" if self.background else "blocking")
         self.scheduler.start()
 

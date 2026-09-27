@@ -22,8 +22,8 @@ def _stats() -> DlqStats:
         resolved=10,
         exhausted=4,
         ignored=1,
-        oldest_pending_at=datetime(2026, 9, 26, 6, 0, 0),
-        oldest_pending_age_seconds=3720.0,
+        oldest_due_at=datetime(2026, 9, 26, 6, 0, 0),
+        oldest_due_age_seconds=3720.0,
         by_status_crawler={("pending", "awards"): 3, ("retrying", "schedule"): 2},
     )
 

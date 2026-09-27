@@ -190,18 +190,27 @@ class TestOperationalQueries:
         session.flush()
         assert repo.count_stale_retrying(stale_before=cutoff) == 1
 
-    def test_oldest_pending_created_at(self, session: Session) -> None:
+    def test_oldest_due_next_retry_at(self, session: Session) -> None:
         repo = CrawlDeadLetterRepository(session)
-        old = datetime(2026, 9, 20, 0, 0, 0)
-        first = repo.create_dead_letter(_spec(dlq_id="old"))
-        repo.create_dead_letter(_spec(dlq_id="new", target_id="other"))
-        session.execute(update(CrawlDeadLetter).where(CrawlDeadLetter.dlq_id == "old").values(created_at=old))
-        session.flush()
-        assert repo.oldest_pending_created_at() == old
-        assert first.status == DlqStatus.PENDING.value
+        now = datetime(2026, 9, 26, 12, 0, 0)
+        oldest = repo.create_dead_letter(_spec(dlq_id="old"))
+        repo.set_next_retry_at(oldest, now - timedelta(hours=3))
+        newer = repo.create_dead_letter(_spec(dlq_id="new", target_id="other"))
+        repo.set_next_retry_at(newer, now - timedelta(minutes=5))
+        future = repo.create_dead_letter(_spec(dlq_id="future", target_id="future"))
+        repo.set_next_retry_at(future, now + timedelta(hours=1))
+        assert repo.oldest_due_next_retry_at(now=now) == now - timedelta(hours=3)
 
-    def test_oldest_pending_returns_none_when_empty(self, session: Session) -> None:
-        assert CrawlDeadLetterRepository(session).oldest_pending_created_at() is None
+    def test_oldest_due_returns_none_when_no_due(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        now = datetime(2026, 9, 26, 12, 0, 0)
+        future = repo.create_dead_letter(_spec(dlq_id="future"))
+        repo.set_next_retry_at(future, now + timedelta(hours=1))
+        assert repo.oldest_due_next_retry_at(now=now) is None
+
+    def test_oldest_due_returns_none_when_empty(self, session: Session) -> None:
+        now = datetime(2026, 9, 26, 12, 0, 0)
+        assert CrawlDeadLetterRepository(session).oldest_due_next_retry_at(now=now) is None
 
 
 class TestLifecycleMutations:

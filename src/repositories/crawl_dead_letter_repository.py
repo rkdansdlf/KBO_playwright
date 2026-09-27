@@ -272,10 +272,16 @@ class CrawlDeadLetterRepository:
         )
         return int(self.session.execute(stmt).scalar_one())
 
-    def oldest_pending_created_at(self) -> datetime | None:
-        """Return the creation time of the oldest pending letter, if any."""
-        stmt = select(func.min(CrawlDeadLetter.created_at)).where(
+    def oldest_due_next_retry_at(self, *, now: datetime) -> datetime | None:
+        """Return the ``next_retry_at`` of the longest-overdue pending letter.
+
+        This measures worker backlog (how far behind the retry queue is), not how
+        long ago the incident was first recorded.
+        """
+        stmt = select(func.min(CrawlDeadLetter.next_retry_at)).where(
             CrawlDeadLetter.status == DlqStatus.PENDING.value,
+            CrawlDeadLetter.next_retry_at.is_not(None),
+            CrawlDeadLetter.next_retry_at <= now,
         )
         return self.session.execute(stmt).scalar_one_or_none()
 
