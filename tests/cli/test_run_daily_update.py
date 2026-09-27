@@ -143,7 +143,7 @@ def test_detail_recovery_escalates_repeated_recoverable_failures(monkeypatch, tm
     monkeypatch.setattr(daily, "DETAIL_RECOVERY_MAX_ROUNDS", 3)
     monkeypatch.setattr(daily, "DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD", 2)
     monkeypatch.setattr(daily, "crawl_and_save_game_details", _fake_crawl)
-    monkeypatch.setattr(daily.SlackWebhookClient, "send_alert", lambda message, **_kwargs: alerts.append(message))
+    monkeypatch.setattr(daily, "apply_incidents", lambda events, **_kwargs: alerts.extend(events))
 
     detail_results = asyncio.run(daily._collect_detail_results(ctx, object()))
     daily._finalize_detail_results(ctx, detail_results, set())
@@ -159,7 +159,7 @@ def test_detail_recovery_escalates_repeated_recoverable_failures(monkeypatch, tm
     queue_entry = ctx.detail_recovery_queue.state["detail_recovery_queue"][f"20260607:{game_id}"]
     assert queue_entry["reason"] == "incomplete_detail"
     assert queue_entry["attempts"] == 1
-    assert alerts and game_id in alerts[0]
+    assert alerts and game_id in alerts[0].message
 
 
 def test_detail_step_exception_preserves_cancelled_and_tracks_queued_targets(monkeypatch, tmp_path):

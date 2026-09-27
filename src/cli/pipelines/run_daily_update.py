@@ -38,6 +38,9 @@ from src.crawlers.team_event_crawler import TeamEventCrawler
 from src.crawlers.ticket_crawler import TicketCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
+from src.notifications.standalone import send_notification
 from src.repositories.game_repository import (
     refresh_game_status_for_date,
     update_game_status,
@@ -59,7 +62,6 @@ from src.services.postgame_reconciliation_service import (
 )
 from src.services.recovery_manager import RecoveryManager
 from src.services.schedule_collection_service import save_schedule_games
-from src.utils.alerting import SlackWebhookClient
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -625,14 +627,23 @@ def _record_detail_result_status(ctx: _RunContext, game_id: str, item: GameColle
 def _send_detail_recovery_escalation_alert(ctx: _RunContext) -> None:
     if not ctx.detail_retry_escalation_game_ids:
         return
-    try:
-        SlackWebhookClient.send_alert(
-            "⚠️ Detail recovery repeated failures: "
-            f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
-            f"game_ids={','.join(sorted(set(ctx.detail_retry_escalation_game_ids)))}",
-        )
-    except ALERT_EXCEPTIONS:
-        logger.exception("   ❌ Failed to send detail recovery escalation alert")
+    game_ids = sorted(set(ctx.detail_retry_escalation_game_ids))
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.RECOVERY,
+                component="detail_recovery",
+                severity=AlertSeverity.WARNING,
+                title="Detail recovery repeated failures",
+                message=(
+                    f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
+                    f"game_ids={','.join(game_ids)}"
+                ),
+                incident_key=f"recovery:detail:{ctx.target_date}",
+                metadata={"target_date": ctx.target_date, "game_ids": game_ids},
+            ),
+        ],
+    )
 
 
 def _finalize_detail_results(
@@ -1249,37 +1260,23 @@ def _build_pbp_failed_details(failed_ids: set[str], attempts_by_game: dict[str, 
     return [_summarize_pbp_failed_game(gid, attempts_by_game.get(gid) or []) for gid in sorted(failed_ids)]
 
 
-def _build_pbp_recovery_blocks(
+def _format_pbp_recovery_report(
     ctx: _RunContext,
     success_count: int,
     failed_count: int,
     failed_details: list[str],
-) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = [
-        {"type": "header", "text": {"type": "plain_text", "text": "Daily PBP Recovery Report"}},
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Target Games:* {len(ctx.relay_recovery_target_ids)}"},
-                {"type": "mrkdwn", "text": f"*Recovered:* {success_count}"},
-                {"type": "mrkdwn", "text": f"*Failed:* {failed_count}"},
-            ],
-        },
+) -> str:
+    lines = [
+        f"Target Games: {len(ctx.relay_recovery_target_ids)}",
+        f"Recovered: {success_count}",
+        f"Failed: {failed_count}",
     ]
     if failed_details:
         failed_text = "\n".join(failed_details)
         if len(failed_text) > TELEGRAM_FAILURE_TEXT_MAX_LENGTH:
             failed_text = failed_text[:TELEGRAM_FAILURE_TEXT_PREFIX_LENGTH] + "\n... (truncated)"
-        blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Detailed Failures:*\n{failed_text}",
-                },
-            },
-        )
-    return blocks
+        lines.append(f"Detailed Failures:\n{failed_text}")
+    return "\n".join(lines)
 
 
 def _send_pbp_recovery_report(ctx: _RunContext) -> None:
@@ -1305,8 +1302,11 @@ def _send_pbp_recovery_report(ctx: _RunContext) -> None:
         failed_count = len(failed_ids)
         attempts_by_game = _load_pbp_attempts_by_game(ctx.target_date)
         failed_details = _build_pbp_failed_details(failed_ids, attempts_by_game)
-        blocks = _build_pbp_recovery_blocks(ctx, success_count, failed_count, failed_details)
-        SlackWebhookClient.send_alert(f"*Daily PBP Recovery Report ({ctx.target_date})*", blocks=blocks)
+        send_notification(
+            f"Daily PBP Recovery Report ({ctx.target_date})",
+            _format_pbp_recovery_report(ctx, success_count, failed_count, failed_details),
+            notification_type="pbp_recovery",
+        )
         logger.info(
             "   Sent PBP recovery summary to Slack (Success: %s, Failed: %s)",
             success_count,
