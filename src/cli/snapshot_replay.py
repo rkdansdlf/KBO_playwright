@@ -14,6 +14,11 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from src.services.snapshot_persist import (
+    SnapshotPersistResult,
+    persist_recent_snapshots,
+    persist_snapshot,
+)
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
@@ -46,6 +51,10 @@ def _replay_enabled() -> bool:
     return os.getenv("KBO_ALLOW_SNAPSHOT_REPLAY") == "1"
 
 
+def _persist_enabled() -> bool:
+    return os.getenv("KBO_ALLOW_SNAPSHOT_PERSIST") == "1"
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the ``kbo snapshot replay`` argument parser."""
     parser = argparse.ArgumentParser(prog="kbo snapshot replay", description="Replay stored snapshots offline.")
@@ -53,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     selector.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot id.")
     selector.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
     parser.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
+    parser.add_argument("--persist", action="store_true", help="Persist parsed records (requires its env guard).")
     parser.add_argument("--json", action="store_true", help="Emit JSON.")
     return parser
 
@@ -105,6 +115,54 @@ def _render_runs(results: list[SnapshotReplayRunResult], *, json_out: bool) -> N
         _write(f"{result.snapshot_id:<8} {status:<7} {result.run_id}  {result.parsed_count} parsed")
 
 
+def _persist_dict(result: SnapshotPersistResult) -> dict[str, object]:
+    return {
+        "snapshot_id": result.snapshot_id,
+        "source_key": result.source_key,
+        "target_domain": result.target_domain,
+        "saved": result.saved,
+        "success": result.success,
+        "skipped": result.skipped,
+        "error": result.error,
+    }
+
+
+def _render_persist(results: list[SnapshotPersistResult], *, json_out: bool) -> None:
+    if json_out:
+        _write(json.dumps([_persist_dict(result) for result in results], ensure_ascii=False, indent=2))
+        return
+    if not results:
+        _write("(no snapshots)")
+        return
+    for result in results:
+        if result.skipped:
+            detail = f"skipped ({result.error})"
+        elif result.success:
+            detail = f"saved {result.saved} to {result.target_domain}"
+        else:
+            detail = f"failed: {result.error or 'error'}"
+        _write(f"{result.snapshot_id:<8} {detail}")
+
+
+def _run_persist(args: argparse.Namespace) -> int:
+    if not _persist_enabled():
+        _error("refusing persist: --persist requires KBO_ALLOW_SNAPSHOT_PERSIST=1")
+        return EXIT_GUARD_DENIED
+    if args.snapshot_id is not None:
+        try:
+            results = [persist_snapshot(args.snapshot_id)]
+        except SnapshotNotFoundError:
+            _error(f"snapshot not found: {args.snapshot_id}")
+            return EXIT_NOT_FOUND
+        except SnapshotReplayError as exc:
+            _error(str(exc))
+            return EXIT_REPLAY_ERROR
+    else:
+        results = persist_recent_snapshots(limit=args.limit or 50)
+    _render_persist(results, json_out=args.json)
+    return EXIT_OK
+
+
 def _run_read_only(args: argparse.Namespace) -> int:
     if args.snapshot_id is not None:
         try:
@@ -143,6 +201,10 @@ def _run_ledger(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint for snapshot replay (read-only by default)."""
     args = build_parser().parse_args(argv)
+    if args.persist:
+        code = _run_persist(args)
+        if code != EXIT_OK or not args.apply:
+            return code
     if args.apply:
         return _run_ledger(args)
     return _run_read_only(args)

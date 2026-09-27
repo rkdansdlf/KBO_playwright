@@ -6,6 +6,7 @@ import json
 
 from src.cli.kbo import main as kbo_main
 from src.cli.snapshot_replay import main as snapshot_main
+from src.services.snapshot_persist import SnapshotPersistResult
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
@@ -94,6 +95,47 @@ def test_apply_records_ledger_run_json(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["run_id"] == "run-replay"
     assert payload[0]["status"] == "success"
+
+
+def _persist_result(*, snapshot_id: int = 5, success: bool = True, skipped: bool = False) -> SnapshotPersistResult:
+    return SnapshotPersistResult(
+        snapshot_id=snapshot_id,
+        source_key="lg_twins_events",
+        target_domain="event",
+        saved=3 if success else 0,
+        success=success,
+        error=None if success else ("unsupported target_domain=None" if skipped else "boom"),
+        skipped=skipped,
+    )
+
+
+def test_persist_without_env_is_denied(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("KBO_ALLOW_SNAPSHOT_PERSIST", raising=False)
+    called: list[int] = []
+    monkeypatch.setattr("src.cli.snapshot_replay.persist_snapshot", lambda *a, **k: called.append(1))
+    assert snapshot_main(["--snapshot-id", "5", "--persist"]) == 3
+    assert called == []
+    assert "KBO_ALLOW_SNAPSHOT_PERSIST" in capsys.readouterr().err
+
+
+def test_persist_single_json(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    monkeypatch.setattr("src.cli.snapshot_replay.persist_snapshot", lambda _sid, **_k: _persist_result())
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload[0]["saved"] == 3
+    assert payload[0]["target_domain"] == "event"
+
+
+def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_REPLAY", "1")
+    monkeypatch.setattr("src.cli.snapshot_replay.persist_snapshot", lambda _sid, **_k: _persist_result())
+    monkeypatch.setattr("src.cli.snapshot_replay.record_snapshot_replay", lambda _sid, **_k: _run_result())
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "saved 3" in out
+    assert "run-replay" in out
 
 
 def test_apply_batch_records(monkeypatch, capsys) -> None:
