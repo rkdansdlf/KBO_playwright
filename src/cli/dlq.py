@@ -124,7 +124,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     _write(f"  exhausted       {stats.exhausted}")
     _write(f"  resolved        {stats.resolved}")
     _write(f"  ignored         {stats.ignored}")
-    _write(f"  oldest pending  {_fmt_age(stats.oldest_pending_age_seconds)}")
+    _write(f"  oldest due      {_fmt_age(stats.oldest_due_age_seconds)}")
     return 0
 
 
@@ -136,8 +136,8 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     _write("DLQ stats")
     for key in ("pending", "due", "retrying", "stale_retrying", "resolved", "exhausted", "ignored"):
         _write(f"  {key:<16} {getattr(stats, key)}")
-    _write(f"  oldest_pending   {_fmt_dt(stats.oldest_pending_at)}")
-    _write(f"  oldest_age       {_fmt_age(stats.oldest_pending_age_seconds)}")
+    _write(f"  oldest_due       {_fmt_dt(stats.oldest_due_at)}")
+    _write(f"  oldest_due_age   {_fmt_age(stats.oldest_due_age_seconds)}")
     if stats.by_status_crawler:
         _write("  by status/crawler")
         for (status, crawler), count in sorted(stats.by_status_crawler.items()):

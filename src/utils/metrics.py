@@ -118,9 +118,9 @@ KBO_DLQ_STALE_RETRYING_LETTERS = Gauge(
     "Dead letters stuck retrying past the stale cutoff",
 )
 
-KBO_DLQ_OLDEST_PENDING_AGE_SECONDS = Gauge(
-    "kbo_crawl_dlq_oldest_pending_age_seconds",
-    "Age in seconds of the oldest pending dead letter",
+KBO_DLQ_OLDEST_DUE_AGE_SECONDS = Gauge(
+    "kbo_crawl_dlq_oldest_due_age_seconds",
+    "Age in seconds of the longest-overdue pending dead letter (worker backlog)",
 )
 
 KBO_DLQ_FAILURES_TOTAL = Counter(
@@ -199,7 +199,7 @@ def refresh_dlq_state_metrics(
     status_crawler_counts: Mapping[tuple[str, str], int],
     due: int,
     stale_retrying: int,
-    oldest_pending_age_seconds: float,
+    oldest_due_age_seconds: float,
 ) -> None:
     """Set dead letter state gauges from a fresh DB projection."""
     KBO_DLQ_LETTERS.clear()
@@ -207,7 +207,7 @@ def refresh_dlq_state_metrics(
         KBO_DLQ_LETTERS.labels(status=status, crawler=crawler).set(count)
     KBO_DLQ_DUE_LETTERS.set(due)
     KBO_DLQ_STALE_RETRYING_LETTERS.set(stale_retrying)
-    KBO_DLQ_OLDEST_PENDING_AGE_SECONDS.set(oldest_pending_age_seconds)
+    KBO_DLQ_OLDEST_DUE_AGE_SECONDS.set(oldest_due_age_seconds)
 
 
 _db_availability_registered = False

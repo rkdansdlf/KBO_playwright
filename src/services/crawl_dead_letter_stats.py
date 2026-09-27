@@ -38,8 +38,8 @@ class DlqStats:
     resolved: int = 0
     exhausted: int = 0
     ignored: int = 0
-    oldest_pending_at: datetime | None = None
-    oldest_pending_age_seconds: float | None = None
+    oldest_due_at: datetime | None = None
+    oldest_due_age_seconds: float = 0.0
     by_status_crawler: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
@@ -52,8 +52,8 @@ class DlqStats:
             "resolved": self.resolved,
             "exhausted": self.exhausted,
             "ignored": self.ignored,
-            "oldest_pending_at": self.oldest_pending_at.isoformat() if self.oldest_pending_at else None,
-            "oldest_pending_age_seconds": self.oldest_pending_age_seconds,
+            "oldest_due_at": self.oldest_due_at.isoformat() if self.oldest_due_at else None,
+            "oldest_due_age_seconds": self.oldest_due_age_seconds,
             "by_status_crawler": {
                 f"{status}:{crawler}": count for (status, crawler), count in self.by_status_crawler.items()
             },
@@ -95,14 +95,14 @@ def collect_dlq_stats(
         grouped = repository.count_by_status_crawler()
         due = repository.count_due(now=reference)
         stale_retrying = repository.count_stale_retrying(stale_before=cutoff)
-        oldest_pending_at = repository.oldest_pending_created_at()
+        oldest_due_at = repository.oldest_due_next_retry_at(now=reference)
 
     by_status_crawler = {(status, crawler): count for status, crawler, count in grouped}
     totals: dict[str, int] = {}
     for (status, _crawler), count in by_status_crawler.items():
         totals[status] = totals.get(status, 0) + count
 
-    age_seconds = (reference - oldest_pending_at).total_seconds() if oldest_pending_at is not None else None
+    age_seconds = (reference - oldest_due_at).total_seconds() if oldest_due_at is not None else 0.0
     return DlqStats(
         pending=totals.get(DlqStatus.PENDING.value, 0),
         due=due,
@@ -111,8 +111,8 @@ def collect_dlq_stats(
         resolved=totals.get(DlqStatus.RESOLVED.value, 0),
         exhausted=totals.get(DlqStatus.EXHAUSTED.value, 0),
         ignored=totals.get(DlqStatus.IGNORED.value, 0),
-        oldest_pending_at=oldest_pending_at,
-        oldest_pending_age_seconds=age_seconds,
+        oldest_due_at=oldest_due_at,
+        oldest_due_age_seconds=age_seconds,
         by_status_crawler=by_status_crawler,
     )
 
@@ -134,7 +134,7 @@ def publish_dlq_state_metrics(
             status_crawler_counts=stats.by_status_crawler,
             due=stats.due,
             stale_retrying=stats.stale_retrying,
-            oldest_pending_age_seconds=stats.oldest_pending_age_seconds or 0.0,
+            oldest_due_age_seconds=stats.oldest_due_age_seconds,
         )
     except Exception:
         logger.exception("Failed to refresh DLQ state metrics")

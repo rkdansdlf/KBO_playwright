@@ -16,7 +16,7 @@ from src.utils.metrics import (
     KBO_DLQ_DUE_LETTERS,
     KBO_DLQ_FAILURES_TOTAL,
     KBO_DLQ_LETTERS,
-    KBO_DLQ_OLDEST_PENDING_AGE_SECONDS,
+    KBO_DLQ_OLDEST_DUE_AGE_SECONDS,
     KBO_DLQ_RECOVERY_ACTIONS_TOTAL,
     KBO_DLQ_RETRY_ATTEMPTS_TOTAL,
     KBO_DLQ_RETRY_OUTCOMES_TOTAL,
@@ -108,8 +108,9 @@ def test_collect_dlq_stats_snapshot(session_factory: sessionmaker) -> None:
     assert stats.resolved == 1
     assert stats.exhausted == 1
     assert stats.ignored == 1
-    assert stats.oldest_pending_at == now - timedelta(hours=3)
-    assert stats.oldest_pending_age_seconds == pytest.approx(3 * 3600)
+    assert stats.oldest_due_at == now - timedelta(minutes=5)
+    assert stats.oldest_due_age_seconds == pytest.approx(5 * 60)
+    assert "oldest_due_at" in stats.to_dict()
     assert stats.by_status_crawler[("pending", "awards")] == 2
     assert stats.by_status_crawler[("resolved", "schedule")] == 1
     assert "pending:awards" in stats.to_dict()["by_status_crawler"]
@@ -128,7 +129,7 @@ def test_publish_dlq_state_metrics_sets_gauges(session_factory: sessionmaker) ->
     assert KBO_DLQ_LETTERS.labels(status="retrying", crawler="schedule")._value.get() == 1
     assert KBO_DLQ_DUE_LETTERS._value.get() == 1
     assert KBO_DLQ_STALE_RETRYING_LETTERS._value.get() == 1
-    assert KBO_DLQ_OLDEST_PENDING_AGE_SECONDS._value.get() == pytest.approx(2 * 3600)
+    assert KBO_DLQ_OLDEST_DUE_AGE_SECONDS._value.get() == pytest.approx(60)
 
 
 def test_event_counters_increment() -> None:
