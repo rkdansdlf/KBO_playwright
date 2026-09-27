@@ -81,6 +81,7 @@ class Granularity(StrEnum):
     TEAM = "team"
     PLAYER = "player"
     GAME = "game"
+    MONTH = "month"
     SEASON = "season"
     DOCUMENT = "document"
 
@@ -269,6 +270,7 @@ class AdoptionMatrix:
 REPLAY_HANDLERS: dict[str, str] = {
     "awards": "award_crawler",
     "roster_transactions": "roster_transaction_crawler",
+    "schedule": "schedule_crawler",
 }
 
 #: The module names behind those handlers, for lookup by module.
@@ -288,10 +290,10 @@ DECLARED: dict[str, DesignFacts] = {
         note="A quiet day is common, so EMPTY requires the expected section to have been seen.",
     ),
     "schedule_crawler": DesignFacts(
-        granularity=Granularity.SEASON,
-        empty=EmptySemantics.COLLAPSED,
+        granularity=Granularity.MONTH,
+        empty=EmptySemantics.TYPED_CONFIRMED,
         fallback=Fallback.BROWSER,
-        note="Next migration target: Naver API primary with a KBO browser fallback.",
+        note="Naver API primary with a KBO browser fallback. Feeds nearly every other crawl.",
     ),
     "game_detail_crawler": DesignFacts(
         granularity=Granularity.GAME,
@@ -313,11 +315,10 @@ DECLARED: dict[str, DesignFacts] = {
 }
 
 #: Migration order decided by upstream impact rather than by how little work is
-#: left. The schedule is the input to nearly every other crawl, so a silent
-#: schedule failure poisons everything downstream; game detail is the largest
-#: remaining surface; relay is next.
+#: left. The schedule is done -- it fed nearly every other crawl, so a silent
+#: failure there poisoned everything downstream. Game detail is the largest
+#: remaining surface, and relay comes next.
 PRIORITY_ORDER: tuple[str, ...] = (
-    "schedule_crawler",
     "game_detail_crawler",
     "relay_crawler",
 )
@@ -506,8 +507,8 @@ def verify_row(row: CrawlerRow) -> list[str]:
     if design is not None:
         if design.empty in {EmptySemantics.TYPED, EmptySemantics.TYPED_CONFIRMED} and not facts.uses_crawl_result:
             problems.append(f"{row.module}: declares a typed empty but never uses CrawlResult")
-        if design.granularity is Granularity.DATE and not facts.replay:
-            problems.append(f"{row.module}: a date-granular crawler should have a replay handler")
+        if design.granularity in {Granularity.DATE, Granularity.MONTH} and not facts.replay:
+            problems.append(f"{row.module}: a {design.granularity.value}-granular crawler should have a replay handler")
     if facts.dead_letter and not facts.ledger:
         problems.append(f"{row.module}: enqueues dead letters without recording a run")
     if facts.replay and not facts.dead_letter:

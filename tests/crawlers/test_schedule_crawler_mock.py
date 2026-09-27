@@ -3,10 +3,28 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.crawlers.failure_taxonomy import FailureCode
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.models.crawl_execution import CrawlExecutionRun
+
+
+@pytest.fixture
+def ledger(monkeypatch: pytest.MonkeyPatch) -> sessionmaker:
+    """Give the run ledger a real, isolated table.
+
+    `crawl_schedule` records every month it attempts, so tests that call it need
+    somewhere to write. An in-memory database keeps that out of the developer's.
+    """
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    CrawlExecutionRun.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    return factory
 
 
 def _naver_failure() -> CrawlResult[list[dict]]:
@@ -195,7 +213,7 @@ class TestCrawlerOrchestration:
         return pool
 
     @pytest.mark.asyncio
-    async def test_crawl_schedule_releases_injected_pool_without_closing_it(self):
+    async def test_crawl_schedule_releases_injected_pool_without_closing_it(self, ledger: sessionmaker):
         page = MagicMock()
         pool = self._pool(page)
         crawler = ScheduleCrawler(pool=pool)
@@ -212,7 +230,11 @@ class TestCrawlerOrchestration:
 
     @pytest.mark.asyncio
     @patch("src.crawlers.schedule_crawler.AsyncPlaywrightPool")
-    async def test_crawl_schedule_returns_empty_after_error_and_closes_owned_pool(self, mock_pool_class):
+    async def test_crawl_schedule_returns_empty_after_error_and_closes_owned_pool(
+        self,
+        mock_pool_class,
+        ledger: sessionmaker,
+    ):
         page = MagicMock()
         pool = self._pool(page)
         mock_pool_class.return_value = pool
@@ -377,7 +399,7 @@ class TestNaverSchedulePath:
         assert second["doubleheader_no"] == 1
 
     @pytest.mark.asyncio
-    async def test_crawl_schedule_prefers_naver_and_skips_browser(self):
+    async def test_crawl_schedule_prefers_naver_and_skips_browser(self, ledger: sessionmaker):
         pool = MagicMock()
         pool.start = AsyncMock()
         crawler = ScheduleCrawler(pool=pool)
@@ -391,7 +413,7 @@ class TestNaverSchedulePath:
         pool.start.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_crawl_schedule_falls_back_when_naver_unavailable(self):
+    async def test_crawl_schedule_falls_back_when_naver_unavailable(self, ledger: sessionmaker):
         from contextlib import asynccontextmanager
 
         crawler = ScheduleCrawler()
@@ -411,7 +433,7 @@ class TestNaverSchedulePath:
         crawler._crawl_naver_month.assert_awaited_once_with(2025, 8)
 
     @pytest.mark.asyncio
-    async def test_crawl_schedule_does_not_open_browser_when_kbo_is_blocked(self):
+    async def test_crawl_schedule_does_not_open_browser_when_kbo_is_blocked(self, ledger: sessionmaker):
         crawler = ScheduleCrawler()
         crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20260801LGSS0"}])
