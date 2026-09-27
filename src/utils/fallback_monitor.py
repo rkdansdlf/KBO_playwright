@@ -9,7 +9,8 @@ from typing import Any
 
 # 로깅 설정
 from src.constants import KST
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("fallback_monitor")
@@ -46,22 +47,27 @@ class FallbackMonitor:
 
         logger.warning(msg)
 
-        # 슬랙 알림 전송 (SLACK_WEBHOOK_URL 환경변수 설정 시)
-        blocks = [
-            {"type": "header", "text": {"type": "plain_text", "text": "⚠️ KBO Fallback System Triggered"}},
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Year:* {year}"},
-                    {"type": "mrkdwn", "text": f"*Series:* {series}"},
-                    {"type": "mrkdwn", "text": f"*Type:* {stat_type}"},
-                    {"type": "mrkdwn", "text": f"*Players:* {player_count or 'Unknown'}"},
-                ],
-            },
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason:* {reason}"}},
-        ]
-
-        SlackWebhookClient.send_alert(msg, blocks=blocks)
+        # 폴백은 (연도, 시리즈, 통계 유형)별 상태성 신호다. 같은 조합이 쿨다운
+        # 안에서 반복되면 incident가 중복 알림을 억제한다.
+        apply_incidents(
+            [
+                AlertEvent(
+                    source=AlertSource.QUALITY,
+                    component=f"{series}:{stat_type}",
+                    severity=AlertSeverity.WARNING,
+                    title=f"KBO Fallback System Triggered: {year} {series} {stat_type}",
+                    message=msg,
+                    incident_key=f"fallback:{year}:{series}:{stat_type}",
+                    metadata={
+                        "year": year,
+                        "series": series,
+                        "stat_type": stat_type,
+                        "reason": reason,
+                        "player_count": player_count,
+                    },
+                ),
+            ],
+        )
 
     @staticmethod
     def save_audit_backup(

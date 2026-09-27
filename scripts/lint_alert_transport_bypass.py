@@ -52,7 +52,6 @@ GRANDFATHERED = frozenset(
         "src/cli/sync/sqlite_integrity_guard.py",
         "src/monitoring/sla_tracker.py",
         "src/services/notification_service.py",
-        "src/utils/fallback_monitor.py",
     }
 )
 
@@ -67,7 +66,6 @@ BYPASS_MARKER = "alert-transport-bypass"
 #:   C = dead, duplicate or pure wrapper -> delete or unwrap
 CLASSIFICATION: dict[str, str] = {
     # A: stateful alerts
-    "src/utils/fallback_monitor.py": "A",
     "src/monitoring/sla_tracker.py": "A",
     "src/cli/backfill/auto_healer.py": "A",
     "src/cli/live/live_crawler.py": "A",
@@ -83,8 +81,9 @@ CLASSIFICATION: dict[str, str] = {
     "src/cli/pipelines/daily_highlight_batch.py": "B",
     "src/cli/reports/gap_report.py": "B",
     "scripts/verification/audit_fallback_stats.py": "B",
+    # B: domain service that composes messages and must delegate delivery
+    "src/services/notification_service.py": "B",
     # C: wrapper / bootstrap re-export
-    "src/services/notification_service.py": "C",
     "scripts/scheduler.py": "C",
 }
 
