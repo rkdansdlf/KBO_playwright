@@ -146,11 +146,11 @@ class TestMigratedCrawlersStayMigrated:
 
 
 class TestTransportDetection:
-    def test_the_schedule_is_hybrid(self) -> None:
-        """It reads a Naver API and falls back to a KBO browser page."""
+    def test_the_schedule_keeps_both_paths(self) -> None:
+        """Naver API through the shared client, KBO page through the browser."""
         facts = scan_module("schedule_crawler")
 
-        assert Transport.RAW_HTTPX in facts.transports
+        assert facts.shared_http
         assert Transport.PLAYWRIGHT in facts.transports
 
     def test_roster_uses_the_shared_client_and_a_browser_fallback(self) -> None:

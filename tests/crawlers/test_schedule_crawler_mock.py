@@ -4,7 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.schedule_crawler import ScheduleCrawler
+
+
+def _naver_failure() -> CrawlResult[list[dict]]:
+    """A Naver month the transport could not complete."""
+    return CrawlResult.failure(
+        CrawlOutcome.PERMANENT_ERROR,
+        error="naver unreachable",
+        error_code=FailureCode.FETCH_HTTP_ERROR.value,
+    )
 
 
 @pytest.fixture
@@ -188,7 +199,7 @@ class TestCrawlerOrchestration:
         page = MagicMock()
         pool = self._pool(page)
         crawler = ScheduleCrawler(pool=pool)
-        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250625LGSS0"}])
 
         with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
@@ -206,7 +217,7 @@ class TestCrawlerOrchestration:
         pool = self._pool(page)
         mock_pool_class.return_value = pool
         crawler = ScheduleCrawler()
-        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(side_effect=RuntimeError("navigation failed"))
 
         with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
@@ -221,7 +232,7 @@ class TestCrawlerOrchestration:
         policy = MagicMock()
         policy.delay_async = AsyncMock()
         crawler = ScheduleCrawler(pool=pool, policy=policy)
-        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
 
         with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
@@ -370,7 +381,7 @@ class TestNaverSchedulePath:
         pool = MagicMock()
         pool.start = AsyncMock()
         crawler = ScheduleCrawler(pool=pool)
-        crawler._crawl_naver_month = AsyncMock(return_value=[{"game_id": "20260819HTHH0"}])
+        crawler._crawl_naver_month = AsyncMock(return_value=CrawlResult.success([{"game_id": "20260819HTHH0"}]))
         crawler._crawl_month = AsyncMock(return_value=[])
 
         games = await crawler.crawl_schedule(2026, 8)
@@ -384,7 +395,7 @@ class TestNaverSchedulePath:
         from contextlib import asynccontextmanager
 
         crawler = ScheduleCrawler()
-        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20250801LGSS0"}])
 
         @asynccontextmanager
@@ -402,7 +413,7 @@ class TestNaverSchedulePath:
     @pytest.mark.asyncio
     async def test_crawl_schedule_does_not_open_browser_when_kbo_is_blocked(self):
         crawler = ScheduleCrawler()
-        crawler._crawl_naver_month = AsyncMock(return_value=None)
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
         crawler._crawl_month = AsyncMock(return_value=[{"game_id": "20260801LGSS0"}])
         crawler.page_context = MagicMock()
 
@@ -418,7 +429,10 @@ class TestNaverSchedulePath:
     async def test_crawl_season_uses_naver_per_month_when_available(self):
         crawler = ScheduleCrawler()
         crawler._crawl_naver_month = AsyncMock(
-            side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]],
+            side_effect=[
+                CrawlResult.success([{"game_id": "march"}]),
+                CrawlResult.success([{"game_id": "april"}]),
+            ],
         )
         crawler._crawl_month = AsyncMock(return_value=[])
 
