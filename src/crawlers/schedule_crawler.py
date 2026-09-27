@@ -212,6 +212,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             The resolved result for the month.
 
         """
+        naver: CrawlResult[list[dict]] | None = None
         if series_id in (None, "0"):
             naver = await self._crawl_naver_month(year, month)
             if naver.ok:
@@ -225,11 +226,12 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         schedule_key = self._schedule_key(year, month, series_id)
         if not await self._kbo_fallback_allowed(schedule_key):
-            return CrawlResult.failure(
+            blocked = CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error="kbo schedule fallback blocked by robots policy",
                 error_code=FailureCode.FETCH_BLOCKED.value,
             )
+            return self._merge_failures(naver, blocked) if naver is not None else blocked
         logger.info("Naver schedule unusable for %s-%02d, falling back to KBO page", year, month)
 
         try:
@@ -237,14 +239,42 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 games = await self._crawl_month(page, year, month, series_id=series_id)
         except SCHEDULE_CRAWLER_EXCEPTIONS as exc:
             logger.exception("❌ Error crawling schedule")
-            return CrawlResult.failure(
+            failure = CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=f"kbo schedule page failed: {type(exc).__name__}: {exc}",
                 error_code=FailureCode.FETCH_HTTP_ERROR.value,
             )
+            return self._merge_failures(naver, failure) if naver is not None else failure
         logger.info("✅ Found %s games", len(games))
         # A page that renders with no rows is an off-season month, not a failure.
         return CrawlResult.success(games) if games else CrawlResult.empty()
+
+    @staticmethod
+    def _merge_failures(
+        primary: CrawlResult[Any] | None,
+        fallback: CrawlResult[Any],
+    ) -> CrawlResult[list[dict]]:
+        """Combine two failed sources into one, keeping the primary's cause.
+
+        The Naver API is the primary attempt, so a replay starts from it and its
+        code is the canonical cause. The fallback's code is only promoted when
+        the primary had nothing meaningful to say, and both are always preserved
+        in the message so neither is lost.
+        """
+        if primary is None or primary.ok or primary.outcome is CrawlOutcome.EMPTY:
+            return fallback
+        code = primary.error_code
+        meaningless = {None, FailureCode.UNKNOWN.value}
+        if code in meaningless:
+            code = fallback.error_code
+        return CrawlResult.failure(
+            CrawlOutcome.PERMANENT_ERROR,
+            error=(
+                f"naver[{primary.error_code or primary.outcome}]: {primary.error}; "
+                f"kbo[{fallback.error_code or fallback.outcome}]: {fallback.error}"
+            ),
+            error_code=code or FailureCode.UNKNOWN.value,
+        )
 
     def _enqueue_dead_letter(
         self,
