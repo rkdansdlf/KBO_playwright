@@ -1,4 +1,7 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from src.services.snapshot_replay import SnapshotParseResult, SnapshotReplayError
 
 
 class TestBatchParseSnapshots:
@@ -34,3 +37,90 @@ class TestBatchParseSnapshots:
 
             result = run_batch_parse(limit=10)
             assert result["processed"] == 0
+
+
+class TestProcessSnapshotDelegatesToService:
+    def _session(self) -> tuple[MagicMock, MagicMock]:
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = SimpleNamespace(
+            source_key="lg_twins_events",
+            target_domain="event",
+        )
+        return session, MagicMock()
+
+    def _parsed(self, *, success: bool = True) -> SnapshotParseResult:
+        return SnapshotParseResult(
+            snapshot_id=1,
+            source_key="lg_twins_events",
+            parser_version="team-event-v1",
+            records=[{"title": "a"}] if success else [],
+            success=success,
+            error=None if success else "bad html",
+        )
+
+    def test_successful_save_marks_done(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session, snap_repo = self._session()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        with (
+            patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
+            patch("scripts.batch_parse_snapshots._save_parsed", return_value=1) as mock_save,
+        ):
+            result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
+
+        assert result == "done"
+        mock_save.assert_called_once()
+        snap_repo.update_parse_status.assert_called_once_with(1, "done", parser_version="team-event-v1")
+
+    def test_dry_run_skips_save(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session, snap_repo = self._session()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        with (
+            patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
+            patch("scripts.batch_parse_snapshots._save_parsed") as mock_save,
+        ):
+            result = _process_snapshot(session, snap_repo, snapshot, True, lambda: session)
+
+        assert result == "done"
+        mock_save.assert_not_called()
+
+    def test_parse_failure_marks_failed(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session, snap_repo = self._session()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        with (
+            patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed(success=False)),
+            patch("scripts.batch_parse_snapshots._save_parsed") as mock_save,
+        ):
+            result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
+
+        assert result == "failed"
+        mock_save.assert_not_called()
+        assert snap_repo.update_parse_status.call_args.args[1] == "failed"
+
+    def test_replay_error_marks_failed(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session, snap_repo = self._session()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        with patch(
+            "scripts.batch_parse_snapshots.parse_snapshot",
+            side_effect=SnapshotReplayError("stored artifact not found"),
+        ):
+            result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
+
+        assert result == "failed"
+
+    def test_missing_data_source_marks_failed(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = None
+        snap_repo = MagicMock()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
+        assert result == "failed"
