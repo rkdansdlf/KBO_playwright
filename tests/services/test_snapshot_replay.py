@@ -19,10 +19,12 @@ from src.repositories.source_registry_repository import (
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
+    SnapshotValidationResult,
     record_recent_snapshot_replays,
     record_snapshot_replay,
     replay_recent_snapshots,
     replay_snapshot,
+    summarize_snapshot_drift,
     validate_recent_snapshots,
     validate_snapshot,
 )
@@ -214,6 +216,44 @@ def test_validate_recent_isolates_failures(session_factory, tmp_path: Path, monk
 
     assert len(results) == 2
     assert {result.success for result in results} == {True, False}
+
+
+def test_summarize_snapshot_drift_counts() -> None:
+    results = [
+        SnapshotValidationResult(1, "k", 3, 3, 0, False, True),
+        SnapshotValidationResult(2, "k", 5, 3, -2, True, True),
+        SnapshotValidationResult(3, "k", None, 4, None, False, True),
+        SnapshotValidationResult(4, None, None, 0, None, False, False, "no parser"),
+    ]
+
+    summary = summarize_snapshot_drift(results, drift_max=1, fail_max=1, sample_size=10)
+
+    assert summary.total == 4
+    assert summary.with_baseline == 2
+    assert summary.drifted == 1
+    assert summary.matched == 1
+    assert summary.unknown_baseline == 1
+    assert summary.failed == 1
+    assert summary.drifted_ids == (2,)
+    assert summary.ok is True
+    assert summary.to_dict()["drifted_ids"] == [2]
+
+
+def test_summarize_snapshot_drift_gate_fails_on_drift() -> None:
+    results = [SnapshotValidationResult(2, "k", 5, 3, -2, True, True)]
+    assert summarize_snapshot_drift(results, drift_max=0, fail_max=5).ok is False
+
+
+def test_summarize_snapshot_drift_gate_fails_on_failures() -> None:
+    results = [SnapshotValidationResult(1, None, None, 0, None, False, False, "x")]
+    assert summarize_snapshot_drift(results, drift_max=0, fail_max=0).ok is False
+
+
+def test_summarize_snapshot_drift_caps_sample_ids() -> None:
+    results = [SnapshotValidationResult(i, "k", 5, 0, -5, True, True) for i in range(1, 6)]
+    summary = summarize_snapshot_drift(results, drift_max=9, fail_max=9, sample_size=2)
+    assert summary.drifted == 5
+    assert summary.drifted_ids == (1, 2)
 
 
 def test_record_snapshot_replay_creates_ledger_run(session_factory, tmp_path: Path, monkeypatch) -> None:

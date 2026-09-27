@@ -92,6 +92,33 @@ class SnapshotValidationResult:
 
 
 @dataclass(frozen=True)
+class SnapshotDriftSummary:
+    """Aggregate drift report over a batch of snapshot validations."""
+
+    total: int = 0
+    with_baseline: int = 0
+    drifted: int = 0
+    matched: int = 0
+    unknown_baseline: int = 0
+    failed: int = 0
+    drifted_ids: tuple[int, ...] = ()
+    ok: bool = True
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the summary as a JSON-serializable mapping."""
+        return {
+            "total": self.total,
+            "with_baseline": self.with_baseline,
+            "drifted": self.drifted,
+            "matched": self.matched,
+            "unknown_baseline": self.unknown_baseline,
+            "failed": self.failed,
+            "drifted_ids": list(self.drifted_ids),
+            "ok": self.ok,
+        }
+
+
+@dataclass(frozen=True)
 class SnapshotReplayRunResult:
     """Ledger run recorded for one snapshot replay."""
 
@@ -310,6 +337,48 @@ def validate_recent_snapshots(
                 ),
             )
     return results
+
+
+def summarize_snapshot_drift(
+    results: list[SnapshotValidationResult],
+    *,
+    drift_max: int = 0,
+    fail_max: int = 5,
+    sample_size: int = 20,
+) -> SnapshotDriftSummary:
+    """Summarize validation results into a gate-friendly drift report.
+
+    ``unknown_baseline`` snapshots are reported but never counted as drift, since
+    they simply predate ``parsed_records`` capture.
+    """
+    failed = 0
+    with_baseline = 0
+    drifted = 0
+    unknown_baseline = 0
+    drifted_ids: list[int] = []
+    for result in results:
+        if not result.success:
+            failed += 1
+            continue
+        if result.baseline_count is None:
+            unknown_baseline += 1
+            continue
+        with_baseline += 1
+        if result.drifted:
+            drifted += 1
+            if len(drifted_ids) < sample_size:
+                drifted_ids.append(result.snapshot_id)
+    matched = with_baseline - drifted
+    return SnapshotDriftSummary(
+        total=len(results),
+        with_baseline=with_baseline,
+        drifted=drifted,
+        matched=matched,
+        unknown_baseline=unknown_baseline,
+        failed=failed,
+        drifted_ids=tuple(drifted_ids),
+        ok=drifted <= drift_max and failed <= fail_max,
+    )
 
 
 def record_snapshot_replay(
