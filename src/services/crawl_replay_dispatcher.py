@@ -7,12 +7,10 @@ canary at a time instead of assuming every crawler shares a replay interface.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.crawlers.award_crawler import (
     AWARD_CRAWLER_NAME,
@@ -22,6 +20,7 @@ from src.crawlers.award_crawler import (
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
+from src.utils.async_bridge import run_coro_blocking
 
 if TYPE_CHECKING:
     from src.models.crawl_dead_letter import CrawlDeadLetter
@@ -68,29 +67,6 @@ class ReplayDispatcher:
         return handler(dead_letter, replay_run_id)
 
 
-def _run_coro(coro: Any) -> Any:  # noqa: ANN401
-    """Run a coroutine from sync code, even inside a running event loop."""
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    box: dict[str, Any] = {}
-
-    def _target() -> None:
-        try:
-            box["result"] = asyncio.run(coro)
-        except BaseException as exc:  # noqa: BLE001
-            box["error"] = exc
-
-    thread = threading.Thread(target=_target, name="crawl-replay")
-    thread.start()
-    thread.join()
-    if "error" in box:
-        raise box["error"]
-    return box.get("result")
-
-
 async def _execute_award_replay(
     crawler: AwardCrawler,
     spec: CrawlRunSpec,
@@ -121,7 +97,7 @@ def _replay_awards(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOu
         replay_of_run_id=dead_letter.original_run_id,
         run_id=replay_run_id,
     )
-    _run_coro(_execute_award_replay(AwardCrawler(), spec, dead_letter.target_id))
+    run_coro_blocking(_execute_award_replay(AwardCrawler(), spec, dead_letter.target_id))
 
     with SessionLocal() as session:
         run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
