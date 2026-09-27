@@ -78,6 +78,7 @@ from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
+from src.notifications.standalone import send_notification
 from src.repositories.game_repository import save_game_snapshot, save_relay_data
 from src.utils.compliance import compliance
 from src.utils.game_state import (
@@ -328,7 +329,6 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
             return
 
         from src.crawlers.pbp_crawler import PBPCrawler
-        from src.utils.alerting import SlackWebhookClient
 
         logger.info(
             "[FALLBACK TRIGGER] PBP for %s is unverified. Triggering KBO website re-crawl in background...",
@@ -376,7 +376,12 @@ async def _run_kbo_fallback_healing(game_id: str) -> None:
                         f"from KBO for game {game_id}"
                     )
                     logger.info("[FALLBACK SUCCESS] %s", msg)
-                    SlackWebhookClient.send_alert(msg)
+                    send_notification(
+                        "KBO Fallback Success",
+                        msg,
+                        notification_type="live_fallback_success",
+                        metadata={"game_id": game_id, "recovered_events": saved},
+                    )
             except LIVE_CRAWLER_EXCEPTIONS:
                 logger.exception("Failed to save KBO fallback data for %s", game_id)
     except LIVE_CRAWLER_EXCEPTIONS:
