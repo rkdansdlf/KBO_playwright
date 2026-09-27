@@ -30,6 +30,13 @@ RETRYABLE_CODES: frozenset[str] = frozenset(
         "REPLAY_INTERRUPTED",
         "REPLAY_RUN_MISSING",
         "SOURCE_PARTIAL",
+        # A payload that is well shaped but does not reconcile -- boxscore totals
+        # that miss the scoreboard, or a page that rendered without its sections
+        # -- is often a mid-render capture rather than a permanent defect. The
+        # game-detail collection contract has always retried these, and a spent
+        # retry is far cheaper than a permanently missing game. `VALIDATION_SCHEMA`
+        # stays non-retryable: a shape mismatch does not fix itself.
+        "VALIDATION_QUALITY",
         "UNKNOWN",
     },
 )
@@ -41,7 +48,6 @@ NON_RETRYABLE_CODES: frozenset[str] = frozenset(
         "PARSE_INVALID_FORMAT",
         "PARSE_EMPTY",
         "VALIDATION_SCHEMA",
-        "VALIDATION_QUALITY",
         "PERSIST_CONSTRAINT",
     },
 )

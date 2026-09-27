@@ -33,6 +33,7 @@ from datetime import datetime
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
+from src.crawlers.game_detail_outcome import GameDetailAttempt, attempt_from_result
 from src.crawlers.selectors import GAME_DETAIL
 from src.db.engine import SessionLocal
 from src.urls import GAME_CENTER
@@ -480,6 +481,47 @@ class GameDetailCrawler:
         result = await self.crawl_games([{"game_id": game_id, "game_date": game_date}], lightweight=lightweight)
         return result[0] if result else None
 
+    async def crawl_game_attempts(
+        self,
+        games: list[dict[str, str]],
+        concurrency: int | None = None,
+        *,
+        lightweight: bool = False,
+    ) -> list[GameDetailAttempt]:
+        """Crawl games and report a durable outcome for each one.
+
+        `crawl_games` filters failures out of its return value, so a caller can
+        only recover which game failed by diffing the target list against the
+        payload list and reading `_last_failure_reason`. That reconstruction is
+        lossy: a game that produced a degraded payload and a game that produced
+        nothing both look absent from the result.
+
+        This keeps the per-game outcome the crawl already produced, so a run
+        ledger can record one row per game without guessing.
+
+        Args:
+            games: Games to crawl, each with `game_id` and `game_date`.
+            concurrency: Maximum number of concurrent requests.
+            lightweight: Whether to ask for score and metadata only.
+
+        Returns:
+            One attempt per requested game, in the order requested.
+
+        """
+        return [
+            attempt_from_result(
+                game_id=entry["game_id"],
+                payload=payload,
+                lightweight=lightweight,
+                reason=self._last_failure_reason.get(entry["game_id"]),
+            )
+            for entry, payload in await self._crawl_game_payloads(
+                games,
+                concurrency=concurrency,
+                lightweight=lightweight,
+            )
+        ]
+
     async def crawl_games(
         self,
         games: list[dict[str, str]],
@@ -493,13 +535,26 @@ class GameDetailCrawler:
             games: Games.
             concurrency: Maximum number of concurrent requests.
             lightweight: Lightweight.
-            games: Games.
-            concurrency: Maximum number of concurrent requests.
 
         Returns:
             List of results.
 
         """
+        attempts = await self._crawl_game_payloads(
+            games,
+            concurrency=concurrency,
+            lightweight=lightweight,
+        )
+        return [payload for _, payload in attempts if payload]
+
+    async def _crawl_game_payloads(
+        self,
+        games: list[dict[str, str]],
+        *,
+        concurrency: int | None,
+        lightweight: bool,
+    ) -> list[tuple[dict[str, str], dict[str, Any] | None]]:
+        """Crawl games, keeping a slot for every target so none goes missing."""
         if not games:
             return []
 
@@ -512,11 +567,12 @@ class GameDetailCrawler:
             max_concurrency = min(max_concurrency, self.pool.max_pages)
 
         results: list[dict[str, Any] | None] = [None] * len(games)
+        normalized: list[dict[str, str]] = [dict(entry) for entry in games]
         await pool.start()
         try:
             queue: asyncio.Queue[tuple[int, dict[str, str]] | None] = asyncio.Queue()
             for idx, entry in enumerate(games):
-                normalized_entry = dict(entry)
+                normalized_entry = normalized[idx]
                 normalized_entry["game_id"] = normalize_kbo_game_id(entry["game_id"])
                 queue.put_nowait((idx, normalized_entry))
             for _ in range(max_concurrency):
@@ -536,7 +592,7 @@ class GameDetailCrawler:
             if owns_pool:
                 await pool.close()
 
-        return [payload for payload in results if payload]
+        return list(zip(normalized, results, strict=True))
 
     async def _crawl_naver_single(self, game_id: str, game_date: str) -> dict[str, Any] | None:
         """Fetch game details from the Naver sports record API.
