@@ -312,7 +312,7 @@ class TestDashboardNotificationHelpers:
         assert lines == []
 
     def test_send_dashboard_notification_builds_message(self) -> None:
-        with patch("src.utils.alerting.SlackWebhookClient.send_alert") as mock_send:
+        with patch("src.cli.dashboard_report.send_notification") as mock_send:
             _send_dashboard_notification(
                 {
                     "standings": {"rows": [{"team_code": "LG"}, {"team_code": "DB"}]},
@@ -321,7 +321,8 @@ class TestDashboardNotificationHelpers:
                 "20260402",
             )
 
-        message = mock_send.call_args.args[0]
-        assert "KBO Dashboard Report (20260402)" in message
-        assert "순위: 2팀" in message
-        assert "완료: 2/3" in message
+        title, body = mock_send.call_args.args[:2]
+        assert "KBO Dashboard Report (20260402)" in title
+        assert "KBO Dashboard Report (20260402)" in body
+        assert "순위: 2팀" in body
+        assert "완료: 2/3" in body
