@@ -59,6 +59,12 @@ class DataSourceRepository:
         self.session.add(new_record)
         return new_record
 
+    def get_by_id(self, data_source_id: int) -> DataSource | None:
+        """Return a data source by primary key."""
+        return self.session.execute(
+            select(DataSource).where(DataSource.id == data_source_id),
+        ).scalar_one_or_none()
+
     def get_by_key(self, source_key: str) -> DataSource | None:
         """Get by key.
 
@@ -197,6 +203,17 @@ class RawSourceSnapshotRepository:
         self.session.add(new_record)
         self.session.flush()
         return new_record
+
+    def get_by_id(self, snapshot_id: int) -> RawSourceSnapshot | None:
+        """Return a raw source snapshot by primary key."""
+        return self.session.execute(
+            select(RawSourceSnapshot).where(RawSourceSnapshot.id == snapshot_id),
+        ).scalar_one_or_none()
+
+    def get_recent(self, limit: int = 50) -> list[RawSourceSnapshot]:
+        """Return the most recently stored snapshots."""
+        stmt = select(RawSourceSnapshot).order_by(RawSourceSnapshot.id.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars().all())
 
     def get_by_source_id(self, data_source_id: int, limit: int = 50) -> list[RawSourceSnapshot]:
         """Get by source id.
