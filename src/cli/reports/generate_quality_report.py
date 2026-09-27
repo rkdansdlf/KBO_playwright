@@ -29,7 +29,8 @@ from src.models.game import (
 )
 from src.models.player import PlayerBasic, PlayerSeasonBatting
 from src.models.season import KboSeason
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.validators.quality_gate import run_quality_gate
@@ -919,7 +920,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if should_notify:
         logger.info("🚀 Sending report to Telegram...")
-        SlackWebhookClient.send_alert(telegram_msg)
+        send_notification(
+            "KBO Quality Report",
+            telegram_msg,
+            priority=NotificationPriority.NORMAL,
+            notification_type="quality_report",
+        )
     else:
         logger.info("%s", "\n" + telegram_msg.replace("<b>", "").replace("</b>", ""))
 

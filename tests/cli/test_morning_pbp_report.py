@@ -225,14 +225,20 @@ class TestRunMorningReportNonDryRun:
     def test_sends_when_summary_present(self):
         with patch.object(morning_pbp_report, "_find_latest_summary", return_value=("20250101", {"stability": {}})):
             with patch.object(morning_pbp_report, "_query_pbp_validation_summary", return_value={}):
-                with patch("src.utils.alerting.SlackWebhookClient.send_alert", return_value=True) as mock_send:
+                with patch(
+                    "src.cli.morning_pbp_report.send_notification",
+                    return_value=MagicMock(sent_count=1),
+                ) as mock_send:
                     result = run_morning_report("20250101", dry_run=False)
         assert result is True
         mock_send.assert_called_once()
 
     def test_sends_when_no_summary(self):
         with patch.object(morning_pbp_report, "_find_latest_summary", return_value=None):
-            with patch("src.utils.alerting.SlackWebhookClient.send_alert", return_value=True) as mock_send:
+            with patch(
+                "src.cli.morning_pbp_report.send_notification",
+                return_value=MagicMock(sent_count=1),
+            ) as mock_send:
                 result = run_morning_report(dry_run=False)
         assert result is True
         mock_send.assert_called_once()

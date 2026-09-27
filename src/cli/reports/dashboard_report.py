@@ -21,6 +21,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from src.db.engine import SessionLocal
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -504,15 +506,19 @@ def _append_first_mismatch_line(
 
 
 def _send_dashboard_notification(data: dict[str, Any], date_str: str) -> None:
-    from src.utils.alerting import SlackWebhookClient
-
     msg_lines = [f"<b>KBO Dashboard Report ({date_str})</b>"]
     if "standings" in data:
         rows = data["standings"].get("rows", [])
         msg_lines.append(f"순위: {len(rows)}팀")
     if "quality" in data:
         _append_quality_notify_lines(msg_lines, data["quality"])
-    SlackWebhookClient.send_alert("\n".join(msg_lines))
+    send_notification(
+        f"KBO Dashboard Report ({date_str})",
+        "\n".join(msg_lines),
+        priority=NotificationPriority.NORMAL,
+        notification_type="dashboard_report",
+        metadata={"date": date_str},
+    )
 
 
 def main() -> int:

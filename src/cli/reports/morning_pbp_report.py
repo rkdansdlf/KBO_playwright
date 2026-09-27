@@ -25,6 +25,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.notifications.standalone import send_notification
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -211,6 +213,16 @@ def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
     return rows
 
 
+def _send_report(message: str) -> bool:
+    """Deliver the morning PBP digest and report whether it reached a channel."""
+    report = send_notification(
+        "KBO PBP Morning Report",
+        message,
+        notification_type="morning_pbp",
+    )
+    return report.sent_count > 0
+
+
 def run_morning_report(
     target_date: str | None = None,
     *,
@@ -236,9 +248,8 @@ def run_morning_report(
         if dry_run:
             logger.info(msg)
             return True
-        from src.utils.alerting import SlackWebhookClient
 
-        return SlackWebhookClient.send_alert(msg)
+        return _send_report(msg)
 
     target_date, summary = found
 
@@ -250,9 +261,7 @@ def run_morning_report(
         logger.info(message)
         return True
 
-    from src.utils.alerting import SlackWebhookClient
-
-    return SlackWebhookClient.send_alert(message)
+    return _send_report(message)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
