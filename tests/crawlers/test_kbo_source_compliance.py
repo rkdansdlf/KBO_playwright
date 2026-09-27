@@ -232,11 +232,22 @@ async def test_staff_register_is_source_limited_before_browser_start() -> None:
 
 @pytest.mark.asyncio
 async def test_roster_transaction_is_source_limited_before_http_request() -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
     from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
+    from src.models.crawl_execution import CrawlExecutionRun
+
+    # `run()` records every attempt, so the ledger needs a table of its own.
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    CrawlExecutionRun.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     crawler = RosterTransactionCrawler()
     with (
         patch("src.crawlers.roster_transaction_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)),
+        patch("src.services.crawl_run_service.SessionLocal", factory),
         patch.object(crawler._http, "fetch_text", new=AsyncMock()) as fetch,
         patch.object(crawler, "_crawl_desktop_page", new=AsyncMock()) as desktop,
     ):
@@ -246,6 +257,13 @@ async def test_roster_transaction_is_source_limited_before_http_request() -> Non
     # Neither source may be contacted once compliance has denied the target.
     fetch.assert_not_called()
     desktop.assert_not_awaited()
+
+    with factory() as session:
+        run = session.query(CrawlExecutionRun).one()
+        # A policy skip is neither a data outcome nor a failure.
+        assert run.status == "success"
+        assert run.error_code is None
+        assert run.checkpoint["outcome"] == "source_limited"
 
 
 @pytest.mark.asyncio

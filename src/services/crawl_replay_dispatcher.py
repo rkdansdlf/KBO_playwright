@@ -17,6 +17,11 @@ from src.crawlers.award_crawler import (
     AWARD_TARGET_TYPE,
     AwardCrawler,
 )
+from src.crawlers.roster_transaction_crawler import (
+    ROSTER_CRAWLER_NAME,
+    ROSTER_TARGET_TYPE,
+    RosterTransactionCrawler,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
@@ -84,6 +89,20 @@ async def _execute_award_replay(
         await crawler.close()
 
 
+async def _execute_roster_replay(
+    crawler: RosterTransactionCrawler,
+    spec: CrawlRunSpec,
+    target_date: str | None,
+) -> None:
+    await crawler.run(
+        run_spec=spec,
+        target_date=target_date,
+        save=True,
+        record_dead_letters=False,
+        raise_on_persist_error=True,
+    )
+
+
 def _replay_awards(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
     """Replay only the failed award source and report the replay run status."""
     spec = CrawlRunSpec(
@@ -118,8 +137,49 @@ def _replay_awards(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOu
     )
 
 
+def _replay_roster_transactions(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
+    """Replay one roster date and report the replay run status.
+
+    The dead letter's `target_id` is the date, which is also the whole replay
+    unit, so the replay is exact rather than a superset.
+    """
+    spec = CrawlRunSpec(
+        crawler=ROSTER_CRAWLER_NAME,
+        target_type=dead_letter.target_type or ROSTER_TARGET_TYPE,
+        target_id=dead_letter.target_id,
+        season=dead_letter.season,
+        game_id=dead_letter.game_id,
+        source_url=dead_letter.source_url,
+        parent_run_id=dead_letter.original_run_id,
+        replay_of_run_id=dead_letter.original_run_id,
+        run_id=replay_run_id,
+    )
+    run_coro_blocking(
+        _execute_roster_replay(RosterTransactionCrawler(), spec, dead_letter.target_id),
+    )
+
+    with SessionLocal() as session:
+        run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
+    if run is None:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="missing",
+            error_message="replay run was not recorded",
+        )
+    success = run.status == RUN_STATUS_SUCCESS
+    return ReplayOutcome(
+        success=success,
+        replay_run_id=replay_run_id,
+        status=run.status,
+        error_message=None if success else run.error_message,
+        error_code=None if success else run.error_code,
+    )
+
+
 def build_default_dispatcher() -> ReplayDispatcher:
     """Build a dispatcher with the Phase B canary handlers registered."""
     dispatcher = ReplayDispatcher()
     dispatcher.register(AWARD_CRAWLER_NAME, _replay_awards)
+    dispatcher.register(ROSTER_CRAWLER_NAME, _replay_roster_transactions)
     return dispatcher

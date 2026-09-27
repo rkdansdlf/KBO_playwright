@@ -22,12 +22,22 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.base import BasePlaywrightCrawler
-from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.failure_taxonomy import (
+    CrawlPersistError,
+    FailureCode,
+    classify_persist_failure,
+    stage_for_code,
+)
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.urls import REGISTER
 from src.utils.compliance import compliance, log_source_limited
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
@@ -87,6 +97,18 @@ class _MobileParse:
     unknown_teams: list[str] = field(default_factory=list)
 
 
+def _raise_persist(exc: BaseException, item: dict[str, Any] | None) -> None:
+    """Re-raise a persistence failure carrying its taxonomy classification."""
+    stage, code = classify_persist_failure(exc)
+    detail = f" while saving {item.get('dedupe_key')}" if item else ""
+    message = f"roster transaction persistence failed{detail}: {type(exc).__name__}: {exc}"
+    raise CrawlPersistError(
+        message,
+        error_code=code,
+        failure_stage=stage,
+    ) from exc
+
+
 class RosterTransactionCrawler(BasePlaywrightCrawler):
     """RosterTransactionCrawler class."""
 
@@ -118,14 +140,28 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             policy=HttpPolicy(timeout_seconds=15.0),
         )
 
-    async def run(self, *, save: bool = False, target_date: str | None = None) -> list[dict[str, Any]]:
+    async def run(
+        self,
+        *,
+        save: bool = False,
+        target_date: str | None = None,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+        raise_on_persist_error: bool = False,
+    ) -> list[dict[str, Any]]:
         """Run run.
+
+        The unit of work is one date, so the ledger row is one date too. A run
+        fails only when the date could not be obtained at all: a mobile source
+        that breaks and a desktop fallback that succeeds is a success, because the
+        dead letter queue records work that actually needs reprocessing.
 
         Args:
             save: Whether to persist the results.
             target_date: Target date for the operation.
-            save: Whether to persist the results.
-            target_date: Target date for the operation.
+            run_spec: Optional pre-built ledger spec (replay supplies one).
+            record_dead_letters: Whether an unresolved date enqueues a DLQ entry.
+            raise_on_persist_error: Re-raise persistence failures (replay).
 
         Returns:
             List of results.
@@ -136,24 +172,82 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
             if target_date
             else datetime.now(KST).date()
         )
+        spec = run_spec or CrawlRunSpec(
+            crawler=ROSTER_CRAWLER_NAME,
+            target_type=ROSTER_TARGET_TYPE,
+            target_id=crawl_date.isoformat(),
+            game_id=crawl_date.isoformat(),
+            source_url=self.mobile_url,
+        )
 
-        if not await compliance.is_allowed(self.mobile_url):
-            log_source_limited("roster_transaction", self.mobile_url)
-            return []
+        with track_crawl_run(spec) as run:
+            if not await compliance.is_allowed(self.mobile_url):
+                # A deliberate policy skip is not a data outcome, so it is not
+                # EMPTY and not a failure: the source was never consulted.
+                log_source_limited("roster_transaction", self.mobile_url)
+                run.records_read = 0
+                run.records_written = 0
+                run.checkpoint = {
+                    "outcome": "source_limited",
+                    "reason": "compliance_blocked",
+                    "target_date": crawl_date.isoformat(),
+                }
+                logger.info("[ROSTER] %s skipped: blocked by compliance policy", crawl_date)
+                return []
 
-        result = await self._resolve_crawl(crawl_date)
-        data = result.data or []
-        if not result.ok and result.outcome is not CrawlOutcome.EMPTY:
-            logger.error("[ROSTER] %s unresolved: %s", crawl_date, result.error)
+            result = await self._resolve_crawl(crawl_date)
+            data = result.data or []
+            run.records_read = len(data)
+            if not result.ok and result.outcome is not CrawlOutcome.EMPTY:
+                logger.error("[ROSTER] %s unresolved: %s", crawl_date, result.error)
+                run.status = RUN_STATUS_FAILED
+                run.error_code = result.error_code or FailureCode.UNKNOWN.value
+                run.error_message = result.error
+                if record_dead_letters:
+                    self._enqueue_dead_letter(run.run_id, crawl_date, result)
+                return data
 
-        logger.info("[ROSTER] %s: %s transactions found", crawl_date, len(data))
-        if save:
-            await asyncio.to_thread(self._save_to_db, data)
-        else:
-            for d in data[:10]:
-                logger.info(d)
+            logger.info("[ROSTER] %s: %s transactions found", crawl_date, len(data))
+            if save:
+                written, failed = await asyncio.to_thread(
+                    self._save_to_db,
+                    data,
+                    raise_on_error=raise_on_persist_error,
+                )
+                run.records_written = written
+                run.records_failed = failed
+                logger.info("[ROSTER] %s saved=%s failed=%s", crawl_date, written, failed)
+            else:
+                for d in data[:10]:
+                    logger.info(d)
+            return data
 
-        return data
+    def _enqueue_dead_letter(
+        self,
+        original_run_id: str,
+        crawl_date: date,
+        result: CrawlResult[Any],
+    ) -> None:
+        """Enqueue one dead letter for a date that could not be obtained."""
+        code = result.error_code or FailureCode.UNKNOWN.value
+        try:
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=original_run_id,
+                    crawler=ROSTER_CRAWLER_NAME,
+                    target_type=ROSTER_TARGET_TYPE,
+                    # The date is the replay unit, so it is the target identity.
+                    target_id=crawl_date.isoformat(),
+                    game_id=crawl_date.isoformat(),
+                    source_url=self.mobile_url,
+                    # Derived from the code, never supplied beside it.
+                    failure_stage=stage_for_code(code).value,
+                    error_code=code,
+                    error_message=result.error,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to enqueue dead letter for %s", crawl_date)
 
     async def _resolve_crawl(self, crawl_date: date) -> CrawlResult[list[dict[str, Any]]]:
         """Run the mobile source, falling back to desktop only when it cannot answer.
@@ -626,25 +720,55 @@ class RosterTransactionCrawler(BasePlaywrightCrawler):
         }
         return mapping.get(name)
 
-    def _save_to_db(self, data: list[dict]) -> None:
+    def _save_to_db(self, data: list[dict], *, raise_on_error: bool = False) -> tuple[int, int]:
+        """Persist transactions and raw snapshots, reporting what happened.
+
+        Individual row failures are counted rather than raised by default, which
+        is what the daily batch wants. Under `raise_on_error` the first failure
+        is re-raised as a classified `CrawlPersistError` instead, so a replay can
+        report a real `PERSIST_*` cause rather than silently writing fewer rows.
+
+        Args:
+            data: Transactions to persist.
+            raise_on_error: Re-raise the first persistence failure with taxonomy.
+
+        Returns:
+            A tuple of (written, failed) row counts.
+
+        """
         with SessionLocal() as session:
+            written = 0
+            failed = 0
             try:
                 saved_snaps = save_raw_snapshots(session, self._raw_pages)
                 repo = RosterTransactionRepository(session)
-                count = 0
                 for item in self._dedupe_transactions(data):
                     try:
                         repo.save(item)
-                        count += 1
-                    except ROSTER_SAVE_EXCEPTIONS:
+                        written += 1
+                    except ROSTER_SAVE_EXCEPTIONS as exc:
+                        failed += 1
+                        if raise_on_error:
+                            _raise_persist(exc, item)
                         logger.exception("Roster transaction save failed: %s", item.get("dedupe_key", ""))
                 session.commit()
-                logger.info("[ROSTER] Saved %s transaction records, %s snapshots.", count, saved_snaps)
-            except ROSTER_SAVE_EXCEPTIONS:
+                logger.info(
+                    "[ROSTER] Saved %s transaction records (%s failed), %s snapshots.",
+                    written,
+                    failed,
+                    saved_snaps,
+                )
+            except CrawlPersistError:
                 session.rollback()
+                raise
+            except ROSTER_SAVE_EXCEPTIONS as exc:
+                session.rollback()
+                if raise_on_error:
+                    _raise_persist(exc, None)
                 logger.exception("Roster batch save error")
             finally:
                 self._raw_pages.clear()
+        return written, failed
 
     def _dedupe_transactions(self, data: list[dict]) -> list[dict]:
         seen = set()

@@ -4,12 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.crawlers.circuit_breaker import circuit_registry
 from src.crawlers.failure_taxonomy import FailureCode
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.roster_transaction_crawler import ROSTER_CRAWLER_NAME, RosterTransactionCrawler
+from src.models.crawl_execution import CrawlExecutionRun
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +32,20 @@ class FakeResponseContext:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+@pytest.fixture
+def ledger(monkeypatch: pytest.MonkeyPatch) -> sessionmaker:
+    """Give the run ledger a real, isolated table.
+
+    `run()` records every attempt, so tests that exercise it need somewhere to
+    write. An in-memory database keeps that out of the developer's database.
+    """
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    CrawlExecutionRun.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    return factory
 
 
 class TestMapTeamName:
@@ -72,7 +90,7 @@ class TestDedupeTransactions:
 
 class TestRun:
     @pytest.mark.asyncio
-    async def test_run_uses_mobile_results_and_saves(self):
+    async def test_run_uses_mobile_results_and_saves(self, ledger: sessionmaker):
         crawler = RosterTransactionCrawler()
         data = [{"player_name": "mobile result"}]
 
@@ -81,17 +99,17 @@ class TestRun:
                 crawler, "_crawl_mobile_page", new=AsyncMock(return_value=CrawlResult.success(data))
             ) as mobile,
             patch.object(crawler, "_crawl_desktop_page", new=AsyncMock()) as desktop,
-            patch.object(crawler, "_save_to_db") as save,
+            patch.object(crawler, "_save_to_db", return_value=(len(data), 0)) as save,
         ):
             result = await crawler.run(save=True, target_date="2025-06-15")
 
         assert result == data
         mobile.assert_awaited_once_with(date(2025, 6, 15))
         desktop.assert_not_awaited()
-        save.assert_called_once_with(data)
+        save.assert_called_once_with(data, raise_on_error=False)
 
     @pytest.mark.asyncio
-    async def test_run_falls_back_to_desktop_without_saving(self):
+    async def test_run_falls_back_to_desktop_without_saving(self, ledger: sessionmaker):
         crawler = RosterTransactionCrawler()
         data = [{"player_name": "desktop result"}]
 
@@ -110,7 +128,7 @@ class TestRun:
             patch.object(
                 crawler, "_crawl_desktop_page", new=AsyncMock(return_value=CrawlResult.success(data))
             ) as desktop,
-            patch.object(crawler, "_save_to_db") as save,
+            patch.object(crawler, "_save_to_db", return_value=(len(data), 0)) as save,
         ):
             result = await crawler.run(target_date="2025-06-15")
 
