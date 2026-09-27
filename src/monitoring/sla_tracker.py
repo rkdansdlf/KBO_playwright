@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from src.constants import DATE_STR_LEN
 from src.models.game import Game, GameBattingStat, GameLineup, GameMetadata, GamePitchingStat, GamePlayByPlay
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
 from src.utils.date_helpers import parse_datetime_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -223,15 +224,27 @@ class SlaTracker:
                 low_days_text += f"  • {s['date']}: {s['completion_rate']:.0%} ({s['completed']}/{s['total']}경기)\n"
 
         start_date = min(s["date"] for s in active)
-        msg = (
-            f"<b>📊 주간 SLA 리포트 ({start_date}~{end_date})</b>\n"
+        body = (
             f"총 경기: {total_games} | 완료: {total_completed}\n"
             f"평균 완료율: {overall_rate:.1%}\n"
             f"평균 PBP 커버리지: {avg_pbp:.1%}\n"
             f"평균 상세 커버리지: {avg_detail:.1%}"
             f"{low_days_text}"
         )
-        SlackWebhookClient.send_alert(msg)
+        send_notification(
+            f"📊 주간 SLA 리포트 ({start_date}~{end_date})",
+            body,
+            priority=NotificationPriority.NORMAL,
+            notification_type="sla_weekly",
+            metadata={
+                "start_date": start_date,
+                "end_date": end_date,
+                "total_games": total_games,
+                "total_completed": total_completed,
+                "overall_rate": overall_rate,
+                "low_completion_days": [s["date"] for s in low_days],
+            },
+        )
 
 
 if __name__ == "__main__":
