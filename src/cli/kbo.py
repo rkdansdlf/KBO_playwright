@@ -148,6 +148,14 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_dlq.add_argument("--apply", action="store_true", help="Apply an operator mutation (retry/requeue/ignore).")
     p_dlq.add_argument("--json", action="store_true", help="Output as JSON.")
 
+    # 12. Crawl execution runs
+    p_crawl = subparsers.add_parser("crawl", help="Operate on crawl execution runs.")
+    crawl_subs = p_crawl.add_subparsers(dest="crawl_command")
+    p_replay = crawl_subs.add_parser("replay", help="Replay a past crawl run independently.")
+    p_replay.add_argument("--run-id", dest="run_id", default=None, help="Original execution run id.")
+    p_replay.add_argument("--apply", action="store_true", help="Execute the replay.")
+    p_replay.add_argument("--json", action="store_true", help="Emit JSON.")
+
 
 def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add RAG and simulation subparsers."""
@@ -427,6 +435,19 @@ def _lazy_dlq(args: list[str]) -> int:
     return module.main(args)
 
 
+def _lazy_crawl(args: list[str]) -> int:
+    """Import and dispatch the crawl-run CLI on demand."""
+    if args and args[0] == "replay":
+        try:
+            from src.cli.crawl_replay import main as replay_main
+        except ImportError:
+            print("crawl replay command not available", file=sys.stderr)
+            return 1
+        return replay_main(args[1:])
+    print("Usage: kbo crawl <replay> ...", file=sys.stderr)
+    return 1
+
+
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     """Return map of subcommand strings to their respective module main entrypoints."""
     from src.cli.bulk_load import main as bulk_main
@@ -470,6 +491,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "certify": _lazy_certify,
         "lineage": _lazy_lineage,
         "dlq": _lazy_dlq,
+        "crawl": _lazy_crawl,
         "formula": form_main,
     }
 
