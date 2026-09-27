@@ -26,7 +26,8 @@ from src.repositories.player_stats_repository import (
     PlayerSeasonFieldingRepository,
 )
 from src.repositories.safe_batting_repository import save_batting_stats_safe
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
 from src.utils.fallback_monitor import FallbackMonitor
 
 logger = logging.getLogger("audit_fix")
@@ -40,20 +41,13 @@ class StatAudit:
 
     @staticmethod
     def send_remediation_abort_alert(year: int, series: str, category: str, reason: str):
-        msg = f"🛑 *KBO Auto-Remediation Aborted ({category})*"
-        blocks = [
-            {"type": "header", "text": {"type": "plain_text", "text": "🛑 Auto-Remediation Aborted"}},
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Year:* {year}"},
-                    {"type": "mrkdwn", "text": f"*Series:* {series}"},
-                    {"type": "mrkdwn", "text": f"*Category:* {category}"},
-                ],
-            },
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason for Aborting:*\n{reason}"}},
-        ]
-        SlackWebhookClient.send_alert(msg, blocks=blocks)
+        msg = f"연도: {year} | 시리즈: {series} | 카테고리: {category}\n사유: {reason}"
+        send_notification(
+            "KBO Auto-Remediation Aborted",
+            msg,
+            priority=NotificationPriority.NORMAL,
+            notification_type="audit_abort",
+        )
         try:
             FallbackMonitor.save_audit_event(category, "abort", {"year": year, "series": series, "reason": reason})
         except AUDIT_EXCEPTIONS:
@@ -82,19 +76,12 @@ class StatAudit:
             f"수정: {len(fixed_players)}/{mismatches_count}건\n\n"
             f"{player_lines}"
         )
-        blocks = [
-            {"type": "header", "text": {"type": "plain_text", "text": f"✅ Auto-Remediation 완료 ({category})"}},
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Year:* {year}"},
-                    {"type": "mrkdwn", "text": f"*Series:* {series}"},
-                    {"type": "mrkdwn", "text": f"*수정:* {len(fixed_players)}/{mismatches_count}건"},
-                ],
-            },
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"*수정된 선수:*\n{player_lines or '(없음)'}"}},
-        ]
-        SlackWebhookClient.send_alert(msg, blocks=blocks)
+        send_notification(
+            "KBO Auto-Remediation 완료",
+            msg,
+            priority=NotificationPriority.NORMAL,
+            notification_type="audit_remediation",
+        )
 
     @staticmethod
     def send_audit_warning_alert(year: int, series: str, category: str, mismatches: list[dict]):
@@ -114,26 +101,12 @@ class StatAudit:
             f"{player_lines}"
             "DAILY_AUTO_REMEDIATION=1 또는 --fix 플래그로 자동 수정을 활성화하세요."
         )
-        blocks = [
-            {"type": "header", "text": {"type": "plain_text", "text": f"⚠️ Stats Mismatch 감지 ({category})"}},
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Year:* {year}"},
-                    {"type": "mrkdwn", "text": f"*Series:* {series}"},
-                    {"type": "mrkdwn", "text": f"*불일치:* {len(mismatches)}건"},
-                ],
-            },
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"*불일치 선수:*\n{player_lines or '(없음)'}"}},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "_자동 수정 비활성화 중. `--fix` 플래그 또는 `DAILY_AUTO_REMEDIATION=1` 설정으로 활성화하세요._",
-                },
-            },
-        ]
-        SlackWebhookClient.send_alert(msg, blocks=blocks)
+        send_notification(
+            "KBO Stats Mismatch 발견 — 자동 수정 비활성화",
+            msg,
+            priority=NotificationPriority.NORMAL,
+            notification_type="audit_warning",
+        )
         try:
             mismatch_data = [
                 {

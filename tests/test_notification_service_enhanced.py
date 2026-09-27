@@ -44,7 +44,7 @@ def test_send_today_all_pregame_alerts(db_session: Session) -> None:
 
     service = NotificationService(db_session)
 
-    with patch("src.utils.alerting.TelegramBotClient.send_message", return_value=True) as mock_send:
+    with patch.object(NotificationService, "_deliver", return_value=True) as mock_send:
         res = service.send_today_all_pregame_alerts(target_date="20260809", season=2026, channels=["telegram"])
         assert res["game_count"] == 1
         assert len(res["dispatches"]) == 1
@@ -68,7 +68,7 @@ def test_send_postgame_wpa_hero_alert(db_session: Session) -> None:
 
     service = NotificationService(db_session)
 
-    with patch("src.utils.alerting.TelegramBotClient.send_message", return_value=True) as mock_send:
+    with patch.object(NotificationService, "_deliver", return_value=True) as mock_send:
         res = service.send_postgame_wpa_hero_alert(game_id="20260809LGKIA0", season=2026, channels=["telegram"])
         assert res["winner"] == "KIA"
         assert res["dispatched_channels"]["telegram"] is True
@@ -79,7 +79,7 @@ def test_send_emergency_notice_alert(db_session: Session) -> None:
     """Test send_emergency_notice_alert real-time hot push."""
     service = NotificationService(db_session)
 
-    with patch("src.utils.alerting.TelegramBotClient.send_message", return_value=True) as mock_send:
+    with patch.object(NotificationService, "_deliver", return_value=True) as mock_send:
         res = service.send_emergency_notice_alert(
             title="[공시] 잠실 경기 우천 취소 안내",
             content="오늘 예정된 LG vs KIA 잠실 경기는 우천으로 순연되었습니다.",
