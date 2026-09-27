@@ -167,6 +167,15 @@ def _add_crawl_and_snapshot_subparsers(
     p_snap_replay.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
     p_snap_replay.add_argument("--json", action="store_true", help="Emit JSON.")
 
+    p_snap_validate = snap_subs.add_parser(
+        "validate",
+        help="Validate stored snapshots against their recorded baseline (read-only).",
+    )
+    p_snap_validate.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None)
+    p_snap_validate.add_argument("--limit", type=int, default=None)
+    p_snap_validate.add_argument("--fail-on-drift", action="store_true")
+    p_snap_validate.add_argument("--json", action="store_true")
+
 
 def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add RAG and simulation subparsers."""
@@ -462,15 +471,21 @@ def _lazy_crawl(args: list[str]) -> int:
 
 def _lazy_snapshot(args: list[str]) -> int:
     """Import and dispatch the raw snapshot CLI on demand."""
-    if args and args[0] == "replay":
-        try:
-            from src.cli.snapshot_replay import main as snap_main
-        except ImportError:
-            print("snapshot replay command not available", file=sys.stderr)
-            return 1
-        return snap_main(args[1:])
-    print("Usage: kbo snapshot <replay> ...", file=sys.stderr)
-    return 1
+    modules = {
+        "replay": "src.cli.snapshot_replay",
+        "validate": "src.cli.snapshot_validate",
+    }
+    subcommand = args[0] if args else ""
+    module_name = modules.get(subcommand)
+    if module_name is None:
+        print("Usage: kbo snapshot <replay|validate> ...", file=sys.stderr)
+        return 1
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        print(f"snapshot {subcommand} command not available", file=sys.stderr)
+        return 1
+    return module.main(args[1:])
 
 
 def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:

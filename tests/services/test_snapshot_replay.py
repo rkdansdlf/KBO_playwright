@@ -20,6 +20,8 @@ from src.services.snapshot_replay import (
     SnapshotReplayError,
     replay_recent_snapshots,
     replay_snapshot,
+    validate_recent_snapshots,
+    validate_snapshot,
 )
 
 
@@ -41,6 +43,7 @@ def _seed(
     raw_path: str | None,
     source_key: str | None = "lg_twins_events",
     parser_version: str | None = "team-event-v1",
+    baseline: int | None = None,
 ) -> int:
     with session_factory() as session:
         data_source = DataSourceRepository(session).save(
@@ -54,6 +57,7 @@ def _seed(
                 "raw_html_or_json_path": raw_path,
                 "source_url": "https://example.com/events",
                 "content_hash": "abc123",
+                "capture_metadata": {"parsed_records": baseline} if baseline is not None else None,
                 "parser_version": parser_version,
             },
         )
@@ -139,6 +143,73 @@ def test_replay_is_read_only(session_factory, tmp_path: Path, monkeypatch) -> No
     with session_factory() as session:
         after = (session.query(DataSource).count(), session.query(RawSourceSnapshot).count())
     assert before == after
+
+
+def test_validate_match_has_no_drift(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact), baseline=3)
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(3))
+
+    result = validate_snapshot(snapshot_id, session_factory=session_factory)
+
+    assert result.success is True
+    assert result.baseline_count == 3
+    assert result.replayed_count == 3
+    assert result.delta == 0
+    assert result.drifted is False
+
+
+def test_validate_detects_drift(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact), baseline=5)
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(3))
+
+    result = validate_snapshot(snapshot_id, session_factory=session_factory)
+
+    assert result.delta == -2
+    assert result.drifted is True
+
+
+def test_validate_without_baseline_is_unknown(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact))
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(2))
+
+    result = validate_snapshot(snapshot_id, session_factory=session_factory)
+
+    assert result.baseline_count is None
+    assert result.delta is None
+    assert result.drifted is False
+
+
+def test_validate_captures_parser_error(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact), baseline=1)
+
+    def _boom(*_a: object, **_k: object) -> list[dict]:
+        raise ValueError("bad html")
+
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _boom)
+    result = validate_snapshot(snapshot_id, session_factory=session_factory)
+    assert result.success is False
+    assert result.error == "bad html"
+
+
+def test_validate_recent_isolates_failures(session_factory, tmp_path: Path, monkeypatch) -> None:
+    good = tmp_path / "good.bin"
+    good.write_text("x", encoding="utf-8")
+    _seed(session_factory, raw_path=str(good), baseline=1)
+    _seed(session_factory, raw_path="https://example.com/raw.html", source_key="other_source")
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(1))
+
+    results = validate_recent_snapshots(limit=10, session_factory=session_factory)
+
+    assert len(results) == 2
+    assert {result.success for result in results} == {True, False}
 
 
 def test_replay_recent_isolates_failures(session_factory, tmp_path: Path, monkeypatch) -> None:
