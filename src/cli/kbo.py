@@ -165,6 +165,7 @@ def _add_crawl_and_snapshot_subparsers(
     p_snap_replay = snap_subs.add_parser("replay", help="Replay stored snapshots through their parsers (read-only).")
     p_snap_replay.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot.")
     p_snap_replay.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    p_snap_replay.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     p_snap_replay.add_argument("--json", action="store_true", help="Emit JSON.")
 
     p_snap_validate = snap_subs.add_parser(
