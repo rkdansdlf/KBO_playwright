@@ -5,6 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from src.notifications.alert_dto import AlertSeverity, AlertSource
 from src.utils.fallback_monitor import FallbackMonitor
 
 
@@ -12,7 +13,7 @@ class TestLogFallback:
     def test_logs_warning_without_player_count(self):
         with (
             patch("src.utils.fallback_monitor.logger") as mock_logger,
-            patch("src.utils.fallback_monitor.SlackWebhookClient"),
+            patch("src.utils.fallback_monitor.apply_incidents"),
         ):
             FallbackMonitor.log_fallback(
                 year=2025,
@@ -30,7 +31,7 @@ class TestLogFallback:
     def test_logs_warning_with_player_count(self):
         with (
             patch("src.utils.fallback_monitor.logger") as mock_logger,
-            patch("src.utils.fallback_monitor.SlackWebhookClient"),
+            patch("src.utils.fallback_monitor.apply_incidents"),
         ):
             FallbackMonitor.log_fallback(
                 year=2025,
@@ -42,20 +43,27 @@ class TestLogFallback:
             msg = mock_logger.warning.call_args[0][0]
             assert "Processed 42 players" in msg
 
-    def test_sends_slack_alert(self):
+    def test_publishes_fallback_incident(self):
         with (
             patch("src.utils.fallback_monitor.logger"),
-            patch("src.utils.fallback_monitor.SlackWebhookClient") as mock_slack,
+            patch("src.utils.fallback_monitor.apply_incidents") as apply,
         ):
             FallbackMonitor.log_fallback(
                 year=2025,
                 series="REGULAR",
                 stat_type="batting",
                 reason="test",
+                player_count=7,
             )
-            mock_slack.send_alert.assert_called_once()
-            call_kwargs = mock_slack.send_alert.call_args
-            assert "blocks" in call_kwargs.kwargs or len(call_kwargs.args) > 1
+
+            events = apply.call_args.args[0]
+            assert len(events) == 1
+            event = events[0]
+            assert event.incident_key == "fallback:2025:REGULAR:batting"
+            assert event.source is AlertSource.QUALITY
+            assert event.severity is AlertSeverity.WARNING
+            assert event.metadata["player_count"] == 7
+            assert "FALLBACK TRIGGERED" in event.message
 
 
 def _patch_path(tmp_path):
