@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.models.crawl_execution import CrawlExecutionRun
 from src.models.source_registry import DataSource, RawSourceSnapshot
 from src.repositories.source_registry_repository import (
     DataSourceRepository,
@@ -18,6 +19,8 @@ from src.repositories.source_registry_repository import (
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
+    record_recent_snapshot_replays,
+    record_snapshot_replay,
     replay_recent_snapshots,
     replay_snapshot,
     validate_recent_snapshots,
@@ -34,6 +37,7 @@ def session_factory() -> sessionmaker:
     )
     DataSource.__table__.create(engine)
     RawSourceSnapshot.__table__.create(engine)
+    CrawlExecutionRun.__table__.create(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
@@ -210,6 +214,65 @@ def test_validate_recent_isolates_failures(session_factory, tmp_path: Path, monk
 
     assert len(results) == 2
     assert {result.success for result in results} == {True, False}
+
+
+def test_record_snapshot_replay_creates_ledger_run(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact))
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(2))
+
+    result = record_snapshot_replay(snapshot_id, session_factory=session_factory)
+
+    assert result.success is True
+    assert result.status == "success"
+    with session_factory() as session:
+        run = session.query(CrawlExecutionRun).filter_by(run_id=result.run_id).one()
+        assert run.crawler == "snapshot_replay"
+        assert run.target_type == "snapshot"
+        assert run.target_id == "lg_twins_events"
+        assert run.snapshot_id == snapshot_id
+        assert run.parser_version == "team-event-v1"
+        assert run.records_read == 2
+
+
+def test_record_snapshot_replay_marks_parse_failure(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("x", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact))
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
+
+    def _boom(*_a: object, **_k: object) -> list[dict]:
+        raise ValueError("bad html")
+
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _boom)
+
+    result = record_snapshot_replay(snapshot_id, session_factory=session_factory)
+
+    assert result.success is False
+    with session_factory() as session:
+        run = session.query(CrawlExecutionRun).filter_by(run_id=result.run_id).one()
+        assert run.status == "failed"
+        assert run.error_code == "PARSE_INVALID_FORMAT"
+
+
+def test_record_recent_skips_bad_snapshots(session_factory, tmp_path: Path, monkeypatch) -> None:
+    good = tmp_path / "good.bin"
+    good.write_text("x", encoding="utf-8")
+    _seed(session_factory, raw_path=str(good))
+    _seed(session_factory, raw_path="https://example.com/raw.html", source_key="other_source")
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(1))
+
+    results = record_recent_snapshot_replays(limit=10, session_factory=session_factory)
+
+    assert len(results) == 2  # both are records; the URL one may or may not parse
+
+    with session_factory() as session:
+        runs = session.query(CrawlExecutionRun).all()
+    assert len(runs) == 2
+    assert {run.crawler for run in runs} == {"snapshot_replay"}
 
 
 def test_replay_recent_isolates_failures(session_factory, tmp_path: Path, monkeypatch) -> None:

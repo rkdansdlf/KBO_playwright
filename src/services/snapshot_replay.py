@@ -12,12 +12,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.crawlers.failure_taxonomy import FailureCode
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED
 from src.parsers.registry import get_parser
+from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import (
     DataSourceRepository,
     RawSourceSnapshotRepository,
 )
+from src.services.crawl_run_service import track_crawl_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -27,6 +31,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _URL_PREFIXES = ("http://", "https://")
+SNAPSHOT_REPLAY_CRAWLER = "snapshot_replay"
+SNAPSHOT_REPLAY_TARGET_TYPE = "snapshot"
 
 
 class SnapshotReplayError(RuntimeError):
@@ -83,6 +89,17 @@ class SnapshotValidationResult:
     drifted: bool
     success: bool
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class SnapshotReplayRunResult:
+    """Ledger run recorded for one snapshot replay."""
+
+    snapshot_id: int
+    run_id: str
+    status: str
+    parsed_count: int
+    success: bool
 
 
 @dataclass(frozen=True)
@@ -292,4 +309,56 @@ def validate_recent_snapshots(
                     error=str(exc),
                 ),
             )
+    return results
+
+
+def record_snapshot_replay(
+    snapshot_id: int,
+    *,
+    session_factory: Callable[[], Session] | None = None,
+) -> SnapshotReplayRunResult:
+    """Re-parse a snapshot and record the result as a crawl execution run."""
+    parsed = parse_snapshot(snapshot_id, session_factory=session_factory)
+    spec = CrawlRunSpec(
+        crawler=SNAPSHOT_REPLAY_CRAWLER,
+        target_type=SNAPSHOT_REPLAY_TARGET_TYPE,
+        target_id=parsed.source_key,
+        snapshot_id=parsed.snapshot_id,
+        parser_version=parsed.parser_version,
+    )
+    with track_crawl_run(spec) as run:
+        run.records_read = parsed.parsed_count
+        run.records_written = 0
+        if not parsed.success:
+            run.status = RUN_STATUS_FAILED
+            run.error_code = FailureCode.PARSE_INVALID_FORMAT.value
+            run.error_message = parsed.error
+        run_id = run.run_id
+    # ``track_crawl_run`` finalizes a still-running run as success on exit.
+    final_status = run.status
+    return SnapshotReplayRunResult(
+        snapshot_id=parsed.snapshot_id,
+        run_id=run_id,
+        status=final_status,
+        parsed_count=parsed.parsed_count,
+        success=parsed.success,
+    )
+
+
+def record_recent_snapshot_replays(
+    *,
+    limit: int = 50,
+    session_factory: Callable[[], Session] | None = None,
+) -> list[SnapshotReplayRunResult]:
+    """Record ledger runs for the most recent snapshots, isolating failures."""
+    factory: Callable[[], Session] = session_factory or SessionLocal
+    with factory() as session:
+        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+
+    results: list[SnapshotReplayRunResult] = []
+    for snapshot_id in snapshot_ids:
+        try:
+            results.append(record_snapshot_replay(snapshot_id, session_factory=factory))
+        except SnapshotReplayError as exc:
+            logger.warning("Skipping snapshot %s ledger record: %s", snapshot_id, exc)
     return results
