@@ -24,6 +24,8 @@ from src.crawlers.dynamic_data_crawler import DynamicDataCrawler
 from src.crawlers.realtime_issue_crawler import RealtimeIssueCrawler
 from src.crawlers.static_text_crawler import StaticTextCrawler
 from src.db.engine import get_db_session
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 from src.parsers.text_transformer import TextTransformer
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.services.embedding_service import EmbeddingService
@@ -33,7 +35,6 @@ from src.services.markdown_document_loader import (
     markdown_source_table,
     markdown_title,
 )
-from src.utils.alerting import SlackWebhookClient
 
 logger = logging.getLogger(__name__)
 
@@ -256,8 +257,19 @@ def run_pipeline_sync(pipeline_type: str, pdf_path: str | None = None) -> None:
     except PIPELINE_EXCEPTIONS:
         logger.exception("Critical Pipeline Failure")
         err_msg = traceback.format_exc()
-        # Send Telegram Bot Warning Webhook alert
-        SlackWebhookClient.send_error_alert(err_msg)
+        apply_incidents(
+            [
+                AlertEvent(
+                    source=AlertSource.PIPELINE,
+                    component="run_all_crawlers",
+                    severity=AlertSeverity.CRITICAL,
+                    title="Critical Pipeline Failure",
+                    message=err_msg[-2000:],
+                    incident_key="pipeline:run_all_crawlers:critical",
+                    metadata={"pipeline_type": pipeline_type},
+                ),
+            ],
+        )
         return
 
 

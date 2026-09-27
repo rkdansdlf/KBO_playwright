@@ -251,7 +251,7 @@ class TestRunMonitorEdgeCases:
             patch("src.cli.monitor_data_freshness.check_freshness") as mock_fresh,
             patch("src.cli.monitor_data_freshness.check_table_completeness") as mock_table,
             patch("src.cli.monitor_data_freshness.check_p0_readiness") as mock_p0,
-            patch("src.cli.monitor_data_freshness.SlackWebhookClient") as mock_slack,
+            patch("src.cli.monitor_data_freshness.apply_incidents") as mock_apply,
         ):
             mock_fresh.return_value = ["game: stale"]
             mock_table.return_value = []
@@ -259,7 +259,10 @@ class TestRunMonitorEdgeCases:
 
             result = run_monitor(alert=True, dry_run=False)
 
-            mock_slack.send_alert.assert_called_once()
+            mock_apply.assert_called_once()
+            events = mock_apply.call_args.args[0]
+            assert len(events) == 1
+            assert events[0].incident_key == "freshness:monitor"
             assert "stale" in result
 
     def test_dry_run_reports_issues_without_sending_slack(self):
@@ -267,12 +270,12 @@ class TestRunMonitorEdgeCases:
             patch("src.cli.monitor_data_freshness.check_freshness", return_value=["source: stale"]),
             patch("src.cli.monitor_data_freshness.check_table_completeness", return_value=[]),
             patch("src.cli.monitor_data_freshness.check_p0_readiness", return_value=[]),
-            patch("src.cli.monitor_data_freshness.SlackWebhookClient") as mock_slack,
+            patch("src.cli.monitor_data_freshness.apply_incidents") as mock_apply,
         ):
             result = run_monitor(alert=True, dry_run=True)
 
         assert result["stale"] == ["source: stale"]
-        mock_slack.send_alert.assert_not_called()
+        mock_apply.assert_not_called()
 
     def test_no_issues_logger(self, caplog):
         with (
