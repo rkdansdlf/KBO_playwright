@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from dotenv import load_dotenv
+from src.config.env_loader import load_project_env
 from sqlalchemy import text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +38,7 @@ def build_matrix(
     score_cap: int,
     min_sample_size: int,
 ) -> WinExpectancyMatrix:
-    load_dotenv()
+    load_project_env()
     logger.info("📊 Extracting game event states and final outcomes...")
 
     query = text(
