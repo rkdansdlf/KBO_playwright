@@ -12,9 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 from src.repositories.source_registry_repository import DataSourceRepository
 from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
-from src.utils.alerting import SlackWebhookClient
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -274,18 +275,36 @@ def run_monitor(*, alert: bool = True, dry_run: bool = False) -> dict[str, list[
     p0_issues = check_p0_readiness(dry_run=dry_run)
     all_issues = stale + empty + p0_issues
 
+    incident_key = "freshness:monitor"
     if all_issues:
         summary = f"[MONITOR] {len(stale)} stale sources, {len(empty)} table issues, {len(p0_issues)} P0 issues"
         logger.warning(summary)
         if alert and not dry_run:
-            header = "<b>🧹 KBO Data Freshness Monitor</b>\n"
             body = "\n".join(f"• {a}" for a in all_issues[:20])
-            SlackWebhookClient.send_alert(header + "\n" + body)
+            apply_incidents(
+                [
+                    AlertEvent(
+                        source=AlertSource.FRESHNESS,
+                        component="monitor",
+                        severity=AlertSeverity.WARNING,
+                        title="KBO Data Freshness Monitor",
+                        message=body,
+                        incident_key=incident_key,
+                        metadata={
+                            "stale_count": len(stale),
+                            "table_issue_count": len(empty),
+                            "p0_issue_count": len(p0_issues),
+                        },
+                    ),
+                ],
+            )
         logger.info(summary)
         for issue in all_issues:
             logger.info("  %s", issue)
     else:
         logger.info("[MONITOR] All data sources and tables look healthy.")
+        if alert and not dry_run:
+            apply_incidents([], resolve_keys=[incident_key])
 
     return {"stale": stale, "table_issues": empty, "p0_issues": p0_issues}
 

@@ -175,12 +175,14 @@ class TestHighlightNotifications:
     def test_formats_empty_highlights_and_sends_notification_outcomes(self):
         assert daily_highlight_batch._format_top_highlight_plays([], {}).endswith("\n")
 
-        with patch("src.cli.daily_highlight_batch.SlackWebhookClient.send_alert", side_effect=[True, False]) as send:
+        reports = [SimpleNamespace(sent_count=1), SimpleNamespace(sent_count=0)]
+        with patch("src.cli.daily_highlight_batch.send_notification", side_effect=reports) as send:
             daily_highlight_batch._send_highlight_notification("summary", dry_run=False)
             daily_highlight_batch._send_highlight_notification("summary", dry_run=False)
             daily_highlight_batch._send_highlight_notification("dry run", dry_run=True)
 
         assert send.call_count == 2
+        assert send.call_args.args[1] == "summary"
 
 
 class TestRunHighlightBatch:

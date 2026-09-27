@@ -16,7 +16,8 @@ from src.aggregators.highlight_aggregator import HighlightAggregator
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameHighlight, GameValidationMetrics
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.dto import NotificationPriority
+from src.notifications.standalone import send_notification
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.relay_validation import TRUSTED_VALIDATION_STATES
@@ -147,7 +148,13 @@ def _send_highlight_notification(message: str, *, dry_run: bool) -> None:
         logger.info(message)
         return
     logger.info("📣 Sending Telegram notification summary...")
-    if SlackWebhookClient.send_alert(message):
+    report = send_notification(
+        "KBO Daily Highlight",
+        message,
+        priority=NotificationPriority.NORMAL,
+        notification_type="daily_highlight",
+    )
+    if report.sent_count > 0:
         logger.info("   ✅ Telegram alert sent successfully.")
     else:
         logger.warning("   ⚠️ Failed to send Telegram alert.")

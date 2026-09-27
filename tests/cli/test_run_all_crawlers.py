@@ -185,12 +185,15 @@ class TestRunAllCrawlerAsyncAndRouting:
         with (
             patch("src.cli.run_all_crawlers.asyncio.run", side_effect=[None, RuntimeError("boom")]),
             patch("src.cli.run_all_crawlers.run_dynamic_pipeline", new=MagicMock(return_value="dynamic")),
-            patch("src.cli.run_all_crawlers.SlackWebhookClient.send_error_alert") as send_alert,
+            patch("src.cli.run_all_crawlers.apply_incidents") as apply_incidents,
         ):
             run_pipeline_sync("dynamic")
             run_pipeline_sync("dynamic")
 
-        send_alert.assert_called_once()
+        apply_incidents.assert_called_once()
+        events = apply_incidents.call_args.args[0]
+        assert len(events) == 1
+        assert events[0].incident_key == "pipeline:run_all_crawlers:critical"
 
     def test_run_static_pipeline_handles_empty_and_processes_docs(self):
         with patch("src.cli.run_all_crawlers._crawl_static_docs", new=AsyncMock(return_value=[])) as crawl:
