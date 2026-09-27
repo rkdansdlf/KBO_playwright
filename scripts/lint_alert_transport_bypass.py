@@ -50,7 +50,6 @@ GRANDFATHERED = frozenset(
         "src/cli/reports/monitor_data_freshness.py",
         "src/cli/reports/morning_pbp_report.py",
         "src/cli/sync/sqlite_integrity_guard.py",
-        "src/monitoring/sla_tracker.py",
         "src/services/notification_service.py",
     }
 )
@@ -66,7 +65,6 @@ BYPASS_MARKER = "alert-transport-bypass"
 #:   C = dead, duplicate or pure wrapper -> delete or unwrap
 CLASSIFICATION: dict[str, str] = {
     # A: stateful alerts
-    "src/monitoring/sla_tracker.py": "A",
     "src/cli/backfill/auto_healer.py": "A",
     "src/cli/live/live_crawler.py": "A",
     "src/cli/pipelines/run_all_crawlers.py": "A",

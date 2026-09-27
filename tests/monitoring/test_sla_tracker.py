@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.monitoring.sla_tracker import SlaTracker
-from src.utils.alerting import SlackWebhookClient
 
 
 class TestSlaTrackerInit:
@@ -293,7 +292,7 @@ class TestSendWeeklySlaReport:
 
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert") as mock_send:
+        with patch("src.monitoring.sla_tracker.send_notification") as mock_send:
             tracker.send_weekly_sla_report("20260624")
 
         mock_send.assert_not_called()
@@ -328,13 +327,13 @@ class TestSendWeeklySlaReport:
 
         tracker = SlaTracker(session)
 
-        with patch.object(SlackWebhookClient, "send_alert") as mock_send:
+        with patch("src.monitoring.sla_tracker.send_notification") as mock_send:
             tracker.send_weekly_sla_report("20260624")
 
             assert mock_send.called
-            msg = mock_send.call_args[0][0]
-            assert "주간 SLA 리포트" in msg
-            assert "낮은 완료율" not in msg
+            title, body = mock_send.call_args.args[:2]
+            assert "주간 SLA 리포트" in title
+            assert "낮은 완료율" not in body
 
     def test_send_report_with_low_days(self) -> None:
         session = MagicMock()
@@ -409,12 +408,12 @@ class TestSendWeeklySlaReport:
         tracker = SlaTracker(session)
 
         with patch.object(SlaTracker, "compute_weekly_sla", return_value=day_results):
-            with patch.object(SlackWebhookClient, "send_alert") as mock_send:
+            with patch("src.monitoring.sla_tracker.send_notification") as mock_send:
                 tracker.send_weekly_sla_report("20260624")
 
         assert mock_send.called
-        msg = mock_send.call_args[0][0]
-        assert "낮은 완료율" in msg
+        body = mock_send.call_args.args[1]
+        assert "낮은 완료율" in body
 
     def test_default_end_date_uses_utc_now(self) -> None:
         session = MagicMock()
@@ -480,7 +479,7 @@ class TestSendWeeklySlaReport:
         ]
 
         with patch.object(SlaTracker, "compute_weekly_sla", return_value=day_results):
-            with patch.object(SlackWebhookClient, "send_alert"):
+            with patch("src.monitoring.sla_tracker.send_notification"):
                 with patch("src.monitoring.sla_tracker.datetime") as mock_dt:
                     mock_now = datetime(2026, 6, 24, 15, 0, 0, tzinfo=UTC)
                     mock_dt.now.return_value = mock_now
