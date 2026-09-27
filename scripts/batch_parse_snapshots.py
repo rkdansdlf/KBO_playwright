@@ -13,91 +13,18 @@ from __future__ import annotations
 
 import argparse
 import logging
-from typing import Any, cast
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.source_registry import DataSource as DSModel
-from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
-from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import RawSourceSnapshotRepository
-from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
-from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
-from src.repositories.team_event_repository import TeamEventRepository
-from src.repositories.ticket_price_repository import TicketPriceRepository
+from src.services.snapshot_persist import save_parsed
 from src.services.snapshot_replay import SnapshotReplayError, parse_snapshot
 
 logger = logging.getLogger(__name__)
 
 PARSER_VERSION = "1.0"
-BATCH_PARSE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
-
-DOMAIN_FLAT_REPOS = {
-    "event": TeamEventRepository,
-    "roster": RosterTransactionRepository,
-    "ticket": TicketPriceRepository,
-    "seat": StadiumSeatSectionRepository,
-}
-
-
-def _save_flat(session, domain: str, data: list[dict]) -> int:
-    repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
-    count = 0
-    for item in data:
-        try:
-            repo.save(item)
-            count += 1
-        except BATCH_PARSE_EXCEPTIONS:
-            logger.exception("Save failed in domain=%s: %s", domain, item.get("title", item.get("player_name", "")))
-    return count
-
-
-def _save_parking(session, data: list[dict]) -> int:
-    lot_repo = ParkingLotRepository(session)
-    fee_repo = ParkingFeeRuleRepository(session)
-    count = 0
-    for entry in data:
-        try:
-            lot = lot_repo.save(entry.get("lot", {}))
-            count += 1
-            for fee in entry.get("fee_rules", []):
-                fee_repo.save({"parking_lot_id": lot.id, **fee})
-        except BATCH_PARSE_EXCEPTIONS:
-            logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
-    return count
-
-
-def _save_food(session, data: list[dict]) -> int:
-    vendor_repo = StadiumFoodVendorRepository(session)
-    menu_repo = StadiumFoodMenuItemRepository(session)
-    count = 0
-    for entry in data:
-        try:
-            vendor = vendor_repo.save(entry.get("vendor", {}))
-            count += 1
-            for menu in entry.get("menus", []):
-                menu_repo.save({"vendor_id": vendor.id, **menu})
-        except BATCH_PARSE_EXCEPTIONS:
-            logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
-    return count
-
-
-_DOMAIN_SAVERS = {
-    "parking": _save_parking,
-    "food": _save_food,
-}
-
-
-def _save_parsed(session, target_domain: str, parsed_data: list[dict]) -> int:
-    if target_domain in DOMAIN_FLAT_REPOS:
-        return _save_flat(session, target_domain, parsed_data)
-    saver = _DOMAIN_SAVERS.get(target_domain)
-    if saver:
-        return saver(session, parsed_data)
-    logger.warning("No repository for domain: %s", target_domain)
-    return 0
 
 
 def _process_snapshot(session, snap_repo, snapshot, dry_run: bool, session_factory) -> str:
@@ -126,7 +53,7 @@ def _process_snapshot(session, snap_repo, snapshot, dry_run: bool, session_facto
         session.commit()
         return "done"
 
-    saved = _save_parsed(session, ds.target_domain, parsed.records)
+    saved = save_parsed(session, ds.target_domain, parsed.records)
     snap_repo.update_parse_status(snapshot.id, "done", parser_version=parsed.parser_version or PARSER_VERSION)
     session.commit()
     logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
