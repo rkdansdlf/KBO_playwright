@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN
+from src.crawlers.game_detail_outcome import PARTIAL_DETAIL_REASON
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
@@ -35,7 +36,7 @@ DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
     "timeout",
     "exception",
     "missing",
-    "partial_detail",
+    PARTIAL_DETAIL_REASON,
     "hitter_totals_mismatch",
     "inning_score_mismatch",
 }
@@ -586,7 +587,7 @@ def _save_detail_payload(
         ctx.result.processed_game_ids.append(target.game_id)
         ctx.detail_ready.add(target.game_id)
     else:
-        item.failure_reason = "partial_detail"
+        item.failure_reason = PARTIAL_DETAIL_REASON
     return True
 
 

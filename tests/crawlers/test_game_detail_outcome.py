@@ -24,9 +24,12 @@ from __future__ import annotations
 import pytest
 
 from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.game_detail_outcome import (
+    PARTIAL_DETAIL_REASON,
     GameDetailStatus,
     attempt_from_result,
+    canonical_failure,
     classify_payload,
     error_code_for_reason,
     has_full_detail_rows,
@@ -190,6 +193,52 @@ class TestRetryPolicyPreservesTheExistingRecoveryContract:
 
     def test_a_blocked_target_is_still_permanent(self) -> None:
         assert decide(FailureCode.FETCH_BLOCKED.value, retry_count=0).retryable is False
+
+
+class TestTheCodeAndMessageAgree:
+    """A record whose code and message describe two different things cannot be acted on."""
+
+    def test_a_primary_timeout_keeps_its_own_message(self) -> None:
+        primary = CrawlResult.failure(
+            CrawlOutcome.RETRYABLE_ERROR,
+            error="ReadTimeout: slow",
+            error_code=FailureCode.FETCH_TIMEOUT.value,
+        )
+
+        code, message = canonical_failure(primary, "kbo_robots_blocked")
+
+        assert code == FailureCode.FETCH_TIMEOUT.value
+        assert message == "ReadTimeout: slow"
+
+    def test_an_empty_primary_reports_the_fallback_pair(self) -> None:
+        code, message = canonical_failure(CrawlResult.empty(), "navigation_error")
+
+        assert code == FailureCode.FETCH_HTTP_ERROR.value
+        assert message == "navigation_error"
+
+    def test_no_primary_reports_the_fallback_pair(self) -> None:
+        assert canonical_failure(None, "timeout") == (FailureCode.FETCH_TIMEOUT.value, "timeout")
+
+    def test_nothing_at_all_is_an_honest_unknown(self) -> None:
+        code, message = canonical_failure(None, None)
+
+        assert code == FailureCode.UNKNOWN.value
+        assert message == FailureCode.UNKNOWN.value
+
+    def test_a_partial_names_its_own_cause(self) -> None:
+        """The ledger and the stored row must use the same word for this."""
+        attempt = attempt_from_result("20260927HTHH0", _payload(boxscore=False), lightweight=False)
+
+        assert attempt.status is GameDetailStatus.PARTIAL
+        assert attempt.error_code == FailureCode.VALIDATION_QUALITY.value
+        assert attempt.reason == PARTIAL_DETAIL_REASON
+        assert attempt.error_message == PARTIAL_DETAIL_REASON
+
+    def test_the_service_uses_the_same_word(self) -> None:
+        from src.services.game_collection_service import DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE
+
+        assert PARTIAL_DETAIL_REASON in DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE
+        assert PARTIAL_DETAIL_REASON == "partial_detail"
 
 
 class TestAttemptRecords:
