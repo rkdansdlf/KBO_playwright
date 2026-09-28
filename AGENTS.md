@@ -145,7 +145,20 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - Test framework: `pytest`.
 - Test files follow `test_*.py` naming in `tests/`.
 - Debug utilities (e.g., `debug_*.py`) are not part of the default test run.
-- Example: `pytest tests/test_player_profile_parser.py`.
+- **Use the project virtualenv.** `venv/` holds the pinned dev dependencies
+  (Python 3.12, `pytest`, `pytest-xdist`). The system `python3` has no `xdist`,
+  runs serially, resolves different dependency versions, and reports false
+  failures that do not reproduce in `venv/`.
+- **Authoritative full-suite command** (repo root):
+  `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2`
+- `pytest.ini` is the active inifile and does **not** set `-n`, so the worker
+  pool must be passed explicitly. Use `-n 2`; `-n auto` over-subscribes workers
+  and can hang the run on SQLite/ORM fixture contention.
+- Do **not** prefix commands with `env OCI_DB_URL= TARGET_DATABASE_URL= ...`.
+  `tests/conftest.py` already blocks `.env` loading (`KBO_ENV_FILE_LOADING=0`)
+  and rewrites a non-SQLite `DATABASE_URL` to a per-worker SQLite file. Those
+  variables are unnecessary and misleading; `OCI_DB_URL` is a legacy Oracle var.
+- Example: `./venv/bin/python -m pytest tests/test_player_profile_parser.py -q`.
 
 ## Commit & Pull Request Guidelines
 - Commit history uses short, imperative messages (e.g., “Add ...”, “Implement ...”).
@@ -757,11 +770,17 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - **Coverage**: 76.84% (fail_under=70).
 - **pytest**: 8,006 passed.
 
-### Current Verification Baseline (2026-09-08)
+### Current Verification Baseline
 
+- Local full-suite command (repo root, project venv):
+  `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2`
+  = **12,035 passed, 1 skipped** in 101.28s.
+- Do not use the system `python3` (no `xdist` → serial, different deps → false
+  failures) and do not add an `OCI_DB_URL=`/`TARGET_DATABASE_URL=` prefix;
+  `tests/conftest.py` already isolates the database.
 - `ruff check src/ tests/ scripts/` = 0 errors (expanded rules, 0 warnings).
 - `ruff format --check .` = clean.
-- `python -m pytest --tb=line -q --no-header` = **10,530 passed**, 7 skipped, 242 deselected, 0 failed; 186.06s (CI `4e1587b9`, all 7 jobs green).
+- `python -m pytest --tb=line -q --no-header` = **10,530 passed**, 7 skipped, 242 deselected, 0 failed; 186.06s (CI `4e1587b9`, all 7 jobs green) — superseded by the venv command above.
 - RAG evaluate endpoint fix stable (commit `109373b5`), DTO contract verified via CI green at `aacbfdaa` (Phase 105 Gate 4P attestation committed).
 - `ruff check --select C901 src/` = 0 violations (100% eliminated).
 - `--cov=src --cov-report=term` = 90% in recent full runs (fail_under=75, exceeded target).
@@ -970,7 +989,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 - `ruff check --select C901 src/ scripts/` = 0 violations (C901 now in default `select`; `tests/**` relaxed).
 - `ruff check --select PLR0913 src/` = 0 violations.
 - `ruff check --select PLR0913 src/ --config 'lint.per-file-ignores={}'` = 0 violations (no file-level suppression).
-- `env OCI_DB_URL= TARGET_DATABASE_URL= venv/bin/python -m pytest tests/ -m "not integration and not slow and not oci" -n 2 -q` = **9722 passed**, 24 skipped, 1 xfailed in **190.92s**.
+- ~~`env OCI_DB_URL= TARGET_DATABASE_URL= venv/bin/python -m pytest ... -n 2 -q`~~ = 9722 passed, 24 skipped, 1 xfailed in 190.92s. **Superseded** — the `OCI_DB_URL=`/`TARGET_DATABASE_URL=` prefix is obsolete (Oracle/OCI is legacy and `tests/conftest.py` isolates the DB on its own). Use the command under "Current Verification Baseline".
 - CI-equivalent coverage with `--cov=src --cov-report=term-missing --cov-report=xml:coverage.xml -n 2` = **90.28%**, gate 75% passed, **335.67s**.
 - SQLite integration with `-n 1` = **262 passed, 1 skipped**; PostgreSQL integration with `-n 1` = **262 passed, 1 skipped**.
 - `tests/scripts/test_backfill_futures_team_codes.py` covers bounded, open-ended, fuzzy-name, unmatched, and empty career strings plus resolved-row-only updates.
