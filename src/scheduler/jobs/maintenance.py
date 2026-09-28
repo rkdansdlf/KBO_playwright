@@ -239,7 +239,11 @@ def _integrity_target_dates() -> list[str]:
     """
     from src.utils.date_helpers import parse_date_str_lenient
 
-    newest = parse_date_str_lenient(_previous_day_kst())
+    # The window is anchored to the previous KST day, so that is also the
+    # fallback: defaulting to KST today would re-check a day whose 03:00 crawl
+    # has not landed yet and open a fresh incident against incomplete data.
+    yesterday = (datetime.now(KST) - timedelta(days=1)).date()
+    newest = parse_date_str_lenient(_previous_day_kst(), fallback=yesterday)
     lookback = _integrity_recheck_lookback_days()
     return [(newest - timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookback + 1)]
 
