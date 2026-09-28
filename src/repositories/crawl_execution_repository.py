@@ -91,6 +91,8 @@ class CrawlExecutionRepository:
         return self._finalize(
             run,
             RUN_STATUS_SUCCESS,
+            error_code=None,
+            error_message=None,
             records_read=records_read,
             records_written=records_written,
             records_failed=records_failed,
@@ -107,8 +109,31 @@ class CrawlExecutionRepository:
         records_failed: int | None = None,
         checkpoint: dict | None = None,
         finished_at: datetime | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> CrawlExecutionRun:
-        """Finalize a run as partially successful."""
+        """Finalize a run as partially successful.
+
+        `error_code` and `error_message` record *why* the run is partial. A
+        partial run is not a failure -- it produced usable data -- but the reason
+        it is short is what tells an operator whether to re-fetch it, so it
+        belongs on the row. Omitting them leaves a partial indistinguishable from
+        one that completed everything it set out to.
+
+        Args:
+            run: The run to finalize.
+            records_read: Rows read.
+            records_written: Rows written.
+            records_failed: Rows that failed.
+            checkpoint: Optional crawl checkpoint.
+            finished_at: Completion time, defaulting to now.
+            error_code: Failure taxonomy code describing the shortfall.
+            error_message: Human-readable explanation.
+
+        Returns:
+            The finalized run.
+
+        """
         return self._finalize(
             run,
             RUN_STATUS_PARTIAL,
@@ -117,6 +142,8 @@ class CrawlExecutionRepository:
             records_failed=records_failed,
             checkpoint=checkpoint,
             finished_at=finished_at,
+            error_code=error_code,
+            error_message=error_message,
         )
 
     def mark_failed(  # noqa: PLR0913
@@ -194,12 +221,22 @@ class CrawlExecutionRepository:
         records_failed: int | None,
         checkpoint: dict | None,
         finished_at: datetime | None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> CrawlExecutionRun:
-        """Apply final status, counts, and timestamps to a run."""
+        """Apply final status, counts, and timestamps to a run.
+
+        The error fields are written only when supplied, so a success never has
+        its classification cleared by a caller that forgot to pass one.
+        """
         run.status = status
         _apply_counts(run, records_read, records_written, records_failed)
         if checkpoint is not None:
             run.checkpoint = checkpoint
+        if error_code is not None:
+            run.error_code = error_code
+        if error_message is not None:
+            run.error_message = error_message
         run.finished_at = finished_at or _utcnow()
         self.session.flush()
         return run

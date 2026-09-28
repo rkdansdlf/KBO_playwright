@@ -22,9 +22,12 @@ completely.
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from src.crawlers.failure_taxonomy import FailureCode
 from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.models.crawl_execution import CrawlExecutionRun
 from src.crawlers.game_detail_outcome import (
     PARTIAL_DETAIL_REASON,
     GameDetailStatus,
@@ -239,6 +242,76 @@ class TestTheCodeAndMessageAgree:
 
         assert PARTIAL_DETAIL_REASON in DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE
         assert PARTIAL_DETAIL_REASON == "partial_detail"
+
+
+class TestPartialRunsCanCarryAReason:
+    """A partial run has to say *why* it is short, without becoming a failure."""
+
+    @pytest.fixture
+    def session_factory(self) -> sessionmaker:
+        engine = create_engine("sqlite:///:memory:")
+        CrawlExecutionRun.__table__.create(engine)
+        return sessionmaker(bind=engine, expire_on_commit=False)
+
+    def test_a_partial_run_records_its_reason(self, session_factory) -> None:
+        from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
+        from src.services.crawl_run_service import CrawlRunService
+
+        with session_factory() as session:
+            service = CrawlRunService(session)
+            run = service.start(CrawlRunSpec(crawler="game_detail", target_type="game", target_id="A"))
+            service.partial(
+                run,
+                records_read=1,
+                records_written=1,
+                error_code=FailureCode.VALIDATION_QUALITY.value,
+                error_message=PARTIAL_DETAIL_REASON,
+            )
+            session.commit()
+
+            stored = CrawlExecutionRepository(session).get_by_run_id(run.run_id)
+
+        assert stored.status == "partial"
+        assert stored.error_code == FailureCode.VALIDATION_QUALITY.value
+        assert stored.error_message == PARTIAL_DETAIL_REASON
+
+    def test_a_partial_without_a_reason_leaves_the_row_clean(self, session_factory) -> None:
+        from src.repositories.crawl_execution_repository import CrawlRunSpec
+        from src.services.crawl_run_service import CrawlRunService
+
+        with session_factory() as session:
+            service = CrawlRunService(session)
+            run = service.start(CrawlRunSpec(crawler="game_detail", target_type="game", target_id="A"))
+            service.partial(run, records_read=1)
+            session.commit()
+
+            stored = session.query(CrawlExecutionRun).one()
+
+        assert stored.status == "partial"
+        assert stored.error_code is None
+
+    def test_finalizing_never_discards_a_classification_already_on_the_row(
+        self,
+        session_factory,
+    ) -> None:
+        """Finalizing writes only what it is given, so a caller that set a reason
+        and then reports a different outcome keeps both facts visible rather than
+        having one silently overwritten. The caller owns the row it built.
+        """
+        from src.repositories.crawl_execution_repository import CrawlRunSpec
+        from src.services.crawl_run_service import CrawlRunService
+
+        with session_factory() as session:
+            service = CrawlRunService(session)
+            run = service.start(CrawlRunSpec(crawler="game_detail", target_type="game", target_id="A"))
+            run.error_code = "SET_BY_THE_CALLER"
+            service.success(run)
+            session.commit()
+
+            stored = session.query(CrawlExecutionRun).one()
+
+        assert stored.status == "success"
+        assert stored.error_code == "SET_BY_THE_CALLER"
 
 
 class TestAttemptRecords:
