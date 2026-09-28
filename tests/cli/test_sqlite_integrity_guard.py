@@ -17,6 +17,24 @@ def _sqlite_url(path: Path) -> str:
     return f"sqlite:///{path}"
 
 
+@pytest.fixture(autouse=True)
+def quarantine_incidents(monkeypatch: pytest.MonkeyPatch) -> list[list[object]]:
+    """Record quarantine incidents instead of delivering them to real channels.
+
+    ``sqlite_integrity_guard.main`` opens an incident whenever a file is
+    quarantined or a quarantine fails, without requiring ``--notify``. Every
+    test in this module drives exactly those paths, so without this fixture a
+    test run pages the production channels with ``pytest-*/corrupt.db`` paths.
+
+    Returns:
+        One list of published events per ``apply_incidents`` call.
+
+    """
+    recorded: list[list[object]] = []
+    monkeypatch.setattr(module, "apply_incidents", lambda events, **_kwargs: recorded.append(list(events)))
+    return recorded
+
+
 def _create_valid_db(path: Path) -> None:
     connection = sqlite3.connect(path)
     try:
@@ -195,7 +213,7 @@ class TestSqliteIntegrityGuardCli:
         assert exit_code == 2
         assert payload["status"] == "corrupt"
 
-    def test_cli_quarantine_success_exit_code(self, tmp_path: Path, capsys):
+    def test_cli_quarantine_success_exit_code(self, tmp_path: Path, capsys, quarantine_incidents: list[list[object]]):
         db_path = tmp_path / "corrupt.db"
         db_path.write_bytes(b"not a sqlite database")
 
@@ -215,8 +233,13 @@ class TestSqliteIntegrityGuardCli:
 
         assert exit_code == 0
         assert payload["status"] == "quarantined"
+        # The incident is raised by the code under test but must never leave the process.
+        assert len(quarantine_incidents) == 1
+        event = quarantine_incidents[0][0]
+        assert event.incident_key == f"integrity:sqlite:quarantine:{db_path}"
+        assert event.metadata["database_path"] == str(db_path)
 
-    def test_cli_human_output_includes_paths(self, monkeypatch, capsys):
+    def test_cli_human_output_includes_paths(self, monkeypatch, capsys, quarantine_incidents: list[list[object]]):
         report = SimpleNamespace(
             database_url="sqlite:///broken.db",
             database_path="broken.db",
@@ -235,6 +258,7 @@ class TestSqliteIntegrityGuardCli:
         assert "quarantined: moved to archive" in output
         assert "database_path=broken.db" in output
         assert "quarantine_dir=archive/123" in output
+        assert quarantine_incidents[0][0].metadata["database_path"] == "broken.db"
 
     def test_cli_human_output_without_optional_paths(self, monkeypatch, capsys):
         report = SimpleNamespace(
@@ -254,7 +278,9 @@ class TestSqliteIntegrityGuardCli:
         assert output == "skipped: not a file-backed SQLite database\n"
         check.assert_called_once()
 
-    def test_cli_returns_quarantine_failure_exit_code(self, monkeypatch, capsys):
+    def test_cli_returns_quarantine_failure_exit_code(
+        self, monkeypatch, capsys, quarantine_incidents: list[list[object]]
+    ):
         report = SqliteIntegrityReport(
             database_url="sqlite:///broken.db",
             database_path="broken.db",
@@ -272,6 +298,9 @@ class TestSqliteIntegrityGuardCli:
 
         assert result == 3
         assert "quarantine_failed: SQLite database is corrupt and quarantine failed" in output
+        event = quarantine_incidents[0][0]
+        assert event.metadata["status"] == "quarantine_failed"
+        assert event.metadata["database_path"] == "broken.db"
 
     def test_cli_propagates_integrity_dependency_error(self, monkeypatch):
         check = MagicMock(side_effect=OSError("integrity helper unavailable"))
@@ -280,7 +309,11 @@ class TestSqliteIntegrityGuardCli:
         with pytest.raises(OSError, match="integrity helper unavailable"):
             main(["--database-url", "sqlite:///broken.db"])
 
-    def test_cli_sends_quarantine_alert_when_quarantined(self, monkeypatch):
+    def test_cli_opens_quarantine_incident_when_quarantined(
+        self,
+        monkeypatch,
+        quarantine_incidents: list[list[object]],
+    ):
         report = SqliteIntegrityReport(
             database_url="sqlite:///corrupt.db",
             database_path="corrupt.db",
@@ -292,10 +325,34 @@ class TestSqliteIntegrityGuardCli:
         )
         monkeypatch.setattr(module, "check_sqlite_database", MagicMock(return_value=report))
         monkeypatch.setattr(module, "sqlite_guard_exit_code", MagicMock(return_value=0))
-        mock_send_alert = MagicMock(return_value=True)
-        monkeypatch.setattr("src.utils.alerting.SlackWebhookClient.send_quarantine_alert", mock_send_alert)
 
         result = main(["--database-url", "sqlite:///corrupt.db", "--action", "quarantine"])
 
         assert result == 0
-        mock_send_alert.assert_called_once_with(report)
+        event = quarantine_incidents[0][0]
+        assert event.metadata["database_path"] == "corrupt.db"
+        assert event.metadata["moved_files"] == ["corrupt.db"]
+
+    def test_cli_does_not_alert_on_ok_status(self, tmp_path: Path, capsys, quarantine_incidents: list[list[object]]):
+        db_path = tmp_path / "healthy.db"
+        _create_valid_db(db_path)
+
+        exit_code = main(["--database-url", _sqlite_url(db_path), "--json"])
+        payload = json.loads(capsys.readouterr().out)
+
+        assert exit_code == 0
+        assert payload["status"] == "ok"
+        assert quarantine_incidents == []
+
+    def test_cli_corrupt_without_action_does_not_alert(
+        self, tmp_path: Path, capsys, quarantine_incidents: list[list[object]]
+    ):
+        db_path = tmp_path / "corrupt.db"
+        db_path.write_bytes(b"not a sqlite database")
+
+        exit_code = main(["--database-url", _sqlite_url(db_path), "--action", "none", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+
+        assert exit_code == 2
+        assert payload["status"] == "corrupt"
+        assert quarantine_incidents == []
