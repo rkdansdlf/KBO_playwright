@@ -234,7 +234,8 @@ def attempt_from_result(
             status=status,
             payload=payload,
             error_code=FailureCode.VALIDATION_QUALITY.value,
-            reason=reason,
+            error_message=PARTIAL_DETAIL_REASON,
+            reason=PARTIAL_DETAIL_REASON,
             source=source,
         )
     return GameDetailAttempt(
@@ -258,15 +259,26 @@ _UNINFORMATIVE_CODES: frozenset[str] = frozenset(
 )
 
 
-def canonical_failure_code(
+#: The reason recorded for a game whose payload was stored but is not a complete
+#: box score. Shared with `game_collection_service`, which has always used this
+#: word for exactly this situation, so the ledger and the stored row agree.
+PARTIAL_DETAIL_REASON = "partial_detail"
+
+
+def canonical_failure(
     primary: CrawlResult[Any] | None,
     fallback_reason: str | None,
-) -> str:
-    """Return the cause to record when both sources failed.
+) -> tuple[str, str]:
+    """Return the ``(code, message)`` pair to record when a game came back empty.
+
+    The code and the message are decided together. Taking the code from the
+    primary and the message from the fallback can produce a pair describing two
+    different things -- a ``FETCH_TIMEOUT`` reported with a robots-block message,
+    say -- and a record like that cannot be acted on.
 
     The primary attempt only claims the cause when it actually has one:
 
-    * a meaningful primary failure code wins, because a replay restarts there
+    * a meaningful primary failure wins, because a replay restarts there
     * a primary ``EMPTY`` is not a failure and has no claim at all -- the KBO
       page was needed precisely because Naver had no record
     * an uninformative primary code yields to the fallback's specific one
@@ -277,16 +289,36 @@ def canonical_failure_code(
         fallback_reason: The fallback's own failure reason, if it failed.
 
     Returns:
-        A canonical failure code.
+        A tuple of (failure code, human-readable message).
 
     """
     fallback_code = error_code_for_reason(fallback_reason)
+    fallback_message = fallback_reason or fallback_code
     if primary is None or primary.ok or primary.outcome is CrawlOutcome.EMPTY:
-        return fallback_code
+        return fallback_code, fallback_message
+
     primary_code = primary.error_code or FailureCode.UNKNOWN.value
     if primary_code in _UNINFORMATIVE_CODES:
-        return fallback_code
-    return primary_code
+        return fallback_code, fallback_message
+    # The primary's own error text explains the code being recorded.
+    return primary_code, primary.error or primary_code
+
+
+def canonical_failure_code(
+    primary: CrawlResult[Any] | None,
+    fallback_reason: str | None,
+) -> str:
+    """Return just the cause to record when both sources failed.
+
+    Args:
+        primary: The primary source's result, or None if it was not consulted.
+        fallback_reason: The fallback's own failure reason, if it failed.
+
+    Returns:
+        A canonical failure code.
+
+    """
+    return canonical_failure(primary, fallback_reason)[0]
 
 
 @dataclass(frozen=True)
@@ -345,29 +377,37 @@ def resolve_attempt(
         # primary's failure on the record would report a recovered game as broken.
         return GameDetailAttempt(game_id=game_id, status=status, payload=payload, source=sources.source)
     if status is GameDetailStatus.PARTIAL:
+        # A partial has a known, named cause: the payload was stored and is not a
+        # complete box score. That is what `game_collection_service` calls it, so
+        # the ledger and the stored row use the same word.
         return GameDetailAttempt(
             game_id=game_id,
             status=status,
             payload=payload,
             error_code=FailureCode.VALIDATION_QUALITY.value,
+            error_message=PARTIAL_DETAIL_REASON,
+            reason=PARTIAL_DETAIL_REASON,
             source=sources.source,
         )
+    code, message = canonical_failure(sources.primary, sources.fallback_reason)
     return GameDetailAttempt(
         game_id=game_id,
         status=status,
         payload=payload,
-        error_code=canonical_failure_code(sources.primary, sources.fallback_reason),
-        error_message=sources.fallback_reason,
+        error_code=code,
+        error_message=message,
         reason=sources.fallback_reason,
         source=sources.source,
     )
 
 
 __all__ = [
+    "PARTIAL_DETAIL_REASON",
     "GameDetailAttempt",
     "GameDetailSources",
     "GameDetailStatus",
     "attempt_from_result",
+    "canonical_failure",
     "canonical_failure_code",
     "classify_payload",
     "error_code_for_reason",
