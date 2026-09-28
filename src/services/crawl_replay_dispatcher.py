@@ -17,6 +17,7 @@ from src.crawlers.award_crawler import (
     AWARD_TARGET_TYPE,
     AwardCrawler,
 )
+from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.roster_transaction_crawler import (
     ROSTER_CRAWLER_NAME,
     ROSTER_TARGET_TYPE,
@@ -30,7 +31,7 @@ from src.crawlers.schedule_crawler import (
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
-from src.services.game_collection_service import replay_single_game_detail
+from src.services.game_collection_service import GameCollectionConfig, replay_single_game_detail
 from src.services.game_detail_runs import (
     GAME_DETAIL_CRAWLER_NAME,
     GAME_DETAIL_TARGET_TYPE,
@@ -130,9 +131,6 @@ async def _execute_game_detail_replay(
     spec: CrawlRunSpec,
 ) -> None:
     """Run the single-game full detail collection for one dead letter."""
-    from src.crawlers.game_detail_crawler import GameDetailCrawler
-    from src.services.game_collection_service import GameCollectionConfig
-
     await replay_single_game_detail(
         game_id,
         spec,

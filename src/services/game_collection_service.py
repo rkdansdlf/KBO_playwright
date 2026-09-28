@@ -648,10 +648,16 @@ async def _collect_single_game_detail(
     """Fetch, write and close one game under a caller-supplied run identity."""
     target = GameCollectionTarget(game_id=game_id, game_date=game_date_of(game_id))
     result = GameCollectionResult()
+    result.items = {game_id: GameCollectionItemResult(game_id=game_id, game_date=game_date_of(game_id))}
+    detail_source = GameWriteSource(
+        config.source_stage,
+        config.source_crawler or detail_crawler.__class__.__name__,
+        config.source_reason,
+    )
     ctx = DetailProcessingContext(
         detail_crawler=detail_crawler,
-        contract=GameWriteContract(),
-        detail_source=GameWriteSource(),
+        contract=config.write_contract or GameWriteContract(run_label="game_detail_replay", log=config.log),
+        detail_source=detail_source,
         cfg=config,
         result=result,
         detail_ready=set(),
