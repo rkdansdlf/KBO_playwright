@@ -62,6 +62,23 @@ class TestParseDateStrLenient:
         result = date_helpers.parse_date_str_lenient("not-a-date")
         assert result == datetime.now(KST).date()
 
+    def test_accepts_iso_form(self) -> None:
+        assert date_helpers.parse_date_str_lenient("2025-06-29") == date(2025, 6, 29)
+
+    @pytest.mark.parametrize("raw", ["2025/06/29", "2025.06.29", "  20250629  "])
+    def test_accepts_alternate_separators(self, raw: str) -> None:
+        assert date_helpers.parse_date_str_lenient(raw) == date(2025, 6, 29)
+
+    def test_raises_on_malformed_with_raise_sentinel(self) -> None:
+        """Callers that must reject bad input opt in via the sentinel."""
+        with pytest.raises(ValueError, match="cannot parse"):
+            date_helpers.parse_date_str_lenient("not-a-date", fallback=date_helpers.RAISE_ON_UNPARSABLE)
+
+    def test_sentinel_is_not_silently_treated_as_a_date(self) -> None:
+        """A guard against the sentinel ever leaking into a returned value."""
+        with pytest.raises(ValueError, match="cannot parse"):
+            date_helpers.parse_date_str_lenient(None, fallback=date_helpers.RAISE_ON_UNPARSABLE)  # type: ignore[arg-type]
+
     def test_fallback_is_ignored_when_value_parses(self) -> None:
         result = date_helpers.parse_date_str_lenient("20250629", fallback=date(2020, 1, 31))
         assert result == date(2025, 6, 29)
@@ -78,10 +95,14 @@ class TestParseDateStrLenient:
         assert caplog.text == ""
 
     def test_rejects_none_without_fallback(self) -> None:
-        # `None` is not a `str`, so the lenient contract still has to hold
+        # `None` is not a `str`, so the fallback contract still has to hold
         # rather than leaking a TypeError out of the job that called it.
         result = date_helpers.parse_date_str_lenient(None, fallback=date(2020, 1, 31))  # type: ignore[arg-type]
         assert result == date(2020, 1, 31)
+
+    def test_none_with_raise_sentinel_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="cannot parse"):
+            date_helpers.parse_date_str_lenient(None, fallback=date_helpers.RAISE_ON_UNPARSABLE)  # type: ignore[arg-type]
 
     def test_always_returns_date_not_datetime(self) -> None:
         result = date_helpers.parse_date_str_lenient("20250629")

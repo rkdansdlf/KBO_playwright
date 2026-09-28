@@ -26,7 +26,7 @@ from src.models.game import (
     GameValidationMetrics,
 )
 from src.utils.alerting import SlackWebhookClient
-from src.utils.date_helpers import parse_date_str
+from src.utils.date_helpers import RAISE_ON_UNPARSABLE, parse_date_str_lenient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
 from src.utils.relay_validation import TRUSTED_VALIDATION_STATES
@@ -80,7 +80,10 @@ def _apply_freshness_date_filter(
     max_hours: int | None = None,
 ) -> Query:
     if target_date:
-        return query.filter(Game.game_date == parse_date_str(target_date))
+        # Strict on purpose: a `--date` filter that silently resolved a typo to
+        # today would report on the wrong day and read as healthy. Only jobs
+        # that must keep running pass a real fallback.
+        return query.filter(Game.game_date == parse_date_str_lenient(target_date, fallback=RAISE_ON_UNPARSABLE))
     if max_hours:
         return query.filter(Game.game_date >= (datetime.now(KST) - timedelta(hours=max_hours)).date())
     if days:
