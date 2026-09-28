@@ -55,6 +55,26 @@ class RunCounts:
 _NO_ROWS = RunCounts()
 
 
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """What became of one game after its fetch and its write.
+
+    Returned only when the ledger transition actually committed. A caller must
+    not treat a run it could not record as finished, and must not report a
+    success the ledger never accepted.
+
+    For a replay, the persisted run row is still the authority: this is how the
+    collection service reports back to its own caller, not a substitute for
+    reading the run back.
+    """
+
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    counts: RunCounts = _NO_ROWS
+    run_id: str | None = None
+
+
 def _season_of(game_id: str) -> int | None:
     """Return the season encoded in a game ID, when it looks like a KBO one."""
     prefix = game_id[:_GAME_ID_YEAR_LEN]
@@ -102,15 +122,18 @@ class GameDetailRunLedger:
                 logger.exception("Failed to open crawl run for %s", game_id)
         return started
 
-    def record_success(self, run_id: str, *, counts: RunCounts) -> None:
+    def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
         """Close a run whose game was fetched completely and stored.
 
         Args:
             run_id: The run to close.
             counts: Rows moved.
 
+        Returns:
+            True when the transition was committed.
+
         """
-        self._finalize(run_id, "success", counts=counts)
+        return self._finalize(run_id, "success", counts=counts)
 
     def record_partial(
         self,
@@ -119,7 +142,7 @@ class GameDetailRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts,
-    ) -> None:
+    ) -> bool:
         """Close a run whose game was stored but is not a complete box score.
 
         Args:
@@ -128,8 +151,11 @@ class GameDetailRunLedger:
             error_message: Human-readable explanation.
             counts: Rows moved, with `written` counting the stored payload.
 
+        Returns:
+            True when the transition was committed.
+
         """
-        self._finalize(
+        return self._finalize(
             run_id,
             "partial",
             counts=counts,
@@ -144,7 +170,7 @@ class GameDetailRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts = _NO_ROWS,
-    ) -> None:
+    ) -> bool:
         """Close a run that produced nothing storable.
 
         Args:
@@ -153,8 +179,11 @@ class GameDetailRunLedger:
             error_message: Human-readable explanation.
             counts: Rows moved, normally all zero when the fetch itself failed.
 
+        Returns:
+            True when the transition was committed.
+
         """
-        self._finalize(
+        return self._finalize(
             run_id,
             "failed",
             counts=counts,
@@ -170,12 +199,17 @@ class GameDetailRunLedger:
         counts: RunCounts,
         error_code: str | None = None,
         error_message: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Apply a terminal transition on its own session.
 
         A failure to record is logged and swallowed: the game's data is already
         written or already lost, and raising here would turn a recoverable
-        bookkeeping problem into a lost crawl.
+        bookkeeping problem into a lost crawl. The return value says whether the
+        transition landed, so a caller never treats an unrecorded run as final.
+
+        Returns:
+            True when the transition was committed.
+
         """
         try:
             with SessionLocal() as session:
@@ -183,7 +217,7 @@ class GameDetailRunLedger:
                 run = CrawlExecutionRepository(session).get_by_run_id(run_id)
                 if run is None:
                     logger.warning("Crawl run %s vanished before finalize", run_id)
-                    return
+                    return False
                 if status == "success":
                     service.success(run, records_read=counts.read, records_written=counts.written)
                 elif status == "partial":
@@ -204,8 +238,10 @@ class GameDetailRunLedger:
                         records_failed=counts.failed,
                     )
                 session.commit()
+                return True
         except Exception:
             logger.exception("Failed to finalize crawl run %s", run_id)
+            return False
 
 
 __all__ = [
@@ -213,4 +249,5 @@ __all__ = [
     "GAME_DETAIL_TARGET_TYPE",
     "GameDetailRunLedger",
     "RunCounts",
+    "TerminalOutcome",
 ]

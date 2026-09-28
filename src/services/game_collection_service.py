@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN
-from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
+from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure, stage_for_code
 from src.crawlers.game_detail_outcome import (
     PARTIAL_DETAIL_REASON,
     GameDetailAttempt,
@@ -20,8 +20,17 @@ from src.crawlers.game_detail_outcome import (
 )
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.game_repository import save_game_detail, save_relay_data
-from src.services.game_detail_runs import GameDetailRunLedger, RunCounts
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.game_detail_runs import (
+    GAME_DETAIL_CRAWLER_NAME,
+    GAME_DETAIL_TARGET_TYPE,
+    GameDetailRunLedger,
+    RunCounts,
+    TerminalOutcome,
+    _season_of,
+)
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.utils.team_codes import normalize_kbo_game_id
@@ -569,12 +578,13 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     failure_reason = _detail_payload_failure_reason(target, payload, ctx.detail_crawler, ctx.cfg.should_save_detail)
     if failure_reason is not None:
         _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
-        _close_failed_run(
+        terminal = _close_failed_run(
             run_id,
             attempt,
             failure_reason=failure_reason[2],
             extra_reason=failure_reason[1] or None,
         )
+        _enqueue_for_replay(target, terminal)
         return
 
     saved, persist_cause = _save_detail_payload(target, payload or {}, ctx)
@@ -582,7 +592,8 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
         ctx.cfg.log("   [DB] Detail saved")
     else:
         ctx.cfg.log("   [ERROR] Detail save failed")
-    _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
+    terminal = _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
+    _enqueue_for_replay(target, terminal)
 
 
 def _close_saved_run(
@@ -592,36 +603,126 @@ def _close_saved_run(
     saved: bool,
     persist_cause: tuple[str, str] | None,
     payload: dict[str, Any],
-) -> None:
-    """Close a run for a game that reached the write step."""
+) -> TerminalOutcome | None:
+    """Close a run for a game that reached the write step, then report it.
+
+    A game that was stored but is not a complete box score is a replayable
+    outcome, not a failure and not a finished success. Both facts hold at once
+    and they mean different things: `written` says usable data was stored, while
+    `pending` in the queue says the completeness contract is still unmet. A
+    degraded result that already wrote a row does not need fetching again for the
+    data's sake -- it needs fetching again to become complete.
+
+    Returns:
+        The recorded outcome, or None when the ledger did not accept the
+        transition. A run nobody could record is not a finished run.
+
+    """
     if not run_id:
-        return
-    ledger = _run_ledger()
+        return None
     if not saved:
         # A `False` with no exception is the quality gate declining the payload,
         # not a broken database. Calling it PERSIST_CONNECTION would blame the
         # infrastructure for a data decision.
-        code, message = _save_failure_cause(persist_cause)
-        ledger.record_failed(
+        return _record_failure(
+            run_id,
+            *_save_failure_cause(persist_cause),
+            counts=RunCounts(read=1, written=0, failed=1),
+        )
+    if _has_full_detail_rows(payload):
+        if _run_ledger().record_success(run_id, counts=RunCounts(read=1, written=1)):
+            return TerminalOutcome(status="success", counts=RunCounts(read=1, written=1), run_id=run_id)
+        return None
+    code = attempt.error_code if attempt is not None and attempt.error_code else FailureCode.VALIDATION_QUALITY.value
+    return _record_failure(
+        run_id,
+        code,
+        PARTIAL_DETAIL_REASON,
+        counts=RunCounts(read=1, written=1),
+        status="partial",
+    )
+
+
+def _record_failure(
+    run_id: str,
+    code: str,
+    message: str,
+    *,
+    counts: RunCounts,
+    status: str = "failed",
+) -> TerminalOutcome | None:
+    """Record a terminal, error-carrying outcome if the ledger accepts it.
+
+    `status` decides the transition, never the presence of an error code: a
+    partial result carries a code because it still needs replay, and reading that
+    code as a failure is the mistake this function exists to prevent.
+
+    Returns:
+        The recorded outcome, or None when the transition did not commit.
+
+    """
+    ledger = _run_ledger()
+    if status == "partial":
+        recorded = ledger.record_partial(
             run_id,
             error_code=code,
             error_message=message,
-            counts=RunCounts(read=1, written=0, failed=1),
+            counts=counts,
         )
-        return
-
-    counts = RunCounts(read=1, written=1)
-    if _has_full_detail_rows(payload):
-        ledger.record_success(run_id, counts=counts)
-        return
-    ledger.record_partial(
-        run_id,
-        error_code=(
-            attempt.error_code if attempt is not None and attempt.error_code else FailureCode.VALIDATION_QUALITY.value
-        ),
-        error_message=PARTIAL_DETAIL_REASON,
+    else:
+        recorded = ledger.record_failed(
+            run_id,
+            error_code=code,
+            error_message=message,
+            counts=counts,
+        )
+    if not recorded:
+        return None
+    return TerminalOutcome(
+        status=status,
+        error_code=code,
+        error_message=message,
         counts=counts,
+        run_id=run_id,
     )
+
+
+def _enqueue_for_replay(
+    target: GameCollectionTarget,
+    terminal: TerminalOutcome | None,
+) -> None:
+    """Queue a game whose outcome still needs work.
+
+    A success is never queued: a lightweight result is a degraded success by
+    design, and re-fetching it would fetch the same thing again.
+
+    `failure_stage` is always derived from the code. Inferring the stage from the
+    status instead would let a record say one thing in its code and another in
+    its stage.
+    """
+    # A terminal of None means the ledger never accepted the transition. Queueing
+    # then would point a letter at a run that does not exist, and its status is
+    # unknown, so there is nothing truthful to record. The unrecorded run is left
+    # to run-bookkeeping monitoring.
+    if terminal is None or terminal.status == "success" or not terminal.run_id:
+        return
+    code = terminal.error_code or FailureCode.UNKNOWN.value
+    try:
+        enqueue_failure(
+            DeadLetterSpec(
+                original_run_id=terminal.run_id,
+                crawler=GAME_DETAIL_CRAWLER_NAME,
+                target_type=GAME_DETAIL_TARGET_TYPE,
+                target_id=target.game_id,
+                game_id=target.game_id,
+                season=_season_of(target.game_id),
+                failure_stage=stage_for_code(code).value,
+                error_code=code,
+                error_message=terminal.error_message,
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to enqueue dead letter for %s", target.game_id)
 
 
 def _save_failure_cause(persist_cause: tuple[str, str] | None) -> tuple[str, str]:
@@ -646,18 +747,14 @@ def _close_failed_run(
     *,
     failure_reason: str,
     extra_reason: str | None,
-) -> None:
+) -> TerminalOutcome | None:
     """Close a run for a game that never reached the write step."""
     if not run_id:
-        return
+        return None
     code = attempt.error_code if attempt is not None and attempt.error_code else None
     if code is None:
         code = error_code_for_reason(failure_reason)
-    _run_ledger().record_failed(
-        run_id,
-        error_code=code,
-        error_message=extra_reason or failure_reason,
-    )
+    return _record_failure(run_id, code, extra_reason or failure_reason, counts=RunCounts())
 
 
 def _detail_payload_failure_reason(
