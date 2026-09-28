@@ -642,15 +642,11 @@ exclude_also = [
     "pragma: no cover",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-addopts = "-m 'not integration' -n auto"
-markers = [
-    "slow: marks tests as slow-running (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests requiring external services",
-    "oci: requires OCI database connection",
-]
+# Pytest configuration lives in `pytest.ini`, which always takes precedence over
+# `[tool.pytest.ini_options]`. Do not duplicate it here: the two copies had already
+# diverged (this section set `-n auto` while `pytest.ini` set no worker count), so
+# the dead value misled anyone reading this file. Pass the worker pool explicitly
+# on the command line (`-n 2`); `-n auto` over-subscribes and can hang the suite.
 
 [tool.mypy]
 python_version = "3.12"
