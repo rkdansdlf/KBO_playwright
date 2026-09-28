@@ -37,7 +37,6 @@ ALLOWED_FILES = frozenset(
 GRANDFATHERED = frozenset(
     {
         "scripts/scheduler.py",
-        "src/cli/reports/freshness_gate.py",
         "src/cli/sync/sqlite_integrity_guard.py",
     }
 )
@@ -54,7 +53,6 @@ BYPASS_MARKER = "alert-transport-bypass"
 CLASSIFICATION: dict[str, str] = {
     # A: stateful alerts
     "src/cli/sync/sqlite_integrity_guard.py": "A",
-    "src/cli/reports/freshness_gate.py": "A",
     # B: stateless notifications / digests
     # B: domain service that composes messages and must delegate delivery
     # C: wrapper / bootstrap re-export

@@ -21,7 +21,7 @@ from src.cli.freshness_gate import (
     _empty_issue_map,
     _has_review_moments,
     _review_moments_have_noise,
-    _send_freshness_alert,
+    _apply_freshness_incident,
 )
 from src.constants import KST
 
@@ -164,21 +164,21 @@ class TestCheckStartingPitchers:
         assert len(issues["missing_starting_pitchers"]) == 1
 
 
-class TestSendFreshnessAlert:
+class TestFreshnessIncidentMessage:
     def test_single_failure(self) -> None:
-        with patch("src.cli.freshness_gate.SlackWebhookClient.send_alert") as mock_send:
-            _send_freshness_alert(["missing_scores: 1 game(s) -> G1"])
-            mock_send.assert_called_once()
-            call_args = mock_send.call_args[0][0]
-            assert "KBO Freshness Gate Failed" in call_args
-            assert "missing_scores" in call_args
+        with patch("src.cli.freshness_gate.apply_incidents") as mock_apply:
+            _apply_freshness_incident(["missing_scores: 1 game(s) -> G1"], ok=False)
+
+        event = mock_apply.call_args.args[0][0]
+        assert event.title == "KBO Freshness Gate Failed"
+        assert "missing_scores" in event.message
 
     def test_truncates_at_20(self) -> None:
         failures = [f"issue: 1 game(s) -> G{i}" for i in range(25)]
-        with patch("src.cli.freshness_gate.SlackWebhookClient.send_alert") as mock_send:
-            _send_freshness_alert(failures)
-            call_args = mock_send.call_args[0][0]
-            assert "... and 5 more failures" in call_args
+        with patch("src.cli.freshness_gate.apply_incidents") as mock_apply:
+            _apply_freshness_incident(failures, ok=False)
+
+        assert "... and 5 more failures" in mock_apply.call_args.args[0][0].message
 
 
 class TestCheckMetadataStartTime:
