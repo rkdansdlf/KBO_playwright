@@ -15,7 +15,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -237,7 +237,13 @@ class AwardCrawler:
             headers={"User-Agent": YAGOONARA_USER_AGENT},
         )
         if not result.ok:
-            return result
+            # `fetch_text` types its payload as `str`, but a failure carries no
+            # payload: the caller only reads `.data` behind `if result.ok`. The
+            # same object is returned so `http_status`, `attempts`,
+            # `elapsed_seconds`, `retry_after`, `error_code`, and `url` all
+            # survive into `_record_source_failure`; rebuilding it through
+            # `CrawlResult.failure` would drop the timing and attempt ledger.
+            return cast("CrawlResult[BeautifulSoup]", result)
         self._raw_snapshots.append(
             {
                 "url": YAGOONARA_URL,

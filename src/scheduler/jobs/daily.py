@@ -132,14 +132,18 @@ def _run_legacy_daily_update(
             alert_warn("crawl_daily_games", fmt_fn(update_result) or "")
 
 
-@_with_lock_skip_guard
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=30, max=300),
-    retry_error_callback=alert_failure,
-)
 def _failed_stage_ids(report: object) -> set[str]:
-    """Return the stage ids that finished in the FAILED state."""
+    """Return the stage ids that finished in the FAILED state.
+
+    Deliberately undecorated. This is a pure projection over `report.stage_results`:
+    no lock, no I/O, nothing to retry. The lock-skip guard and the 30-300s
+    exponential retry that used to wrap it were actively harmful -- the guard
+    returns `None` on `_LockSkipped`, which turned the caller's
+    `_failed_stage_ids(report) - {"quality_gate"}` into `None - set`, and the
+    retry turned a programmer error in this loop into a 5-minute wait plus a
+    `scheduler:_failed_stage_ids:failed` incident that looks like an outage.
+    Retry and alerting belong on the job that calls it, not on the helper.
+    """
     from src.orchestration.dto import StageExecutionStatus
 
     failed: set[str] = set()

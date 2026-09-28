@@ -827,6 +827,93 @@ class TestCrawlOrchestration:
             assert session.query(CrawlDeadLetter).count() == 0
 
 
+class TestYagoonaraFailureEvidence:
+    """`_fetch_yagoonara` types its payload `BeautifulSoup` but `fetch_text` is `str`.
+
+    The failure branch returns the transport result unchanged via a `cast`, so the
+    whole ledger -- `http_status`, `attempts`, `elapsed_seconds`, `retry_after`,
+    `error_code`, `url` -- survives into `_record_source_failure`. These tests fail
+    if anyone "fixes" the type by rebuilding through `CrawlResult.failure(...)`,
+    which drops the timing and attempt fields, or by widening the signature to
+    `CrawlResult[Any]` and losing the payload contract on the success path.
+    """
+
+    @staticmethod
+    def _rich_failure() -> CrawlResult[str]:
+        return CrawlResult.failure(
+            CrawlOutcome.RETRYABLE_ERROR,
+            error="HTTPStatusError: 503 Service Unavailable",
+            error_code="FETCH_HTTP_ERROR",
+            http_status=503,
+            retry_after=42.0,
+            url="https://www.yagoonara.com/awards",
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_the_same_failure_object(self) -> None:
+        failure = self._rich_failure()
+        crawler = AwardCrawler()
+        crawler._http.fetch_text = AsyncMock(return_value=failure)  # type: ignore[method-assign]
+
+        result = await crawler._fetch_yagoonara()
+
+        # Identity, not equality: a rebuild would compare equal on the fields it
+        # happens to keep while silently dropping the rest.
+        assert result is failure
+
+    @pytest.mark.asyncio
+    async def test_preserves_ledger_fields(self) -> None:
+        failure = self._rich_failure()
+        crawler = AwardCrawler()
+        crawler._http.fetch_text = AsyncMock(return_value=failure)  # type: ignore[method-assign]
+
+        result = await crawler._fetch_yagoonara()
+
+        assert result.http_status == 503
+        assert result.error_code == "FETCH_HTTP_ERROR"
+        assert result.retry_after == 42.0
+        assert result.url == "https://www.yagoonara.com/awards"
+        assert result.elapsed_seconds == failure.elapsed_seconds
+        assert result.attempts == failure.attempts
+
+    @pytest.mark.asyncio
+    async def test_records_no_snapshot_on_failure(self) -> None:
+        crawler = AwardCrawler()
+        crawler._http.fetch_text = AsyncMock(return_value=self._rich_failure())  # type: ignore[method-assign]
+
+        await crawler._fetch_yagoonara()
+
+        assert crawler.raw_snapshots == ()
+
+    @pytest.mark.asyncio
+    async def test_success_path_yields_soup_and_snapshot(self) -> None:
+        crawler = AwardCrawler()
+        crawler._http.fetch_text = AsyncMock(  # type: ignore[method-assign]
+            return_value=CrawlResult.success("<table></table>", http_status=200)
+        )
+
+        result = await crawler._fetch_yagoonara()
+
+        assert result.ok
+        assert isinstance(result.data, BeautifulSoup)
+        assert len(crawler.raw_snapshots) == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_source_records_evidence(self) -> None:
+        """End to end: the source-failure ledger sees the full taxonomy."""
+        crawler = AwardCrawler()
+        crawler._http.fetch_text = AsyncMock(return_value=self._rich_failure())  # type: ignore[method-assign]
+        recorded: list[Any] = []
+        crawler._record_source_failure = lambda *a, **k: recorded.append((a, k))  # type: ignore[method-assign]
+
+        await crawler._crawl_yagoonara_source(None)
+
+        assert recorded
+        args, _ = recorded[0]
+        assert args[2].error_code == "FETCH_HTTP_ERROR"
+        assert args[2].http_status == 503
+
+
 @pytest.mark.integration
 class TestLiveAwardCrawler:
     @pytest.mark.asyncio
