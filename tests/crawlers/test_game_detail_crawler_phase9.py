@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from src.crawlers.circuit_breaker import circuit_registry
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.game_detail_crawler import (
     BoxscoreCrawlContext,
     HitterPayloadContext,
@@ -823,7 +827,7 @@ class TestBoxscoreExtractionFlows:
         pool.release = AsyncMock()
         pool.close = AsyncMock()
         crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
-        crawler._crawl_naver_single = AsyncMock(return_value=None)
+        crawler._crawl_naver_single = AsyncMock(return_value=CrawlResult.empty())
 
         async def _crawl_single(_page, game_id, _game_date, *, lightweight):
             return {"game_id": game_id, "lightweight": lightweight}
@@ -850,7 +854,7 @@ class TestBoxscoreExtractionFlows:
         pool.acquire = AsyncMock(return_value=MagicMock())
         pool.release = AsyncMock()
         crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
-        crawler._crawl_naver_single = AsyncMock(return_value=None)
+        crawler._crawl_naver_single = AsyncMock(return_value=CrawlResult.empty())
         crawler._crawl_single = AsyncMock(return_value={"game_id": "20250501LGOB0"})
 
         with patch("src.crawlers.game_detail_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)):
@@ -1051,6 +1055,28 @@ class TestBoxscoreExtractionFlows:
         cancelled = await GameDetailCrawler()._is_cancelled_boxscore_page(page)
 
         assert cancelled is True
+
+
+def _mock_naver(handler) -> CrawlerHttpClient:
+    """A real Naver transport over a mock socket, with no delays or retries."""
+    client = CrawlerHttpClient(
+        name="game_detail_naver",
+        policy=HttpPolicy(base_delay_seconds=0.0, max_attempts=1, max_backoff_seconds=0.0),
+    )
+
+    @asynccontextmanager
+    async def _mock_client():
+        async with httpx.AsyncClient(
+            headers=client.default_headers,
+            timeout=client.timeout,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=True,
+        ) as raw:
+            yield raw
+
+    client._client = _mock_client
+    circuit_registry.reset_all()
+    return client
 
 
 NAVER_RECORD_SAMPLE = {
@@ -1255,35 +1281,57 @@ class TestNaverRecordPath:
         assert {"summary_type": "경기결과", "detail_text": "KIA 승"} in payload["summary"]
 
     @pytest.mark.asyncio
-    async def test_crawl_naver_single_returns_none_on_empty_record(self):
-        crawler = GameDetailCrawler()
-        with patch("src.crawlers.game_detail_crawler.httpx.AsyncClient", autospec=True) as client_cls:
-            client = MagicMock()
-            client_cls.return_value.__aenter__.return_value = client
-            resp = MagicMock()
-            resp.json.return_value = {"result": {}}
-            client.get = AsyncMock(return_value=resp)
+    async def test_crawl_naver_single_reports_an_application_empty(self):
+        """Naver answers a missing record with `{"result": {}}` -- a healthy
+        response carrying no data. It must read as EMPTY, not as a failure and
+        not as an HTTP-empty.
+        """
+        crawler = GameDetailCrawler(naver_http=_mock_naver(lambda r: httpx.Response(200, json={"result": {}})))
 
-            result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+        result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
 
-        assert result is None
-        assert crawler.get_last_failure_reason("20260819HTHH0") == "naver_record_empty"
+        assert result.outcome is CrawlOutcome.EMPTY
+        assert result.error_code is None
 
     @pytest.mark.asyncio
-    async def test_crawl_naver_single_falls_back_on_http_error(self):
-        crawler = GameDetailCrawler()
-        with patch("src.crawlers.game_detail_crawler.httpx.AsyncClient", autospec=True) as client_cls:
-            client = MagicMock()
-            client_cls.return_value.__aenter__.return_value = client
-            resp = MagicMock()
-            resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-                "404",
-                request=httpx.Request("GET", "https://api-gw.sports.naver.com/x"),
-                response=httpx.Response(404, request=httpx.Request("GET", "https://api-gw.sports.naver.com/x")),
-            )
-            client.get = AsyncMock(return_value=resp)
+    async def test_crawl_naver_single_reports_an_http_empty(self):
+        """An entirely empty body is also a missing record."""
+        crawler = GameDetailCrawler(naver_http=_mock_naver(lambda r: httpx.Response(200, json={})))
 
-            result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+        result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
 
-        assert result is None
-        assert crawler.get_last_failure_reason("20260819HTHH0") == "naver_record_unavailable"
+        assert result.outcome is CrawlOutcome.EMPTY
+
+    @pytest.mark.asyncio
+    async def test_crawl_naver_single_rejects_a_malformed_envelope(self):
+        """`result` as a list is not a Naver envelope. Reporting it as empty
+        would file a broken response as "no record for this game".
+        """
+        crawler = GameDetailCrawler(naver_http=_mock_naver(lambda r: httpx.Response(200, json={"result": []})))
+
+        result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+
+        assert result.error_code == "PARSE_INVALID_FORMAT"
+
+    @pytest.mark.asyncio
+    async def test_crawl_naver_single_does_not_write_a_failure_reason(self):
+        """The primary keeps its outcome as a value; attribution happens once at
+        the end so a fallback failure cannot overwrite it.
+        """
+        crawler = GameDetailCrawler(naver_http=_mock_naver(lambda r: httpx.Response(200, json={"result": {}})))
+
+        await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+
+        assert crawler.get_last_failure_reason("20260819HTHH0") is None
+
+    @pytest.mark.asyncio
+    async def test_crawl_naver_single_classifies_a_server_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="unavailable")
+
+        crawler = GameDetailCrawler(naver_http=_mock_naver(handler))
+
+        result = await crawler._crawl_naver_single("20260819HTHH0", "2026-08-19")
+
+        assert result.error_code == "FETCH_HTTP_ERROR"
+        assert crawler.get_last_failure_reason("20260819HTHH0") is None

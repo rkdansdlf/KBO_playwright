@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
-
 from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST, MAX_INNINGS
 
 logger = logging.getLogger(__name__)
@@ -33,7 +31,14 @@ from datetime import datetime
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
-from src.crawlers.game_detail_outcome import GameDetailAttempt, attempt_from_result
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.game_detail_outcome import (
+    GameDetailAttempt,
+    GameDetailSources,
+    resolve_attempt,
+)
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.selectors import GAME_DETAIL
 from src.db.engine import SessionLocal
 from src.urls import GAME_CENTER
@@ -45,6 +50,8 @@ from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_
 from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
 NAVER_RECORD_API_URL = "https://api-gw.sports.naver.com/schedule/games/{naver_id}/record"
+#: Circuit-breaker name for the Naver record transport.
+NAVER_TRANSPORT_NAME = "game_detail_naver"
 NAVER_SPORTS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
@@ -263,6 +270,52 @@ class PitcherPayloadContext:
     team_side: str
 
 
+#: Payload source labels, so a consumer can tell which path answered.
+_NAVER_SOURCE = "naver_record_api"
+_KBO_SOURCE = "kbo_gamecenter"
+
+#: Sentinel for a response that is not shaped like a Naver record envelope.
+_MALFORMED_ENVELOPE: Any = object()
+
+#: Primary-source codes, expressed in the reason vocabulary
+#: `game_collection_service` already understands. The primary no longer writes a
+#: reason while it works, so the mapping happens once the whole attempt is known.
+_PRIMARY_REASONS: dict[str, str] = {
+    FailureCode.FETCH_TIMEOUT.value: "timeout",
+    FailureCode.FETCH_HTTP_ERROR.value: "naver_record_unavailable",
+    FailureCode.FETCH_RATE_LIMITED.value: "naver_record_unavailable",
+    FailureCode.FETCH_BLOCKED.value: "kbo_robots_blocked",
+    FailureCode.PARSE_INVALID_FORMAT.value: "naver_record_unavailable",
+}
+
+
+def _naver_record_data(payload: Any) -> Any:  # noqa: ANN401 - untrusted JSON
+    """Return the `recordData` of a Naver record response.
+
+    Args:
+        payload: The decoded response body.
+
+    Returns:
+        The `recordData` mapping, an empty dict when the response is a valid
+        envelope with no record, or ``_MALFORMED_ENVELOPE`` when the response is
+        not shaped like a Naver envelope at all.
+
+    """
+    if not isinstance(payload, dict):
+        return _MALFORMED_ENVELOPE
+    result = payload.get("result")
+    if result is None:
+        return {}
+    if not isinstance(result, dict):
+        return _MALFORMED_ENVELOPE
+    record = result.get("recordData")
+    if record is None:
+        return {}
+    if not isinstance(record, dict):
+        return _MALFORMED_ENVELOPE
+    return record
+
+
 class GameDetailCrawler:
     """Crawl KBO GameCenter review pages and return structured box score data."""
 
@@ -271,6 +324,7 @@ class GameDetailCrawler:
         request_delay: float | None = None,
         resolver: PlayerIdResolver | None = None,
         pool: AsyncPlaywrightPool | None = None,
+        naver_http: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize a new instance.
 
@@ -278,6 +332,9 @@ class GameDetailCrawler:
             request_delay: Request Delay.
             resolver: Resolver.
             pool: Connection pool for async operations.
+            naver_http: Naver record transport. Defaults to a client that owns
+                throttling, retry, and the circuit breaker. Tests inject a client
+                backed by a mock transport.
 
         """
         self.base_url = GAME_CENTER
@@ -286,6 +343,17 @@ class GameDetailCrawler:
         self.resolver = resolver
         self.pool = pool
         self._last_failure_reason: dict[str, str] = {}
+        self._naver_http = naver_http or CrawlerHttpClient(
+            # Named for the transport it guards rather than the crawler: the
+            # circuit registry is keyed by name, so a shared "game_detail" breaker
+            # would trip on a KBO browser stall and then refuse Naver calls too.
+            name=NAVER_TRANSPORT_NAME,
+            headers=dict(NAVER_SPORTS_HEADERS),
+            policy=HttpPolicy(timeout_seconds=20.0),
+        )
+        # Per-game primary outcomes, kept as values rather than reason strings so
+        # a fallback failure cannot overwrite the cause that started it.
+        self._naver_outcomes: dict[str, CrawlResult[dict[str, Any]]] = {}
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
         """Get last failure reason.
@@ -509,11 +577,11 @@ class GameDetailCrawler:
 
         """
         return [
-            attempt_from_result(
+            resolve_attempt(
                 game_id=entry["game_id"],
                 payload=payload,
+                sources=self._sources_for(entry["game_id"], payload),
                 lightweight=lightweight,
-                reason=self._last_failure_reason.get(entry["game_id"]),
             )
             for entry, payload in await self._crawl_game_payloads(
                 games,
@@ -521,6 +589,30 @@ class GameDetailCrawler:
                 lightweight=lightweight,
             )
         ]
+
+    def _sources_for(
+        self,
+        game_id: str,
+        payload: dict[str, Any] | None,
+    ) -> GameDetailSources:
+        """Bundle both sources' outcomes for one game.
+
+        The source label follows the payload, not the primary: a game the KBO page
+        produced was produced by the KBO page, even though the Naver API was asked
+        first.
+        """
+        primary = self._naver_outcomes.get(game_id)
+        if payload is None:
+            source = None
+        elif primary is not None and primary.ok:
+            source = _NAVER_SOURCE
+        else:
+            source = _KBO_SOURCE
+        return GameDetailSources(
+            primary=primary,
+            fallback_reason=self._last_failure_reason.get(game_id),
+            source=source,
+        )
 
     async def crawl_games(
         self,
@@ -594,37 +686,53 @@ class GameDetailCrawler:
 
         return list(zip(normalized, results, strict=True))
 
-    async def _crawl_naver_single(self, game_id: str, game_date: str) -> dict[str, Any] | None:
+    async def _crawl_naver_single(self, game_id: str, game_date: str) -> CrawlResult[dict[str, Any]]:
         """Fetch game details from the Naver sports record API.
+
+        The transport reports an empty body, but Naver answers a missing record
+        with `{"result": {}}` -- a perfectly good response that simply carries no
+        `recordData`. So emptiness has to be decided twice: once by the transport
+        for the body, and once here for the payload inside it. An envelope that
+        is not shaped like a Naver response is a parse failure rather than an
+        empty result, because treating it as empty would silently report a broken
+        response as "no record".
+
+        This method deliberately does not touch `_last_failure_reason`. The
+        primary attempt is kept as a value and attributed once at the end, so a
+        fallback failure cannot overwrite the cause that started the fallback.
 
         Args:
             game_id: KBO game ID.
             game_date: Game date (YYYYMMDD or ISO).
 
         Returns:
-            Game detail payload or None when Naver has no record for the game.
+            A classified result carrying the detail payload, empty when Naver has
+            no record for the game.
 
         """
         from src.crawlers.relay_crawler import RelayCrawler
 
         naver_id = RelayCrawler._map_to_naver_id(game_id)  # noqa: SLF001
         url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
-        try:
-            async with httpx.AsyncClient(timeout=20.0, headers=NAVER_SPORTS_HEADERS) as client:
-                await self.policy.delay_async(host="api-gw.sports.naver.com")
-                resp = await client.get(url)
-                resp.raise_for_status()
-                record = (resp.json().get("result") or {}).get("recordData") or {}
-        except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError):
-            self._last_failure_reason[game_id] = "naver_record_unavailable"
-            logger.debug("Naver record unavailable for %s", game_id)
-            return None
+        result = await self._naver_http.fetch_json(url)
+        if result.outcome is CrawlOutcome.EMPTY:
+            # An empty body is also a missing record; the KBO page may still have it.
+            return result
+        if not result.ok:
+            logger.debug("Naver record unavailable for %s: %s", game_id, result.error)
+            return result
 
+        record = _naver_record_data(result.data)
+        if record is _MALFORMED_ENVELOPE:
+            return CrawlResult.failure(
+                CrawlOutcome.SCHEMA_CHANGED,
+                error="naver response is not shaped like a record envelope",
+                error_code=FailureCode.PARSE_INVALID_FORMAT.value,
+            )
         if not record:
-            self._last_failure_reason[game_id] = "naver_record_empty"
-            return None
-
-        return self._naver_record_to_payload(record, game_id, game_date)
+            logger.debug("Naver has no record for %s", game_id)
+            return CrawlResult.empty()
+        return CrawlResult.success(self._naver_record_to_payload(record, game_id, game_date))
 
     def _naver_record_to_payload(self, record: dict[str, Any], game_id: str, game_date: str) -> dict[str, Any]:
         """Convert a Naver record API response into the game detail payload schema.
@@ -900,10 +1008,17 @@ class GameDetailCrawler:
                 game_id = entry["game_id"]
                 game_date = entry["game_date"]
                 try:
-                    payload = await self._crawl_naver_single(game_id, game_date)
+                    naver = await self._crawl_naver_single(game_id, game_date)
+                    # Kept as a value, not as a reason string: the final
+                    # attribution happens once, after the fallback has spoken.
+                    self._naver_outcomes[game_id] = naver
+                    payload = naver.data if naver.ok else None
                     if payload is None and await self._kbo_fallback_allowed(game_id, game_date):
+                        # The KBO page writes its own reason while it works. It is
+                        # cleared below so the canonical cause can replace it.
                         payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
                     results[idx] = payload
+                    self._attribute_final_outcome(game_id, payload, naver)
                 except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
                     self._last_failure_reason[game_id] = "exception"
                     logger.exception("❌ Error crawling %s", game_id)
@@ -911,6 +1026,30 @@ class GameDetailCrawler:
                     queue.task_done()
         finally:
             await pool.release(page)
+
+    def _attribute_final_outcome(
+        self,
+        game_id: str,
+        payload: dict[str, Any] | None,
+        naver: CrawlResult[dict[str, Any]],
+    ) -> None:
+        """Write the compatibility reason once both sources have spoken.
+
+        `game_collection_service` still reads `_last_failure_reason`, so the
+        reason has to exist -- but as the outcome of the whole attempt, not as a
+        running note from whichever source failed last. A recovered game leaves
+        no reason at all, and a game that failed in both places records the one
+        cause a replay will restart from.
+        """
+        fallback_reason = self._last_failure_reason.get(game_id)
+        self._last_failure_reason.pop(game_id, None)
+        if payload is not None:
+            return
+        primary_reason = _PRIMARY_REASONS.get(naver.error_code or "")
+        if not naver.ok and naver.outcome is not CrawlOutcome.EMPTY and primary_reason:
+            self._last_failure_reason[game_id] = primary_reason
+            return
+        self._last_failure_reason[game_id] = fallback_reason or "exception"
 
     async def _kbo_fallback_allowed(self, game_id: str, game_date: str) -> bool:
         """Check whether the KBO detail fallback is permitted by robots policy."""
