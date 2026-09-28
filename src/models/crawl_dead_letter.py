@@ -35,7 +35,19 @@ class DlqStatus(StrEnum):
 
 
 class CrawlDeadLetter(Base, TimestampMixin):
-    """A replayable crawl failure awaiting retry."""
+    """A replayable unit of unfinished work, awaiting another attempt.
+
+    Not only outright failures. A game whose detail was stored but is still
+    incomplete belongs here too: the data is worth keeping, and re-fetching is
+    the only thing that makes it complete. Treating those as successes would
+    discard a known gap; treating them as failures would misdescribe a run that
+    did its job.
+
+    One row is one incident, not one problem with a target. The identity key
+    includes the originating run, so the same game failing again on a later run
+    is recorded separately instead of a fresh failure being absorbed by an
+    incident that was already resolved.
+    """
 
     __tablename__ = "crawl_dead_letters"
 
