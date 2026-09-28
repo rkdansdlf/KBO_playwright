@@ -161,7 +161,7 @@ class TestSaveDetailPayload:
             "pitchers": {"away": [{"name": "c"}], "home": [{"name": "d"}]},
         }
         with patch("src.services.game_collection_service.save_game_detail", return_value=True):
-            assert _save_detail_payload(target, payload, ctx) is True
+            assert _save_detail_payload(target, payload, ctx) == (True, None)
             assert result.detail_saved == 1
             assert "g1" in ctx.detail_ready
 
@@ -177,7 +177,7 @@ class TestSaveDetailPayload:
             "pitchers": {"away": [{"name": "c"}], "home": [{"name": "d"}]},
         }
         with patch("src.services.game_collection_service.save_game_detail", return_value=False):
-            assert _save_detail_payload(target, payload, ctx) is False
+            assert _save_detail_payload(target, payload, ctx) == (False, None)
             assert result.detail_failed == 1
 
 

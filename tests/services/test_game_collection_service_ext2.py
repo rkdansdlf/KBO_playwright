@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.crawlers.game_detail_outcome import attempt_from_result
 from src.services.game_collection_service import (
     DetailProcessingContext,
     GameCollectionConfig,
@@ -17,6 +18,11 @@ from src.services.game_collection_service import (
     _process_detail_target,
     _save_detail_payload,
 )
+
+
+def _attempt(payload):
+    """Build an attempt the way the crawler path would."""
+    return attempt_from_result(payload.get("game_id", "g1"), payload, lightweight=False)
 
 
 class TestPauseBetweenDetailBatches:
@@ -52,7 +58,7 @@ class TestProcessDetailTarget:
             "src.services.game_collection_service._detail_payload_failure_reason",
             return_value=("crawl_failed", "timeout", "no_detail_payload"),
         ):
-            _process_detail_target(target, None, ctx, global_index=1, total_targets=1)
+            _process_detail_target(target, None, ctx, run_id=None, global_index=1, total_targets=1)
             assert result.items["g1"].detail_status == "crawl_failed"
 
     def test_success_save(self):
@@ -70,9 +76,9 @@ class TestProcessDetailTarget:
                 "src.services.game_collection_service._detail_payload_failure_reason",
                 return_value=None,
             ),
-            patch("src.services.game_collection_service._save_detail_payload", return_value=True),
+            patch("src.services.game_collection_service._save_detail_payload", return_value=(True, None)),
         ):
-            _process_detail_target(target, {"data": 1}, ctx, global_index=1, total_targets=1)
+            _process_detail_target(target, _attempt({"data": 1}), ctx, run_id=None, global_index=1, total_targets=1)
 
     def test_failed_save(self):
         target = GameCollectionTarget(game_id="g1", game_date="20240315")
@@ -89,9 +95,9 @@ class TestProcessDetailTarget:
                 "src.services.game_collection_service._detail_payload_failure_reason",
                 return_value=None,
             ),
-            patch("src.services.game_collection_service._save_detail_payload", return_value=False),
+            patch("src.services.game_collection_service._save_detail_payload", return_value=(False, None)),
         ):
-            _process_detail_target(target, {"data": 1}, ctx, global_index=1, total_targets=1)
+            _process_detail_target(target, _attempt({"data": 1}), ctx, run_id=None, global_index=1, total_targets=1)
             ctx.cfg.log.assert_called()
 
 

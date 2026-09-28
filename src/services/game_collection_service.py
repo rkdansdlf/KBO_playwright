@@ -11,10 +11,17 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN
-from src.crawlers.game_detail_outcome import PARTIAL_DETAIL_REASON
+from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
+from src.crawlers.game_detail_outcome import (
+    PARTIAL_DETAIL_REASON,
+    GameDetailAttempt,
+    attempt_from_result,
+    error_code_for_reason,
+)
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.repositories.game_repository import save_game_detail, save_relay_data
+from src.services.game_detail_runs import GameDetailRunLedger, RunCounts
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.utils.team_codes import normalize_kbo_game_id
@@ -26,6 +33,9 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+#: Everything a database write can raise, whatever the driver happens to use.
+GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, TimeoutError, OSError, RuntimeError, ValueError, TypeError)
 LAST_MONTH_OF_YEAR = 12
 ROW_FIELD_COUNT = 2
 
@@ -442,15 +452,12 @@ async def _collect_detail_phase(
         await _pause_between_detail_batches(b_idx, ctx.cfg.pause_seconds, ctx.detail_crawler, ctx.cfg.log)
         ctx.cfg.log(f"[*] Processing detail batch {batch_num}/{total_batches} ({len(batch)} games)...")
 
-        payloads = await ctx.detail_crawler.crawl_games(
-            [target.as_crawler_input() for target in batch],
-            concurrency=ctx.cfg.concurrency,
-        )
-        payload_by_id = {
-            normalize_kbo_game_id(str(payload.get("game_id"))): payload
-            for payload in payloads
-            if payload.get("game_id")
-        }
+        # The run is opened before the fetch so the crawl time is part of the
+        # duration, and closed after the write so a save failure lands on the
+        # same run that did the fetching.
+        run_ids = _run_ledger().open_runs([target.game_id for target in batch])
+
+        attempts = await _crawl_detail_batch(ctx, batch)
 
         detail_ctx = DetailProcessingContext(
             detail_crawler=ctx.detail_crawler,
@@ -464,13 +471,53 @@ async def _collect_detail_phase(
             global_index = b_idx + index
             _process_detail_target(
                 target,
-                payload_by_id.get(target.game_id),
+                attempts.get(target.game_id),
                 detail_ctx,
+                run_id=run_ids.get(target.game_id),
                 global_index=global_index,
                 total_targets=len(detail_targets),
             )
 
     return detail_ready
+
+
+async def _crawl_detail_batch(
+    ctx: DetailProcessingContext,
+    batch: list[GameCollectionTarget],
+) -> dict[str, GameDetailAttempt]:
+    """Fetch one batch and return a typed outcome per game.
+
+    The typed path is used when the crawler offers it. A crawler that predates
+    `crawl_game_attempts` -- a test double, or a caller holding a different
+    implementation of the protocol -- keeps the old untyped path, so this does not
+    force the whole `DetailCrawler` contract to change at once.
+    """
+    inputs = [target.as_crawler_input() for target in batch]
+    # Checked on the type, not the instance: a mock auto-creates any attribute,
+    # so an instance check would send a test double down a path it cannot run.
+    if callable(getattr(type(ctx.detail_crawler), "crawl_game_attempts", None)):
+        typed = ctx.detail_crawler.crawl_game_attempts
+        return {attempt.game_id: attempt for attempt in await typed(inputs, concurrency=ctx.cfg.concurrency)}
+
+    payloads = await ctx.detail_crawler.crawl_games(inputs, concurrency=ctx.cfg.concurrency)
+    synthesized: dict[str, GameDetailAttempt] = {}
+    for payload in payloads:
+        game_id = payload.get("game_id")
+        if not game_id:
+            continue
+        normalized = normalize_kbo_game_id(str(game_id))
+        synthesized[normalized] = attempt_from_result(normalized, payload, lightweight=False)
+    for target in batch:
+        synthesized.setdefault(
+            target.game_id,
+            attempt_from_result(target.game_id, None, lightweight=False),
+        )
+    return synthesized
+
+
+def _run_ledger() -> GameDetailRunLedger:
+    """Return a run ledger. Overridable so tests can observe the transitions."""
+    return GameDetailRunLedger()
 
 
 def _mark_skipped_detail_targets(
@@ -503,23 +550,114 @@ async def _pause_between_detail_batches(
     await detail_crawler.close()
 
 
-def _process_detail_target(
+def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     target: GameCollectionTarget,
-    payload: dict[str, Any] | None,
+    attempt: GameDetailAttempt | None,
     ctx: DetailProcessingContext,
     *,
+    run_id: str | None,
     global_index: int,
     total_targets: int,
 ) -> None:
+    """Process one game: decide, save, and close its run.
+
+    The run is closed last and on its own session, so a save that rolls back
+    cannot erase the record of the attempt that produced the payload.
+    """
     ctx.cfg.log(f"[DETAIL] {global_index}/{total_targets} {target.game_id}")
+    payload = attempt.payload if attempt is not None else None
     failure_reason = _detail_payload_failure_reason(target, payload, ctx.detail_crawler, ctx.cfg.should_save_detail)
     if failure_reason is not None:
         _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
+        _close_failed_run(
+            run_id,
+            attempt,
+            failure_reason=failure_reason[2],
+            extra_reason=failure_reason[1] or None,
+        )
         return
-    if _save_detail_payload(target, payload or {}, ctx):
+
+    saved, persist_cause = _save_detail_payload(target, payload or {}, ctx)
+    if saved:
         ctx.cfg.log("   [DB] Detail saved")
     else:
         ctx.cfg.log("   [ERROR] Detail save failed")
+    _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
+
+
+def _close_saved_run(
+    run_id: str | None,
+    attempt: GameDetailAttempt | None,
+    *,
+    saved: bool,
+    persist_cause: tuple[str, str] | None,
+    payload: dict[str, Any],
+) -> None:
+    """Close a run for a game that reached the write step."""
+    if not run_id:
+        return
+    ledger = _run_ledger()
+    if not saved:
+        # A `False` with no exception is the quality gate declining the payload,
+        # not a broken database. Calling it PERSIST_CONNECTION would blame the
+        # infrastructure for a data decision.
+        code, message = _save_failure_cause(persist_cause)
+        ledger.record_failed(
+            run_id,
+            error_code=code,
+            error_message=message,
+            counts=RunCounts(read=1, written=0, failed=1),
+        )
+        return
+
+    counts = RunCounts(read=1, written=1)
+    if _has_full_detail_rows(payload):
+        ledger.record_success(run_id, counts=counts)
+        return
+    ledger.record_partial(
+        run_id,
+        error_code=(
+            attempt.error_code if attempt is not None and attempt.error_code else FailureCode.VALIDATION_QUALITY.value
+        ),
+        error_message=PARTIAL_DETAIL_REASON,
+        counts=counts,
+    )
+
+
+def _save_failure_cause(persist_cause: tuple[str, str] | None) -> tuple[str, str]:
+    """Return the code and message for a write that did not succeed.
+
+    A raised error means the database did it, and the save already classified it
+    where the exception was in hand. A plain `False` means the quality gate
+    declined the payload, which is a data decision and must not be reported as a
+    broken connection.
+    """
+    if persist_cause is not None:
+        return persist_cause
+    return (
+        FailureCode.VALIDATION_QUALITY.value,
+        "detail save rejected by quality gate",
+    )
+
+
+def _close_failed_run(
+    run_id: str | None,
+    attempt: GameDetailAttempt | None,
+    *,
+    failure_reason: str,
+    extra_reason: str | None,
+) -> None:
+    """Close a run for a game that never reached the write step."""
+    if not run_id:
+        return
+    code = attempt.error_code if attempt is not None and attempt.error_code else None
+    if code is None:
+        code = error_code_for_reason(failure_reason)
+    _run_ledger().record_failed(
+        run_id,
+        error_code=code,
+        error_message=extra_reason or failure_reason,
+    )
 
 
 def _detail_payload_failure_reason(
@@ -564,21 +702,52 @@ def _save_detail_payload(
     target: GameCollectionTarget,
     payload: dict[str, Any],
     ctx: DetailProcessingContext,
-) -> bool:
+) -> tuple[bool, tuple[str, str] | None]:
+    """Write one game's detail and report what happened.
+
+    The write runs on a session this function owns, so a database error escapes
+    to be classified rather than being flattened into `False`. That distinction
+    is the whole point: `False` means the quality gate declined the payload, and
+    a raised error means the database did, and the two need different codes.
+
+    Returns:
+        A tuple of (saved, persistence cause). The cause is None whenever the call
+        returned without raising, and is already classified here because that is
+        the only point where the real exception is in hand -- re-deriving it from
+        the message later would invent a timeout for every error.
+
+    """
     full_detail = _has_full_detail_rows(payload)
-    if not save_game_detail(
-        payload,
-        allow_partial=not full_detail,
-        write_contract=ctx.contract,
-        source_stage=ctx.detail_source.stage,
-        source_crawler=ctx.detail_source.crawler,
-        source_reason=ctx.detail_source.reason,
-    ):
+    with SessionLocal() as session:
+        try:
+            saved = save_game_detail(
+                payload,
+                allow_partial=not full_detail,
+                write_contract=ctx.contract,
+                source_stage=ctx.detail_source.stage,
+                source_crawler=ctx.detail_source.crawler,
+                source_reason=ctx.detail_source.reason,
+                session=session,
+            )
+        # Any database error is classified here rather than inside the save, so a
+        # PERSIST_TIMEOUT is neither lost nor invented from the message text. The
+        # driver raises many unrelated types depending on the backend, so the whole
+        # persistence surface is caught and classified rather than guessed at.
+        except GAME_SAVE_EXCEPTIONS as exc:
+            session.rollback()
+            _stage, code = classify_persist_failure(exc)
+            return False, (code.value, f"{type(exc).__name__}: {exc}")
+        if saved:
+            session.commit()
+        else:
+            session.rollback()
+
+    if not saved:
         ctx.result.detail_failed += 1
         item = ctx.result.items[target.game_id]
         item.detail_status = "save_failed"
         item.failure_reason = _normalize_detail_failure_reason("detail_save_failed", default="save_failed")
-        return False
+        return False, None
     item = ctx.result.items[target.game_id]
     item.detail_status = "saved" if full_detail else "partial"
     item.detail_saved = full_detail
@@ -588,7 +757,7 @@ def _save_detail_payload(
         ctx.detail_ready.add(target.game_id)
     else:
         item.failure_reason = PARTIAL_DETAIL_REASON
-    return True
+    return True, None
 
 
 async def _collect_relay_phase(
