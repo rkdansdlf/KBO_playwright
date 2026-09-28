@@ -25,7 +25,8 @@ from src.models.game import (
     GameSummary,
     GameValidationMetrics,
 )
-from src.utils.alerting import SlackWebhookClient
+from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
+from src.notifications.bridge import apply_incidents
 from src.utils.date_helpers import RAISE_ON_UNPARSABLE, parse_date_str_lenient
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
 from src.utils.relay_text import is_relay_noise_text
@@ -322,13 +323,37 @@ def evaluate_freshness_gate(
     return failures
 
 
-def _send_freshness_alert(failures: list[str]) -> None:
-    header = "<b>\u2757 KBO Freshness Gate Failed</b>"
-    body = "\n".join(f"\u2022 {f}" for f in failures[:20])
+#: One incident owns the gate's state, so a later passing run recovers it.
+FRESHNESS_GATE_INCIDENT_KEY = "freshness:gate"
+
+
+def _apply_freshness_incident(failures: list[str], *, ok: bool) -> None:
+    """Open (or recover) the gate incident for one evaluation.
+
+    A failed evaluation opens ``freshness:gate``; a passing one resolves it, so
+    a gate that recovers emits exactly one RECOVERED notice instead of staying
+    open forever.
+    """
+    if ok or not failures:
+        apply_incidents([], resolve_keys=[FRESHNESS_GATE_INCIDENT_KEY])
+        return
+
+    body = "\n".join(f"\u2022 {f}" for f in failures[:FRESHNESS_ALERT_FAILURE_LIMIT])
     if len(failures) > FRESHNESS_ALERT_FAILURE_LIMIT:
         body += f"\n... and {len(failures) - FRESHNESS_ALERT_FAILURE_LIMIT} more failures"
-    message = f"{header}\n\n{body}"
-    SlackWebhookClient.send_alert(message)
+    apply_incidents(
+        [
+            AlertEvent(
+                source=AlertSource.FRESHNESS,
+                component="freshness_gate",
+                severity=AlertSeverity.WARNING,
+                title="KBO Freshness Gate Failed",
+                message=body,
+                incident_key=FRESHNESS_GATE_INCIDENT_KEY,
+                metadata={"failure_count": len(failures)},
+            ),
+        ],
+    )
 
 
 def _log_sla_metrics(session: Session, issues: dict[str, list[str]]) -> None:
@@ -467,9 +492,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         for failure in failures:
             logger.info("  - %s", failure)
         if args.alert:
-            _send_freshness_alert(failures)
+            _apply_freshness_incident(failures, ok=False)
     else:
         logger.info("✅ Freshness gate passed")
+        if args.alert:
+            _apply_freshness_incident(failures, ok=True)
 
     return 1 if failures else 0
 
