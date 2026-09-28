@@ -33,6 +33,7 @@ from enum import StrEnum
 from typing import Any
 
 from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.result import CrawlOutcome, CrawlResult
 
 #: Reasons the crawler records in ``_last_failure_reason``, mapped to the shared
 #: taxonomy. Anything unmapped is treated as unknown rather than guessed at, so
@@ -247,12 +248,130 @@ def attempt_from_result(
     )
 
 
+#: Codes that describe "we could not classify this" rather than a cause, so they
+#: never displace a real classification from another source.
+_UNINFORMATIVE_CODES: frozenset[str] = frozenset(
+    {
+        FailureCode.UNKNOWN.value,
+        "",
+    }
+)
+
+
+def canonical_failure_code(
+    primary: CrawlResult[Any] | None,
+    fallback_reason: str | None,
+) -> str:
+    """Return the cause to record when both sources failed.
+
+    The primary attempt only claims the cause when it actually has one:
+
+    * a meaningful primary failure code wins, because a replay restarts there
+    * a primary ``EMPTY`` is not a failure and has no claim at all -- the KBO
+      page was needed precisely because Naver had no record
+    * an uninformative primary code yields to the fallback's specific one
+    * with neither, ``UNKNOWN`` is the honest answer
+
+    Args:
+        primary: The primary source's result, or None if it was not consulted.
+        fallback_reason: The fallback's own failure reason, if it failed.
+
+    Returns:
+        A canonical failure code.
+
+    """
+    fallback_code = error_code_for_reason(fallback_reason)
+    if primary is None or primary.ok or primary.outcome is CrawlOutcome.EMPTY:
+        return fallback_code
+    primary_code = primary.error_code or FailureCode.UNKNOWN.value
+    if primary_code in _UNINFORMATIVE_CODES:
+        return fallback_code
+    return primary_code
+
+
+@dataclass(frozen=True)
+class GameDetailSources:
+    """What each source reported for one game.
+
+    Bundling them keeps the two outcomes travelling together, so a caller cannot
+    record a primary failure while silently dropping the fallback's reason.
+
+    Attributes:
+        primary: The Naver record API's classified result, or None if it was not
+            consulted.
+        fallback_reason: The KBO GameCenter page's own failure reason, if it
+            failed.
+        source: Which source produced the payload, when one did.
+
+    """
+
+    primary: CrawlResult[Any] | None = None
+    fallback_reason: str | None = None
+    source: str | None = None
+
+    @property
+    def fallback_failed(self) -> bool:
+        """Return whether the fallback was consulted and failed."""
+        return self.fallback_reason is not None
+
+
+def resolve_attempt(
+    game_id: str,
+    payload: dict[str, Any] | None,
+    sources: GameDetailSources,
+    *,
+    lightweight: bool,
+) -> GameDetailAttempt:
+    """Build the final attempt for a game, given both sources' outcomes.
+
+    A payload from either source is a success for the request that was made, so a
+    primary failure is not carried into the record once the fallback produced
+    something. Only a game that came back empty-handed from both is attributed,
+    and then only to the source that actually knows why.
+
+    Args:
+        game_id: The game this attempt was for.
+        payload: The extracted detail, or None.
+        sources: What each source reported.
+        lightweight: Whether the request was a lightweight one.
+
+    Returns:
+        The attempt for this game.
+
+    """
+    status = classify_payload(payload, lightweight=lightweight)
+    if status is GameDetailStatus.SUCCESS:
+        # Whichever source answered, the request was satisfied. Leaving the
+        # primary's failure on the record would report a recovered game as broken.
+        return GameDetailAttempt(game_id=game_id, status=status, payload=payload, source=sources.source)
+    if status is GameDetailStatus.PARTIAL:
+        return GameDetailAttempt(
+            game_id=game_id,
+            status=status,
+            payload=payload,
+            error_code=FailureCode.VALIDATION_QUALITY.value,
+            source=sources.source,
+        )
+    return GameDetailAttempt(
+        game_id=game_id,
+        status=status,
+        payload=payload,
+        error_code=canonical_failure_code(sources.primary, sources.fallback_reason),
+        error_message=sources.fallback_reason,
+        reason=sources.fallback_reason,
+        source=sources.source,
+    )
+
+
 __all__ = [
     "GameDetailAttempt",
+    "GameDetailSources",
     "GameDetailStatus",
     "attempt_from_result",
+    "canonical_failure_code",
     "classify_payload",
     "error_code_for_reason",
     "has_full_detail_rows",
     "has_partial_detail_anchor",
+    "resolve_attempt",
 ]

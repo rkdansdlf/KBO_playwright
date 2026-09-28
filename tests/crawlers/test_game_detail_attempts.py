@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.game_detail_outcome import GameDetailStatus
 
 FULL_DETAIL: dict = {
@@ -41,7 +42,7 @@ def _crawler(payload_for) -> GameDetailCrawler:
     pool.release = AsyncMock()
     pool.close = AsyncMock()
     crawler = GameDetailCrawler(resolver=MagicMock(), pool=pool)
-    crawler._crawl_naver_single = AsyncMock(return_value=None)
+    crawler._crawl_naver_single = AsyncMock(return_value=CrawlResult.empty())
 
     async def _crawl_single(_page, game_id, _game_date, *, lightweight):
         return payload_for(game_id)
@@ -74,6 +75,7 @@ class TestEveryGameGetsAnOutcome:
         """The bug this fixes: a failed game simply disappeared from the result."""
         crawler = _crawler(lambda game_id: FULL_DETAIL if game_id == "20250502KTSS0" else None)
         crawler._last_failure_reason["20250501LGOB0"] = "navigation_error"
+        # The Naver source answers with an empty record, so the KBO page is tried.
 
         attempts = await _run(crawler, _games("20250501LGOB0", "20250502KTSS0"))
 
