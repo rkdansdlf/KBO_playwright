@@ -270,6 +270,12 @@ class TestAdvisories:
         assert advise_row(row) == []
 
 
+#: Crawlers that satisfy every axis the matrix tracks. Kept as one constant so a
+#: new canary does not have to be chased through the summary and the roadmap
+#: separately.
+FULLY_ADOPTED = ("award_crawler", "game_detail_crawler", "roster_transaction_crawler", "schedule_crawler")
+
+
 class TestRoadmap:
     def test_declared_priority_leads(self, matrix: AdoptionMatrix) -> None:
         """The schedule feeds nearly every other crawl, so it comes first even
@@ -282,7 +288,7 @@ class TestRoadmap:
     def test_adopted_crawlers_are_not_recommended_again(self, matrix: AdoptionMatrix) -> None:
         order = [row.module for row in matrix.roadmap()]
 
-        for module in ("award_crawler", "roster_transaction_crawler", "schedule_crawler"):
+        for module in FULLY_ADOPTED:
             assert module not in order
 
     def test_data_only_modules_are_left_out(self, matrix: AdoptionMatrix) -> None:
@@ -307,18 +313,18 @@ class TestRendering:
     def test_markdown_shows_the_adopted_set(self, matrix: AdoptionMatrix) -> None:
         rendered = render_markdown(matrix)
 
-        assert "Fully adopted (3)" in rendered
+        assert f"Fully adopted ({len(FULLY_ADOPTED)})" in rendered
         assert "`award_crawler`" in rendered
 
     def test_json_is_serializable(self, matrix: AdoptionMatrix) -> None:
         payload = json.loads(json.dumps(matrix.to_dict()))
 
         assert payload["summary"]["total"] == len(matrix.rows)
-        assert payload["summary"]["fully_adopted"] == 3
+        assert payload["summary"]["fully_adopted"] == len(FULLY_ADOPTED)
         # An adopted crawler is not recommended for migration again.
-        for module in ("award_crawler", "roster_transaction_crawler", "schedule_crawler"):
+        for module in FULLY_ADOPTED:
             assert module not in payload["roadmap"]
-        assert payload["roadmap"][0] == "game_detail_crawler"
+        assert payload["roadmap"][0] == "relay_crawler"
 
     def test_summary_counts_match_the_rows(self, matrix: AdoptionMatrix) -> None:
         summary = matrix.to_dict()["summary"]

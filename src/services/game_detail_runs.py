@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 GAME_DETAIL_CRAWLER_NAME = "game_detail"
 GAME_DETAIL_TARGET_TYPE = "game"
 _GAME_ID_YEAR_LEN = 4
+#: ``YYYYMMDD`` at the head of a KBO game ID.
+_GAME_ID_DATE_LEN = 8
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,19 @@ class TerminalOutcome:
     error_message: str | None = None
     counts: RunCounts = _NO_ROWS
     run_id: str | None = None
+
+
+def game_date_of(game_id: str) -> str:
+    """Return the ``YYYYMMDD`` date a KBO game ID carries.
+
+    A replay cannot read this from the database: the row may be exactly what is
+    broken or missing, and the letter would then be unreplayable. The ID is
+    self-describing, so the date is taken from it instead.
+    """
+    prefix = game_id[:_GAME_ID_DATE_LEN]
+    if len(prefix) == _GAME_ID_DATE_LEN and prefix.isdigit():
+        return prefix
+    return ""
 
 
 def _season_of(game_id: str) -> int | None:
@@ -121,6 +136,30 @@ class GameDetailRunLedger:
             except Exception:
                 logger.exception("Failed to open crawl run for %s", game_id)
         return started
+
+    def open_run(self, spec: CrawlRunSpec) -> str | None:
+        """Start a run from a spec the caller already built.
+
+        A replay has to run under the identity the dead letter's dispatcher
+        allocated -- its `run_id`, and the link back to the run that failed.
+        Minting a fresh id here would record the retry as an unrelated crawl and
+        break the lineage from incident to recovery.
+
+        Args:
+            spec: The run identity, including the replay link.
+
+        Returns:
+            The run ID, or None when the run could not be started.
+
+        """
+        try:
+            with SessionLocal() as session:
+                run = CrawlRunService(session).start(spec)
+                session.commit()
+        except Exception:
+            logger.exception("Failed to open replay run %s", spec.run_id)
+            return None
+        return run.run_id
 
     def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
         """Close a run whose game was fetched completely and stored.
@@ -250,4 +289,5 @@ __all__ = [
     "GameDetailRunLedger",
     "RunCounts",
     "TerminalOutcome",
+    "game_date_of",
 ]
