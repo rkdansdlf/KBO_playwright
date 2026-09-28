@@ -30,6 +30,7 @@ from src.services.game_detail_runs import (
     RunCounts,
     TerminalOutcome,
     _season_of,
+    game_date_of,
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
     from sqlalchemy.orm import Session
+
+    from src.repositories.crawl_execution_repository import CrawlRunSpec
 
 logger = logging.getLogger(__name__)
 
@@ -594,6 +597,104 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
         ctx.cfg.log("   [ERROR] Detail save failed")
     terminal = _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
     _enqueue_for_replay(target, terminal)
+
+
+async def replay_single_game_detail(
+    game_id: str,
+    spec: CrawlRunSpec,
+    *,
+    detail_crawler: DetailCrawler,
+    config: GameCollectionConfig,
+) -> TerminalOutcome | None:
+    """Re-crawl one game on behalf of a dead letter.
+
+    This is the full detail path, deliberately: a letter is queued when what was
+    stored is incomplete, so replaying the lightweight path would fetch the same
+    reduced page and land back on the same partial.
+
+    It also never queues. A retry that produced a new letter would give the
+    incident a second row under a second run, so the queue would grow faster than
+    it drains and the original letter would stop being the thing that tracks the
+    problem. The existing letter is the only record; this call just fills it in.
+
+    Args:
+        game_id: The game to re-crawl.
+        spec: The run identity the dispatcher allocated, carrying the link back
+            to the run that failed.
+        detail_crawler: The crawler to fetch with.
+        config: The detail collection settings.
+
+    Returns:
+        The recorded outcome, or None when the run was not recorded.
+
+    """
+    return await _collect_single_game_detail(
+        game_id,
+        spec,
+        detail_crawler=detail_crawler,
+        config=config,
+        record_dead_letters=False,
+    )
+
+
+async def _collect_single_game_detail(
+    game_id: str,
+    spec: CrawlRunSpec,
+    *,
+    detail_crawler: DetailCrawler,
+    config: GameCollectionConfig,
+    record_dead_letters: bool,
+) -> TerminalOutcome | None:
+    """Fetch, write and close one game under a caller-supplied run identity."""
+    target = GameCollectionTarget(game_id=game_id, game_date=game_date_of(game_id))
+    result = GameCollectionResult()
+    ctx = DetailProcessingContext(
+        detail_crawler=detail_crawler,
+        contract=GameWriteContract(),
+        detail_source=GameWriteSource(),
+        cfg=config,
+        result=result,
+        detail_ready=set(),
+    )
+    run_id = _run_ledger().open_run(spec)
+    attempts = await _crawl_detail_batch(ctx, [target])
+    terminal = _process_single_detail_target(target, attempts.get(game_id), ctx, run_id=run_id)
+    if record_dead_letters:
+        _enqueue_for_replay(target, terminal)
+    return terminal
+
+
+def _process_single_detail_target(
+    target: GameCollectionTarget,
+    attempt: GameDetailAttempt | None,
+    ctx: DetailProcessingContext,
+    *,
+    run_id: str | None,
+) -> TerminalOutcome | None:
+    """Close one game's run, deciding and writing before recording it."""
+    payload = attempt.payload if attempt is not None else None
+    failure_reason = _detail_payload_failure_reason(
+        target,
+        payload,
+        ctx.detail_crawler,
+        ctx.cfg.should_save_detail,
+    )
+    if failure_reason is not None:
+        _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
+        return _close_failed_run(
+            run_id,
+            attempt,
+            failure_reason=failure_reason[2],
+            extra_reason=failure_reason[1] or None,
+        )
+    saved, persist_cause = _save_detail_payload(target, payload or {}, ctx)
+    return _close_saved_run(
+        run_id,
+        attempt,
+        saved=saved,
+        persist_cause=persist_cause,
+        payload=payload or {},
+    )
 
 
 def _close_saved_run(

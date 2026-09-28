@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 CRAWLER_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CRAWLER_DIR.parent.parent
 PROJECT_ROOT = CRAWLER_DIR.parents[1]
 
 
@@ -271,6 +272,7 @@ REPLAY_HANDLERS: dict[str, str] = {
     "awards": "award_crawler",
     "roster_transactions": "roster_transaction_crawler",
     "schedule": "schedule_crawler",
+    "game_detail": "game_detail_crawler",
 }
 
 #: The module names behind those handlers, for lookup by module.
@@ -316,12 +318,10 @@ DECLARED: dict[str, DesignFacts] = {
 
 #: Migration order decided by upstream impact rather than by how little work is
 #: left. The schedule is done -- it fed nearly every other crawl, so a silent
-#: failure there poisoned everything downstream. Game detail is the largest
-#: remaining surface, and relay comes next.
-PRIORITY_ORDER: tuple[str, ...] = (
-    "game_detail_crawler",
-    "relay_crawler",
-)
+#: failure there poisoned everything downstream. Game detail is done too, so
+#: relay leads: it is the largest surface still without a run, a dead letter or
+#: a replay, and a silent failure there corrupts the relay-driven game narrative.
+PRIORITY_ORDER: tuple[str, ...] = ("relay_crawler",)
 
 #: Base classes whose subclasses inherit their HTTP transport.
 _HTTP_BASES = frozenset({"BaseHttpCrawler"})
@@ -338,6 +338,12 @@ def _is_entrypoint(name: str) -> bool:
 
 def _module_source(module: str) -> str:
     return (CRAWLER_DIR / f"{module}.py").read_text(encoding="utf-8")
+
+
+def _read_source(relative_path: str) -> str:
+    """Return a repository-relative source file's text, empty when absent."""
+    path = REPO_ROOT / relative_path
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
 def _crawler_class(tree: ast.Module) -> ast.ClassDef | None:
@@ -424,6 +430,33 @@ def _resolve_transports(tree: ast.Module, base_class: str) -> frozenset[Transpor
     return frozenset(found)
 
 
+#: Where a crawler deliberately leaves part of its run bookkeeping to the code
+#: that owns the write, together with the evidence that proves the owner really
+#: does it. A crawler that only fetches cannot know whether its payload turned
+#: out complete, so the service that writes it is the only place that can record
+#: the run or queue the game. The capability stays derived rather than declared:
+#: the owner is read and must contain the evidence, so deleting the enqueue or
+#: the run recording there turns the capability off and trips the drift gate
+#: exactly as a crawler-local implementation would.
+DELEGATED_CAPABILITIES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "game_detail_crawler": (
+        ("src/services/game_collection_service.py", ("enqueue_failure", "DeadLetterSpec")),
+        ("src/services/game_detail_runs.py", ("open_runs", "record_success")),
+    ),
+}
+
+
+def _owns(module: str, source: str, evidence: tuple[str, ...], delegated_index: int) -> bool:
+    """Return whether a capability is present locally or through its owner."""
+    if all(token in source for token in evidence):
+        return True
+    owners = DELEGATED_CAPABILITIES.get(module, ())
+    if len(owners) <= delegated_index:
+        return False
+    owner, owner_evidence = owners[delegated_index]
+    return all(token in _read_source(owner) for token in owner_evidence)
+
+
 def scan_module(module: str) -> ModuleFacts:
     """Read one crawler module's source and classify it.
 
@@ -450,8 +483,8 @@ def scan_module(module: str) -> ModuleFacts:
         and Transport.CRAWLER_HTTP_CLIENT not in transports,
         snapshot="save_raw_snapshots" in source,
         persistence="SessionLocal" in source,
-        ledger="track_crawl_run" in source,
-        dead_letter="DeadLetterSpec" in source or "enqueue_failure" in source,
+        ledger=_owns(module, source, ("track_crawl_run",), 1),
+        dead_letter=_owns(module, source, ("DeadLetterSpec", "enqueue_failure"), 0),
         uses_crawl_result="CrawlResult" in source,
         has_entrypoint=_has_entrypoint(tree),
     )

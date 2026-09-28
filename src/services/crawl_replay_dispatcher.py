@@ -30,6 +30,11 @@ from src.crawlers.schedule_crawler import (
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
+from src.services.game_collection_service import replay_single_game_detail
+from src.services.game_detail_runs import (
+    GAME_DETAIL_CRAWLER_NAME,
+    GAME_DETAIL_TARGET_TYPE,
+)
 from src.utils.async_bridge import run_coro_blocking
 
 if TYPE_CHECKING:
@@ -39,6 +44,15 @@ logger = logging.getLogger(__name__)
 
 #: A calendar month, used to sanity-check a replay target before crawling it.
 MAX_SCHEDULE_MONTH = 12
+
+#: Length of the ``YYYY`` season prefix of a KBO game ID.
+_GAME_ID_YEAR_LEN = 4
+
+
+def _season_of_game_id(game_id: str) -> int | None:
+    """Return the season encoded in a game ID, when it looks like a KBO one."""
+    year = game_id[:_GAME_ID_YEAR_LEN]
+    return int(year) if len(year) == _GAME_ID_YEAR_LEN and year.isdigit() else None
 
 
 @dataclass(frozen=True)
@@ -108,6 +122,70 @@ async def _execute_roster_replay(
         save=True,
         record_dead_letters=False,
         raise_on_persist_error=True,
+    )
+
+
+async def _execute_game_detail_replay(
+    game_id: str,
+    spec: CrawlRunSpec,
+) -> None:
+    """Run the single-game full detail collection for one dead letter."""
+    from src.crawlers.game_detail_crawler import GameDetailCrawler
+    from src.services.game_collection_service import GameCollectionConfig
+
+    await replay_single_game_detail(
+        game_id,
+        spec,
+        detail_crawler=GameDetailCrawler(),
+        config=GameCollectionConfig(),
+    )
+
+
+def _replay_game_detail(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
+    """Re-crawl one game and report the persisted replay run, not our own verdict.
+
+    The run that was written is the authority, for the same reason as the other
+    crawlers: a crash between the work and this function's return must not be
+    reported as a successful retry. And `success` is only ever `success` -- a
+    partial replay left the same incompleteness in place, and calling that
+    resolved would close an incident that is still true.
+    """
+    game_id = dead_letter.target_id or dead_letter.game_id
+    if not game_id:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="unaddressable",
+            error_message="dead letter carries no game id",
+        )
+    spec = CrawlRunSpec(
+        crawler=GAME_DETAIL_CRAWLER_NAME,
+        target_type=dead_letter.target_type or GAME_DETAIL_TARGET_TYPE,
+        target_id=game_id,
+        season=dead_letter.season or _season_of_game_id(game_id),
+        game_id=game_id,
+        parent_run_id=dead_letter.original_run_id,
+        replay_of_run_id=dead_letter.original_run_id,
+        run_id=replay_run_id,
+    )
+    run_coro_blocking(_execute_game_detail_replay(game_id, spec))
+
+    with SessionLocal() as session:
+        run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
+    if run is None:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="missing",
+            error_message="replay run was not recorded",
+        )
+    success = run.status == RUN_STATUS_SUCCESS
+    return ReplayOutcome(
+        success=success,
+        replay_run_id=replay_run_id,
+        status=run.status,
+        error_message=None if success else run.error_message,
+        error_code=None if success else run.error_code,
     )
 
 
@@ -256,4 +334,5 @@ def build_default_dispatcher() -> ReplayDispatcher:
     dispatcher.register(AWARD_CRAWLER_NAME, _replay_awards)
     dispatcher.register(ROSTER_CRAWLER_NAME, _replay_roster_transactions)
     dispatcher.register(SCHEDULE_CRAWLER_NAME, _replay_schedule)
+    dispatcher.register(GAME_DETAIL_CRAWLER_NAME, _replay_game_detail)
     return dispatcher
