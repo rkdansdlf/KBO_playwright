@@ -89,8 +89,31 @@ class CrawlRunService:
         records_failed: int | None = None,
         checkpoint: dict | None = None,
         finished_at: datetime | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> CrawlExecutionRun:
-        """Finalize a run as partially successful."""
+        """Finalize a run as partially successful.
+
+        A partial run produced usable data, so it stays a success for freshness
+        purposes and does not increment the failure counter. That is a global
+        contract shared with the award and roster crawlers, and recording a reason
+        here does not change it. The reason is carried on the row so an operator
+        can tell a short run from a complete one.
+
+        Args:
+            run: The run to finalize.
+            records_read: Rows read.
+            records_written: Rows written.
+            records_failed: Rows that failed.
+            checkpoint: Optional crawl checkpoint.
+            finished_at: Completion time, defaulting to now.
+            error_code: Failure taxonomy code describing the shortfall.
+            error_message: Human-readable explanation.
+
+        Returns:
+            The finalized run.
+
+        """
         result = self.repository.mark_partial(
             run,
             records_read=records_read,
@@ -98,6 +121,8 @@ class CrawlRunService:
             records_failed=records_failed,
             checkpoint=checkpoint,
             finished_at=finished_at,
+            error_code=error_code,
+            error_message=error_message,
         )
         _measure(result)
         return result
