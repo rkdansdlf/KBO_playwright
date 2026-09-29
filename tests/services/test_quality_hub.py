@@ -127,6 +127,82 @@ class TestQualityHub:
         assert data["quality_score"] == 100
         assert data["quality_gate"]["season"] == 2025
 
+    def test_run_full_audit_passes_compact_date_to_freshness_gate(self, session: Session) -> None:
+        """Freshness must receive YYYYMMDD, not an ISO string it cannot parse."""
+        hub = QualityHub(session)
+        captured: dict[str, str | None] = {}
+
+        def _capture(days: int = 7, target_date: str | None = None) -> FreshnessSummary:
+            captured["target_date"] = target_date
+            return FreshnessSummary(ok=True, issue_count=0)
+
+        with (
+            patch.object(
+                hub,
+                "run_quality_gate",
+                return_value=QualityGateSummary(
+                    season=2026,
+                    league="REGULAR",
+                    batting_ok=True,
+                    pitching_ok=True,
+                    pa_formula_ok=True,
+                    team_batting_ok=True,
+                    team_pitching_ok=True,
+                    mismatch_count=0,
+                ),
+            ),
+            patch.object(
+                hub,
+                "run_regression_pack",
+                return_value=RegressionPackSummary(ok=True, check_count=1, failure_count=0),
+            ),
+            patch.object(
+                hub,
+                "run_standings_check",
+                return_value=StandingsSummary(target_date="2026-09-25", ok=True, checked_teams=10),
+            ),
+            patch.object(hub, "run_freshness_check", side_effect=_capture),
+        ):
+            report = hub.run_full_audit(season=2026, target_date=date(2026, 9, 25))
+
+        assert captured["target_date"] == "20260925"
+        assert report.overall_status == "PASS"
+
+    def test_run_full_audit_real_freshness_gate_does_not_raise(self, session: Session) -> None:
+        """Regression: the real freshness gate used to reject the audit date format."""
+        hub = QualityHub(session)
+
+        with (
+            patch.object(
+                hub,
+                "run_quality_gate",
+                return_value=QualityGateSummary(
+                    season=2026,
+                    league="REGULAR",
+                    batting_ok=True,
+                    pitching_ok=True,
+                    pa_formula_ok=True,
+                    team_batting_ok=True,
+                    team_pitching_ok=True,
+                    mismatch_count=0,
+                ),
+            ),
+            patch.object(
+                hub,
+                "run_regression_pack",
+                return_value=RegressionPackSummary(ok=True, check_count=1, failure_count=0),
+            ),
+            patch.object(
+                hub,
+                "run_standings_check",
+                return_value=StandingsSummary(target_date="2026-09-25", ok=True, checked_teams=10),
+            ),
+        ):
+            report = hub.run_full_audit(season=2026, target_date=date(2026, 9, 25))
+
+        assert report.freshness is not None
+        assert report.overall_status == "PASS"
+
     def test_run_full_audit_with_remediations(self, session: Session) -> None:
         hub = QualityHub(session)
 

@@ -309,7 +309,7 @@ class QualityHub:
 
         if include_freshness:
             total_weight += 15
-            f_summary = self.run_freshness_check(days=freshness_days, target_date=check_date.isoformat())
+            f_summary = self.run_freshness_check(days=freshness_days, target_date=check_date.strftime("%Y%m%d"))
             if f_summary.ok:
                 earned_score += 15.0
             else:
