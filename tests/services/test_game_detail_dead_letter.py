@@ -28,6 +28,9 @@ from src.services.crawl_replay_dispatcher import build_default_dispatcher
 if TYPE_CHECKING:
     from src.services.crawl_dead_letter_service import DlqRetryResult
 
+#: Stands in for a `lightweight` keyword that was never passed.
+_NOT_REQUESTED = object()
+
 GAME = "20250501LGOB0"
 FULL_DETAIL: dict[str, Any] = {
     "game_id": GAME,
@@ -72,21 +75,52 @@ def wired(factory: sessionmaker, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _StubCrawler:
-    """Yields a fixed payload per call, so one letter can be replayed repeatedly."""
+    """Yields a fixed payload per call, so one letter can be replayed repeatedly.
 
-    def __init__(self, payloads: dict[str, dict[str, Any] | None]) -> None:
+    `lightweight` is accepted and recorded rather than ignored, because whether a
+    request was a lightweight one decides what a reduced payload means, and that
+    is the distinction these tests are about.
+    """
+
+    def __init__(
+        self,
+        payloads: dict[str, dict[str, Any] | None],
+        *,
+        lightweight: bool = False,
+        attempt_lightweight: bool | None = None,
+    ) -> None:
         self.payloads = payloads
+        self.lightweight = lightweight
+        # The request flag and the verdict are separate: a crawler decides the
+        # verdict while it knows what it asked for, and the tests need to hand the
+        # service a verdict the batch path would not itself produce.
+        self.attempt_lightweight = lightweight if attempt_lightweight is None else attempt_lightweight
         self.calls: list[str] = []
+        self.lightweight_requests: list[bool] = []
 
-    async def crawl_game_attempts(self, games: list[dict[str, Any]], *, concurrency: int | None = None) -> list[Any]:
+    async def crawl_game_attempts(
+        self,
+        games: list[dict[str, Any]],
+        *,
+        concurrency: int | None = None,
+        lightweight: Any = _NOT_REQUESTED,
+    ) -> list[Any]:
+        """Record what was asked for, distinguishing False from never passed.
+
+        A plain False default would make an omitted keyword look like an explicit
+        one, which is the exact difference these tests exist to hold.
+        """
         from src.services.game_collection_service import GameCollectionTarget
 
+        self.lightweight_requests.append(lightweight)
         attempts = []
         for game in games:
             target = GameCollectionTarget(game_id=game["game_id"], game_date=game["game_date"])
             self.calls.append(target.game_id)
             payload = self.payloads.get(target.game_id)
-            attempts.append(attempt_from_result(target.game_id, payload, lightweight=False))
+            attempts.append(
+                attempt_from_result(target.game_id, payload, lightweight=self.attempt_lightweight),
+            )
         return attempts
 
     async def close(self) -> None:
@@ -211,30 +245,82 @@ class TestOnlyUnfinishedWorkIsQueued:
         assert _letters(factory) == []
         assert _runs(factory)[GAME].status == "success"
 
-    def test_a_degraded_save_is_a_success_and_queues_nothing(
+    def test_a_lightweight_result_is_a_success_and_queues_nothing(
         self,
         factory: sessionmaker,
         wired: None,
     ) -> None:
-        """The lightweight result is what the caller asked for.
+        """A reduced payload is the answer to a reduced request.
 
-        Queueing it would re-fetch a page that is complete for its purpose, and
-        would do so on every future run.
+        Queueing it would re-fetch a page that is complete for what was asked of
+        it, and would do so on every future run of the same kind.
         """
-        from src.services.game_collection_service import replay_single_game_detail
-        from src.repositories.crawl_execution_repository import CrawlRunSpec
+        _collect(_StubCrawler({GAME: DEGRADED_DETAIL}, lightweight=True))
 
-        spec = CrawlRunSpec(crawler="game_detail", target_type="game", target_id=GAME, game_id=GAME, run_id="light-1")
-        asyncio.run(
-            replay_single_game_detail(
-                GAME,
-                spec,
-                detail_crawler=_StubCrawler({GAME: DEGRADED_DETAIL}),
-                config=MagicMock(cfg=None),
-            ),
-        )
-
+        run = _runs(factory)[GAME]
+        assert run.status == "success"
+        assert run.records_written == 1
         assert _letters(factory) == []
+
+    def test_the_same_payload_under_a_full_request_is_not_a_success(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """The same bytes, asked for in full, are a shortfall worth re-fetching.
+
+        Paired with the test above on purpose. Either one alone could pass for the
+        wrong reason -- one because nothing was ever queued, the other because
+        everything was. Together they show the outcome follows the request, not
+        the payload.
+        """
+        _collect(_StubCrawler({GAME: DEGRADED_DETAIL}))
+
+        run = _runs(factory)[GAME]
+        assert run.status == "partial"
+        assert run.records_written == 1
+        assert len(_letters(factory)) == 1
+
+    def test_replay_asks_for_full_detail_explicitly(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """A letter is queued because the detail was incomplete.
+
+        If replay inherited a lighter default it would fetch the same reduced page
+        and land back on the same partial, so the requirement is stated at the call
+        rather than left to whatever the crawler's default happens to be.
+        """
+        from src.repositories.crawl_execution_repository import CrawlRunSpec
+        from src.services.game_collection_service import GameCollectionConfig, replay_single_game_detail
+
+        crawler = _StubCrawler({GAME: FULL_DETAIL}, lightweight=True)
+        spec = CrawlRunSpec(
+            crawler="game_detail",
+            target_type="game",
+            target_id=GAME,
+            game_id=GAME,
+            run_id="replay-full-1",
+        )
+        with (
+            patch("src.services.game_collection_service.save_game_detail", return_value=True),
+            patch(
+                "src.services.game_collection_service._detail_payload_failure_reason",
+                side_effect=_only_a_missing_payload_fails,
+            ),
+        ):
+            asyncio.run(
+                replay_single_game_detail(
+                    GAME,
+                    spec,
+                    detail_crawler=crawler,
+                    config=GameCollectionConfig(),
+                ),
+            )
+
+        assert crawler.lightweight_requests == [False]
+        assert _NOT_REQUESTED not in crawler.lightweight_requests
 
 
 class TestAStoredPartialIsStillUnfinished:
