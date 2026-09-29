@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from src.cli.apply_postgres_migrations import ADOPTABLE_MIGRATIONS, adopt_existing_schema, apply_migrations
+from src.cli.apply_postgres_migrations import (
+    ADOPTABLE_MIGRATIONS,
+    _looks_like_prod,
+    adopt_existing_schema,
+    apply_migrations,
+    main,
+)
 
 
 def _create_baseline(engine) -> None:
@@ -123,9 +129,111 @@ def test_adopt_existing_cli_skips_orm_bootstrap() -> None:
         patch("src.cli.apply_postgres_migrations.adopt_existing_schema", return_value=[]),
         patch("src.cli.apply_postgres_migrations._bootstrap_orm_schema") as bootstrap,
     ):
-        from src.cli.apply_postgres_migrations import main
-
         assert main(["--url", "postgresql://example/db", "--adopt-existing"]) == 0
 
     bootstrap.assert_not_called()
     engine.dispose.assert_called_once()
+
+
+class TestProductionDetection:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql://user:pw@100.81.73.13:5432/bega_prod",
+            "postgresql+psycopg2://user:pw@db.internal:5432/bega_prod",
+            "postgresql://user:pw@10.0.0.5:5432/BEGA_PROD",
+        ],
+    )
+    def test_remote_prod_names_are_production(self, url: str) -> None:
+        assert _looks_like_prod(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql+psycopg2://user:pw@127.0.0.1:5434/bega_prod",
+            "postgresql://user:pw@localhost:5432/bega_prod",
+            "postgresql://user:pw@127.0.0.1:5432/bega_prod",
+        ],
+    )
+    def test_loopback_is_never_production(self, url: str) -> None:
+        assert _looks_like_prod(url) is False
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql+psycopg2://user:pw@127.0.0.1:5434/kbo",
+            "postgresql://user:pw@100.81.73.13:5432/some_other_db",
+            "postgresql://user:pw@100.81.73.13:5432/bega_prod_staging",
+        ],
+    )
+    def test_other_targets_are_not_production(self, url: str) -> None:
+        assert _looks_like_prod(url) is False
+
+    def test_prod_names_are_configurable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KBO_PROD_DB_NAMES", "kbo_prod, other_prod")
+
+        assert _looks_like_prod("postgresql://u:p@10.1.1.1:5432/other_prod") is True
+        # The built-in default is replaced, not extended.
+        assert _looks_like_prod("postgresql://u:p@10.1.1.1:5432/bega_prod") is False
+
+    def test_blank_override_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KBO_PROD_DB_NAMES", "  ,  ")
+
+        assert _looks_like_prod("postgresql://u:p@10.1.1.1:5432/bega_prod") is True
+
+
+class TestProductionWriteGuard:
+    """A schema write against production must be opted into explicitly."""
+
+    PROD = "postgresql://user:pw@100.81.73.13:5432/bega_prod"
+
+    def test_write_to_production_is_refused_by_default(self) -> None:
+        with patch("src.cli.apply_postgres_migrations.create_engine_for_url") as engine:
+            assert main(["--url", self.PROD]) == 2
+
+        engine.assert_not_called()
+
+    def test_adopt_existing_against_production_is_refused(self) -> None:
+        with patch("src.cli.apply_postgres_migrations.create_engine_for_url") as engine:
+            assert main(["--url", self.PROD, "--adopt-existing"]) == 2
+
+        engine.assert_not_called()
+
+    def test_allow_prod_permits_the_write(self) -> None:
+        engine = MagicMock()
+        with (
+            patch("src.cli.apply_postgres_migrations.create_engine_for_url", return_value=engine),
+            patch("src.cli.apply_postgres_migrations.adopt_existing_schema", return_value=[]),
+        ):
+            assert main(["--url", self.PROD, "--adopt-existing", "--allow-prod"]) == 0
+
+        engine.dispose.assert_called_once()
+
+    def test_check_against_production_needs_no_opt_in(self) -> None:
+        """``--check`` is read-only, so it must stay usable while investigating."""
+        engine = MagicMock()
+        with (
+            patch("src.cli.apply_postgres_migrations.create_engine_for_url", return_value=engine),
+            patch("src.cli.apply_postgres_migrations.apply_migrations", return_value=[]),
+        ):
+            assert main(["--url", self.PROD, "--check"]) == 0
+
+        engine.dispose.assert_called_once()
+
+    def test_implicit_database_url_is_guarded_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The dangerous path is a bare invocation inheriting DATABASE_URL."""
+        monkeypatch.setenv("DATABASE_URL", self.PROD)
+        with patch("src.cli.apply_postgres_migrations.create_engine_for_url") as engine:
+            assert main([]) == 2
+
+        engine.assert_not_called()
+
+    def test_local_target_needs_no_opt_in(self) -> None:
+        engine = MagicMock()
+        with (
+            patch("src.cli.apply_postgres_migrations.create_engine_for_url", return_value=engine),
+            patch("src.cli.apply_postgres_migrations.adopt_existing_schema", return_value=[]),
+        ):
+            assert main(["--url", "postgresql://user:pw@127.0.0.1:5434/kbo", "--adopt-existing"]) == 0
+
+        engine.dispose.assert_called_once()

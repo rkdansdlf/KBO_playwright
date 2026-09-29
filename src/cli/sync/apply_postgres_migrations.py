@@ -8,6 +8,7 @@ import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
+from urllib.parse import urlparse
 
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -178,6 +179,47 @@ def apply_migrations(engine: Engine, *, directory: Path = MIGRATION_DIR, check: 
     return [path.name for path in pending]
 
 
+DEFAULT_PROD_DB_NAMES = frozenset({"bega_prod"})
+PROD_DB_NAMES_ENV = "KBO_PROD_DB_NAMES"
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "127.0.0.0", ""})
+
+
+def _prod_db_names() -> frozenset[str]:
+    """Return the database names treated as production.
+
+    Args:
+        None.
+
+    Returns:
+        Lower-cased database names. Falls back to the built-in default when the
+        environment override is unset or blank.
+
+    """
+    raw = os.getenv(PROD_DB_NAMES_ENV, "")
+    names = {token.strip().lower() for token in raw.replace(",", " ").split() if token.strip()}
+    return frozenset(names) if names else DEFAULT_PROD_DB_NAMES
+
+
+def _looks_like_prod(url: str) -> bool:
+    """Return whether a database URL points at a production target.
+
+    Only a known production database name on a non-loopback host counts. A
+    loopback target is always treated as local even if the name matches, because
+    the risk being guarded against is remote DDL, not the name itself.
+
+    Args:
+        url: Database URL to classify.
+
+    Returns:
+        True when the URL should be treated as production.
+
+    """
+    parsed = urlparse(url)
+    if (parsed.hostname or "").strip().lower() in LOOPBACK_HOSTS:
+        return False
+    return (parsed.path or "").lstrip("/").lower() in _prod_db_names()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Apply PostgreSQL incremental migrations or check pending versions."""
     parser = argparse.ArgumentParser(description="Apply PostgreSQL incremental migrations")
@@ -188,6 +230,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Validate the current schema and record the current migration baseline without executing DDL",
     )
+    parser.add_argument(
+        "--allow-prod",
+        action="store_true",
+        help=f"Allow a schema-writing run against a production database (see {PROD_DB_NAMES_ENV})",
+    )
     args = parser.parse_args(argv)
     if args.check and args.adopt_existing:
         parser.error("--check and --adopt-existing cannot be combined")
@@ -195,6 +242,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not url:
         msg = "DATABASE_URL is required"
         raise SystemExit(msg)
+
+    # ``--check`` only reads, so it stays unguarded; anything that writes schema
+    # to a production target must be opted into explicitly.
+    targets_prod = _looks_like_prod(url)
+    if targets_prod and not args.allow_prod and not args.check:
+        logger.error(
+            "Refusing to write schema to a production target (%s). "
+            "Re-run with --allow-prod once the change is intended and verified.",
+            urlparse(url).path.lstrip("/"),
+        )
+        return 2
+    if targets_prod:
+        logger.warning("Running against PRODUCTION target: %s", urlparse(url).path.lstrip("/"))
+
     engine = create_engine_for_url(url)
     try:
         if args.adopt_existing:
