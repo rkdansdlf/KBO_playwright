@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -15,6 +16,7 @@ from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure,
 from src.crawlers.game_detail_outcome import (
     PARTIAL_DETAIL_REASON,
     GameDetailAttempt,
+    GameDetailStatus,
     attempt_from_result,
     error_code_for_reason,
 )
@@ -493,9 +495,25 @@ async def _collect_detail_phase(
     return detail_ready
 
 
+def _accepts_lightweight(crawl: object) -> bool:
+    """Return whether this crawl entrypoint was given a ``lightweight`` choice.
+
+    The keyword was added after the first crawlers shipped, so a caller holding
+    an older implementation would raise on it. Passing it only where it exists
+    keeps that tolerance, which is the same reason the typed and untyped fetch
+    paths are both kept below.
+    """
+    try:
+        return "lightweight" in inspect.signature(crawl).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 async def _crawl_detail_batch(
     ctx: DetailProcessingContext,
     batch: list[GameCollectionTarget],
+    *,
+    lightweight: bool = False,
 ) -> dict[str, GameDetailAttempt]:
     """Fetch one batch and return a typed outcome per game.
 
@@ -503,13 +521,27 @@ async def _crawl_detail_batch(
     `crawl_game_attempts` -- a test double, or a caller holding a different
     implementation of the protocol -- keeps the old untyped path, so this does not
     force the whole `DetailCrawler` contract to change at once.
+
+    Args:
+        ctx: The collection context.
+        batch: The games to fetch.
+        lightweight: Whether score and metadata are enough. Passed on only when
+            the crawler takes the choice, so a replay can state its own
+            requirement instead of inheriting whatever the default happens to be.
+
+    Returns:
+        One attempt per game.
+
     """
     inputs = [target.as_crawler_input() for target in batch]
     # Checked on the type, not the instance: a mock auto-creates any attribute,
     # so an instance check would send a test double down a path it cannot run.
     if callable(getattr(type(ctx.detail_crawler), "crawl_game_attempts", None)):
         typed = ctx.detail_crawler.crawl_game_attempts
-        return {attempt.game_id: attempt for attempt in await typed(inputs, concurrency=ctx.cfg.concurrency)}
+        kwargs: dict[str, Any] = {"concurrency": ctx.cfg.concurrency}
+        if _accepts_lightweight(typed):
+            kwargs["lightweight"] = lightweight
+        return {attempt.game_id: attempt for attempt in await typed(inputs, **kwargs)}
 
     payloads = await ctx.detail_crawler.crawl_games(inputs, concurrency=ctx.cfg.concurrency)
     synthesized: dict[str, GameDetailAttempt] = {}
@@ -518,11 +550,11 @@ async def _crawl_detail_batch(
         if not game_id:
             continue
         normalized = normalize_kbo_game_id(str(game_id))
-        synthesized[normalized] = attempt_from_result(normalized, payload, lightweight=False)
+        synthesized[normalized] = attempt_from_result(normalized, payload, lightweight=lightweight)
     for target in batch:
         synthesized.setdefault(
             target.game_id,
-            attempt_from_result(target.game_id, None, lightweight=False),
+            attempt_from_result(target.game_id, None, lightweight=lightweight),
         )
     return synthesized
 
@@ -663,7 +695,10 @@ async def _collect_single_game_detail(
         detail_ready=set(),
     )
     run_id = _run_ledger().open_run(spec)
-    attempts = await _crawl_detail_batch(ctx, [target])
+    # Stated, not inherited: a letter is queued precisely because the stored
+    # detail was incomplete, so replaying the lightweight path would fetch the
+    # same reduced page and land back on the same partial.
+    attempts = await _crawl_detail_batch(ctx, [target], lightweight=False)
     terminal = _process_single_detail_target(target, attempts.get(game_id), ctx, run_id=run_id)
     if record_dead_letters:
         _enqueue_for_replay(target, terminal)
@@ -736,7 +771,7 @@ def _close_saved_run(
             *_save_failure_cause(persist_cause),
             counts=RunCounts(read=1, written=0, failed=1),
         )
-    if _has_full_detail_rows(payload):
+    if _is_full_success(attempt, payload):
         if _run_ledger().record_success(run_id, counts=RunCounts(read=1, written=1)):
             return TerminalOutcome(status="success", counts=RunCounts(read=1, written=1), run_id=run_id)
         return None
@@ -748,6 +783,22 @@ def _close_saved_run(
         counts=RunCounts(read=1, written=1),
         status="partial",
     )
+
+
+def _is_full_success(attempt: GameDetailAttempt | None, payload: dict[str, Any]) -> bool:
+    """Return whether the stored payload satisfied the request that was made.
+
+    The attempt's own status wins when there is one. The crawler classified the
+    payload while it still knew whether the request was a lightweight one, and a
+    reduced payload is the answer to a lightweight request rather than a shortfall.
+    Re-deciding here from the payload alone would throw that away and queue every
+    lightweight result for a fetch that cannot improve it.
+
+    The payload check is the fallback for a caller that produced no attempt at all.
+    """
+    if attempt is not None:
+        return attempt.status == GameDetailStatus.SUCCESS
+    return _has_full_detail_rows(payload)
 
 
 def _record_failure(
