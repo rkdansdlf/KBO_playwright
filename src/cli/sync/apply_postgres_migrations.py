@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 MIGRATION_DIR = Path(__file__).resolve().parents[3] / "migrations" / "postgresql"
 MIGRATION_TABLE = "schema_migrations"
 MIGRATION_NAME_RE = re.compile(r"^(\d+)_.*\.sql$")
+_NUMERIC_TYPE_PREFIXES = ("INT", "BIGINT", "SMALLINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL")
 ORM_BASELINE_TABLES = ("game", "kbo_seasons")
 ADOPTABLE_MIGRATIONS = frozenset(
     {
@@ -80,11 +81,107 @@ def _tracking_table_exists(connection: Connection) -> bool:
     return inspect(connection).has_table(MIGRATION_TABLE)
 
 
-def _applied_versions(connection: Connection) -> set[str]:
-    return {
-        str(row[0])
-        for row in connection.execute(text(f"SELECT version FROM {MIGRATION_TABLE}"))  # noqa: S608
-    }
+def _numeric_tracking(connection: Connection) -> bool:
+    """Return whether ``schema_migrations.version`` stores numbers rather than names.
+
+    An older runner recorded only the numeric prefix in an INTEGER column with a
+    separate ``filename`` column, so comparing a migration file name against
+    ``version`` never matches and every migration looks pending forever.
+
+    Args:
+        connection: Connection whose tracking table already exists.
+
+    Returns:
+        True for the numeric shape, False for the file-name shape.
+
+    Raises:
+        RuntimeError: If the tracking table has no ``version`` column.
+
+    """
+    for column in inspect(connection).get_columns(MIGRATION_TABLE):
+        if column["name"] == "version":
+            return str(column["type"]).upper().startswith(_NUMERIC_TYPE_PREFIXES)
+    msg = f"{MIGRATION_TABLE} has no version column; migration history is unusable"
+    raise RuntimeError(msg)
+
+
+def _leading_version(value: object) -> int:
+    """Return the numeric version of a migration file name or stored value.
+
+    Args:
+        value: A file name (``047_name.sql``) or an already-numeric value.
+
+    Returns:
+        The leading version as an integer.
+
+    Raises:
+        RuntimeError: If a numeric tracking column holds a non-numeric value.
+
+    """
+    raw = str(value).strip()
+    match = MIGRATION_NAME_RE.match(raw)
+    if match:
+        return int(match.group(1))
+    try:
+        return int(raw)
+    except ValueError as exc:
+        msg = f"numeric {MIGRATION_TABLE}.version holds a non-numeric value: {raw!r}"
+        raise RuntimeError(msg) from exc
+
+
+def _applied_versions(connection: Connection, *, numeric: bool) -> set[object]:
+    """Return the applied migration identifiers for the detected tracking shape.
+
+    Args:
+        connection: Connection whose tracking table already exists.
+        numeric: Whether the version column stores numbers.
+
+    Returns:
+        Integers for the numeric shape, file names for the name shape.
+
+    """
+    rows = connection.execute(text(f"SELECT version FROM {MIGRATION_TABLE}"))  # noqa: S608
+    if numeric:
+        return {_leading_version(row[0]) for row in rows}
+    return {str(row[0]) for row in rows}
+
+
+def _is_applied(path_name: str, applied: set[object], *, numeric: bool) -> bool:
+    """Return whether one migration file is already recorded.
+
+    Args:
+        path_name: Migration file name.
+        applied: Applied identifiers from :func:`_applied_versions`.
+        numeric: Whether the version column stores numbers.
+
+    Returns:
+        True when the file was already applied.
+
+    """
+    if numeric:
+        return _leading_version(path_name) in applied
+    return path_name in applied
+
+
+def _record_version(connection: Connection, path_name: str, *, numeric: bool) -> None:
+    """Record one applied migration in whichever tracking shape exists.
+
+    Args:
+        connection: Connection whose tracking table already exists.
+        path_name: Migration file name being recorded.
+        numeric: Whether the version column stores numbers.
+
+    """
+    if numeric:
+        connection.execute(
+            text(f"INSERT INTO {MIGRATION_TABLE} (version, filename) VALUES (:version, :filename)"),  # noqa: S608
+            {"version": _leading_version(path_name), "filename": path_name},
+        )
+    else:
+        connection.execute(
+            text(f"INSERT INTO {MIGRATION_TABLE} (version) VALUES (:version)"),  # noqa: S608
+            {"version": path_name},
+        )
 
 
 def _raise_adoption_error(message: str) -> NoReturn:
@@ -137,13 +234,13 @@ def adopt_existing_schema(engine: Engine, *, directory: Path = MIGRATION_DIR) ->
     with engine.begin() as connection:
         _validate_existing_schema_for_adoption(connection)
         _ensure_tracking_table(connection)
-        applied = _applied_versions(connection)
-        to_record = sorted(ADOPTABLE_MIGRATIONS - applied)
+        numeric = _numeric_tracking(connection)
+        applied = _applied_versions(connection, numeric=numeric)
+        to_record = sorted(
+            version for version in ADOPTABLE_MIGRATIONS if not _is_applied(version, applied, numeric=numeric)
+        )
         for version in to_record:
-            connection.execute(
-                text(f"INSERT INTO {MIGRATION_TABLE} (version) VALUES (:version)"),  # noqa: S608
-                {"version": version},
-            )
+            _record_version(connection, version, numeric=numeric)
         return to_record
 
 
@@ -159,23 +256,22 @@ def apply_migrations(engine: Engine, *, directory: Path = MIGRATION_DIR, check: 
             _ensure_orm_baseline(connection)
             if not _tracking_table_exists(connection):
                 return [path.name for path in paths]
-            applied = _applied_versions(connection)
-            return [path.name for path in paths if path.name not in applied]
+            numeric = _numeric_tracking(connection)
+            applied = _applied_versions(connection, numeric=numeric)
+            return [path.name for path in paths if not _is_applied(path.name, applied, numeric=numeric)]
 
     with engine.begin() as connection:
         _ensure_orm_baseline(connection)
         _ensure_tracking_table(connection)
-        applied = _applied_versions(connection)
-        pending = [path for path in paths if path.name not in applied]
+        numeric = _numeric_tracking(connection)
+        applied = _applied_versions(connection, numeric=numeric)
+        pending = [path for path in paths if not _is_applied(path.name, applied, numeric=numeric)]
         for path in pending:
             for statement in path.read_text(encoding="utf-8").split(";"):
                 sql = statement.strip()
                 if sql:
                     connection.exec_driver_sql(sql)
-            connection.execute(
-                text(f"INSERT INTO {MIGRATION_TABLE} (version) VALUES (:version)"),  # noqa: S608
-                {"version": path.name},
-            )
+            _record_version(connection, path.name, numeric=numeric)
     return [path.name for path in pending]
 
 
