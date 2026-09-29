@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -356,3 +356,50 @@ class TestSqliteIntegrityGuardCli:
         assert exit_code == 2
         assert payload["status"] == "corrupt"
         assert quarantine_incidents == []
+
+
+class TestQuarantineIncidentIdentity:
+    """A healthy run recovers the database it inspected — and only that one.
+
+    Incident identity is the database path, so recovery must be addressed by key.
+    Reconciling the whole ``integrity:sqlite:quarantine:`` namespace would let a
+    healthy run for one file silently clear a different file's open quarantine.
+    """
+
+    @staticmethod
+    def _report(database_path: str, status: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            database_path=database_path,
+            status=status,
+            reason=f"{status} for {database_path}",
+            quarantine_dir="archive/run",
+            moved_files=(),
+        )
+
+    def test_healthy_run_does_not_recover_another_database(self) -> None:
+        with patch.object(module, "apply_incidents") as apply:
+            # DB-A is quarantined.
+            module.apply_quarantine_incident(self._report("a.db", "quarantined"), notify=False)
+            # A later healthy run inspects a *different* file.
+            module.apply_quarantine_incident(self._report("b.db", "ok"), notify=True)
+
+        opened = [event.incident_key for event in apply.call_args_list[0].args[0]]
+        assert opened == [module.quarantine_incident_key("a.db")]
+
+        # DB-B's recovery names DB-B only; DB-A's incident is left untouched.
+        assert apply.call_args_list[1].args[0] == []
+        assert apply.call_args_list[1].kwargs["resolve_keys"] == [module.quarantine_incident_key("b.db")]
+        assert module.quarantine_incident_key("a.db") not in apply.call_args_list[1].kwargs["resolve_keys"]
+
+    def test_healthy_run_recovers_its_own_database(self) -> None:
+        with patch.object(module, "apply_incidents") as apply:
+            module.apply_quarantine_incident(self._report("a.db", "quarantined"), notify=False)
+            module.apply_quarantine_incident(self._report("a.db", "ok"), notify=True)
+
+        assert apply.call_args_list[1].kwargs["resolve_keys"] == [module.quarantine_incident_key("a.db")]
+
+    def test_healthy_run_without_notify_leaves_the_ledger_alone(self) -> None:
+        with patch.object(module, "apply_incidents") as apply:
+            module.apply_quarantine_incident(self._report("a.db", "ok"), notify=False)
+
+        apply.assert_not_called()
