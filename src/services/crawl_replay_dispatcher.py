@@ -35,6 +35,7 @@ from src.services.game_collection_service import GameCollectionConfig, replay_si
 from src.services.game_detail_runs import (
     GAME_DETAIL_CRAWLER_NAME,
     GAME_DETAIL_TARGET_TYPE,
+    season_of,
 )
 from src.utils.async_bridge import run_coro_blocking
 
@@ -45,15 +46,6 @@ logger = logging.getLogger(__name__)
 
 #: A calendar month, used to sanity-check a replay target before crawling it.
 MAX_SCHEDULE_MONTH = 12
-
-#: Length of the ``YYYY`` season prefix of a KBO game ID.
-_GAME_ID_YEAR_LEN = 4
-
-
-def _season_of_game_id(game_id: str) -> int | None:
-    """Return the season encoded in a game ID, when it looks like a KBO one."""
-    year = game_id[:_GAME_ID_YEAR_LEN]
-    return int(year) if len(year) == _GAME_ID_YEAR_LEN and year.isdigit() else None
 
 
 @dataclass(frozen=True)
@@ -160,7 +152,7 @@ def _replay_game_detail(dead_letter: CrawlDeadLetter, replay_run_id: str) -> Rep
         crawler=GAME_DETAIL_CRAWLER_NAME,
         target_type=dead_letter.target_type or GAME_DETAIL_TARGET_TYPE,
         target_id=game_id,
-        season=dead_letter.season or _season_of_game_id(game_id),
+        season=dead_letter.season or season_of(game_id),
         game_id=game_id,
         parent_run_id=dead_letter.original_run_id,
         replay_of_run_id=dead_letter.original_run_id,

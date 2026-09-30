@@ -113,7 +113,7 @@ def game_date_of(game_id: str) -> str:
     return ""
 
 
-def _season_of(game_id: str) -> int | None:
+def season_of(game_id: str) -> int | None:
     """Return the season encoded in a game ID, when it looks like a KBO one."""
     prefix = game_id[:_GAME_ID_YEAR_LEN]
     return int(prefix) if len(prefix) == _GAME_ID_YEAR_LEN and prefix.isdigit() else None
@@ -126,7 +126,7 @@ def _spec_for(game_id: str) -> CrawlRunSpec:
         target_type=GAME_DETAIL_TARGET_TYPE,
         target_id=game_id,
         game_id=game_id,
-        season=_season_of(game_id),
+        season=season_of(game_id),
     )
 
 
@@ -323,4 +323,5 @@ __all__ = [
     "RunOpenResult",
     "TerminalOutcome",
     "game_date_of",
+    "season_of",
 ]

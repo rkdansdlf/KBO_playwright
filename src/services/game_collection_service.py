@@ -33,8 +33,8 @@ from src.services.game_detail_runs import (
     GameDetailRunLedger,
     RunCounts,
     TerminalOutcome,
-    _season_of,
     game_date_of,
+    season_of,
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
@@ -927,7 +927,7 @@ def _enqueue_for_replay(
                 target_type=GAME_DETAIL_TARGET_TYPE,
                 target_id=target.game_id,
                 game_id=target.game_id,
-                season=_season_of(target.game_id),
+                season=season_of(target.game_id),
                 failure_stage=stage_for_code(code).value,
                 error_code=code,
                 error_message=terminal.error_message,
