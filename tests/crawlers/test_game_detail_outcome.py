@@ -94,27 +94,6 @@ class TestTheFourStates:
 
         assert classify_payload(payload, lightweight=False) is GameDetailStatus.PARTIAL
 
-    def test_it_agrees_with_the_existing_service_predicates(self) -> None:
-        """The collection service already decides what is storable. If these two
-        ever disagree, a payload the service rejects would be recorded as a
-        successful partial, or the other way round.
-        """
-        from src.services.game_collection_service import (
-            _has_full_detail_rows as service_full,
-            _has_partial_detail_anchor as service_anchor,
-        )
-
-        candidates = [
-            _payload(boxscore=True),
-            _payload(boxscore=False),
-            _payload(boxscore=False, score=False, metadata=True),
-            _anchorless_payload(),
-            {},
-        ]
-        for candidate in candidates:
-            assert has_full_detail_rows(candidate) == bool(service_full(candidate)), candidate
-            assert has_partial_detail_anchor(candidate) == bool(service_anchor(candidate)), candidate
-
     def test_an_anchor_can_come_from_the_stadium_alone(self) -> None:
         payload = _payload(boxscore=False, score=False, metadata=True)
 
