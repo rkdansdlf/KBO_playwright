@@ -10,6 +10,7 @@ of games that need another attempt.
 from __future__ import annotations
 
 import asyncio
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
@@ -144,13 +145,19 @@ def _collect(
     *,
     save: bool = True,
     save_error: Exception | None = None,
-) -> None:
-    """Collect one game, stubbing the write only when the test is not about it.
+    run_open_error: Exception | None = None,
+) -> Any:
+    """Run one detail collection for a single game.
 
-    `save_error` is raised from the real `save_game_detail`, not from a stub, so
-    the code that classifies a write failure is the code under test.
+    `save_error` is raised from the real `save_game_detail` rather than from a
+    stub of it, so the code that classifies a write failure is the code under
+    test. `run_open_error` makes the ledger refuse to open the run, which is the
+    one failure the collection service has to notice before it writes anything.
+
+    Returns:
+        The collection result, so a test can inspect what was recorded.
+
     """
-    """Run one detail collection for a single game, with the save stubbed."""
     from src.services.game_collection_service import (
         GameCollectionConfig,
         GameCollectionItemResult,
@@ -187,8 +194,12 @@ def _collect(
         patches.append(patch("src.services.game_collection_service.save_game_detail", side_effect=_raise))
     else:
         patches.append(patch("src.services.game_collection_service._save_detail_payload", side_effect=_save))
+    if run_open_error is not None:
+        patches.append(patch("src.services.game_detail_runs.CrawlRunService.start", side_effect=run_open_error))
 
-    with patches[0], patches[1]:
+    with ExitStack() as stack:
+        for enter in patches:
+            stack.enter_context(enter)
         asyncio.run(
             _collect_detail_phase(
                 targets,
@@ -196,6 +207,7 @@ def _collect(
                 ctx,
             ),
         )
+    return result
 
 
 def _run_by_id(factory: sessionmaker, run_id: str | None) -> CrawlExecutionRun | None:
@@ -387,6 +399,91 @@ class TestAStoredPartialIsStillUnfinished:
         assert len(letters) == 1
         assert letters[0].error_code == FailureCode.PERSIST_TIMEOUT.value
         assert letters[0].failure_stage == stage_for_code(FailureCode.PERSIST_TIMEOUT.value).value
+
+
+class TestAGameWithNoRunIsNotWritten:
+    """The case where the ledger could not record anything.
+
+    A payload fetched under a run that was never opened would be stored with no
+    run, no letter and no metric explaining it. That is the one outcome the run
+    ledger exists to prevent, so the write is refused instead.
+    """
+
+    def test_an_unopened_run_stops_the_game_being_written(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        crawler = _StubCrawler({GAME: FULL_DETAIL})
+
+        with (
+            patch(
+                "src.services.game_detail_runs.CrawlRunService.start",
+                side_effect=RuntimeError("db down"),
+            ),
+            patch("src.services.game_collection_service.save_game_detail") as save,
+            patch(
+                "src.services.game_collection_service._detail_payload_failure_reason",
+                side_effect=_only_a_missing_payload_fails,
+            ),
+        ):
+            _collect(crawler)
+
+        save.assert_not_called()
+        assert _runs(factory) == {}
+        assert _letters(factory) == []
+        # The fetch still happened: a batch is fetched as a unit, so refusing one
+        # game cannot avoid the request. What must not happen is the write.
+
+    def test_an_unopened_run_is_counted_and_says_why(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """The refusal has to be visible, or it is indistinguishable from a skip."""
+        result = _collect(
+            _StubCrawler({GAME: FULL_DETAIL}),
+            run_open_error=RuntimeError("db down"),
+        )
+
+        assert result.runs_unopened == 1
+        assert result.detail_failed == 1
+        assert result.items[GAME].detail_status == "run_unopened"
+        assert "PERSIST_CONNECTION" in (result.items[GAME].failure_reason or "")
+
+    def test_a_replay_that_cannot_open_its_run_leaves_the_letter_pending(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """The letter survives, because a retry that stored nothing fixed nothing."""
+        original = _StubCrawler({GAME: DEGRADED_DETAIL})
+        _collect(original)
+        letter = _letters(factory)[0]
+        assert letter.status == "pending"
+
+        replay_crawler = _StubCrawler({GAME: FULL_DETAIL})
+        with (
+            patch(
+                "src.services.game_detail_runs.CrawlRunService.start",
+                side_effect=TimeoutError("cannot open"),
+            ),
+            patch("src.services.crawl_replay_dispatcher.GameDetailCrawler", return_value=replay_crawler),
+            patch(
+                "src.services.game_collection_service._detail_payload_failure_reason",
+                side_effect=_only_a_missing_payload_fails,
+            ),
+        ):
+            result = _retry(factory, letter.dlq_id)
+
+        # The replay crawler itself is the probe: `_retry` re-patches the save, so
+        # a mock on the save would never see the call. A game whose run cannot be
+        # opened is not even fetched, so there is nothing to store unattributably.
+        assert replay_crawler.calls == []
+        assert result.success is False
+        assert result.status != "resolved"
+        assert len(_letters(factory)) == 1
+        assert _letters(factory)[0].status == "pending"
 
 
 class TestReplayingMovesTheExistingLetter:

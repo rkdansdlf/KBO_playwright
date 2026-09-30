@@ -438,7 +438,7 @@ class TestLedgerTransitionsInIsolation:
         wired: None,
     ) -> None:
         ledger = GameDetailRunLedger()
-        run_id = ledger.open_runs([GAME_A])[GAME_A]
+        run_id = ledger.open_runs([GAME_A]).run_id_for(GAME_A)
 
         ledger.record_failed(
             run_id,
@@ -453,23 +453,28 @@ class TestLedgerTransitionsInIsolation:
         assert run.records_written == 0
         assert run.records_failed == 0
 
-    def test_a_game_whose_run_could_not_start_is_left_alone(
+    def test_a_game_whose_run_could_not_start_is_left_alone_but_not_silent(
         self,
         session_factory: sessionmaker,
         wired: None,
     ) -> None:
-        """Half a run is worse than none, so a game that cannot be opened is
-        simply absent from the ledger.
+        """Half a run is worse than none, so no run row is created.
+
+        The cause comes back with the answer rather than being logged away. The
+        caller has a payload for this game and a database that refused the run;
+        it cannot choose what to do about a game unless it is told what happened.
         """
         with patch("src.services.game_detail_runs.CrawlRunService.start", side_effect=RuntimeError("db down")):
-            started = GameDetailRunLedger().open_runs([GAME_A])
+            opened = GameDetailRunLedger().open_runs([GAME_A])
 
-        assert started == {}
+        assert opened.started == {}
         assert _runs(session_factory) == {}
+        code, _ = opened.failure_for(GAME_A)
+        assert code == FailureCode.PERSIST_CONNECTION.value
 
     def test_counts_reach_the_row(self, session_factory: sessionmaker, wired: None) -> None:
         ledger = GameDetailRunLedger()
-        run_id = ledger.open_runs([GAME_C])[GAME_C]
+        run_id = ledger.open_runs([GAME_C]).run_id_for(GAME_C)
 
         ledger.record_success(run_id, counts=RunCounts(read=1, written=1))
 
