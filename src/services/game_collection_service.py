@@ -19,6 +19,8 @@ from src.crawlers.game_detail_outcome import (
     GameDetailStatus,
     attempt_from_result,
     error_code_for_reason,
+    has_full_detail_rows,
+    has_partial_detail_anchor,
 )
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
@@ -815,7 +817,7 @@ def _is_full_success(attempt: GameDetailAttempt | None, payload: dict[str, Any])
     """
     if attempt is not None:
         return attempt.status == GameDetailStatus.SUCCESS
-    return _has_full_detail_rows(payload)
+    return has_full_detail_rows(payload)
 
 
 def _record_failure(
@@ -978,7 +980,7 @@ def _detail_payload_failure_reason(
     if not _has_required_detail_rows(payload):
         return "filtered", _get_failure_reason(detail_crawler, target.game_id), "incomplete_detail"
     if "game_id" in payload or "teams" in payload:
-        is_valid, errors, _ = validate_game_data(payload, allow_partial=not _has_full_detail_rows(payload))
+        is_valid, errors, _ = validate_game_data(payload, allow_partial=not has_full_detail_rows(payload))
         if not is_valid:
             return "filtered", errors[0] if errors else "detail_payload_invalid", "invalid_detail_payload"
     if should_save_detail and not should_save_detail(payload):
@@ -1024,7 +1026,7 @@ def _save_detail_payload(
         the message later would invent a timeout for every error.
 
     """
-    full_detail = _has_full_detail_rows(payload)
+    full_detail = has_full_detail_rows(payload)
     with SessionLocal() as session:
         try:
             saved = save_game_detail(
@@ -1205,38 +1207,7 @@ def _normalize_detail_failure_reason(raw_reason: str | None, *, default: str) ->
 
 
 def _has_required_detail_rows(payload: dict[str, Any]) -> bool:
-    return _has_full_detail_rows(payload) or _has_partial_detail_anchor(payload)
-
-
-def _has_full_detail_rows(payload: dict[str, Any]) -> bool:
-    hitters = payload.get("hitters") or {}
-    pitchers = payload.get("pitchers") or {}
-    return (
-        bool(hitters.get("away"))
-        and bool(hitters.get("home"))
-        and bool(pitchers.get("away"))
-        and bool(pitchers.get("home"))
-    )
-
-
-def _has_partial_detail_anchor(payload: dict[str, Any]) -> bool:
-
-    # Partial recovery check: must have at least team codes and SOME score or metadata info
-    teams = payload.get("teams") or {}
-    away = teams.get("away") or {}
-    home = teams.get("home") or {}
-    metadata = payload.get("metadata") or {}
-
-    has_teams = bool(away.get("code")) and bool(home.get("code"))
-    has_scores = (
-        bool(away.get("line_score"))
-        or bool(home.get("line_score"))
-        or away.get("score") is not None
-        or home.get("score") is not None
-    )
-    has_metadata = bool(metadata.get("stadium")) or bool(metadata.get("attendance"))
-
-    return has_teams and (has_scores or has_metadata)
+    return has_full_detail_rows(payload) or has_partial_detail_anchor(payload)
 
 
 async def _maybe_pause(
