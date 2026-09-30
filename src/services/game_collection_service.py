@@ -153,6 +153,10 @@ class GameCollectionResult:
     detail_saved: int = 0
     detail_failed: int = 0
     detail_skipped_existing: int = 0
+    #: Games whose fetch and payload were fine but which had no run to write
+    #: under. Counted separately from `detail_failed` because it means the
+    #: ledger could not record anything at all, not that the data was rejected.
+    runs_unopened: int = 0
     relay_targets: int = 0
     relay_saved_games: int = 0
     relay_rows_saved: int = 0
@@ -469,7 +473,7 @@ async def _collect_detail_phase(
         # The run is opened before the fetch so the crawl time is part of the
         # duration, and closed after the write so a save failure lands on the
         # same run that did the fetching.
-        run_ids = _run_ledger().open_runs([target.game_id for target in batch])
+        opened = _run_ledger().open_runs([target.game_id for target in batch])
 
         attempts = await _crawl_detail_batch(ctx, batch)
 
@@ -487,7 +491,8 @@ async def _collect_detail_phase(
                 target,
                 attempts.get(target.game_id),
                 detail_ctx,
-                run_id=run_ids.get(target.game_id),
+                run_id=opened.run_id_for(target.game_id),
+                run_open_failure=opened.failure_for(target.game_id),
                 global_index=global_index,
                 total_targets=len(detail_targets),
             )
@@ -600,6 +605,7 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     ctx: DetailProcessingContext,
     *,
     run_id: str | None,
+    run_open_failure: tuple[str, str] | None = None,
     global_index: int,
     total_targets: int,
 ) -> None:
@@ -609,6 +615,9 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     cannot erase the record of the attempt that produced the payload.
     """
     ctx.cfg.log(f"[DETAIL] {global_index}/{total_targets} {target.game_id}")
+    if run_open_failure is not None:
+        _abandon_without_run(target, ctx, run_open_failure)
+        return
     payload = attempt.payload if attempt is not None else None
     failure_reason = _detail_payload_failure_reason(target, payload, ctx.detail_crawler, ctx.cfg.should_save_detail)
     if failure_reason is not None:
@@ -694,7 +703,15 @@ async def _collect_single_game_detail(
         result=result,
         detail_ready=set(),
     )
-    run_id = _run_ledger().open_run(spec)
+    opened = _run_ledger().open_run(spec)
+    if opened.failure_for(target.game_id) is not None:
+        # Opened before the fetch, so a game that cannot be recorded is not
+        # fetched either. Storing it would leave data with no run and no letter,
+        # and the dispatcher would then find no RUN-B and report the replay as
+        # missing -- which sends the letter back to pending for another attempt.
+        _abandon_without_run(target, ctx, opened.failure_for(target.game_id) or ("", ""))
+        return None
+    run_id = opened.run_id_for(target.game_id)
     # Stated, not inherited: a letter is queued precisely because the stored
     # detail was incomplete, so replaying the lightweight path would fetch the
     # same reduced page and land back on the same partial.
@@ -845,6 +862,37 @@ def _record_failure(
     )
 
 
+def _abandon_without_run(
+    target: GameCollectionTarget,
+    ctx: DetailProcessingContext,
+    failure: tuple[str, str],
+) -> None:
+    """Give up on a game that has no run to record anything under.
+
+    The payload is discarded rather than written. Saving it would leave a row in
+    the database with no run, no dead letter and no metric explaining where it
+    came from, and the run ledger exists precisely so that does not happen. The
+    next crawl fetches it again, which is cheap compared with an unattributable
+    write.
+
+    No dead letter is raised either. A letter is identified by the run that
+    caused it, and there is no such run, so a letter here would point at nothing
+    and could never be resolved or retried. The game is counted and logged
+    instead, which is where an operator will actually see it.
+    """
+    code, message = failure
+    ctx.result.runs_unopened += 1
+    ctx.result.detail_failed += 1
+    item = ctx.result.items.get(target.game_id)
+    if item is not None:
+        item.detail_status = "run_unopened"
+        # The classified code, not a generic word: this is the only place the
+        # cause of an unopenable run survives, and "run_unopened" alone would
+        # send an operator looking at the ledger instead of the database.
+        item.failure_reason = code
+    ctx.cfg.log(f"   [ERROR] Could not open crawl run ({code} {message}); {target.game_id} not written")
+
+
 def _enqueue_for_replay(
     target: GameCollectionTarget,
     terminal: TerminalOutcome | None,
@@ -858,10 +906,14 @@ def _enqueue_for_replay(
     status instead would let a record say one thing in its code and another in
     its stage.
     """
-    # A terminal of None means the ledger never accepted the transition. Queueing
-    # then would point a letter at a run that does not exist, and its status is
-    # unknown, so there is nothing truthful to record. The unrecorded run is left
-    # to run-bookkeeping monitoring.
+    # A terminal of None means the ledger never accepted the transition, so there
+    # is no run whose status could be reported truthfully. Queueing would point a
+    # letter at a run that does not exist and could never be retried. Nothing here
+    # watches for these: `crawl_dead_letter_recovery` reconciles letters and runs
+    # that were both created, so an unrecorded terminal leaves no trace anywhere.
+    # The window is narrow -- it needs the terminal write to fail while the run
+    # write succeeded -- but it is real, and `runs_unopened` is the honest count
+    # of its sibling case.
     if terminal is None or terminal.status == "success" or not terminal.run_id:
         return
     code = terminal.error_code or FailureCode.UNKNOWN.value

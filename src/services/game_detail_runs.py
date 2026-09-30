@@ -20,9 +20,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclasses_field
 from typing import TYPE_CHECKING
 
-from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
 from src.db.engine import SessionLocal
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
 from src.services.crawl_run_service import CrawlRunService
@@ -77,6 +78,28 @@ class TerminalOutcome:
     run_id: str | None = None
 
 
+@dataclass(frozen=True)
+class RunOpenResult:
+    """Which runs could be started, and why the rest could not.
+
+    Failures are reported rather than absorbed because an unopened run is not a
+    bookkeeping detail: it is the one case where a game's data would otherwise be
+    written with nothing to attribute it to. The caller decides what to do with a
+    game that got no run, and it cannot do that if the answer was discarded here.
+    """
+
+    started: dict[str, str] = dataclasses_field(default_factory=dict)
+    failures: dict[str, tuple[str, str]] = dataclasses_field(default_factory=dict)
+
+    def run_id_for(self, game_id: str) -> str | None:
+        """Return the run started for a game, or None when it got none."""
+        return self.started.get(game_id)
+
+    def failure_for(self, game_id: str) -> tuple[str, str] | None:
+        """Return the classified ``(code, message)`` for a game that got no run."""
+        return self.failures.get(game_id)
+
+
 def game_date_of(game_id: str) -> str:
     """Return the ``YYYYMMDD`` date a KBO game ID carries.
 
@@ -114,30 +137,34 @@ class GameDetailRunLedger:
     back the records of the others.
     """
 
-    def open_runs(self, game_ids: Sequence[str]) -> dict[str, str]:
+    def open_runs(self, game_ids: Sequence[str]) -> RunOpenResult:
         """Start a run for every game, before any of them is fetched.
 
         Args:
             game_ids: The games about to be crawled.
 
         Returns:
-            A mapping of game ID to run ID. A game whose run could not be started
-            is simply absent, and its outcome is then recorded nowhere rather than
-            half-recorded.
+            Which games got a run, and the classified cause for each that did
+            not. A run is opened before the fetch so the crawl time is part of
+            the duration, which means a game can reach this method's caller with
+            no run at all; the caller needs the reason to do anything about it.
 
         """
         started: dict[str, str] = {}
+        failures: dict[str, tuple[str, str]] = {}
         for game_id in game_ids:
             try:
                 with SessionLocal() as session:
                     run = CrawlRunService(session).start(_spec_for(game_id))
                     session.commit()
                     started[game_id] = run.run_id
-            except Exception:
+            except Exception as exc:
+                _stage, code = classify_persist_failure(exc)
+                failures[game_id] = (code.value, f"{type(exc).__name__}: {exc}")
                 logger.exception("Failed to open crawl run for %s", game_id)
-        return started
+        return RunOpenResult(started=started, failures=failures)
 
-    def open_run(self, spec: CrawlRunSpec) -> str | None:
+    def open_run(self, spec: CrawlRunSpec) -> RunOpenResult:
         """Start a run from a spec the caller already built.
 
         A replay has to run under the identity the dead letter's dispatcher
@@ -149,17 +176,22 @@ class GameDetailRunLedger:
             spec: The run identity, including the replay link.
 
         Returns:
-            The run ID, or None when the run could not be started.
+            The run that was started, or the classified reason none was. A
+            replay that cannot open its run must not write anything: it would
+            store data with no record of having stored it, and the letter would
+            have nothing to resolve against.
 
         """
+        game_id = str(spec.target_id)
         try:
             with SessionLocal() as session:
                 run = CrawlRunService(session).start(spec)
                 session.commit()
-        except Exception:
+        except Exception as exc:
+            _stage, code = classify_persist_failure(exc)
             logger.exception("Failed to open replay run %s", spec.run_id)
-            return None
-        return run.run_id
+            return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
+        return RunOpenResult(started={game_id: run.run_id})
 
     def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
         """Close a run whose game was fetched completely and stored.
@@ -288,6 +320,7 @@ __all__ = [
     "GAME_DETAIL_TARGET_TYPE",
     "GameDetailRunLedger",
     "RunCounts",
+    "RunOpenResult",
     "TerminalOutcome",
     "game_date_of",
 ]
