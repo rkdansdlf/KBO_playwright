@@ -785,7 +785,7 @@ def _close_saved_run(
         # A `False` with no exception is the quality gate declining the payload,
         # not a broken database. Calling it PERSIST_CONNECTION would blame the
         # infrastructure for a data decision.
-        return _record_failure(
+        return _record_error_outcome(
             run_id,
             *_save_failure_cause(persist_cause),
             counts=RunCounts(read=1, written=0, failed=1),
@@ -795,7 +795,7 @@ def _close_saved_run(
             return TerminalOutcome(status="success", counts=RunCounts(read=1, written=1), run_id=run_id)
         return None
     code = attempt.error_code if attempt is not None and attempt.error_code else FailureCode.VALIDATION_QUALITY.value
-    return _record_failure(
+    return _record_error_outcome(
         run_id,
         code,
         PARTIAL_DETAIL_REASON,
@@ -820,7 +820,7 @@ def _is_full_success(attempt: GameDetailAttempt | None, payload: dict[str, Any])
     return has_full_detail_rows(payload)
 
 
-def _record_failure(
+def _record_error_outcome(
     run_id: str,
     code: str,
     message: str,
@@ -966,7 +966,7 @@ def _close_failed_run(
     code = attempt.error_code if attempt is not None and attempt.error_code else None
     if code is None:
         code = error_code_for_reason(failure_reason)
-    return _record_failure(run_id, code, extra_reason or failure_reason, counts=RunCounts())
+    return _record_error_outcome(run_id, code, extra_reason or failure_reason, counts=RunCounts())
 
 
 def _detail_payload_failure_reason(
