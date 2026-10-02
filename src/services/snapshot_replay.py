@@ -387,7 +387,8 @@ def record_snapshot_replay(
     session_factory: Callable[[], Session] | None = None,
 ) -> SnapshotReplayRunResult:
     """Re-parse a snapshot and record the result as a crawl execution run."""
-    parsed = parse_snapshot(snapshot_id, session_factory=session_factory)
+    factory: Callable[[], Session] = session_factory or SessionLocal
+    parsed = parse_snapshot(snapshot_id, session_factory=factory)
     spec = CrawlRunSpec(
         crawler=SNAPSHOT_REPLAY_CRAWLER,
         target_type=SNAPSHOT_REPLAY_TARGET_TYPE,
@@ -395,7 +396,7 @@ def record_snapshot_replay(
         snapshot_id=parsed.snapshot_id,
         parser_version=parsed.parser_version,
     )
-    with track_crawl_run(spec) as run:
+    with track_crawl_run(spec, session_factory=factory) as run:
         run.records_read = parsed.parsed_count
         run.records_written = 0
         if not parsed.success:

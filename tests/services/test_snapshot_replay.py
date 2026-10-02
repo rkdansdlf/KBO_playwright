@@ -260,7 +260,6 @@ def test_record_snapshot_replay_creates_ledger_run(session_factory, tmp_path: Pa
     artifact = tmp_path / "snap.bin"
     artifact.write_text("x", encoding="utf-8")
     snapshot_id = _seed(session_factory, raw_path=str(artifact))
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
     monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(2))
 
     result = record_snapshot_replay(snapshot_id, session_factory=session_factory)
@@ -281,7 +280,6 @@ def test_record_snapshot_replay_marks_parse_failure(session_factory, tmp_path: P
     artifact = tmp_path / "snap.bin"
     artifact.write_text("x", encoding="utf-8")
     snapshot_id = _seed(session_factory, raw_path=str(artifact))
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
 
     def _boom(*_a: object, **_k: object) -> list[dict]:
         raise ValueError("bad html")
@@ -302,7 +300,6 @@ def test_record_recent_skips_bad_snapshots(session_factory, tmp_path: Path, monk
     good.write_text("x", encoding="utf-8")
     _seed(session_factory, raw_path=str(good))
     _seed(session_factory, raw_path="https://example.com/raw.html", source_key="other_source")
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
     monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(1))
 
     results = record_recent_snapshot_replays(limit=10, session_factory=session_factory)
