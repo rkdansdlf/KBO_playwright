@@ -38,6 +38,12 @@ def session_factory() -> sessionmaker:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
+@pytest.fixture(autouse=True)
+def _evidence_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the evidence root at the per-test tmp dir so artifacts are in-scope."""
+    monkeypatch.setenv("CRAWL_EVIDENCE_DIR", str(tmp_path))
+
+
 def _seed(
     session_factory: sessionmaker,
     *,
