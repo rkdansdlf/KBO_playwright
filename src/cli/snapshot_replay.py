@@ -1,9 +1,10 @@
 """CLI for replaying stored raw snapshots through their parsers.
 
-Without ``--apply`` the command is strictly read-only. With ``--apply`` **and**
-``KBO_ALLOW_SNAPSHOT_REPLAY=1`` it records one ``CrawlExecutionRun`` per replay
-(no domain-table persistence). Parsing always reads the content-addressed
-artifact recorded at crawl time, so there is no network access.
+By default the command is read-only. ``--apply`` + ``KBO_ALLOW_SNAPSHOT_REPLAY=1``
+records one ``CrawlExecutionRun`` per replay; ``--persist`` +
+``KBO_ALLOW_SNAPSHOT_PERSIST=1`` writes parsed records into their domain tables.
+Parsing always reads the content-addressed artifact recorded at crawl time, so
+there is no network access.
 """
 
 from __future__ import annotations
@@ -121,6 +122,7 @@ def _persist_dict(result: SnapshotPersistResult) -> dict[str, object]:
         "source_key": result.source_key,
         "target_domain": result.target_domain,
         "saved": result.saved,
+        "failed_count": result.failed_count,
         "success": result.success,
         "skipped": result.skipped,
         "error": result.error,
@@ -201,6 +203,12 @@ def _run_ledger(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint for snapshot replay (read-only by default)."""
     args = build_parser().parse_args(argv)
+    if args.persist and args.apply and not (_persist_enabled() and _replay_enabled()):
+        _error(
+            "refusing mutation: --persist --apply requires "
+            "KBO_ALLOW_SNAPSHOT_PERSIST=1 and KBO_ALLOW_SNAPSHOT_REPLAY=1",
+        )
+        return EXIT_GUARD_DENIED
     if args.persist:
         code = _run_persist(args)
         if code != EXIT_OK or not args.apply:
