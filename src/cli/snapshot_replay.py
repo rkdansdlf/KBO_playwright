@@ -38,6 +38,7 @@ EXIT_OK = 0
 EXIT_NOT_FOUND = 1
 EXIT_REPLAY_ERROR = 2
 EXIT_GUARD_DENIED = 3
+EXIT_STRICT_FAILURE = 4
 
 
 def _write(text: str) -> None:
@@ -64,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     selector.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
     parser.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     parser.add_argument("--persist", action="store_true", help="Persist parsed records (requires its env guard).")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when any snapshot fails or is skipped.")
     parser.add_argument("--json", action="store_true", help="Emit JSON.")
     return parser
 
@@ -162,6 +164,8 @@ def _run_persist(args: argparse.Namespace) -> int:
     else:
         results = persist_recent_snapshots(limit=args.limit or 50)
     _render_persist(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
@@ -178,6 +182,8 @@ def _run_read_only(args: argparse.Namespace) -> int:
     else:
         results = replay_recent_snapshots(limit=args.limit or 50)
     _render(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
@@ -197,6 +203,8 @@ def _run_ledger(args: argparse.Namespace) -> int:
     else:
         results = record_recent_snapshot_replays(limit=args.limit or 50)
     _render_runs(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
