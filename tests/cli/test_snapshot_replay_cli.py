@@ -138,6 +138,19 @@ def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
     assert "run-replay" in out
 
 
+def test_combo_missing_replay_guard_denies_before_mutation(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("KBO_ALLOW_SNAPSHOT_REPLAY", raising=False)
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    persisted: list[int] = []
+    recorded: list[int] = []
+    monkeypatch.setattr("src.cli.snapshot_replay.persist_snapshot", lambda *a, **k: persisted.append(1))
+    monkeypatch.setattr("src.cli.snapshot_replay.record_snapshot_replay", lambda *a, **k: recorded.append(1))
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--apply"]) == 3
+    assert persisted == []
+    assert recorded == []
+    assert "KBO_ALLOW_SNAPSHOT_REPLAY" in capsys.readouterr().err
+
+
 def test_apply_batch_records(monkeypatch, capsys) -> None:
     monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_REPLAY", "1")
     monkeypatch.setattr(
