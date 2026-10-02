@@ -6,6 +6,7 @@ Fetch play-by-play data from Naver Sports API instead of KBO website due to acce
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import logging
@@ -157,6 +158,32 @@ class NaverEventContext:
 
 
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.relay_outcome import (
+    SOURCE_RELAY,
+    SOURCE_SCHEDULE,
+    AttemptSeed,
+    InningStop,
+    RelayAttempt,
+    RelayStatus,
+    build_attempt,
+)
+
+
+@dataclass(frozen=True)
+class _InningFetch:
+    """What one pass over innings 1..15 produced, and why it stopped.
+
+    `innings_fetched` is what makes an empty inning interpretable: zero means the
+    first inning was empty, which is an absence, while a larger count means the
+    game simply ended.
+    """
+
+    relays: list[dict[str, Any]]
+    stop: InningStop
+    failure_reason: str | None = None
+    innings_fetched: int = 0
+    naver_game_id: str | None = None
+    resolution_attempted: bool = False
 
 
 class RelayCrawler(BaseHttpCrawler):
@@ -655,14 +682,29 @@ class RelayCrawler(BaseHttpCrawler):
             )
             if matched:
                 return str(matched.get("gameId") or "").strip() or None
-        self._set_failure_reason(kbo_game_id, "invalid_relay_match" if saw_schedule_games else "relay_not_found")
+        # Only answer "the source does not have it" when the schedule was
+        # actually reachable. A lookup that failed for its own reasons cannot
+        # conclude absence, and reporting absence here would turn a transport
+        # outage into a permanent-looking result that nothing ever retries.
+        if not self.get_last_failure_reason(kbo_game_id):
+            self._set_failure_reason(
+                kbo_game_id,
+                "invalid_relay_match" if saw_schedule_games else "relay_not_found",
+            )
         return None
 
     async def _fetch_text_relays(
         self,
         client: httpx.AsyncClient,
         naver_id: str,
-    ) -> list[dict[str, Any]]:
+    ) -> _InningFetch:
+        """Collect relay entries inning by inning, recording why the loop stopped.
+
+        The stop cause and the inning it happened on are the two facts the
+        payload cannot supply. An empty inning in the ninth is how a game ends;
+        an empty first inning is a game the source does not carry. Both used to
+        arrive as the same empty list.
+        """
         all_text_relays: list[dict[str, Any]] = []
         self._last_fetch_failure_reason = None
         for inn in range(1, 16):
@@ -675,7 +717,12 @@ class RelayCrawler(BaseHttpCrawler):
             )
             if data is None:
                 self._last_fetch_failure_reason = failure_reason
-                break
+                return _InningFetch(
+                    relays=all_text_relays,
+                    stop=InningStop.FETCH_FAILED,
+                    failure_reason=failure_reason,
+                    innings_fetched=inn - 1,
+                )
             result = data.get("result") or {}
             if not isinstance(result, dict):
                 result = {}
@@ -686,12 +733,31 @@ class RelayCrawler(BaseHttpCrawler):
             if not isinstance(text_relays, list):
                 text_relays = []
             if not text_relays:
-                break
+                # An empty inning is how a finished game looks. Whether that is
+                # expected depends entirely on which inning it was, so the inning
+                # count travels with the outcome: zero means the very first
+                # inning was empty, which is a real absence rather than an end.
+                return _InningFetch(
+                    relays=all_text_relays,
+                    stop=InningStop.EMPTY_INNING,
+                    failure_reason=None,
+                    innings_fetched=inn - 1,
+                )
             has_logs = any(len(tr.get("textOptions", [])) > 0 for tr in text_relays)
             if not has_logs and all_text_relays:
-                break
+                return _InningFetch(
+                    relays=all_text_relays,
+                    stop=InningStop.TERMINAL_MARKER,
+                    failure_reason=None,
+                    innings_fetched=inn,
+                )
             all_text_relays.extend(text_relays)
-        return all_text_relays
+        return _InningFetch(
+            relays=all_text_relays,
+            stop=InningStop.INNINGS_EXHAUSTED,
+            failure_reason=None,
+            innings_fetched=len(all_text_relays),
+        )
 
     async def crawl_game_relay(
         self,
@@ -723,17 +789,24 @@ class RelayCrawler(BaseHttpCrawler):
 
         try:
             async with httpx.AsyncClient() as client:
-                naver_id, all_text_relays = await self._fetch_with_resolution(
+                fetched = await self._fetch_with_resolution(
                     client,
                     kbo_game_id,
                     direct_naver_id,
                     stadium,
                     game_time,
                 )
+            naver_id = fetched.naver_game_id
+            all_text_relays = fetched.relays
 
             if not all_text_relays:
+                # The relay request's own outcome outranks the resolver's. When a
+                # fetch failed, the resolver can still run and find nothing, but
+                # "we could not reach it" must not be reported as "it is not
+                # there": the first is worth retrying and the second is not, so
+                # letting the resolver's answer win here strands real outages.
                 reason = (
-                    self.get_last_failure_reason(kbo_game_id) or self._last_fetch_failure_reason or "relay_not_found"
+                    self._last_fetch_failure_reason or self.get_last_failure_reason(kbo_game_id) or "relay_not_found"
                 )
                 self._set_failure_reason(kbo_game_id, reason)
                 return None
@@ -758,6 +831,63 @@ class RelayCrawler(BaseHttpCrawler):
             logger.exception("Relay API crawl failed for %s", kbo_game_id)
             self._set_failure_reason(kbo_game_id, "relay_api_error")
             return None
+
+    async def crawl_relay_attempt(
+        self,
+        kbo_game_id: str,
+        *,
+        last_payload_hash: str | None = None,
+    ) -> RelayAttempt:
+        """Crawl one game and report a durable outcome for it.
+
+        `crawl_game_relay` returns a payload or `None` and leaves the reason in
+        `_last_failure_reason`, so a caller cannot tell a game the source does
+        not carry from a fetch that failed, and cannot tell either from a game
+        that finished halfway. Those want different responses: one is never
+        retried, one is retried, one is a success.
+
+        The fetch itself is unchanged; this adds the classification on top.
+
+        Args:
+            kbo_game_id: The game to crawl.
+            last_payload_hash: A hash already stored, to detect an unchanged
+                payload.
+
+        Returns:
+            The typed attempt, whose status decides whether this is retryable.
+
+        """
+        kbo_game_id = normalize_kbo_game_id(kbo_game_id)
+        result = await self.crawl_game_relay(kbo_game_id, last_payload_hash=last_payload_hash)
+        reason = self.get_last_failure_reason(kbo_game_id)
+        naver_game_id = self.last_resolved_naver_game_id or self._map_to_naver_id(kbo_game_id)
+
+        if result is not None:
+            status = RelayStatus.NOT_MODIFIED if result.get("status") == "not_modified" else RelayStatus.SUCCESS
+            return build_attempt(
+                kbo_game_id,
+                AttemptSeed(
+                    status=status,
+                    result=result,
+                    naver_game_id=str(naver_game_id) if naver_game_id else None,
+                ),
+            )
+
+        # A relay-endpoint 404 is an absence, while a schedule-endpoint failure is
+        # a lookup that did not work. The reason alone cannot say which happened,
+        # so the direct-ID path is treated as the relay source unless the
+        # resolver was the thing that ran.
+        source = SOURCE_SCHEDULE if self.last_resolved_naver_game_id else SOURCE_RELAY
+        return build_attempt(
+            kbo_game_id,
+            AttemptSeed(
+                status=RelayStatus.FAILED,
+                reason=reason or "relay_not_found",
+                source=source,
+                naver_game_id=str(naver_game_id) if naver_game_id else None,
+                stop=InningStop.FETCH_FAILED if self._last_fetch_failure_reason else InningStop.EMPTY_INNING,
+            ),
+        )
 
     def _resolve_game_metadata(
         self,
@@ -808,23 +938,36 @@ class RelayCrawler(BaseHttpCrawler):
         direct_naver_id: str | None,
         stadium: str | None,
         game_time: str | None,
-    ) -> tuple[str | None, list[dict[str, Any]] | None]:
+    ) -> _InningFetch:
+        """Fetch relays with the direct Naver ID, falling back to the schedule lookup.
+
+        Whether the fallback ran is recorded, because "we looked and the source
+        has nothing" and "we never found it" are different claims about the same
+        empty result.
+        """
         naver_id = direct_naver_id or ""
-        all_text_relays = await self._fetch_text_relays(client, naver_id)
+        fetched = await self._fetch_text_relays(client, naver_id)
+        fetched = dataclasses.replace(fetched, naver_game_id=naver_id or None)
 
-        if not all_text_relays:
-            resolved_naver_id = await self._resolve_naver_game_id(
-                client,
-                kbo_game_id,
-                stadium=stadium,
-                game_time=game_time,
+        if fetched.relays:
+            return fetched
+
+        resolved_naver_id = await self._resolve_naver_game_id(
+            client,
+            kbo_game_id,
+            stadium=stadium,
+            game_time=game_time,
+        )
+        if resolved_naver_id and resolved_naver_id != direct_naver_id:
+            self.last_resolved_naver_game_id = resolved_naver_id
+            second = await self._fetch_text_relays(client, resolved_naver_id)
+            return dataclasses.replace(
+                second,
+                naver_game_id=resolved_naver_id,
+                resolution_attempted=True,
             )
-            if resolved_naver_id and resolved_naver_id != direct_naver_id:
-                self.last_resolved_naver_game_id = resolved_naver_id
-                all_text_relays = await self._fetch_text_relays(client, resolved_naver_id)
-                naver_id = resolved_naver_id
 
-        return naver_id, all_text_relays
+        return dataclasses.replace(fetched, resolution_attempted=True)
 
     def _build_relay_result(
         self,
