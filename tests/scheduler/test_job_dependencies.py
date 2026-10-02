@@ -36,14 +36,15 @@ def reset_registry():
 def test_job_status_enum_values() -> None:
     """Test JobStatus enum has all expected values."""
     assert JobStatus.SUCCESS.value == "success"
+    assert JobStatus.WARNING.value == "warning"
     assert JobStatus.FAILURE.value == "failure"
     assert JobStatus.SKIPPED.value == "skipped"
     assert JobStatus.RUNNING.value == "running"
 
 
 def test_job_status_count() -> None:
-    """Test JobStatus has exactly 4 states."""
-    assert len(list(JobStatus)) == 4
+    """Test JobStatus has exactly 5 states."""
+    assert len(list(JobStatus)) == 5
 
 
 def test_job_result_required_fields() -> None:
@@ -217,6 +218,22 @@ def test_can_run_job_with_partial_failure() -> None:
     assert can_run is False
 
 
+def test_can_run_job_with_warning_dependency() -> None:
+    """A WARNING dependency must not block: the job ran, only quality is unhappy.
+
+    Regression for the week-long prod outage: a stale ``team_season_*`` aggregate
+    made ``quality_gate`` fail, that was recorded as FAILURE, and every dependent
+    job was skipped -- turning one data-quality problem into a pipeline halt.
+    """
+    _register_job("dep_job")
+    _update_job_status("dep_job", JobStatus.WARNING, "quality gate warning")
+    _register_job("main_job", dependencies=["dep_job"])
+
+    can_run, reason = _can_run_job("main_job")
+    assert can_run is True
+    assert reason == ""
+
+
 def test_can_run_job_not_registered() -> None:
     """Test that an unregistered job returns True (no dependencies to block)."""
     can_run, reason = _can_run_job("not_registered_job")
@@ -312,6 +329,18 @@ def test_dependency_chain_failure_propagates() -> None:
 
     can_run, reason = _can_run_job("step3")
     assert can_run is False
+
+
+def test_dependency_chain_warning_does_not_propagate() -> None:
+    """A warning anywhere in the chain leaves the whole chain runnable."""
+    _register_job("step1")
+    _update_job_status("step1", JobStatus.WARNING, "quality gate warning")
+    _register_job("step2", dependencies=["step1"])
+    _update_job_status("step2", JobStatus.SUCCESS, "OK")
+    _register_job("step3", dependencies=["step2"])
+
+    can_run, _ = _can_run_job("step3")
+    assert can_run is True
 
 
 def test_diamond_dependency_pattern() -> None:
