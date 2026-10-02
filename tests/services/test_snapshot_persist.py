@@ -154,6 +154,18 @@ def test_persist_recent_isolates_failures(session_factory, tmp_path: Path, monke
     assert any(result.success for result in results)
 
 
+def test_persist_result_outcome_status() -> None:
+    from src.services.snapshot_persist import SnapshotPersistResult
+
+    assert SnapshotPersistResult(1, "k", "event", 3, True).outcome_status == "saved"
+    partial = SnapshotPersistResult(1, "k", "event", 1, False, error="x", failed_count=1)
+    assert partial.outcome_status == "partial"
+    failed = SnapshotPersistResult(1, "k", "event", 0, False, error="x", failed_count=2)
+    assert failed.outcome_status == "failed"
+    skipped = SnapshotPersistResult(1, "k", None, 0, False, error="x", skipped=True)
+    assert skipped.outcome_status == "skipped"
+
+
 def test_supported_domains_and_save_parsed_unknown(session_factory) -> None:
     assert {"event", "ticket", "seat", "roster", "parking", "food"} <= supported_domains()
     with session_factory() as session:

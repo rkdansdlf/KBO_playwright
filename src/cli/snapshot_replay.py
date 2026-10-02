@@ -125,6 +125,7 @@ def _persist_dict(result: SnapshotPersistResult) -> dict[str, object]:
         "target_domain": result.target_domain,
         "saved": result.saved,
         "failed_count": result.failed_count,
+        "outcome": result.outcome_status,
         "success": result.success,
         "skipped": result.skipped,
         "error": result.error,
@@ -139,13 +140,14 @@ def _render_persist(results: list[SnapshotPersistResult], *, json_out: bool) -> 
         _write("(no snapshots)")
         return
     for result in results:
-        if result.skipped:
+        status = result.outcome_status
+        if status == "skipped":
             detail = f"skipped ({result.error})"
-        elif result.success:
+        elif status == "saved":
             detail = f"saved {result.saved} to {result.target_domain}"
         else:
-            detail = f"failed: {result.error or 'error'}"
-        _write(f"{result.snapshot_id:<8} {detail}")
+            detail = f"{status}: {result.error or 'error'}"
+        _write(f"{result.snapshot_id:<8} {status:<8} {detail}")
 
 
 def _run_persist(args: argparse.Namespace) -> int:

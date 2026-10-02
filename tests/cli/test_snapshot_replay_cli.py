@@ -125,6 +125,7 @@ def test_persist_single_json(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["saved"] == 3
     assert payload[0]["target_domain"] == "event"
+    assert payload[0]["outcome"] == "saved"
 
 
 def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
