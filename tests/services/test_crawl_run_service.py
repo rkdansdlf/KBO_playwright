@@ -85,6 +85,25 @@ class TestTrackCrawlRun:
         assert stored.status == "partial"
         assert stored.error_code == "SOURCE_PARTIAL"
 
+    def test_success_uses_explicit_session_factory(self, session_factory: sessionmaker) -> None:
+        with track_crawl_run(_spec(), session_factory=session_factory) as run:
+            run.records_read = 2
+
+        with session_factory() as check:
+            stored = check.query(CrawlExecutionRun).one()
+        assert stored.status == "success"
+        assert stored.records_read == 2
+
+    def test_failure_uses_explicit_session_factory(self, session_factory: sessionmaker) -> None:
+        with pytest.raises(RuntimeError, match="boom"):
+            with track_crawl_run(_spec(), session_factory=session_factory):
+                raise RuntimeError("boom")
+
+        with session_factory() as check:
+            stored = check.query(CrawlExecutionRun).one()
+        assert stored.status == "failed"
+        assert stored.error_code == "RuntimeError"
+
     def test_caller_session_is_only_flushed(self, session: Session) -> None:
         with track_crawl_run(_spec(), session=session) as run:
             run.records_read = 3

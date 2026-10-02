@@ -21,7 +21,7 @@ from src.repositories.crawl_execution_repository import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from sqlalchemy.orm import Session
 
@@ -181,6 +181,7 @@ def track_crawl_run(
     spec: CrawlRunSpec,
     *,
     session: Session | None = None,
+    session_factory: Callable[[], Session] | None = None,
 ) -> Iterator[CrawlExecutionRun]:
     """Record a crawl execution, finalizing it based on the block outcome.
 
@@ -192,6 +193,9 @@ def track_crawl_run(
     Args:
         spec: Description of the execution to record.
         session: Optional caller-managed session.
+        session_factory: Optional factory used when ``session`` is omitted, so a
+            caller working against a non-default database records the ledger in
+            that same database.
 
     Yields:
         The live :class:`CrawlExecutionRun` row, which callers may mutate to set
@@ -199,7 +203,7 @@ def track_crawl_run(
 
     """
     owns_session = session is None
-    active = session if session is not None else SessionLocal()
+    active = session if session is not None else (session_factory or SessionLocal)()
     service = CrawlRunService(active)
     run = service.start(spec)
     _persist(active, owns_session=owns_session)
