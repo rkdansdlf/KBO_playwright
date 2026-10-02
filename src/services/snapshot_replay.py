@@ -268,6 +268,12 @@ def replay_snapshot(
     )
 
 
+def _recent_snapshot_ids(limit: int, factory: Callable[[], Session]) -> list[int]:
+    """Return the ids of the most recent snapshots, newest first."""
+    with factory() as session:
+        return [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+
+
 def replay_recent_snapshots(
     *,
     limit: int = 50,
@@ -275,8 +281,7 @@ def replay_recent_snapshots(
 ) -> list[SnapshotReplayResult]:
     """Replay the most recent snapshots, isolating per-snapshot failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotReplayResult] = []
     for snapshot_id in snapshot_ids:
@@ -329,8 +334,7 @@ def validate_recent_snapshots(
 ) -> list[SnapshotValidationResult]:
     """Validate the most recent snapshots, isolating per-snapshot failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotValidationResult] = []
     for snapshot_id in snapshot_ids:
@@ -435,8 +439,7 @@ def record_recent_snapshot_replays(
 ) -> list[SnapshotReplayRunResult]:
     """Record ledger runs for the most recent snapshots, isolating failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotReplayRunResult] = []
     for snapshot_id in snapshot_ids:
