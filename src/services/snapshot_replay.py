@@ -103,6 +103,7 @@ class SnapshotDriftSummary:
     unknown_baseline: int = 0
     failed: int = 0
     drifted_ids: tuple[int, ...] = ()
+    failed_ids: tuple[int, ...] = ()
     ok: bool = True
 
     def to_dict(self) -> dict[str, object]:
@@ -115,6 +116,7 @@ class SnapshotDriftSummary:
             "unknown_baseline": self.unknown_baseline,
             "failed": self.failed,
             "drifted_ids": list(self.drifted_ids),
+            "failed_ids": list(self.failed_ids),
             "ok": self.ok,
         }
 
@@ -366,16 +368,20 @@ def summarize_snapshot_drift(
     """Summarize validation results into a gate-friendly drift report.
 
     ``unknown_baseline`` snapshots are reported but never counted as drift, since
-    they simply predate ``parsed_records`` capture.
+    they simply predate ``parsed_records`` capture. Both ``drifted_ids`` and
+    ``failed_ids`` are capped at ``sample_size`` so an alert stays readable.
     """
     failed = 0
     with_baseline = 0
     drifted = 0
     unknown_baseline = 0
     drifted_ids: list[int] = []
+    failed_ids: list[int] = []
     for result in results:
         if not result.success:
             failed += 1
+            if len(failed_ids) < sample_size:
+                failed_ids.append(result.snapshot_id)
             continue
         if result.baseline_count is None:
             unknown_baseline += 1
@@ -394,6 +400,7 @@ def summarize_snapshot_drift(
         unknown_baseline=unknown_baseline,
         failed=failed,
         drifted_ids=tuple(drifted_ids),
+        failed_ids=tuple(failed_ids),
         ok=drifted <= drift_max and failed <= fail_max,
     )
 
