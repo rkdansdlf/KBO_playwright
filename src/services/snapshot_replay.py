@@ -16,6 +16,7 @@ from src.crawlers.failure_taxonomy import FailureCode
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED
 from src.parsers.registry import get_parser
+from src.repositories.crawl_evidence_repository import evidence_root
 from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import (
     DataSourceRepository,
@@ -149,19 +150,31 @@ class _ParserResult:
     error: str | None
 
 
-def load_snapshot_text(raw_path: str | None) -> str:
-    """Load the stored snapshot artifact as text, rejecting URL-style paths."""
+def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None) -> str:
+    """Load the stored snapshot artifact as text.
+
+    Rejects URL-style paths and, by default, any file outside the configured
+    evidence root so a corrupted ``raw_html_or_json_path`` cannot turn replay
+    into an arbitrary local file read.
+    """
     if not raw_path:
         msg = "snapshot has no stored artifact path"
         raise SnapshotReplayError(msg)
-    if raw_path.startswith(_URL_PREFIXES):
+    lowered = raw_path.casefold()
+    if lowered.startswith((*_URL_PREFIXES, "file://")):
         msg = f"snapshot artifact is a URL, not a replayable file: {raw_path}"
         raise SnapshotReplayError(msg)
-    path = Path(raw_path)
-    if not path.is_file():
-        msg = f"stored snapshot artifact not found: {path}"
+    resolved = Path(raw_path).expanduser().resolve()
+    if not resolved.is_file():
+        msg = f"stored snapshot artifact not found: {resolved}"
         raise SnapshotReplayError(msg)
-    return path.read_text(encoding="utf-8", errors="replace")
+    root = (allowed_root or evidence_root()).expanduser().resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        msg = f"snapshot artifact is outside the evidence root: {resolved}"
+        raise SnapshotReplayError(msg) from exc
+    return resolved.read_text(encoding="utf-8", errors="replace")
 
 
 def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _ParserResult:

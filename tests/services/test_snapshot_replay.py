@@ -20,6 +20,7 @@ from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
     SnapshotValidationResult,
+    load_snapshot_text,
     record_recent_snapshot_replays,
     record_snapshot_replay,
     replay_recent_snapshots,
@@ -41,6 +42,12 @@ def session_factory() -> sessionmaker:
     RawSourceSnapshot.__table__.create(engine)
     CrawlExecutionRun.__table__.create(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+def _evidence_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the evidence root at the per-test tmp dir so artifacts are in-scope."""
+    monkeypatch.setenv("CRAWL_EVIDENCE_DIR", str(tmp_path))
 
 
 def _seed(
@@ -91,6 +98,20 @@ def test_successful_replay_returns_parsed_count(session_factory, tmp_path: Path,
     assert result.source_key == "lg_twins_events"
     assert result.parser_version == "team-event-v1"
     assert result.error is None
+
+
+def test_load_snapshot_text_rejects_outside_evidence_root(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_text("x", encoding="utf-8")
+    with pytest.raises(SnapshotReplayError, match="outside the evidence root"):
+        load_snapshot_text(str(outside), allowed_root=root)
+
+
+def test_load_snapshot_text_is_case_insensitive_about_urls() -> None:
+    with pytest.raises(SnapshotReplayError, match="URL"):
+        load_snapshot_text("HTTP://example.com/x.html")
 
 
 def test_missing_snapshot_raises(session_factory) -> None:
