@@ -18,6 +18,7 @@ from src.repositories.source_registry_repository import (
 )
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
+    SnapshotParseResult,
     SnapshotReplayError,
     SnapshotValidationResult,
     load_snapshot_text,
@@ -237,6 +238,17 @@ def test_validate_recent_isolates_failures(session_factory, tmp_path: Path, monk
 
     assert len(results) == 2
     assert {result.success for result in results} == {True, False}
+
+
+def test_parse_result_is_frozen_and_unhashable() -> None:
+    result = SnapshotParseResult(1, "k", "v1", ({"a": 1},))
+
+    assert result.parsed_count == 1
+    assert isinstance(result.records, tuple)
+    with pytest.raises(AttributeError):
+        result.records.append({"b": 2})
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(result)
 
 
 def test_summarize_snapshot_drift_counts() -> None:
