@@ -1,0 +1,97 @@
+# Rule-level tests for KboCrawlLedgerFailure and KboCrawlLedgerFailureSustained
+# in monitoring/prometheus/alert_rules_crawler.yml.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_ledger_failure_test.yml
+#
+# Note: promtool does not accept a per-test `evaluation_interval`, so each rule
+# has its own fixture. The evaluation interval has to match the sample interval:
+# a 1m rule interval over hourly samples never reaches the firing state here.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── KboCrawlLedgerFailure (warning, first occurrence) ───────────────
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_ledger_failures_total{crawler="game_detail", operation="open", error_code="PERSIST_TIMEOUT"}'
+        values: '0x20 1x10'
+    alert_rule_test:
+      # A ledger that has never failed: quiet, because silence is the normal case.
+      - eval_time: 20m
+        alertname: KboCrawlLedgerFailure
+        exp_alerts: []
+      # One failure is already worth reporting: the game's outcome is missing.
+      - eval_time: 22m
+        alertname: KboCrawlLedgerFailure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: game_detail
+              operation: open
+            exp_annotations:
+              summary: "크롤링 원장 기록 실패: game_detail (open)"
+              description: "game_detail 의 open 단계가 최근 10분 동안 1회 실패했습니다. 해당 경기의 결과가 원장에 남아 있지 않습니다."
+
+  # Below the `for` period: the failure exists but has not been sustained long
+  # enough to page anyone yet.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_ledger_failures_total{crawler="game_detail", operation="finalize", error_code="PERSIST_CONNECTION"}'
+        values: '0x20 1x2'
+    alert_rule_test:
+      - eval_time: 21m
+        alertname: KboCrawlLedgerFailure
+        exp_alerts: []
+
+  # A crawler whose ledger is healthy alongside one that is not: only the
+  # failing one alerts. Without `sum by` this would fire twice under two label
+  # sets and break grouping.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_ledger_failures_total{crawler="schedule", operation="open", error_code="PERSIST_TIMEOUT"}'
+        values: '0x20'
+      - series: 'kbo_crawl_ledger_failures_total{crawler="game_detail", operation="finalize", error_code="PERSIST_TIMEOUT"}'
+        values: '0x20 3x10'
+    alert_rule_test:
+      - eval_time: 24m
+        alertname: KboCrawlLedgerFailure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: game_detail
+              operation: finalize
+            exp_annotations:
+              summary: "크롤링 원장 기록 실패: game_detail (finalize)"
+              description: "game_detail 의 finalize 단계가 최근 10분 동안 3회 실패했습니다. 해당 경기의 결과가 원장에 남아 있지 않습니다."
+
+  # ── KboCrawlLedgerFailureSustained (critical, repeats) ──────────────
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_ledger_failures_total{crawler="game_detail", operation="finalize", error_code="PERSIST_TIMEOUT"}'
+        values: '0x10 1+1x50'
+    alert_rule_test:
+      # Repeated ledger failures: this is not a blip.
+      - eval_time: 60m
+        alertname: KboCrawlLedgerFailureSustained
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              crawler: game_detail
+              operation: finalize
+            exp_annotations:
+              summary: "크롤링 원장 기록 지속 실패: game_detail (finalize)"
+              description: "game_detail 의 finalize 단계가 최근 1시간 동안 50회 실패했습니다. DB 연결과 원장 쓰기 경로를 확인하세요."
+
+  # One ledger failure is below the threshold of five: reported as a warning by
+  # the rule above, but not yet worth waking someone for.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_crawl_ledger_failures_total{crawler="game_detail", operation="open", error_code="PERSIST_TIMEOUT"}'
+        values: '0x20 1x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: KboCrawlLedgerFailureSustained
+        exp_alerts: []

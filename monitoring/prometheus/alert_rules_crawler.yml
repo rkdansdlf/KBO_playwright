@@ -66,3 +66,37 @@ groups:
         annotations:
           summary: "크롤러 쓰기 급감: {{ $labels.crawler }}"
           description: "{{ $labels.crawler }} 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."
+
+      # ── Ledger lifecycle failure ─────────────────────────────────────
+      # A crawl can fail cleanly and still leave nothing behind. If the run row
+      # was never opened, or its terminal transition was never committed, the
+      # game's real outcome is not in the ledger -- and `kbo_crawl_failures_total`
+      # cannot see that, because it only counts runs that exist.
+      #
+      # This is why the alert exists on a counter rather than on a DLQ backlog:
+      # a DLQ entry proves a failure was recorded; an absent DLQ entry with an
+      # unfinished run proves the bookkeeping itself is broken.
+      #
+      # `sum by (crawler, operation)` is load-bearing: without it the series
+      # carries `error_code` too, so one crawler raises the same alert under a
+      # different label set per error code, which breaks grouping and dedup.
+      - alert: KboCrawlLedgerFailure
+        expr: sum by (crawler, operation) (increase(kbo_crawl_ledger_failures_total[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤링 원장 기록 실패: {{ $labels.crawler }} ({{ $labels.operation }})"
+          description: "{{ $labels.crawler }} 의 {{ $labels.operation }} 단계가 최근 10분 동안 {{ $value }}회 실패했습니다. 해당 경기의 결과가 원장에 남아 있지 않습니다."
+
+      # The same signal, sustained. A single ledger failure is usually a
+      # transient connection blip; repeats mean the connection is bad or the
+      # ledger write itself is broken, which is worth waking someone for.
+      - alert: KboCrawlLedgerFailureSustained
+        expr: sum by (crawler, operation) (increase(kbo_crawl_ledger_failures_total[1h])) >= 5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "크롤링 원장 기록 지속 실패: {{ $labels.crawler }} ({{ $labels.operation }})"
+          description: "{{ $labels.crawler }} 의 {{ $labels.operation }} 단계가 최근 1시간 동안 {{ $value }}회 실패했습니다. DB 연결과 원장 쓰기 경로를 확인하세요."

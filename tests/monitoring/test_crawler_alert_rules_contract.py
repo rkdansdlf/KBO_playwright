@@ -111,7 +111,7 @@ class TestRulesReferenceRealMetrics:
 
 
 class TestCrawlerRulesContent:
-    def test_the_three_operational_rules_exist(self):
+    def test_the_operational_rules_exist(self):
         document = yaml.safe_load(CRAWLER_RULES.read_text(encoding="utf-8"))
         names = {
             rule["alert"] for group in document.get("groups", []) for rule in group.get("rules", []) if "alert" in rule
@@ -121,6 +121,8 @@ class TestCrawlerRulesContent:
             "KboCrawlerFailureBurst",
             "KboCrawlerNoRecentSuccess",
             "KboCrawlerWriteDrop",
+            "KboCrawlLedgerFailure",
+            "KboCrawlLedgerFailureSustained",
         }
 
     def test_write_drop_does_not_exclude_a_zero_write_count(self):
