@@ -1,8 +1,13 @@
-"""Read-only replay and validation of stored raw source snapshots.
+"""Replay and validation of stored raw source snapshots.
 
-Unlike ``scripts/batch_parse_snapshots`` (which re-fetches the URL), this reads
+Unlike ``scripts/batch_parse_snapshots`` (which re-fetches the URL), replay reads
 the content-addressed artifact recorded at crawl time, so parser changes can be
-re-validated without any network call or database write.
+re-validated without any network call.
+
+Parsing and validation are read-only. The ``record_*`` helpers are the only
+writers in this module: they persist one crawl execution ledger run per snapshot
+and never touch the domain tables (see :mod:`src.services.snapshot_persist` for
+that).
 """
 
 from __future__ import annotations
