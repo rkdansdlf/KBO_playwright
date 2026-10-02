@@ -4,6 +4,7 @@ import asyncio
 
 import src.crawlers.relay_crawler as relay_module
 from src.crawlers.relay_crawler import RelayCrawler
+from src.crawlers.relay_outcome import InningStop
 from src.sources.relay.base import default_source_order_for_bucket
 
 
@@ -434,9 +435,15 @@ def test_fetch_text_relays_handles_null_result_payload(monkeypatch):
                 return _Response({"result": None})
             return _Response({"result": {"textRelayData": {"textRelays": []}}})
 
-    relays = asyncio.run(crawler._fetch_text_relays(_Client(), "dummy"))
+    fetched = asyncio.run(crawler._fetch_text_relays(_Client(), "dummy"))
 
-    assert relays == []
+    # The fetch now also says why it stopped. A `result: None` envelope is the
+    # source answering with nothing, which is an empty first inning rather than
+    # a failed request -- the two used to be indistinguishable.
+    assert fetched.relays == []
+    assert fetched.stop == InningStop.EMPTY_INNING
+    assert fetched.innings_fetched == 0
+    assert fetched.failure_reason is None
     assert compliance.urls
 
 
