@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from src.services.snapshot_persist import SaveOutcome
 from src.services.snapshot_replay import SnapshotParseResult, SnapshotReplayError
 
 
@@ -65,13 +66,29 @@ class TestProcessSnapshotDelegatesToService:
         snapshot = SimpleNamespace(id=1, data_source_id=2)
         with (
             patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
-            patch("scripts.batch_parse_snapshots.save_parsed", return_value=1) as mock_save,
+            patch(
+                "scripts.batch_parse_snapshots.save_parsed", return_value=SaveOutcome(saved=1, failed=0)
+            ) as mock_save,
         ):
             result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
 
         assert result == "done"
         mock_save.assert_called_once()
         snap_repo.update_parse_status.assert_called_once_with(1, "done", parser_version="team-event-v1")
+
+    def test_partial_save_marks_partial(self) -> None:
+        from scripts.batch_parse_snapshots import _process_snapshot
+
+        session, snap_repo = self._session()
+        snapshot = SimpleNamespace(id=1, data_source_id=2)
+        with (
+            patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
+            patch("scripts.batch_parse_snapshots.save_parsed", return_value=SaveOutcome(saved=1, failed=1)),
+        ):
+            result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
+
+        assert result == "partial"
+        assert snap_repo.update_parse_status.call_args.args[1] == "partial"
 
     def test_dry_run_skips_save(self) -> None:
         from scripts.batch_parse_snapshots import _process_snapshot

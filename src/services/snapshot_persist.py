@@ -44,6 +44,14 @@ DOMAIN_FLAT_REPOS: dict[str, type] = {
 
 
 @dataclass(frozen=True)
+class SaveOutcome:
+    """Per-record save counts for one domain batch."""
+
+    saved: int = 0
+    failed: int = 0
+
+
+@dataclass(frozen=True)
 class SnapshotPersistResult:
     """Outcome of persisting one snapshot's parsed records."""
 
@@ -54,51 +62,55 @@ class SnapshotPersistResult:
     success: bool
     error: str | None = None
     skipped: bool = False
+    failed_count: int = 0
 
 
-def _save_flat(session: Session, domain: str, data: list[dict]) -> int:
+def _save_flat(session: Session, domain: str, data: list[dict]) -> SaveOutcome:
     repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
-    count = 0
+    saved = failed = 0
     for item in data:
         try:
             repo.save(item)
-            count += 1
+            saved += 1
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Save failed in domain=%s: %s", domain, item.get("title", item.get("player_name", "")))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_parking(session: Session, data: list[dict]) -> int:
+def _save_parking(session: Session, data: list[dict]) -> SaveOutcome:
     lot_repo = ParkingLotRepository(session)
     fee_repo = ParkingFeeRuleRepository(session)
-    count = 0
+    saved = failed = 0
     for entry in data:
         try:
             lot = lot_repo.save(entry.get("lot", {}))
-            count += 1
+            saved += 1
             for fee in entry.get("fee_rules", []):
                 fee_repo.save({"parking_lot_id": lot.id, **fee})
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_food(session: Session, data: list[dict]) -> int:
+def _save_food(session: Session, data: list[dict]) -> SaveOutcome:
     vendor_repo = StadiumFoodVendorRepository(session)
     menu_repo = StadiumFoodMenuItemRepository(session)
-    count = 0
+    saved = failed = 0
     for entry in data:
         try:
             vendor = vendor_repo.save(entry.get("vendor", {}))
-            count += 1
+            saved += 1
             for menu in entry.get("menus", []):
                 menu_repo.save({"vendor_id": vendor.id, **menu})
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-_DOMAIN_SAVERS: dict[str, Callable[[Session, list[dict]], int]] = {
+_DOMAIN_SAVERS: dict[str, Callable[[Session, list[dict]], SaveOutcome]] = {
     "parking": _save_parking,
     "food": _save_food,
 }
@@ -109,7 +121,7 @@ def supported_domains() -> frozenset[str]:
     return frozenset(DOMAIN_FLAT_REPOS) | frozenset(_DOMAIN_SAVERS)
 
 
-def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -> int:
+def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -> SaveOutcome:
     """Persist parsed records into the repository matching ``target_domain``."""
     if target_domain in DOMAIN_FLAT_REPOS:
         return _save_flat(session, target_domain, parsed_data)
@@ -117,7 +129,7 @@ def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -
     if saver:
         return saver(session, parsed_data)
     logger.warning("No repository for domain: %s", target_domain)
-    return 0
+    return SaveOutcome(saved=0, failed=len(parsed_data))
 
 
 def _target_domain(factory: Callable[[], Session], snapshot_id: int) -> str | None:
@@ -182,7 +194,7 @@ def persist_snapshot(
 
     try:
         with factory() as session:
-            saved = save_parsed(session, target_domain, parsed.records)
+            outcome = save_parsed(session, target_domain, parsed.records)
             session.commit()
     except PERSIST_EXCEPTIONS as exc:
         logger.exception("Persist failed for snapshot %s", snapshot_id)
@@ -194,15 +206,30 @@ def persist_snapshot(
             saved=0,
             success=False,
             error=str(exc),
+            failed_count=len(parsed.records),
         )
 
-    _mark_status(factory, snapshot_id, "done", parser_version=parsed.parser_version)
+    if outcome.failed == 0:
+        _mark_status(factory, snapshot_id, "done", parser_version=parsed.parser_version)
+        return SnapshotPersistResult(
+            snapshot_id=snapshot_id,
+            source_key=parsed.source_key,
+            target_domain=target_domain,
+            saved=outcome.saved,
+            success=True,
+        )
+
+    summary = f"saved={outcome.saved} failed={outcome.failed}"
+    status = "partial" if outcome.saved > 0 else "failed"
+    _mark_status(factory, snapshot_id, status, error_message=summary)
     return SnapshotPersistResult(
         snapshot_id=snapshot_id,
         source_key=parsed.source_key,
         target_domain=target_domain,
-        saved=saved,
-        success=True,
+        saved=outcome.saved,
+        success=False,
+        error=summary,
+        failed_count=outcome.failed,
     )
 
 
