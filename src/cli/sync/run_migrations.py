@@ -17,9 +17,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dialect",
         type=str,
-        default="oracle",
+        required=True,
         choices=["oracle", "sqlite", "postgresql", "pgvector"],
-        help="Database dialect for migration files (default: oracle).",
+        help="Target migration chain (oracle, sqlite, postgresql, pgvector). Required rather than defaulted: the "
+        "chains are separate files, and a wrong guess applies one chain's schema changes to the wrong database.",
     )
     parser.add_argument(
         "--db-url",

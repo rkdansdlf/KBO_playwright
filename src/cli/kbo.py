@@ -94,7 +94,14 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     """Add migrate, seed, detect, and sync subparsers."""
     # 7. Migrate
     p_mig = subparsers.add_parser("migrate", help="Run and inspect database schema migrations.")
-    p_mig.add_argument("--dialect", type=str, default="oracle", choices=["oracle", "sqlite", "postgresql", "pgvector"])
+    p_mig.add_argument(
+        "--dialect",
+        type=str,
+        required=True,
+        choices=["oracle", "sqlite", "postgresql", "pgvector"],
+        help="Target migration chain (oracle, sqlite, postgresql, pgvector). Required rather than defaulted: "
+        "the chains are separate files, and a wrong guess applies one chain's schema changes to the wrong database.",
+    )
     p_mig.add_argument("--db-url", type=str, default=None, help="Target database connection URL.")
     p_mig.add_argument("--dry-run", action="store_true", help="Preview SQL statements without executing.")
     p_mig.add_argument("--status", action="store_true", help="Show migration status report without applying.")
