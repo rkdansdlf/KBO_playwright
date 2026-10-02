@@ -15,6 +15,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from src.cli.common import non_negative_int
 from src.services.snapshot_persist import (
     SnapshotPersistResult,
     persist_recent_snapshots,
@@ -62,7 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kbo snapshot replay", description="Replay stored snapshots offline.")
     selector = parser.add_mutually_exclusive_group()
     selector.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot id.")
-    selector.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    selector.add_argument(
+        "--limit",
+        type=non_negative_int,
+        default=50,
+        help="Replay the N most recent snapshots (default: 50).",
+    )
     parser.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     parser.add_argument("--persist", action="store_true", help="Persist parsed records (requires its env guard).")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when any snapshot fails or is skipped.")
@@ -164,7 +170,7 @@ def _run_persist(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = persist_recent_snapshots(limit=args.limit or 50)
+        results = persist_recent_snapshots(limit=args.limit)
     _render_persist(results, json_out=args.json)
     if args.strict and any(not result.success for result in results):
         return EXIT_STRICT_FAILURE
@@ -182,7 +188,7 @@ def _run_read_only(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = replay_recent_snapshots(limit=args.limit or 50)
+        results = replay_recent_snapshots(limit=args.limit)
     _render(results, json_out=args.json)
     if args.strict and any(not result.success for result in results):
         return EXIT_STRICT_FAILURE
@@ -203,7 +209,7 @@ def _run_ledger(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = record_recent_snapshot_replays(limit=args.limit or 50)
+        results = record_recent_snapshot_replays(limit=args.limit)
     _render_runs(results, json_out=args.json)
     if args.strict and any(not result.success for result in results):
         return EXIT_STRICT_FAILURE

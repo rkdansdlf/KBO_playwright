@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.cli.kbo import main as kbo_main
 from src.cli.snapshot_replay import main as snapshot_main
 from src.services.snapshot_persist import SnapshotPersistResult
@@ -178,3 +180,41 @@ def test_apply_batch_records(monkeypatch, capsys) -> None:
     assert snapshot_main(["--limit", "2", "--apply"]) == 0
     out = capsys.readouterr().out
     assert "run-replay" in out
+
+
+def test_explicit_limit_zero_is_honored(monkeypatch, capsys) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotReplayResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_replay.replay_recent_snapshots", _fake)
+    assert snapshot_main(["--limit", "0"]) == 0
+    assert captured["limit"] == 0
+    assert "(no snapshots)" in capsys.readouterr().out
+
+
+def test_limit_defaults_to_fifty(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotReplayResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_replay.replay_recent_snapshots", _fake)
+    assert snapshot_main([]) == 0
+    assert captured["limit"] == 50
+
+
+def test_negative_limit_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        snapshot_main(["--limit", "-1"])
+    assert exc.value.code == 2
+    assert ">= 0" in capsys.readouterr().err
+
+
+def test_master_cli_rejects_negative_limit(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        kbo_main(["snapshot", "replay", "--limit", "-1"])
+    assert exc.value.code == 2

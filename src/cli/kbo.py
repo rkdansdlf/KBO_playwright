@@ -8,6 +8,8 @@ import importlib
 import sys
 from typing import TYPE_CHECKING
 
+from src.cli.common import non_negative_int
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -171,7 +173,12 @@ def _add_crawl_and_snapshot_subparsers(
     snap_subs = p_snapshot.add_subparsers(dest="snapshot_command")
     p_snap_replay = snap_subs.add_parser("replay", help="Replay stored snapshots through their parsers (read-only).")
     p_snap_replay.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot.")
-    p_snap_replay.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    p_snap_replay.add_argument(
+        "--limit",
+        type=non_negative_int,
+        default=50,
+        help="Replay the N most recent snapshots (default: 50).",
+    )
     p_snap_replay.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     p_snap_replay.add_argument("--persist", action="store_true", help="Persist parsed records (env guard required).")
     p_snap_replay.add_argument("--strict", action="store_true", help="Exit non-zero on any failure or skip.")
@@ -182,7 +189,7 @@ def _add_crawl_and_snapshot_subparsers(
         help="Validate stored snapshots against their recorded baseline (read-only).",
     )
     p_snap_validate.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None)
-    p_snap_validate.add_argument("--limit", type=int, default=None)
+    p_snap_validate.add_argument("--limit", type=non_negative_int, default=50, help="N most recent snapshots.")
     p_snap_validate.add_argument("--fail-on-drift", action="store_true")
     p_snap_validate.add_argument("--json", action="store_true")
 
