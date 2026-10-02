@@ -4,7 +4,7 @@ For each pending snapshot:
   1. Re-parses the stored content-addressed artifact (no network fetch)
   2. Dispatches to the appropriate parser via registry
   3. Saves parsed data to the correct repository
-  4. Marks parse_status as 'done' or 'failed'
+  4. Marks parse_status as 'done', 'partial', or 'failed'
 
 The offline replay itself is owned by ``src.services.snapshot_replay``.
 """
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from src.db.engine import SessionLocal
 from src.models.source_registry import DataSource as DSModel
 from src.repositories.source_registry_repository import RawSourceSnapshotRepository
-from src.services.snapshot_persist import save_parsed
+from src.services.snapshot_persist import persist_parsed_records
 from src.services.snapshot_replay import SnapshotReplayError, parse_snapshot
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def _process_snapshot(session, snap_repo, snapshot, dry_run: bool, session_facto
         session.commit()
         return "done"
 
-    outcome = save_parsed(session, ds.target_domain, parsed.records)
+    outcome = persist_parsed_records(session_factory, ds.target_domain, parsed.records)
     if outcome.failed == 0:
         status = "done"
     elif outcome.saved > 0:

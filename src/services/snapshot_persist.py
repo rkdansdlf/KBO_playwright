@@ -3,6 +3,10 @@
 Shared by the batch parser script and the guarded ``kbo snapshot replay
 --persist`` CLI. Writes rely on the domain repositories' upsert semantics and
 unique constraints, so re-persisting the same snapshot is idempotent.
+
+Records are committed individually because the domain repositories only call
+``session.add``: a flush-time constraint violation would otherwise abort the
+whole batch and discard the records that had already parsed cleanly.
 """
 
 from __future__ import annotations
@@ -143,6 +147,43 @@ def save_parsed(session: Session, target_domain: str, parsed_data: Sequence[dict
     return SaveOutcome(saved=0, failed=len(parsed_data))
 
 
+def persist_parsed_records(
+    factory: Callable[[], Session],
+    target_domain: str,
+    records: Sequence[dict],
+) -> SaveOutcome:
+    """Persist records one transaction per record.
+
+    Domain repositories upsert but only call ``session.add``, so a flush-time
+    constraint violation aborts the enclosing transaction and would discard
+    every record saved before it. Committing per record confines the damage to
+    the offending row; re-running the batch is idempotent, so the extra commits
+    are cheap insurance rather than a correctness trade-off.
+
+    Args:
+        factory: Session factory owning each per-record transaction.
+        target_domain: Repository family that receives the records.
+        records: Parsed records to persist.
+
+    Returns:
+        The aggregate saved/failed counts across all records.
+
+    """
+    saved = failed = 0
+    for record in records:
+        try:
+            with factory() as session:
+                outcome = save_parsed(session, target_domain, [record])
+                session.commit()
+        except PERSIST_EXCEPTIONS:
+            failed += 1
+            logger.exception("Record persist failed in domain=%s", target_domain)
+            continue
+        saved += outcome.saved
+        failed += outcome.failed
+    return SaveOutcome(saved=saved, failed=failed)
+
+
 def _target_domain(factory: Callable[[], Session], snapshot_id: int) -> str | None:
     with factory() as session:
         snapshot = RawSourceSnapshotRepository(session).get_by_id(snapshot_id)
@@ -203,22 +244,7 @@ def persist_snapshot(
             error=parsed.error,
         )
 
-    try:
-        with factory() as session:
-            outcome = save_parsed(session, target_domain, parsed.records)
-            session.commit()
-    except PERSIST_EXCEPTIONS as exc:
-        logger.exception("Persist failed for snapshot %s", snapshot_id)
-        _mark_status(factory, snapshot_id, "failed", error_message=str(exc))
-        return SnapshotPersistResult(
-            snapshot_id=snapshot_id,
-            source_key=parsed.source_key,
-            target_domain=target_domain,
-            saved=0,
-            success=False,
-            error=str(exc),
-            failed_count=len(parsed.records),
-        )
+    outcome = persist_parsed_records(factory, target_domain, parsed.records)
 
     if outcome.failed == 0:
         _mark_status(factory, snapshot_id, "done", parser_version=parsed.parser_version)

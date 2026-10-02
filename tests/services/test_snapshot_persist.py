@@ -198,7 +198,7 @@ def test_persist_partial_marks_partial(session_factory, tmp_path: Path, monkeypa
     snapshot_id = _seed(session_factory, raw_path=str(artifact))
     monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _event_parser())
     monkeypatch.setattr(
-        "src.services.snapshot_persist.save_parsed",
+        "src.services.snapshot_persist.persist_parsed_records",
         lambda *_a, **_k: SaveOutcome(saved=1, failed=1),
     )
 
@@ -208,3 +208,37 @@ def test_persist_partial_marks_partial(session_factory, tmp_path: Path, monkeypa
     assert result.failed_count == 1
     assert result.saved == 1
     assert _parse_status(session_factory, snapshot_id) == "partial"
+
+
+def test_persist_isolates_a_commit_time_constraint_violation(
+    session_factory,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A row that violates NOT NULL must not discard its clean siblings.
+
+    Domain repositories only ``session.add``, so before per-record commits the
+    whole batch was lost when the single transaction failed at commit time.
+    """
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("<html/>", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact))
+
+    def _parser_with_a_bad_row(_text: str, _source_key: str, _metadata: dict | None = None) -> list[dict]:
+        return [
+            {"team_id": "LG", "title": "good-1", "source_url": "https://example.com/1"},
+            {"team_id": "LG", "source_url": "https://example.com/bad"},  # title is NOT NULL
+            {"team_id": "LG", "title": "good-2", "source_url": "https://example.com/2"},
+        ]
+
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _parser_with_a_bad_row)
+
+    result = persist_snapshot(snapshot_id, session_factory=session_factory)
+
+    assert result.outcome_status == "partial"
+    assert result.saved == 2
+    assert result.failed_count == 1
+    assert _parse_status(session_factory, snapshot_id) == "partial"
+    with session_factory() as session:
+        titles = sorted(row.title for row in session.query(TeamEvent).all())
+    assert titles == ["good-1", "good-2"]
