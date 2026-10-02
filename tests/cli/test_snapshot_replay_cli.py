@@ -138,6 +138,23 @@ def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
     assert "run-replay" in out
 
 
+def test_strict_read_only_fails_on_error(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "src.cli.snapshot_replay.replay_snapshot",
+        lambda _sid, **_k: _result(success=False, error="boom"),
+    )
+    assert snapshot_main(["--snapshot-id", "5", "--strict"]) == 4
+
+
+def test_strict_persist_fails_on_skipped(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    monkeypatch.setattr(
+        "src.cli.snapshot_replay.persist_snapshot",
+        lambda _sid, **_k: _persist_result(success=False, skipped=True),
+    )
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--strict"]) == 4
+
+
 def test_combo_missing_replay_guard_denies_before_mutation(monkeypatch, capsys) -> None:
     monkeypatch.delenv("KBO_ALLOW_SNAPSHOT_REPLAY", raising=False)
     monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
