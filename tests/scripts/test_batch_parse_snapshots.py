@@ -67,7 +67,7 @@ class TestProcessSnapshotDelegatesToService:
         with (
             patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
             patch(
-                "scripts.batch_parse_snapshots.save_parsed", return_value=SaveOutcome(saved=1, failed=0)
+                "scripts.batch_parse_snapshots.persist_parsed_records", return_value=SaveOutcome(saved=1, failed=0)
             ) as mock_save,
         ):
             result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
@@ -83,7 +83,7 @@ class TestProcessSnapshotDelegatesToService:
         snapshot = SimpleNamespace(id=1, data_source_id=2)
         with (
             patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
-            patch("scripts.batch_parse_snapshots.save_parsed", return_value=SaveOutcome(saved=1, failed=1)),
+            patch("scripts.batch_parse_snapshots.persist_parsed_records", return_value=SaveOutcome(saved=1, failed=1)),
         ):
             result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
 
@@ -97,7 +97,7 @@ class TestProcessSnapshotDelegatesToService:
         snapshot = SimpleNamespace(id=1, data_source_id=2)
         with (
             patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed()),
-            patch("scripts.batch_parse_snapshots.save_parsed") as mock_save,
+            patch("scripts.batch_parse_snapshots.persist_parsed_records") as mock_save,
         ):
             result = _process_snapshot(session, snap_repo, snapshot, True, lambda: session)
 
@@ -111,7 +111,7 @@ class TestProcessSnapshotDelegatesToService:
         snapshot = SimpleNamespace(id=1, data_source_id=2)
         with (
             patch("scripts.batch_parse_snapshots.parse_snapshot", return_value=self._parsed(success=False)),
-            patch("scripts.batch_parse_snapshots.save_parsed") as mock_save,
+            patch("scripts.batch_parse_snapshots.persist_parsed_records") as mock_save,
         ):
             result = _process_snapshot(session, snap_repo, snapshot, False, lambda: session)
 
