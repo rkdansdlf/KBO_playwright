@@ -34,7 +34,9 @@ from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import PitchingSeriesCrawlRequest, crawl_pitcher_series
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
 from src.crawlers.team_event_crawler import TeamEventCrawler
+from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
 from src.crawlers.ticket_crawler import TicketCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GamePlayByPlay
@@ -174,6 +176,10 @@ CRAWLER_STEP_EXCEPTIONS = (
 DAILY_STEP_EXCEPTIONS = (*CRAWLER_STEP_EXCEPTIONS, subprocess.CalledProcessError)
 ALERT_EXCEPTIONS = (RuntimeError, ValueError, TypeError, OSError)
 FILE_READ_EXCEPTIONS = (OSError, UnicodeError, csv.Error)
+
+#: Bound each team-stats crawl so a stalled browser cannot hold up the daily DAG
+#: that the quality gate waits on.
+TEAM_STATS_STEP_TIMEOUT_SECONDS = 300
 
 
 def _is_recoverable_detail_reason(reason: str | None) -> bool:
@@ -945,6 +951,42 @@ async def _step_6_player_stats(ctx: _RunContext) -> None:
         logger.exception("   \u274c Error during stats update")
 
 
+async def _step_6_1_team_season_stats(ctx: _RunContext) -> None:
+    """Refresh team-level cumulative stats from the official source.
+
+    The season totals the quality gate compares against the player sums come from the
+    team pages, not from aggregating the players. Only GitHub Actions'
+    ``run_advanced_daily`` refreshed them, so on the canonical scheduler they froze in
+    July while the player crawl kept advancing and the gate failed on every run after
+    that. Refreshing them here -- after the player crawl and before the gate that
+    cross-checks them -- keeps that comparison a real source-vs-source check instead of
+    a tautology that would hide a partial player crawl.
+    """
+    logger.info("\n\U0001f3df\ufe0f Step 6.1: Refreshing team season stats...")
+    if ctx.skip_season_stats:
+        logger.info("   \u23ed\ufe0f Team season stats update skipped by operator flag")
+        return
+
+    for label, crawler in (
+        ("batting", TeamBattingStatsCrawler()),
+        ("pitching", TeamPitchingStatsCrawler()),
+    ):
+        try:
+            stats = await asyncio.wait_for(
+                asyncio.to_thread(
+                    crawler.crawl,
+                    ctx.year,
+                    persist=True,
+                    headless=ctx.headless,
+                ),
+                timeout=TEAM_STATS_STEP_TIMEOUT_SECONDS,
+            )
+        except CRAWLER_STEP_EXCEPTIONS:
+            logger.exception("   \u274c Error refreshing team %s stats", label)
+        else:
+            logger.info("   \u2705 Team %s stats refreshed (%s records)", label, len(stats))
+
+
 async def _step_6_5_maintenance(ctx: _RunContext) -> None:
     logger.info("\n\U0001fa79 Step 6.5: Backfilling starting pitchers from stats...")
     try:
@@ -1388,9 +1430,15 @@ def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
         allow_failure=True,
     )
     dag.add_task(
+        "step_6_1_team_season_stats",
+        lambda _c: _step_6_1_team_season_stats(ctx),
+        dependencies={"step_6_player_stats"},
+        allow_failure=True,
+    )
+    dag.add_task(
         "step_6_5_maintenance",
         lambda _c: _step_6_5_maintenance(ctx),
-        dependencies={"step_6_player_stats"},
+        dependencies={"step_6_1_team_season_stats"},
         allow_failure=True,
     )
     dag.add_task(
