@@ -774,7 +774,9 @@ def snapshot_drift_check_job() -> None:
                 return
 
             severity = AlertSeverity.ERROR if summary.drifted > drift_max else AlertSeverity.WARNING
-            remediation = tuple(f"kbo snapshot validate --snapshot-id {sid}" for sid in summary.drifted_ids[:5])
+            remediation = tuple(
+                f"kbo snapshot validate --snapshot-id {sid}" for sid in summary.drifted_ids[:5]
+            ) + tuple(f"kbo snapshot replay --snapshot-id {sid}" for sid in summary.failed_ids[:5])
             apply_incidents(
                 [
                     AlertEvent(
@@ -790,6 +792,8 @@ def snapshot_drift_check_job() -> None:
                             "drifted": summary.drifted,
                             "failed": summary.failed,
                             "with_baseline": summary.with_baseline,
+                            "drifted_ids": list(summary.drifted_ids),
+                            "failed_ids": list(summary.failed_ids),
                         },
                     ),
                 ],

@@ -97,3 +97,19 @@ def test_job_registered_in_scheduler() -> None:
     from src.scheduler import registry
 
     assert hasattr(registry, "snapshot_drift_check_job")
+
+
+def test_failed_ids_surface_in_alert(monkeypatch) -> None:
+    from src.scheduler.jobs import maintenance
+
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.setenv("SNAPSHOT_DRIFT_FAIL_MAX", "0")
+    with (
+        patch("src.services.snapshot_replay.validate_recent_snapshots", return_value=_failed()),
+        patch("src.notifications.bridge.apply_incidents") as mock_apply,
+    ):
+        maintenance.snapshot_drift_check_job()
+    event = mock_apply.call_args.args[0][0]
+    assert event.metadata["failed_ids"] == [3]
+    assert "kbo snapshot replay --snapshot-id 3" in event.remediation
+    assert "'failed_ids': [3]" in event.message

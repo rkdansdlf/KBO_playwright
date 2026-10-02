@@ -256,8 +256,10 @@ def test_summarize_snapshot_drift_counts() -> None:
     assert summary.unknown_baseline == 1
     assert summary.failed == 1
     assert summary.drifted_ids == (2,)
+    assert summary.failed_ids == (4,)
     assert summary.ok is True
     assert summary.to_dict()["drifted_ids"] == [2]
+    assert summary.to_dict()["failed_ids"] == [4]
 
 
 def test_summarize_snapshot_drift_gate_fails_on_drift() -> None:
@@ -275,6 +277,13 @@ def test_summarize_snapshot_drift_caps_sample_ids() -> None:
     summary = summarize_snapshot_drift(results, drift_max=9, fail_max=9, sample_size=2)
     assert summary.drifted == 5
     assert summary.drifted_ids == (1, 2)
+
+
+def test_summarize_snapshot_drift_caps_failed_ids() -> None:
+    results = [SnapshotValidationResult(i, None, None, 0, None, False, False, "x") for i in range(1, 6)]
+    summary = summarize_snapshot_drift(results, drift_max=9, fail_max=9, sample_size=2)
+    assert summary.failed == 5
+    assert summary.failed_ids == (1, 2)
 
 
 def test_record_snapshot_replay_creates_ledger_run(session_factory, tmp_path: Path, monkeypatch) -> None:
