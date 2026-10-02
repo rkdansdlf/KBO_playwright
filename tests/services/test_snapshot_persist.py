@@ -17,6 +17,7 @@ from src.repositories.source_registry_repository import (
     RawSourceSnapshotRepository,
 )
 from src.services.snapshot_persist import (
+    SaveOutcome,
     persist_recent_snapshots,
     persist_snapshot,
     save_parsed,
@@ -150,4 +151,42 @@ def test_persist_recent_isolates_failures(session_factory, tmp_path: Path, monke
 def test_supported_domains_and_save_parsed_unknown(session_factory) -> None:
     assert {"event", "ticket", "seat", "roster", "parking", "food"} <= supported_domains()
     with session_factory() as session:
-        assert save_parsed(session, "unknown-domain", [{"x": 1}]) == 0
+        outcome = save_parsed(session, "unknown-domain", [{"x": 1}])
+    assert outcome.saved == 0
+    assert outcome.failed == 1
+
+
+def test_save_flat_counts_failures(session_factory, monkeypatch) -> None:
+    class _FlakyRepo:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        def save(self, item: dict) -> object:
+            if item.get("title") == "bad":
+                raise ValueError("nope")
+            return object()
+
+    import src.services.snapshot_persist as snapshot_persist
+
+    monkeypatch.setitem(snapshot_persist.DOMAIN_FLAT_REPOS, "event", _FlakyRepo)
+    with session_factory() as session:
+        outcome = save_parsed(session, "event", [{"title": "ok"}, {"title": "bad"}, {"title": "ok2"}])
+    assert outcome == SaveOutcome(saved=2, failed=1)
+
+
+def test_persist_partial_marks_partial(session_factory, tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "snap.bin"
+    artifact.write_text("<html/>", encoding="utf-8")
+    snapshot_id = _seed(session_factory, raw_path=str(artifact))
+    monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _event_parser())
+    monkeypatch.setattr(
+        "src.services.snapshot_persist.save_parsed",
+        lambda *_a, **_k: SaveOutcome(saved=1, failed=1),
+    )
+
+    result = persist_snapshot(snapshot_id, session_factory=session_factory)
+
+    assert result.success is False
+    assert result.failed_count == 1
+    assert result.saved == 1
+    assert _parse_status(session_factory, snapshot_id) == "partial"
