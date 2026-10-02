@@ -40,7 +40,7 @@
 | `press_release_crawler` | playwright | - | - | - | - | - | - | - |
 | `preview_crawler` | raw_httpx+playwright | - | - | - | - | - | - | - |
 | `realtime_issue_crawler` | - | - | - | - | Y | - | - | - |
-| `relay_crawler` | raw_httpx+playwright | collapsed | game | none | - | - | - | - |
+| `relay_crawler` | crawler_http_client+playwright | collapsed | game | none | - | - | - | - |
 | `seat_crawler` | raw_httpx | - | - | - | Y | - | - | - |
 | `staff_register_crawler` | playwright | - | - | - | - | - | - | - |
 | `static_text_crawler` | playwright | - | - | - | Y | - | - | - |
@@ -107,5 +107,6 @@
 - parking_crawler: uses CrawlerHttpClient but inherits a raw httpx path from BaseHttpCrawler; the second path is unused
 - player_list_crawler: has a crawl entrypoint but no transport was detected; check the classifier
 - realtime_issue_crawler: has a crawl entrypoint but no transport was detected; check the classifier
+- relay_crawler: classifies outcomes but records no run, so failures leave no trace
 - text_relay_crawler: classifies outcomes but records no run, so failures leave no trace
 - transit_time_crawler: has a crawl entrypoint but no transport was detected; check the classifier

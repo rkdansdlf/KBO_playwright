@@ -411,19 +411,24 @@ def _transport_of_node(node: ast.AST) -> Transport | None:
     return None
 
 
-def _resolve_transports(tree: ast.Module, base_class: str) -> frozenset[Transport]:
+def _resolve_transports(tree: ast.Module, base_class: str, *, mentions_httpx: bool) -> frozenset[Transport]:
     """Return every transport a module reaches a source through.
 
     A crawler can be genuinely hybrid -- an API primary with a browser fallback --
     so this returns a set rather than picking a winner. Detection walks the AST so
     a mention in a comment or a URL cannot register as a transport.
+
+    Inheriting `BaseHttpCrawler` only means a raw client is *available*, not that
+    it is used. Reporting it unconditionally made a fully migrated crawler look
+    half-converted forever, which is the opposite of what this gate is for, so
+    the base class counts only when the module still reaches for httpx itself.
     """
     found: set[Transport] = set()
     for node in ast.walk(tree):
         transport = _transport_of_node(node)
         if transport is not None:
             found.add(transport)
-    if base_class in _HTTP_BASES:
+    if base_class in _HTTP_BASES and mentions_httpx:
         found.add(Transport.RAW_HTTPX)
     if base_class in _PLAYWRIGHT_BASES:
         found.add(Transport.PLAYWRIGHT)
@@ -471,7 +476,7 @@ def scan_module(module: str) -> ModuleFacts:
     tree = ast.parse(source)
     node = _crawler_class(tree)
     base_class = _base_name(node) if node is not None else ""
-    transports = _resolve_transports(tree, base_class)
+    transports = _resolve_transports(tree, base_class, mentions_httpx="httpx" in source)
 
     return ModuleFacts(
         module=module,

@@ -13,16 +13,13 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN, KST
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
-from src.utils.compliance import compliance
 from src.utils.date_helpers import parse_date_str
 from src.utils.relay_text import (
     advance_pitch_count,
@@ -44,25 +41,13 @@ PARSER_VERSION = "2026-05-31-v1"
 SOURCE_SCHEMA_VERSION = "naver-relay-v1"
 
 
-class _PermanentStatusError(Exception):
-    """Raised when the HTTP response indicates a permanent (non-retryable) error."""
+#: Circuit-breaker registry name for this crawler's Naver transport.
+RELAY_TRANSPORT_NAME = "relay_naver"
 
-    def __init__(self, status_code: int) -> None:
-        """Initialize a new instance.
-
-        Args:
-            status_code: Status Code.
-            status_code: Status Code.
-
-        """
-        self.status_code = status_code
-
-        super().__init__(f"permanent_http_{status_code}")
-
+#: Per-request timeout for both Naver endpoints this crawler uses.
+RELAY_HTTP_TIMEOUT_SECONDS = 10.0
 
 RELAY_CRAWL_EXCEPTIONS = (
-    httpx.HTTPError,
-    _PermanentStatusError,
     json.JSONDecodeError,
     SQLAlchemyError,
     RuntimeError,
@@ -158,6 +143,8 @@ class NaverEventContext:
 
 
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.relay_outcome import (
     SOURCE_RELAY,
     SOURCE_SCHEDULE,
@@ -167,6 +154,7 @@ from src.crawlers.relay_outcome import (
     RelayStatus,
     build_attempt,
 )
+from src.crawlers.result import CrawlOutcome, CrawlResult
 
 
 @dataclass(frozen=True)
@@ -196,6 +184,7 @@ class RelayCrawler(BaseHttpCrawler):
         request_delay: float = 1.0,
         policy: RequestPolicy | None = None,
         _pool: AsyncPlaywrightPool | None = None,
+        http: CrawlerHttpClient | None = None,
     ) -> None:
         """Pool is retained for backward compatibility with GameDetailCrawler but is unused.
 
@@ -203,6 +192,7 @@ class RelayCrawler(BaseHttpCrawler):
             request_delay: Request Delay.
             policy: Policy.
             _pool: Connection pool for async operations.
+            http: Shared transport, injected by tests to avoid a real request.
 
         """
         headers = {
@@ -227,6 +217,14 @@ class RelayCrawler(BaseHttpCrawler):
         self._last_failure_reason: dict[str, str] = {}
         self.last_failure_reason: str | None = None
         self._last_fetch_failure_reason: str | None = None
+        self._http = http or CrawlerHttpClient(
+            # Named for the transport, not the crawler: the circuit registry is
+            # keyed by name, so a shared "relay" breaker would refuse this Naver
+            # host whenever an unrelated relay job stalled.
+            name=RELAY_TRANSPORT_NAME,
+            headers=dict(headers),
+            policy=HttpPolicy(timeout_seconds=RELAY_HTTP_TIMEOUT_SECONDS),
+        )
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
         """Get last failure reason.
@@ -329,50 +327,67 @@ class RelayCrawler(BaseHttpCrawler):
             query_dates.append((base_date - timedelta(days=offset)).isoformat())
         return query_dates
 
-    PERMANENT_HTTP_ERRORS = frozenset({400, 401, 403, 404, 405, 410, 422})
+    def _reason_for(self, result: CrawlResult[Any]) -> str | None:
+        """Translate a transport classification into this crawler's vocabulary.
+
+        The shared client classifies for the whole project; the relay-specific
+        meaning of each outcome lives here. Two translations are load-bearing:
+
+        A 404 from the relay endpoint is a permanent *absence*, not a fault. The
+        shared client already treats it as permanent and will not retry it, so
+        surfacing it as a bare transport error would only lose the distinction
+        between "the source does not have this game" and "the request broke" --
+        which is the distinction that decides whether anything is ever retried.
+
+        An empty body is a successful request with nothing in it, so it stays a
+        payload rather than a failure. The inning loop reads an empty envelope
+        as an empty inning, and turning it into a failure here would report a
+        finished game as a broken one.
+        """
+        if result.ok or result.outcome is CrawlOutcome.EMPTY:
+            return None
+        if result.error_code == FailureCode.FETCH_BLOCKED.value:
+            return "blocked"
+        if result.outcome is CrawlOutcome.SCHEMA_CHANGED:
+            # The response arrived and did not parse. The old catch-all called
+            # this an API error, which blamed the site for a shape we changed.
+            return "relay_schema_drift"
+        status = result.http_status
+        if result.outcome is CrawlOutcome.PERMANENT_ERROR and status is not None:
+            return f"http_{status}"
+        return "relay_api_error"
 
     async def _request_json(
         self,
-        client: httpx.AsyncClient,
         url: str,
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-        timeout: float = 10.0,  # noqa: ASYNC109
     ) -> tuple[dict[str, Any] | None, str | None]:
-        full_url = str(httpx.URL(url, params=params or {}))
-        if not await compliance.is_allowed(full_url):
-            logger.info("[COMPLIANCE] Relay request blocked: %s", full_url)
-            return None, "blocked"
+        """Fetch one JSON endpoint and report a payload or a reason.
 
-        async def _fetch() -> dict[str, Any]:
-            await self.policy.delay_async(host="api-gw.sports.naver.com")
-            response = await client.get(
-                url,
-                params=params,
-                headers=headers or self.headers,
-                timeout=timeout,
-            )
-            if response.status_code != HTTPStatus.OK:
-                status = response.status_code
-                if status in self.PERMANENT_HTTP_ERRORS:
-                    raise _PermanentStatusError(status)
-                msg = f"status_{status}"
-                raise RuntimeError(msg)
-            payload = response.json()
-            if not isinstance(payload, dict):
-                msg = "non-object JSON response"
-                raise TypeError(msg)
-            return payload
+        Args:
+            url: Target URL.
+            params: Optional query parameters.
+            headers: Extra headers for this request only.
 
-        try:
-            return await self.policy.run_with_retry_async(_fetch), None
-        except _PermanentStatusError as exc:
-            logger.exception("[INFO] Relay API permanent error: %s status=%s", full_url, exc.status_code)
-            return None, f"http_{exc.status_code}"
-        except (httpx.HTTPError, RuntimeError, ValueError) as exc:
-            logger.warning("Relay API request failed: %s reason=%s", full_url, exc)
-            return None, "relay_api_error"
+        Returns:
+            The payload and no reason, or no payload and a reason from this
+            crawler's vocabulary.
+
+        """
+        result = await self._http.fetch_json(url, params=params, headers=headers)
+        reason = self._reason_for(result)
+        if reason is not None:
+            logger.warning("Relay API request failed: %s reason=%s", url, reason)
+            return None, reason
+        payload = result.data
+        if not isinstance(payload, dict):
+            # A JSON array where an object was expected. The shared client has
+            # no opinion about shape beyond decoding, so the caller's dict-based
+            # reads stay safe here.
+            return {}, None
+        return payload, None
 
     @staticmethod
     def _score_suffix_match(game_id: str, suffixes: dict) -> int:
@@ -649,7 +664,6 @@ class RelayCrawler(BaseHttpCrawler):
 
     async def _resolve_naver_game_id(
         self,
-        client: httpx.AsyncClient,
         kbo_game_id: str,
         *,
         stadium: str | None = None,
@@ -660,11 +674,9 @@ class RelayCrawler(BaseHttpCrawler):
         for index, query_date in enumerate(query_dates):
             query = self._schedule_query_context(kbo_game_id, query_date=query_date)
             payload, failure_reason = await self._request_json(
-                client,
                 self.schedule_api_base_url,
                 params=query,
                 headers=self.headers,
-                timeout=10.0,
             )
             if payload is None:
                 if failure_reason:
@@ -693,11 +705,7 @@ class RelayCrawler(BaseHttpCrawler):
             )
         return None
 
-    async def _fetch_text_relays(
-        self,
-        client: httpx.AsyncClient,
-        naver_id: str,
-    ) -> _InningFetch:
+    async def _fetch_text_relays(self, naver_id: str) -> _InningFetch:
         """Collect relay entries inning by inning, recording why the loop stopped.
 
         The stop cause and the inning it happened on are the two facts the
@@ -710,10 +718,8 @@ class RelayCrawler(BaseHttpCrawler):
         for inn in range(1, 16):
             url = f"{self.api_base_url.format(game_id=naver_id)}?inning={inn}"
             data, failure_reason = await self._request_json(
-                client,
                 url,
                 headers={**self.headers, "Referer": f"https://m.sports.naver.com/game/{naver_id}/relay"},
-                timeout=10.0,
             )
             if data is None:
                 self._last_fetch_failure_reason = failure_reason
@@ -788,14 +794,12 @@ class RelayCrawler(BaseHttpCrawler):
         stadium, game_time = self._resolve_game_metadata(kbo_game_id, stadium, game_time)
 
         try:
-            async with httpx.AsyncClient() as client:
-                fetched = await self._fetch_with_resolution(
-                    client,
-                    kbo_game_id,
-                    direct_naver_id,
-                    stadium,
-                    game_time,
-                )
+            fetched = await self._fetch_with_resolution(
+                kbo_game_id,
+                direct_naver_id,
+                stadium,
+                game_time,
+            )
             naver_id = fetched.naver_game_id
             all_text_relays = fetched.relays
 
@@ -933,7 +937,6 @@ class RelayCrawler(BaseHttpCrawler):
 
     async def _fetch_with_resolution(
         self,
-        client: httpx.AsyncClient,
         kbo_game_id: str,
         direct_naver_id: str | None,
         stadium: str | None,
@@ -946,21 +949,20 @@ class RelayCrawler(BaseHttpCrawler):
         empty result.
         """
         naver_id = direct_naver_id or ""
-        fetched = await self._fetch_text_relays(client, naver_id)
+        fetched = await self._fetch_text_relays(naver_id)
         fetched = dataclasses.replace(fetched, naver_game_id=naver_id or None)
 
         if fetched.relays:
             return fetched
 
         resolved_naver_id = await self._resolve_naver_game_id(
-            client,
             kbo_game_id,
             stadium=stadium,
             game_time=game_time,
         )
         if resolved_naver_id and resolved_naver_id != direct_naver_id:
             self.last_resolved_naver_game_id = resolved_naver_id
-            second = await self._fetch_text_relays(client, resolved_naver_id)
+            second = await self._fetch_text_relays(resolved_naver_id)
             return dataclasses.replace(
                 second,
                 naver_game_id=resolved_naver_id,

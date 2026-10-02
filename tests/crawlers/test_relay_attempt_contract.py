@@ -160,13 +160,7 @@ class TestTheInningLoopSaysWhyItStopped:
             patch.object(crawler, "_request_json", AsyncMock(side_effect=responses)),
             patch.object(crawler, "_build_relay_result", return_value={"status": "completed", "events": [1]}),
         ):
-            fetched = await crawler._fetch_with_resolution(
-                AsyncMock(),
-                GAME,
-                GAME,
-                None,
-                None,
-            )
+            fetched = await crawler._fetch_with_resolution(GAME, GAME, None, None)
 
         assert fetched.stop is InningStop.EMPTY_INNING
         assert fetched.innings_fetched == 1
@@ -180,7 +174,7 @@ class TestTheInningLoopSaysWhyItStopped:
             (_in_relay([_entry(options=0)]), None),
         ]
         with patch.object(crawler, "_request_json", AsyncMock(side_effect=responses)):
-            fetched = await crawler._fetch_with_resolution(AsyncMock(), GAME, GAME, None, None)
+            fetched = await crawler._fetch_with_resolution(GAME, GAME, None, None)
 
         assert fetched.stop is InningStop.TERMINAL_MARKER
         assert fetched.innings_fetched == 2
@@ -189,7 +183,7 @@ class TestTheInningLoopSaysWhyItStopped:
         crawler = _crawler()
         responses = [(_in_relay([_entry()]), None), (None, "relay_api_error")]
         with patch.object(crawler, "_request_json", AsyncMock(side_effect=responses)):
-            fetched = await crawler._fetch_with_resolution(AsyncMock(), GAME, GAME, None, None)
+            fetched = await crawler._fetch_with_resolution(GAME, GAME, None, None)
 
         assert fetched.stop is InningStop.FETCH_FAILED
         assert fetched.failure_reason == "relay_api_error"
