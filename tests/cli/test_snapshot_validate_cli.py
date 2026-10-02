@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.cli.kbo import main as kbo_main
 from src.cli.snapshot_validate import main as validate_main
 from src.services.snapshot_replay import SnapshotNotFoundError, SnapshotReplayError, SnapshotValidationResult
@@ -88,3 +90,34 @@ def test_master_cli_routes_snapshot_validate(monkeypatch, capsys) -> None:
     monkeypatch.setattr("src.cli.snapshot_validate.validate_snapshot", lambda _sid: _result())
     assert kbo_main(["snapshot", "validate", "--snapshot-id", "5"]) == 0
     assert "lg_twins_events" in capsys.readouterr().out
+
+
+def test_explicit_limit_zero_is_honored(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotValidationResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_validate.validate_recent_snapshots", _fake)
+    assert validate_main(["--limit", "0"]) == 0
+    assert captured["limit"] == 0
+
+
+def test_limit_defaults_to_fifty(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotValidationResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_validate.validate_recent_snapshots", _fake)
+    assert validate_main([]) == 0
+    assert captured["limit"] == 50
+
+
+def test_negative_limit_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        validate_main(["--limit", "-1"])
+    assert exc.value.code == 2
+    assert ">= 0" in capsys.readouterr().err

@@ -11,6 +11,7 @@ import json
 import sys
 from typing import TYPE_CHECKING
 
+from src.cli.common import non_negative_int
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
     SnapshotReplayError,
@@ -41,7 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kbo snapshot validate", description="Validate stored snapshots offline.")
     selector = parser.add_mutually_exclusive_group()
     selector.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Validate one snapshot.")
-    selector.add_argument("--limit", type=int, default=None, help="Validate the N most recent snapshots.")
+    selector.add_argument(
+        "--limit",
+        type=non_negative_int,
+        default=50,
+        help="Validate the N most recent snapshots (default: 50).",
+    )
     parser.add_argument("--fail-on-drift", action="store_true", help="Exit non-zero when any snapshot drifted.")
     parser.add_argument("--json", action="store_true", help="Emit JSON.")
     return parser
@@ -93,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = validate_recent_snapshots(limit=args.limit or 50)
+        results = validate_recent_snapshots(limit=args.limit)
 
     _render(results, json_out=args.json)
     if args.fail_on_drift and any(result.drifted for result in results):
