@@ -64,6 +64,17 @@ class SnapshotPersistResult:
     skipped: bool = False
     failed_count: int = 0
 
+    @property
+    def outcome_status(self) -> str:
+        """Return the outcome as a single unambiguous status token."""
+        if self.skipped:
+            return "skipped"
+        if self.success:
+            return "saved"
+        if self.failed_count > 0 and self.saved > 0:
+            return "partial"
+        return "failed"
+
 
 def _save_flat(session: Session, domain: str, data: list[dict]) -> SaveOutcome:
     repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
