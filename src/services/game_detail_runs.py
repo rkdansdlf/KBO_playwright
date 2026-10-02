@@ -25,6 +25,11 @@ from typing import TYPE_CHECKING
 
 from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
 from src.db.engine import SessionLocal
+from src.monitoring.crawler_metrics import (
+    LEDGER_OPERATION_FINALIZE,
+    LEDGER_OPERATION_OPEN,
+    record_ledger_failure,
+)
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
 from src.services.crawl_run_service import CrawlRunService
 
@@ -161,6 +166,7 @@ class GameDetailRunLedger:
             except Exception as exc:
                 _stage, code = classify_persist_failure(exc)
                 failures[game_id] = (code.value, f"{type(exc).__name__}: {exc}")
+                record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
                 logger.exception("Failed to open crawl run for %s", game_id)
         return RunOpenResult(started=started, failures=failures)
 
@@ -189,6 +195,7 @@ class GameDetailRunLedger:
                 session.commit()
         except Exception as exc:
             _stage, code = classify_persist_failure(exc)
+            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
             logger.exception("Failed to open replay run %s", spec.run_id)
             return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
         return RunOpenResult(started={game_id: run.run_id})
@@ -287,6 +294,16 @@ class GameDetailRunLedger:
                 service = CrawlRunService(session)
                 run = CrawlExecutionRepository(session).get_by_run_id(run_id)
                 if run is None:
+                    # Nothing raised, so there is no cause to classify. The run
+                    # row is simply absent, which is what REPLAY_RUN_MISSING
+                    # means; the name reads as replay-specific but a scheduled
+                    # run can vanish the same way, and inventing a persistence
+                    # code would blame the database for a missing row.
+                    record_ledger_failure(
+                        GAME_DETAIL_CRAWLER_NAME,
+                        LEDGER_OPERATION_FINALIZE,
+                        FailureCode.REPLAY_RUN_MISSING.value,
+                    )
                     logger.warning("Crawl run %s vanished before finalize", run_id)
                     return False
                 if status == "success":
@@ -310,7 +327,9 @@ class GameDetailRunLedger:
                     )
                 session.commit()
                 return True
-        except Exception:
+        except Exception as exc:
+            _stage, code = classify_persist_failure(exc)
+            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
             logger.exception("Failed to finalize crawl run %s", run_id)
             return False
 

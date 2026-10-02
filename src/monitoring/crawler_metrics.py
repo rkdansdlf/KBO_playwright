@@ -74,6 +74,22 @@ CRAWL_DURATION_SECONDS = Histogram(
     buckets=DURATION_BUCKETS,
 )
 
+#: Ledger operations that could not be recorded, distinct from crawl failures.
+#: `kbo_crawl_failures_total` counts runs that existed and ended badly; this
+#: counts the bookkeeping that makes such a run observable at all. A crawl can
+#: fail cleanly and still be invisible if the run row was never opened or never
+#: closed, so the two signals answer different questions and neither replaces
+#: the other.
+CRAWL_LEDGER_FAILURES_TOTAL = Counter(
+    "kbo_crawl_ledger_failures_total",
+    "Crawl run ledger operations that could not be recorded, by operation.",
+    ["crawler", "operation", "error_code"],
+)
+
+#: Ledger operations distinguished by this metric.
+LEDGER_OPERATION_OPEN = "open"
+LEDGER_OPERATION_FINALIZE = "finalize"
+
 CRAWL_LAST_SUCCESS_TIMESTAMP = Gauge(
     "kbo_crawl_last_success_timestamp",
     "Unix time of the last successful run, or 0 when a crawler has never succeeded.",
@@ -133,6 +149,29 @@ def _resolve_failure_labels(error_code: object) -> tuple[str, str]:
         # metric must not be how that surfaces.
         logger.warning("Crawl error_code %r is not in the failure taxonomy; reporting as unknown", code)
         return code, UNKNOWN_FAILURE_STAGE
+
+
+def record_ledger_failure(crawler: object, operation: object, error_code: object) -> bool:
+    """Count a ledger operation that could not be recorded.
+
+    Recorded at the point the exception is in hand, so no layer has to remember
+    to report it later. That matters here more than elsewhere: the whole failure
+    mode is that nothing else noticed.
+
+    Args:
+        crawler: The crawler whose ledger failed.
+        operation: Which step failed, e.g. ``"open"`` or ``"finalize"``.
+        error_code: The classified cause, if one is known.
+
+    Returns:
+        True when the failure was counted.
+
+    """
+    label = crawler if is_safe_crawler_label(crawler) else UNKNOWN_ERROR_CODE
+    op = operation if is_safe_crawler_label(operation) else UNKNOWN_ERROR_CODE
+    code, _stage = _resolve_failure_labels(error_code)
+    CRAWL_LEDGER_FAILURES_TOTAL.labels(crawler=label, operation=op, error_code=code).inc()
+    return True
 
 
 def record_crawl_run(run: CrawlExecutionRun) -> bool:

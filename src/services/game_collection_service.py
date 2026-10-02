@@ -159,6 +159,10 @@ class GameCollectionResult:
     #: under. Counted separately from `detail_failed` because it means the
     #: ledger could not record anything at all, not that the data was rejected.
     runs_unopened: int = 0
+    #: Games whose work finished but whose terminal transition was not recorded.
+    #: The more dangerous of the two: the data is written and the run may still
+    #: read as running, so nothing about the game's real outcome survives.
+    runs_unfinalized: int = 0
     relay_targets: int = 0
     relay_saved_games: int = 0
     relay_rows_saved: int = 0
@@ -630,6 +634,7 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
             failure_reason=failure_reason[2],
             extra_reason=failure_reason[1] or None,
         )
+        _count_unfinalized(ctx, terminal)
         _enqueue_for_replay(target, terminal)
         return
 
@@ -639,6 +644,7 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     else:
         ctx.cfg.log("   [ERROR] Detail save failed")
     terminal = _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
+    _count_unfinalized(ctx, terminal)
     _enqueue_for_replay(target, terminal)
 
 
@@ -741,20 +747,24 @@ def _process_single_detail_target(
     )
     if failure_reason is not None:
         _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
-        return _close_failed_run(
+        terminal = _close_failed_run(
             run_id,
             attempt,
             failure_reason=failure_reason[2],
             extra_reason=failure_reason[1] or None,
         )
+        _count_unfinalized(ctx, terminal)
+        return terminal
     saved, persist_cause = _save_detail_payload(target, payload or {}, ctx)
-    return _close_saved_run(
+    terminal = _close_saved_run(
         run_id,
         attempt,
         saved=saved,
         persist_cause=persist_cause,
         payload=payload or {},
     )
+    _count_unfinalized(ctx, terminal)
+    return terminal
 
 
 def _close_saved_run(
@@ -862,6 +872,18 @@ def _record_error_outcome(
         counts=counts,
         run_id=run_id,
     )
+
+
+def _count_unfinalized(ctx: DetailProcessingContext, terminal: TerminalOutcome | None) -> None:
+    """Count a game whose terminal transition the ledger refused.
+
+    A `None` terminal here means the run row may still read as running, so the
+    game's real outcome is not in the ledger and never will be. Counting it keeps
+    that distinguishable from a game that finished cleanly: both leave no queue
+    entry, and only one of them had its work done.
+    """
+    if terminal is None:
+        ctx.result.runs_unfinalized += 1
 
 
 def _abandon_without_run(

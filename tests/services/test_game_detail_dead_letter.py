@@ -599,3 +599,115 @@ class TestReplayingMovesTheExistingLetter:
         assert replay_run.replay_of_run_id == original.original_run_id
         assert replay_run.parent_run_id == original.original_run_id
         assert replay_run.status == RUN_STATUS_SUCCESS
+
+
+class TestLedgerFailuresAreCounted:
+    """The gap this closes: a run that cannot be recorded leaves no trace.
+
+    A crawl can fail cleanly and still be invisible -- if the run row was never
+    opened, or never closed, there is no run for `kbo_crawl_failures_total` to
+    count and no letter to retry. These assert each of those is now reported.
+    """
+
+    def _ledger_failures(self, **labels: str) -> float:
+        from prometheus_client import REGISTRY
+
+        return REGISTRY.get_sample_value("kbo_crawl_ledger_failures_total", labels) or 0.0
+
+    def test_an_unopened_run_is_counted_as_an_open_failure(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        before = self._ledger_failures(
+            crawler="game_detail",
+            operation="open",
+            error_code=FailureCode.PERSIST_CONNECTION.value,
+        )
+
+        _collect(_StubCrawler({GAME: FULL_DETAIL}), run_open_error=RuntimeError("db down"))
+
+        after = self._ledger_failures(
+            crawler="game_detail",
+            operation="open",
+            error_code=FailureCode.PERSIST_CONNECTION.value,
+        )
+        assert after == before + 1
+
+    def test_a_refused_terminal_is_counted_as_a_finalize_failure(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """The work happened and was written; only the recording was refused.
+
+        This is the case that used to be entirely silent, and it is the one that
+        leaves a run reading as running forever.
+        """
+        before = self._ledger_failures(
+            crawler="game_detail",
+            operation="finalize",
+            error_code=FailureCode.PERSIST_TIMEOUT.value,
+        )
+
+        with (
+            patch(
+                "src.services.game_detail_runs.CrawlExecutionRepository.get_by_run_id",
+                side_effect=TimeoutError("terminal write timed out"),
+            ),
+            patch("src.services.game_collection_service.save_game_detail", return_value=True),
+            patch(
+                "src.services.game_collection_service._detail_payload_failure_reason",
+                side_effect=_only_a_missing_payload_fails,
+            ),
+        ):
+            result = _collect(_StubCrawler({GAME: FULL_DETAIL}))
+
+        after = self._ledger_failures(
+            crawler="game_detail",
+            operation="finalize",
+            error_code=FailureCode.PERSIST_TIMEOUT.value,
+        )
+        assert after == before + 1
+        assert result.runs_unfinalized == 1
+        # Still nothing to retry: there is no recorded run to attach a letter to.
+        assert _letters(factory) == []
+
+    def test_a_vanished_run_is_reported_rather_than_assumed_final(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """A missing run raises nothing, so nothing would ever be classified."""
+        from src.monitoring.crawler_metrics import LEDGER_OPERATION_FINALIZE
+
+        before = self._ledger_failures(
+            crawler="game_detail",
+            operation=LEDGER_OPERATION_FINALIZE,
+            error_code=FailureCode.REPLAY_RUN_MISSING.value,
+        )
+
+        with patch(
+            "src.services.game_detail_runs.CrawlExecutionRepository.get_by_run_id",
+            return_value=None,
+        ):
+            _collect(_StubCrawler({GAME: FULL_DETAIL}))
+
+        after = self._ledger_failures(
+            crawler="game_detail",
+            operation=LEDGER_OPERATION_FINALIZE,
+            error_code=FailureCode.REPLAY_RUN_MISSING.value,
+        )
+        assert after == before + 1
+
+    def test_a_healthy_game_counts_nothing(
+        self,
+        factory: sessionmaker,
+        wired: None,
+    ) -> None:
+        """A metric that fires on the happy path is worse than no metric."""
+        result = _collect(_StubCrawler({GAME: FULL_DETAIL}))
+
+        assert result.runs_unopened == 0
+        assert result.runs_unfinalized == 0
+        assert _runs(factory)[GAME].status == "success"
