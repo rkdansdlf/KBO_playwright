@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+import pytest
 
 from src.cli.run_migrations import build_arg_parser, main
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_build_arg_parser() -> None:
@@ -28,3 +25,27 @@ def test_main_cli_execution_status_json(capsys: pytest.CaptureFixture[str]) -> N
     assert data["dialect"] == "oracle"
     assert "total_available" in data
     assert data["total_available"] >= 50
+
+
+def test_the_dialect_must_be_named() -> None:
+    """A bare invocation used to silently pick the Oracle chain.
+
+    The chains are separate files, so the default was a guess about which
+    database was about to be changed -- and a wrong guess applies one chain's
+    schema changes to another database. Refusing is the only safe default.
+    """
+    parser = build_arg_parser()
+
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["--status"])
+
+    assert excinfo.value.code == 2
+
+
+def test_an_unknown_dialect_is_rejected() -> None:
+    parser = build_arg_parser()
+
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["--dialect", "mysql"])
+
+    assert excinfo.value.code == 2

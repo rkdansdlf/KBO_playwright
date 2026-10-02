@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import pytest
+
 from src.cli.kbo import build_master_parser, main
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_build_master_parser_subcommands() -> None:
@@ -124,3 +124,42 @@ def test_master_cli_route_sync_dry_run_json(monkeypatch: pytest.MonkeyPatch, tmp
     assert "completed_at" in data
     assert "tables_synced" in data
     assert "rows_synced" in data
+
+
+class TestMigrateRefusesToGuessTheDialect:
+    """`kbo migrate` used to default to Oracle while production runs PostgreSQL.
+
+    Both call sites carried the default independently, so the router and the
+    module it dispatches to each had to be fixed; this asserts both refuse.
+    """
+
+    def test_the_master_router_requires_a_dialect(self) -> None:
+        parser = build_master_parser()
+
+        with pytest.raises(SystemExit) as excinfo:
+            parser.parse_args(["migrate", "--status"])
+
+        assert excinfo.value.code == 2
+
+    def test_the_master_router_still_accepts_every_dialect(self) -> None:
+        parser = build_master_parser()
+
+        for dialect in ("oracle", "sqlite", "postgresql", "pgvector"):
+            args = parser.parse_args(["migrate", "--dialect", dialect, "--status"])
+
+            assert args.dialect == dialect
+
+    def test_the_dispatched_module_requires_a_dialect_too(self) -> None:
+        """`kbo migrate` is not the only door in: the module is runnable directly.
+
+        Fixing only the router would leave `python3 -m src.cli.sync.run_migrations`
+        guessing Oracle.
+        """
+        from src.cli.sync.run_migrations import build_arg_parser
+
+        parser = build_arg_parser()
+
+        with pytest.raises(SystemExit) as excinfo:
+            parser.parse_args(["--status"])
+
+        assert excinfo.value.code == 2
