@@ -8,7 +8,7 @@ re-validated without any network call or database write.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,14 +51,21 @@ class SnapshotNotFoundError(SnapshotReplayError):
 
 @dataclass(frozen=True)
 class SnapshotParseResult:
-    """Result of re-parsing one stored snapshot (records included)."""
+    """Result of re-parsing one stored snapshot (records included).
+
+    ``records`` is an immutable tuple so frozen instances cannot be mutated in
+    place. Instances stay intentionally unhashable: record payloads are dicts,
+    which cannot participate in a meaningful hash.
+    """
 
     snapshot_id: int
     source_key: str | None
     parser_version: str | None
-    records: list[dict] = field(default_factory=list)
+    records: tuple[dict, ...] = ()
     success: bool = True
     error: str | None = None
+
+    __hash__ = None  # type: ignore[assignment]
 
     @property
     def parsed_count(self) -> int:
@@ -148,7 +155,7 @@ class _SnapshotView:
 
 @dataclass(frozen=True)
 class _ParserResult:
-    records: list[dict]
+    records: tuple[dict, ...]
     error: str | None
 
 
@@ -190,11 +197,11 @@ def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _Pars
         }
         parsed = parser(text, view.source_key or "", metadata)
     except SnapshotReplayError as exc:
-        return _ParserResult([], str(exc))
+        return _ParserResult((), str(exc))
     except Exception as exc:
         logger.exception("Snapshot replay parser failed for snapshot %s", view.snapshot_id)
-        return _ParserResult([], str(exc))
-    return _ParserResult(list(parsed), None)
+        return _ParserResult((), str(exc))
+    return _ParserResult(tuple(parsed), None)
 
 
 def _baseline_count(capture_metadata: dict | None) -> int | None:

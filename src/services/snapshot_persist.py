@@ -27,7 +27,7 @@ from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.services.snapshot_replay import SnapshotReplayError, parse_snapshot
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -76,7 +76,7 @@ class SnapshotPersistResult:
         return "failed"
 
 
-def _save_flat(session: Session, domain: str, data: list[dict]) -> SaveOutcome:
+def _save_flat(session: Session, domain: str, data: Sequence[dict]) -> SaveOutcome:
     repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
     saved = failed = 0
     for item in data:
@@ -89,7 +89,7 @@ def _save_flat(session: Session, domain: str, data: list[dict]) -> SaveOutcome:
     return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_parking(session: Session, data: list[dict]) -> SaveOutcome:
+def _save_parking(session: Session, data: Sequence[dict]) -> SaveOutcome:
     lot_repo = ParkingLotRepository(session)
     fee_repo = ParkingFeeRuleRepository(session)
     saved = failed = 0
@@ -105,7 +105,7 @@ def _save_parking(session: Session, data: list[dict]) -> SaveOutcome:
     return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_food(session: Session, data: list[dict]) -> SaveOutcome:
+def _save_food(session: Session, data: Sequence[dict]) -> SaveOutcome:
     vendor_repo = StadiumFoodVendorRepository(session)
     menu_repo = StadiumFoodMenuItemRepository(session)
     saved = failed = 0
@@ -121,7 +121,7 @@ def _save_food(session: Session, data: list[dict]) -> SaveOutcome:
     return SaveOutcome(saved=saved, failed=failed)
 
 
-_DOMAIN_SAVERS: dict[str, Callable[[Session, list[dict]], SaveOutcome]] = {
+_DOMAIN_SAVERS: dict[str, Callable[[Session, Sequence[dict]], SaveOutcome]] = {
     "parking": _save_parking,
     "food": _save_food,
 }
@@ -132,7 +132,7 @@ def supported_domains() -> frozenset[str]:
     return frozenset(DOMAIN_FLAT_REPOS) | frozenset(_DOMAIN_SAVERS)
 
 
-def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -> SaveOutcome:
+def save_parsed(session: Session, target_domain: str, parsed_data: Sequence[dict]) -> SaveOutcome:
     """Persist parsed records into the repository matching ``target_domain``."""
     if target_domain in DOMAIN_FLAT_REPOS:
         return _save_flat(session, target_domain, parsed_data)

@@ -54,7 +54,7 @@ class TestProcessSnapshotDelegatesToService:
             snapshot_id=1,
             source_key="lg_twins_events",
             parser_version="team-event-v1",
-            records=[{"title": "a"}] if success else [],
+            records=({"title": "a"},) if success else (),
             success=success,
             error=None if success else "bad html",
         )
