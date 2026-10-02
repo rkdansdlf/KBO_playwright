@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.engine import URL
+
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -467,6 +469,89 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         logger.info("Scheduler stopped by user")
 
 
+#: Bound the startup connectivity probe so an unreachable host cannot stall the
+#: scheduler for minutes (the container runs with ``restart: always``).
+DB_STARTUP_PROBE_TIMEOUT_SECONDS = 5
+
+
+def _masked_database_target(url: str) -> str:
+    """Return a connection URL with credentials stripped, safe to log."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import SQLAlchemyError
+
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except (ValueError, TypeError, SQLAlchemyError):
+        return "<unparseable DATABASE_URL>"
+
+
+def _resolve_database_url() -> URL | None:
+    """Parse ``DATABASE_URL``, returning ``None`` when it is malformed."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from src.db.engine import DATABASE_URL
+
+    try:
+        return make_url(DATABASE_URL)
+    except (ValueError, TypeError, SQLAlchemyError):
+        logger.exception("DATABASE_URL could not be parsed; database target unknown")
+        return None
+
+
+def _log_resolved_database_target() -> None:
+    """Log which database the scheduler resolved, and whether it answers.
+
+    The 2026-09-22 switch moved ``DATABASE_URL`` from Oracle to PostgreSQL while a
+    long-lived scheduler kept the engine it had built at import time. Nothing ever
+    logged the resolved target, so a scheduler pointing at the wrong database looked
+    like a data-quality regression instead. One ``SELECT 1`` on startup makes that
+    class of fault visible immediately.
+
+    Deliberately non-fatal: the scheduler must still come up and resume once the
+    database recovers, and availability alerting is owned by the Prometheus probe
+    rather than the in-process incident ledger.
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+
+    from src.db.engine import DATABASE_URL, DB_SESSION_EXCEPTIONS
+
+    url = _resolve_database_url()
+    if url is None:
+        return
+
+    target = _masked_database_target(DATABASE_URL)
+    logger.info("Resolved database target: %s", target)
+
+    connect_args = (
+        {"connect_timeout": DB_STARTUP_PROBE_TIMEOUT_SECONDS} if url.get_backend_name() == "postgresql" else {}
+    )
+    try:
+        probe_engine = create_engine(url, connect_args=connect_args, poolclass=NullPool)
+    except (*DB_SESSION_EXCEPTIONS, OSError) as exc:
+        logger.exception(
+            "Could not build a probe engine for %s (%s); jobs will fail until it is fixed",
+            target,
+            type(exc).__name__,
+        )
+        return
+
+    try:
+        with probe_engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except (*DB_SESSION_EXCEPTIONS, OSError) as exc:
+        logger.exception(
+            "Database target %s did not answer SELECT 1 (%s); jobs will fail until it recovers",
+            target,
+            type(exc).__name__,
+        )
+    else:
+        logger.info("Database connectivity check passed")
+    finally:
+        probe_engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Entry point for KBO scheduler."""
     parser = build_arg_parser()
@@ -474,6 +559,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if _dispatch_single_run(args):
         return
     _ensure_single_scheduler_instance()
+    _log_resolved_database_target()
     init_sentry()
     start_metrics_server(_env_int("PROMETHEUS_PORT", 8000))
     _start_scheduler(args)
