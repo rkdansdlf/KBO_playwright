@@ -344,15 +344,29 @@ class RelayCrawler(BaseHttpCrawler):
         payload rather than a failure. The inning loop reads an empty envelope
         as an empty inning, and turning it into a failure here would report a
         finished game as a broken one.
+
+        The code the client already chose is carried through rather than
+        re-derived. Collapsing every transport fault into one reason made a
+        timeout indistinguishable from a broken connection all the way down: the
+        ledger, the dead letter and the Prometheus breakdown all reported the
+        same thing, so an operator could not tell a slow site from a sick one.
         """
         if result.ok or result.outcome is CrawlOutcome.EMPTY:
             return None
-        if result.error_code == FailureCode.FETCH_BLOCKED.value:
-            return "blocked"
         if result.outcome is CrawlOutcome.SCHEMA_CHANGED:
             # The response arrived and did not parse. The old catch-all called
             # this an API error, which blamed the site for a shape we changed.
             return "relay_schema_drift"
+        # Ordered by specificity: the client's own code is the authority, and the
+        # permanent-status branch below is the only case where a bare status says
+        # more than the code does.
+        carried = {
+            FailureCode.FETCH_TIMEOUT.value: "relay_timeout",
+            FailureCode.FETCH_RATE_LIMITED.value: "relay_rate_limited",
+            FailureCode.FETCH_BLOCKED.value: "blocked",
+        }.get(result.error_code)
+        if carried is not None:
+            return carried
         status = result.http_status
         if result.outcome is CrawlOutcome.PERMANENT_ERROR and status is not None:
             return f"http_{status}"

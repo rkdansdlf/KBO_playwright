@@ -164,6 +164,23 @@ _REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, bool, str]] = {
         False,
         BUCKET_API_FAILED,
     ),
+    # Carried through from the shared client so a timeout stays a timeout on the
+    # way to the ledger, the queue and the metric. Collapsing these into
+    # `relay_api_error` made a slow site and a broken connection the same event.
+    "relay_timeout": (
+        FailureCode.FETCH_TIMEOUT,
+        "relay request timed out",
+        False,
+        False,
+        BUCKET_API_FAILED,
+    ),
+    "relay_rate_limited": (
+        FailureCode.FETCH_RATE_LIMITED,
+        "relay request was rate limited",
+        False,
+        False,
+        BUCKET_API_FAILED,
+    ),
     # The schedule listed games and none of them was this one. Worth another
     # attempt: the match is scored on time and stadium, and a late-updating
     # schedule can change the answer.
