@@ -3,6 +3,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import src.crawlers.baserunning_stats_crawler as baserunning_module
 import src.crawlers.fielding_stats_crawler as fielding_module
@@ -12,6 +15,23 @@ from src.crawlers.baserunning_stats_crawler import crawl_baserunning_stats
 from src.crawlers.fielding_stats_crawler import crawl_all_fielding_stats
 from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
 from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
+from src.models.crawl_dead_letter import CrawlDeadLetter
+from src.models.crawl_execution import CrawlExecutionRun
+
+
+@pytest.fixture(autouse=True)
+def ledger_sessions(monkeypatch):
+    """The crawl run ledger is now a hard dependency of the KBO event ``run()``."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    CrawlExecutionRun.__table__.create(engine)
+    CrawlDeadLetter.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    monkeypatch.setattr("src.services.crawl_dead_letter_service.SessionLocal", factory)
 
 
 def test_team_batting_site_collection_is_source_limited_before_browser_start() -> None:
