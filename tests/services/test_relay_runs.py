@@ -17,8 +17,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
 from src.crawlers.relay_outcome import AttemptSeed, InningStop, RelayStatus, build_attempt
+from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
 from src.services.crawl_run_ledger import RunCounts
 from src.services.game_collection_service import (
@@ -45,6 +46,7 @@ def factory() -> sessionmaker:
         poolclass=StaticPool,
     )
     CrawlExecutionRun.__table__.create(engine)
+    CrawlDeadLetter.__table__.create(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
@@ -54,6 +56,9 @@ def wired(factory: sessionmaker, monkeypatch: pytest.MonkeyPatch) -> None:
         "src.services.crawl_run_service",
         "src.services.relay_runs",
         "src.services.game_collection_service",
+        # The queue owns its own session, so wiring only the ledger would let an
+        # enqueue reach the real database and be swallowed as "queued fine".
+        "src.services.crawl_dead_letter_service",
     ):
         monkeypatch.setattr(f"{module}.SessionLocal", factory)
 
@@ -71,6 +76,15 @@ class _RecordingLedger:
         if self.open_fails:
             return RunOpenResult(failures=dict.fromkeys(game_ids, (FailureCode.PERSIST_TIMEOUT.value, "cannot open")))
         return RunOpenResult(started={gid: f"run-{gid}" for gid in game_ids})
+
+    def open_run(self, spec: Any) -> Any:
+        """The replay path opens one run from the spec the dispatcher allocated."""
+        from src.services.crawl_run_ledger import RunOpenResult
+
+        game_id = str(spec.target_id)
+        if self.open_fails:
+            return RunOpenResult(failures={game_id: (FailureCode.PERSIST_TIMEOUT.value, "cannot open")})
+        return RunOpenResult(started={game_id: spec.run_id})
 
     def _record(self, status: str, run_id: str, error_code: str | None = None) -> bool:
         self.transitions.append((status, run_id, error_code))
@@ -109,6 +123,12 @@ def _async(value: Any) -> Any:
     from unittest.mock import AsyncMock
 
     return AsyncMock(return_value=value)
+
+
+def _letters(factory: sessionmaker) -> list[CrawlDeadLetter]:
+    """Every queued letter, in insertion order."""
+    with factory() as session:
+        return list(session.query(CrawlDeadLetter).order_by(CrawlDeadLetter.id).all())
 
 
 def _attempt(
@@ -356,3 +376,221 @@ class TestAnUnrecordedTerminalIsCounted:
 
         assert result.relay_runs_unopened == 0
         assert result.relay_runs_unfinalized == 0
+
+
+@pytest.mark.asyncio
+class TestTheQueueOnlyHoldsWorkThatCanBeRedone:
+    """A success is never queued, including a game the source does not carry.
+
+    Everything else is queued and the policy decides: a transport fault waits,
+    while a blocked request or a body that no longer parses is recorded as
+    `ignored` so the reason the crawl did not finish is still on the record.
+    """
+
+    async def _letters(self, factory: sessionmaker, ledger: _RecordingLedger) -> list[Any]:
+        from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository
+
+        _collect_one = None
+        with factory() as session:
+            return CrawlDeadLetterRepository(session).list_all()
+
+    async def _collect(self, attempt: Any, *, save_rows: int = 2, save_error: Any = None) -> Any:
+        ctx, ledger = _context(attempt)
+        patches = [patch("src.services.game_collection_service._relay_run_ledger", lambda: ledger)]
+        if save_error is not None:
+            patches.append(patch("src.services.game_collection_service.save_relay_data", side_effect=save_error))
+        else:
+            patches.append(patch("src.services.game_collection_service.save_relay_data", return_value=save_rows))
+        with patches[0], patches[1]:
+            return await _run(ctx, ledger), ledger
+
+    async def test_a_saved_game_queues_nothing(self, factory: sessionmaker, wired: None) -> None:
+        await self._collect(_attempt(ROWS))
+        assert _letters(factory) == []
+
+    async def test_an_absence_queues_nothing(self, factory: sessionmaker, wired: None) -> None:
+        """The source does not carry it, so there is nothing to fetch."""
+        await self._collect(_attempt(None, status=RelayStatus.FAILED, reason="relay_not_found"), save_rows=0)
+        assert _letters(factory) == []
+
+    async def test_a_partial_is_queued_against_its_run(self, factory: sessionmaker, wired: None) -> None:
+        """The rows exist, so the game is worth one more attempt."""
+        _result, ledger = await self._collect(
+            _attempt(
+                ROWS,
+                status=RelayStatus.PARTIAL,
+                reason="relay_api_error",
+                stop=InningStop.FETCH_FAILED,
+                innings=8,
+            )
+        )
+        letters = _letters(factory)
+        assert len(letters) == 1
+        letter = letters[0]
+        assert letter.crawler == RELAY_CRAWLER_NAME
+        assert letter.target_type == RELAY_TARGET_TYPE
+        assert letter.target_id == GAME
+        assert letter.game_id == GAME
+        assert letter.original_run_id == f"run-{GAME}"
+        assert letter.error_code == FailureCode.FETCH_HTTP_ERROR.value
+        assert letter.failure_stage == stage_for_code(FailureCode.FETCH_HTTP_ERROR.value).value
+        assert letter.status == "pending"
+        assert ledger.transitions[0][0] == "partial"
+
+    async def test_a_transport_failure_is_queued_as_retryable(self, factory: sessionmaker, wired: None) -> None:
+        await self._collect(_attempt(None, status=RelayStatus.FAILED, reason="relay_api_error"), save_rows=0)
+        letters = _letters(factory)
+
+        assert len(letters) == 1
+        assert letters[0].status == "pending"
+
+    async def test_a_blocked_crawl_is_recorded_but_not_retried(self, factory: sessionmaker, wired: None) -> None:
+        """Kept as a row so an operator can see why it was not retried.
+
+        Dropping it instead would make a blocked crawl indistinguishable from a
+        game that was never attempted.
+        """
+        await self._collect(_attempt(None, status=RelayStatus.FAILED, reason="blocked"), save_rows=0)
+        letters = _letters(factory)
+
+        assert len(letters) == 1
+        assert letters[0].error_code == FailureCode.FETCH_BLOCKED.value
+        assert letters[0].status == "ignored"
+        assert letters[0].next_retry_at is None
+
+    async def test_schema_drift_is_recorded_but_not_retried(self, factory: sessionmaker, wired: None) -> None:
+        await self._collect(_attempt(None, status=RelayStatus.FAILED, reason="relay_schema_drift"), save_rows=0)
+        letters = _letters(factory)
+
+        assert len(letters) == 1
+        assert letters[0].status == "ignored"
+
+    async def test_a_broken_database_is_queued_as_a_persistence_failure(
+        self, factory: sessionmaker, wired: None
+    ) -> None:
+        from sqlalchemy.exc import OperationalError
+
+        boom = OperationalError("SELECT 1", {}, Exception("refused"))
+        await self._collect(_attempt(ROWS), save_error=boom)
+        letters = _letters(factory)
+
+        assert len(letters) == 1
+        assert letters[0].error_code == FailureCode.PERSIST_CONNECTION.value
+        assert letters[0].failure_stage == "persist"
+
+    async def test_an_unrecorded_terminal_queues_nothing(self, factory: sessionmaker, wired: None) -> None:
+        """A letter has to point at a run; there is no run to point at."""
+        ctx, ledger = _context(_attempt(None, status=RelayStatus.FAILED, reason="relay_api_error"))
+        ledger.record_failed = MagicMock(return_value=False)
+        with patch("src.services.game_collection_service.save_relay_data", return_value=0):
+            await _run(ctx, ledger)
+
+        assert _letters(factory) == []
+
+
+@pytest.mark.asyncio
+class TestReplayMovesTheExistingLetter:
+    """The incident is one letter. A retry that raised another would strand it."""
+
+    def _spec(self, replay_run_id: str) -> Any:
+        from src.repositories.crawl_execution_repository import CrawlRunSpec
+
+        return CrawlRunSpec(
+            crawler=RELAY_CRAWLER_NAME,
+            target_type=RELAY_TARGET_TYPE,
+            target_id=GAME,
+            game_id=GAME,
+            season=2025,
+            run_id=replay_run_id,
+            parent_run_id="run-original",
+            replay_of_run_id="run-original",
+        )
+
+    async def _replay(self, attempt: Any, *, save_rows: int = 2, run_id: str = "run-replay-1") -> Any:
+        from src.services.game_collection_service import GameCollectionConfig, replay_single_relay
+
+        ledger = _RecordingLedger()
+        crawler = MagicMock()
+        crawler.__class__.__name__ = "TestRelayCrawler"
+        crawler.crawl_relay_attempt = _async(attempt)
+        with (
+            patch("src.services.game_collection_service._relay_run_ledger", lambda: ledger),
+            patch("src.services.game_collection_service.save_relay_data", return_value=save_rows),
+        ):
+            outcome = await replay_single_relay(
+                GAME,
+                self._spec(run_id),
+                relay_crawler=crawler,
+                config=GameCollectionConfig(),
+            )
+        return outcome, ledger
+
+    async def test_a_replay_never_raises_a_second_letter(self, factory: sessionmaker, wired: None) -> None:
+        """Run ids differ per attempt, so a fresh enqueue would be a distinct row."""
+        from src.services.game_collection_service import GameCollectionConfig, replay_single_relay
+
+        await self._replay(_attempt(None, status=RelayStatus.FAILED, reason="relay_api_error"))
+        assert _letters(factory) == []
+
+    async def test_a_complete_replay_reports_success_with_no_letter(self, factory: sessionmaker, wired: None) -> None:
+        outcome, _ledger = await self._replay(_attempt(ROWS))
+
+        assert outcome is not None
+        assert outcome.status == "success"
+        assert outcome.counts.written == 2
+        assert _letters(factory) == []
+
+    async def test_an_incomplete_replay_reports_partial(self, factory: sessionmaker, wired: None) -> None:
+        """Not success. The game is still missing innings, so it must stay retryable."""
+        outcome, ledger = await self._replay(
+            _attempt(
+                ROWS,
+                status=RelayStatus.PARTIAL,
+                reason="relay_api_error",
+                stop=InningStop.FETCH_FAILED,
+                innings=8,
+            )
+        )
+
+        assert outcome is not None
+        assert outcome.status == "partial"
+        assert outcome.error_code == FailureCode.FETCH_HTTP_ERROR.value
+        assert ledger.transitions[0][0] == "partial"
+
+    async def test_an_absence_on_replay_reports_success(self, factory: sessionmaker, wired: None) -> None:
+        """The replay confirmed the source has nothing, so the incident is closed."""
+        outcome, ledger = await self._replay(
+            _attempt(None, status=RelayStatus.FAILED, reason="relay_not_found"),
+            save_rows=0,
+        )
+
+        assert outcome is not None
+        assert outcome.status == "success"
+        assert ledger.transitions[0][0] == "success"
+
+    async def test_a_replay_that_cannot_open_its_run_writes_nothing(self, factory: sessionmaker, wired: None) -> None:
+        """Storing rows with no run leaves data no letter can account for."""
+        from src.services.crawl_run_ledger import RunOpenResult
+        from src.services.game_collection_service import GameCollectionConfig, replay_single_relay
+
+        ledger = _RecordingLedger()
+        ledger.open_run = MagicMock(
+            return_value=RunOpenResult(failures={GAME: (FailureCode.PERSIST_TIMEOUT.value, "cannot open")})
+        )
+        crawler = MagicMock()
+        crawler.crawl_relay_attempt = _async(_attempt(ROWS))
+        with (
+            patch("src.services.game_collection_service._relay_run_ledger", lambda: ledger),
+            patch("src.services.game_collection_service.save_relay_data") as save,
+        ):
+            outcome = await replay_single_relay(
+                GAME,
+                self._spec("run-replay-x"),
+                relay_crawler=crawler,
+                config=GameCollectionConfig(),
+            )
+
+        assert outcome is None
+        crawler.crawl_relay_attempt.assert_not_called()
+        save.assert_not_called()
+        assert _letters(factory) == []

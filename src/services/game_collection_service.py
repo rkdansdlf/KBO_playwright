@@ -45,6 +45,7 @@ from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
 from src.services.relay_runs import (
     RELAY_CRAWLER_NAME,
+    RELAY_TARGET_TYPE,
     RelayOutcome,
     RelayRunLedger,
 )
@@ -666,6 +667,81 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
     _enqueue_for_replay(target, terminal)
 
 
+async def replay_single_relay(
+    game_id: str,
+    spec: CrawlRunSpec,
+    *,
+    relay_crawler: RelayCrawler,
+    config: GameCollectionConfig,
+) -> RelayOutcome | None:
+    """Re-crawl one game's relay on behalf of a dead letter.
+
+    It never queues. A retry exists to resolve an existing letter; a retry that
+    produced a letter of its own would give the incident a second row under a
+    second run, so the queue would grow faster than it drains and the original
+    letter would stop being the thing that tracks the problem.
+
+    Replay always re-fetches from the first inning rather than resuming where the
+    last attempt stopped. Resuming would need the innings already stored to match
+    what the source returns now, and nothing here verifies that; a silent resume
+    onto a changed payload would leave the game holding a mixture of two fetches
+    that reads as complete.
+
+    Args:
+        game_id: The game to re-crawl.
+        spec: The run identity the dispatcher allocated, carrying the link back
+            to the run that failed.
+        relay_crawler: The crawler to fetch with.
+        config: The relay collection settings.
+
+    Returns:
+        The recorded outcome, or None when the run was not recorded.
+
+    """
+    return await _collect_single_relay(
+        game_id,
+        spec,
+        relay_crawler=relay_crawler,
+        config=config,
+        record_dead_letters=False,
+    )
+
+
+async def _collect_single_relay(
+    game_id: str,
+    spec: CrawlRunSpec,
+    *,
+    relay_crawler: RelayCrawler,
+    config: GameCollectionConfig,
+    record_dead_letters: bool,
+) -> RelayOutcome | None:
+    """Fetch, write and close one relay run under a caller-supplied identity."""
+    target = GameCollectionTarget(game_id=game_id, game_date=game_date_of(game_id))
+    relay_source = GameWriteSource("relay", relay_crawler.__class__.__name__, config.relay_source_reason)
+    result = GameCollectionResult()
+    result.items = {game_id: GameCollectionItemResult(game_id=game_id, game_date=game_date_of(game_id))}
+    ctx = RelayProcessingContext(
+        relay_crawler=relay_crawler,
+        contract=config.write_contract or GameWriteContract(run_label="relay_replay", log=config.log),
+        cfg=config,
+        result=result,
+    )
+
+    opened = _relay_run_ledger().open_run(spec)
+    if opened.failure_for(game_id) is not None:
+        # Nothing is fetched. Writing relay rows with no run would leave data that
+        # no letter and no metric can account for, and the dispatcher would then
+        # find no RUN-B, report the replay as missing, and send the letter back to
+        # pending -- the right outcome, reached by storing data nobody can trace.
+        _abandon_relay_without_run(target, ctx, opened.failure_for(game_id) or ("", ""))
+        return None
+
+    outcome = await _collect_one_relay(target, ctx, relay_source, opened.run_id_for(game_id))
+    if record_dead_letters:
+        _enqueue_relay_outcome(target, outcome)
+    return outcome
+
+
 async def replay_single_game_detail(
     game_id: str,
     spec: CrawlRunSpec,
@@ -1153,9 +1229,10 @@ async def _collect_relay_phase(
 
         ctx.contract.claim_game(target.game_id, relay_source)
         ctx.cfg.log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
-        terminal = await _collect_one_relay(target, ctx, relay_source, run_id)
-        if terminal is None:
+        outcome = await _collect_one_relay(target, ctx, relay_source, run_id)
+        if outcome is None:
             ctx.result.relay_runs_unfinalized += 1
+        _enqueue_relay_outcome(target, outcome)
         await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
 
 
@@ -1218,14 +1295,23 @@ async def _collect_one_relay(
             )
             item.relay_status = "save_failed"
             item.failure_reason = save_outcome.error_code
-        elif attempt.status is RelayStatus.PARTIAL:
+            return _relay_outcome(
+                "failed",
+                run_id,
+                error_code=save_outcome.error_code,
+                error_message=save_outcome.error_message or "relay save failed",
+                counts=RunCounts(read=1, written=0, failed=1),
+                recorded=recorded,
+            )
+        if attempt.status is RelayStatus.PARTIAL:
             recorded = _relay_partial_outcome(run_id, attempt, counts)
             item.relay_status = "partial"
             item.relay_rows_saved = saved_rows
             item.failure_reason = attempt.error_message or attempt.reason
             ctx.result.relay_rows_saved += saved_rows
             ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows), fetch stopped mid-game")
-        elif saved_rows:
+            return _relay_partial_outcome(run_id, attempt, counts)
+        if saved_rows:
             recorded = _relay_run_ledger().record_success(run_id, counts=counts)
             ctx.result.relay_rows_saved += saved_rows
             ctx.result.relay_saved_games += 1
@@ -1234,20 +1320,27 @@ async def _collect_one_relay(
             if target.game_id not in ctx.result.processed_game_ids:
                 ctx.result.processed_game_ids.append(target.game_id)
             ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows)")
-        else:
-            # The write ran and declined the payload. That is a data decision, not
-            # a broken database, so it is a quality failure rather than PERSIST_*.
-            recorded = _relay_run_ledger().record_failed(
-                run_id,
-                error_code=FailureCode.VALIDATION_QUALITY.value,
-                error_message="relay payload produced no persistable rows",
-                counts=RunCounts(read=1, written=0, failed=1),
-            )
-            ctx.result.relay_missing += 1
-            item.relay_status = "save_failed"
-            item.failure_reason = "relay payload produced no persistable rows"
-            ctx.cfg.log("   [WARN] Relay save returned 0 rows")
-        return recorded or None
+            return _relay_outcome("success", run_id, counts=counts, recorded=recorded)
+        # The write ran and declined the payload. That is a data decision, not
+        # a broken database, so it is a quality failure rather than PERSIST_*.
+        recorded = _relay_run_ledger().record_failed(
+            run_id,
+            error_code=FailureCode.VALIDATION_QUALITY.value,
+            error_message="relay payload produced no persistable rows",
+            counts=RunCounts(read=1, written=0, failed=1),
+        )
+        ctx.result.relay_missing += 1
+        item.relay_status = "save_failed"
+        item.failure_reason = "relay payload produced no persistable rows"
+        ctx.cfg.log("   [WARN] Relay save returned 0 rows")
+        return _relay_outcome(
+            "failed",
+            run_id,
+            error_code=FailureCode.VALIDATION_QUALITY.value,
+            error_message="relay payload produced no persistable rows",
+            counts=RunCounts(read=1, written=0, failed=1),
+            recorded=recorded,
+        )
 
     if attempt.status in (RelayStatus.SUCCESS, RelayStatus.NOT_MODIFIED, RelayStatus.EMPTY):
         # Nothing to store: an unchanged payload, or a game the source does not
@@ -1263,7 +1356,12 @@ async def _collect_one_relay(
             item.relay_status = "empty"
             ctx.result.relay_missing += 1
         ctx.cfg.log(f"   [INFO] No relay to store ({attempt.status.value})")
-        return recorded or None
+        return _relay_outcome(
+            "success",
+            run_id,
+            counts=RunCounts(read=1, written=0),
+            recorded=recorded,
+        )
 
     code = attempt.error_code or FailureCode.UNKNOWN.value
     recorded = _relay_run_ledger().record_failed(
@@ -1276,7 +1374,14 @@ async def _collect_one_relay(
     item.relay_status = "failed"
     item.failure_reason = attempt.error_message or attempt.reason or code
     ctx.cfg.log(f"   [WARN] Relay crawl failed ({code})")
-    return recorded or None
+    return _relay_outcome(
+        "failed",
+        run_id,
+        error_code=code,
+        error_message=attempt.error_message or attempt.reason or "relay crawl failed",
+        counts=RunCounts(read=1, written=0, failed=1),
+        recorded=recorded,
+    )
 
 
 @dataclass(frozen=True)
@@ -1332,6 +1437,64 @@ def _write_relay(
         ctx.cfg.log(f"   [ERROR] Relay save failed ({code.value}: {type(exc).__name__})")
         record_ledger_failure(RELAY_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
         return RelaySaveOutcome(rows=0, error_code=code.value, error_message=f"{type(exc).__name__}: {exc}")
+
+
+def _relay_outcome(  # noqa: PLR0913 - the outcome's own named fields
+    status: str,
+    run_id: str,
+    *,
+    counts: RunCounts,
+    recorded: bool,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> RelayOutcome | None:
+    """Wrap a ledger transition, or report that the ledger refused it.
+
+    None means the run was never closed, so there is no run whose outcome could
+    be reported truthfully -- and therefore nothing a dead letter could point at.
+    """
+    if not recorded:
+        return None
+    return RelayOutcome(
+        status=status,
+        error_code=error_code,
+        error_message=error_message,
+        counts=counts,
+        run_id=run_id,
+    )
+
+
+def _enqueue_relay_outcome(target: GameCollectionTarget, outcome: RelayOutcome | None) -> None:
+    """Queue a relay outcome the retry policy says is worth another attempt.
+
+    A success is never queued, including a game the source does not carry: there
+    is nothing to fetch and nothing to gain. Everything else goes in, and the
+    queue decides whether it is retryable -- a blocked request or a body that no
+    longer parses is recorded as `ignored` rather than dropped, so an operator can
+    still see why the crawl did not finish.
+
+    The stage is read off the code rather than inferred, so the run ledger and
+    the queue can never classify the same failure differently.
+    """
+    if outcome is None or outcome.status == "success" or not outcome.run_id:
+        return
+    code = outcome.error_code or FailureCode.UNKNOWN.value
+    try:
+        enqueue_failure(
+            DeadLetterSpec(
+                original_run_id=outcome.run_id,
+                crawler=RELAY_CRAWLER_NAME,
+                target_type=RELAY_TARGET_TYPE,
+                target_id=target.game_id,
+                game_id=target.game_id,
+                season=season_of(target.game_id),
+                failure_stage=stage_for_code(code).value,
+                error_code=code,
+                error_message=outcome.error_message,
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to enqueue relay dead letter for %s", target.game_id)
 
 
 def _relay_partial_outcome(

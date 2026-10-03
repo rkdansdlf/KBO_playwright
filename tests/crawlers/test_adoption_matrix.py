@@ -273,7 +273,13 @@ class TestAdvisories:
 #: Crawlers that satisfy every axis the matrix tracks. Kept as one constant so a
 #: new canary does not have to be chased through the summary and the roadmap
 #: separately.
-FULLY_ADOPTED = ("award_crawler", "game_detail_crawler", "roster_transaction_crawler", "schedule_crawler")
+FULLY_ADOPTED = (
+    "award_crawler",
+    "game_detail_crawler",
+    "relay_crawler",
+    "roster_transaction_crawler",
+    "schedule_crawler",
+)
 
 
 class TestRoadmap:
@@ -324,7 +330,7 @@ class TestRendering:
         # An adopted crawler is not recommended for migration again.
         for module in FULLY_ADOPTED:
             assert module not in payload["roadmap"]
-        assert payload["roadmap"][0] == "relay_crawler"
+        assert payload["roadmap"][0] == "food_crawler"
 
     def test_summary_counts_match_the_rows(self, matrix: AdoptionMatrix) -> None:
         summary = matrix.to_dict()["summary"]

@@ -273,6 +273,7 @@ REPLAY_HANDLERS: dict[str, str] = {
     "roster_transactions": "roster_transaction_crawler",
     "schedule": "schedule_crawler",
     "game_detail": "game_detail_crawler",
+    "relay": "relay_crawler",
 }
 
 #: The module names behind those handlers, for lookup by module.
@@ -319,11 +320,15 @@ DECLARED: dict[str, DesignFacts] = {
 }
 
 #: Migration order decided by upstream impact rather than by how little work is
-#: left. The schedule is done -- it fed nearly every other crawl, so a silent
-#: failure there poisoned everything downstream. Game detail is done too, so
-#: relay leads: it is the largest surface still without a run, a dead letter or
-#: a replay, and a silent failure there corrupts the relay-driven game narrative.
-PRIORITY_ORDER: tuple[str, ...] = ("relay_crawler",)
+#: left. The large surfaces are done -- schedule, game detail and relay all feed
+#: something downstream, and a silent failure in any of them poisons whatever
+#: reads it. What remains is the small, repeatable work: food and parking still
+#: reach their data through a raw `httpx` path inherited from `BaseHttpCrawler`,
+#: so they carry a second, unthrottled request path for no benefit.
+PRIORITY_ORDER: tuple[str, ...] = (
+    "food_crawler",
+    "parking_crawler",
+)
 
 #: Base classes whose subclasses inherit their HTTP transport.
 _HTTP_BASES = frozenset({"BaseHttpCrawler"})
@@ -449,6 +454,14 @@ DELEGATED_CAPABILITIES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "game_detail_crawler": (
         ("src/services/game_collection_service.py", ("enqueue_failure", "DeadLetterSpec")),
         ("src/services/game_detail_runs.py", ("open_runs", "record_success")),
+    ),
+    # Relay reaches its ledger and its queue the same way game detail does: the
+    # crawler fetches, and the service that owns the write decides what was
+    # stored. Pointing this at the crawler module would have gone stale the
+    # moment either half moved.
+    "relay_crawler": (
+        ("src/services/game_collection_service.py", ("enqueue_failure", "DeadLetterSpec")),
+        ("src/services/relay_runs.py", ("open_runs", "record_success")),
     ),
 }
 
