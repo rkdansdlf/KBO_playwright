@@ -16,8 +16,14 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from src.crawlers.failure_taxonomy import classify_failure, stage_for_code
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
@@ -25,6 +31,9 @@ from src.utils.playwright_retry import NAV_TIMEOUT
 logger = logging.getLogger(__name__)
 
 PLAYER_MOVEMENT_SOURCE_KEY = "kbo_player_movement"
+
+PLAYER_MOVEMENT_CRAWLER_NAME = "player_movement"
+PLAYER_MOVEMENT_TARGET_TYPE = "player_movement"
 
 PLAYER_MOVEMENT_CRAWL_EXCEPTIONS = (
     PlaywrightError,
@@ -57,6 +66,9 @@ class PlayerMovementCrawler:
         self.pool = pool
         self._raw_pages: list[dict[str, object]] = []
         self._last_failure_reason: str | None = None
+        #: Years that failed inside :meth:`crawl_years`, kept so the run ledger and
+        #: dead letter queue can see them instead of only the log.
+        self._year_failures: list[tuple[int, BaseException]] = []
 
     def get_last_failure_reason(self) -> str | None:
         """Return the latest crawl failure reason, if any."""
@@ -83,6 +95,7 @@ class PlayerMovementCrawler:
             self._last_failure_reason = log_source_limited("player_movement", self.base_url)
             return []
         self._last_failure_reason = None
+        self._year_failures = []
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -111,6 +124,103 @@ class PlayerMovementCrawler:
         if save_snapshots:
             self._save_snapshots()
         return results
+
+    async def run(
+        self,
+        start_year: int,
+        end_year: int,
+        *,
+        save_snapshots: bool = True,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Crawl a year range under one tracked run.
+
+        A year is the replay unit. ``_crawl_year`` deliberately keeps going after a
+        year fails, so each failed year gets its own dead letter and the run is
+        marked ``partial`` -- otherwise the failure only ever existed as a log
+        line and the year silently contributed nothing to the daily pipeline.
+
+        Args:
+            start_year: First year to crawl.
+            end_year: Last year to crawl (inclusive).
+            save_snapshots: Persist the captured raw pages.
+            run_spec: Optional pre-built ledger spec (replay supplies one).
+            record_dead_letters: Whether failures enqueue DLQ entries.
+
+        Returns:
+            The collected movement rows, or an empty list when the range failed.
+
+        """
+        target_id = str(start_year) if start_year == end_year else f"{start_year}-{end_year}"
+        spec = run_spec or CrawlRunSpec(
+            crawler=PLAYER_MOVEMENT_CRAWLER_NAME,
+            target_type=PLAYER_MOVEMENT_TARGET_TYPE,
+            target_id=target_id,
+            source_url=self.base_url,
+        )
+
+        with track_crawl_run(spec) as run:
+            try:
+                data = await self.crawl_years(start_year, end_year, save_snapshots=save_snapshots)
+            except PLAYER_MOVEMENT_CRAWL_EXCEPTIONS as exc:
+                stage, code = classify_failure(exc)
+                logger.exception("[PLAYER_MOVEMENT] crawl failed (%s/%s)", stage.value, code.value)
+                run.status = RUN_STATUS_FAILED
+                run.error_code = code.value
+                run.error_message = str(exc)
+                if record_dead_letters:
+                    self._enqueue_dead_letter(run.run_id, target_id, code.value, str(exc), season=start_year)
+                return []
+
+            run.records_read = len(data)
+            if self._last_failure_reason:
+                run.checkpoint = {
+                    "outcome": "source_limited",
+                    "reason": self._last_failure_reason,
+                    "source_url": self.base_url,
+                }
+                logger.info("[PLAYER_MOVEMENT] skipped: %s", self._last_failure_reason)
+                return data
+
+            if self._year_failures:
+                failed_years = [year for year, _ in self._year_failures]
+                run.status = RUN_STATUS_PARTIAL
+                run.error_message = f"years failed: {failed_years}"
+                logger.warning("[PLAYER_MOVEMENT] partial run, failed years: %s", failed_years)
+                if record_dead_letters:
+                    for year, exc in self._year_failures:
+                        _, code = classify_failure(exc)
+                        self._enqueue_dead_letter(run.run_id, str(year), code.value, str(exc), season=year)
+            return data
+
+    def _enqueue_dead_letter(
+        self,
+        original_run_id: str,
+        target_id: str,
+        error_code: str,
+        error_message: str | None,
+        *,
+        season: int | None = None,
+    ) -> None:
+        """Enqueue one dead letter for a year that could not be obtained."""
+        try:
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=original_run_id,
+                    crawler=PLAYER_MOVEMENT_CRAWLER_NAME,
+                    target_type=PLAYER_MOVEMENT_TARGET_TYPE,
+                    target_id=target_id,
+                    season=season,
+                    source_url=self.base_url,
+                    # Derived from the code, never supplied beside it.
+                    failure_stage=stage_for_code(error_code).value,
+                    error_code=error_code,
+                    error_message=error_message,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to enqueue dead letter for player movement %s", target_id)
 
     async def _crawl_year(self, page: Page, year: int) -> list[dict[str, Any]]:
         logger.info("🔄 Crawling Player Movements for Year: %s...", year)
@@ -192,8 +302,9 @@ class PlayerMovementCrawler:
 
                 page_num += 1
 
-        except PLAYER_MOVEMENT_CRAWL_EXCEPTIONS:
+        except PLAYER_MOVEMENT_CRAWL_EXCEPTIONS as exc:
             logger.exception("⚠️ Error processing year %s", year)
+            self._year_failures.append((year, exc))
 
         logger.info("✅ Year %s: Collected %s records.", year, len(results))
         return results
