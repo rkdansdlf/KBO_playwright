@@ -133,6 +133,7 @@ An empty DLQ does **not** mean "no failures". Dead letters are enqueued only by:
 - `src/crawlers/schedule_crawler.py`
 - `src/crawlers/team_history_crawler.py`
 - `src/crawlers/player_movement_crawler.py`
+- `src/crawlers/kbo_event_crawler.py`
 - `src/services/game_collection_service.py`
 
 Other crawlers' failures are recorded in the ledger but never enter the DLQ.
