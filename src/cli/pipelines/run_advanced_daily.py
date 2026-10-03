@@ -2,6 +2,9 @@
 
 Fetch fielding, baserunning, and team-level cumulative stats.
 
+The individual steps live in :mod:`src.cli.pipelines.advanced_daily_steps`, which the
+canonical scheduler's daily pipeline shares. This module keeps the CLI entry point and
+the ordered orchestration that GitHub Actions runs.
 """
 
 from __future__ import annotations
@@ -10,113 +13,37 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from playwright.sync_api import Error as PlaywrightError
-from sqlalchemy.exc import SQLAlchemyError
+from src.cli.pipelines.advanced_daily_steps import (
+    ADVANCED_STEP_EXCEPTIONS,
+    aggregate_team_defense_step,
+    crawl_baserunning_step,
+    crawl_fielding_step,
+    crawl_team_batting_step,
+    crawl_team_pitching_step,
+    filter_player_rows,
+    rebuild_rankings_step,
+    run_step,
+)
 
-from src.crawlers.baserunning_stats_crawler import crawl_baserunning_stats
-from src.crawlers.fielding_stats_crawler import crawl_all_fielding_stats
-from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
-from src.crawlers.team_pitching_stats_crawler import TeamPitchingStatsCrawler
-from src.db.engine import SessionLocal
-from src.repositories.player_stats_repository import PlayerSeasonBaserunningRepository, PlayerSeasonFieldingRepository
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+__all__ = [
+    "ADVANCED_STEP_EXCEPTIONS",
+    "aggregate_team_defense_step",
+    "crawl_baserunning_step",
+    "crawl_fielding_step",
+    "crawl_team_batting_step",
+    "crawl_team_pitching_step",
+    "filter_player_rows",
+    "main",
+    "rebuild_rankings_step",
+    "run_advanced_update",
+    "run_step",
+]
 
 logger = logging.getLogger(__name__)
 
 KST = ZoneInfo("Asia/Seoul")
-
-
-CRAWL_TIMEOUT = 300  # 5 minutes max per crawl step
-ADVANCED_STEP_EXCEPTIONS = (
-    asyncio.TimeoutError,
-    PlaywrightError,
-    SQLAlchemyError,
-    RuntimeError,
-    ValueError,
-    TypeError,
-    OSError,
-)
-
-
-def _filter_player_rows(records: list[dict], valid_cols: set[str]) -> list[dict]:
-    return [
-        {key: value for key, value in record.items() if key in valid_cols}
-        for record in records
-        if record.get("player_id")
-    ]
-
-
-async def _run_step(step_label: str, error_message: str, action: Callable[[], Awaitable[None]]) -> bool:
-    logger.info("\n%s", step_label)
-    try:
-        await action()
-    except ADVANCED_STEP_EXCEPTIONS:
-        logger.exception("   ❌ %s", error_message)
-        return True
-    else:
-        return False
-
-
-async def _crawl_fielding_step(year: int) -> None:
-    from src.models.player import PlayerSeasonFielding
-
-    records = await asyncio.wait_for(asyncio.to_thread(crawl_all_fielding_stats, year), timeout=CRAWL_TIMEOUT)
-    if records:
-        processed = _filter_player_rows(records, {column.key for column in PlayerSeasonFielding.__table__.columns})
-        with SessionLocal() as session:
-            saved = PlayerSeasonFieldingRepository(session).upsert_many(processed)
-            session.commit()
-        logger.info("   ✅ Saved %s fielding records", saved)
-
-
-async def _crawl_baserunning_step(year: int) -> None:
-    from src.models.player import PlayerSeasonBaserunning
-
-    records = await asyncio.wait_for(asyncio.to_thread(crawl_baserunning_stats, year), timeout=CRAWL_TIMEOUT)
-    if records:
-        processed = _filter_player_rows(records, {column.key for column in PlayerSeasonBaserunning.__table__.columns})
-        with SessionLocal() as session:
-            saved = PlayerSeasonBaserunningRepository(session).upsert_many(processed)
-            session.commit()
-        logger.info("   ✅ Saved %s baserunning records", saved)
-
-
-async def _crawl_team_batting_step(year: int, *, headless: bool) -> None:
-    stats = await asyncio.wait_for(
-        asyncio.to_thread(TeamBattingStatsCrawler().crawl, year, persist=True, headless=headless),
-        timeout=CRAWL_TIMEOUT,
-    )
-    logger.info("   ✅ Saved %s team batting records", len(stats))
-
-
-async def _crawl_team_pitching_step(year: int, *, headless: bool) -> None:
-    stats = await asyncio.wait_for(
-        asyncio.to_thread(TeamPitchingStatsCrawler().crawl, year, persist=True, headless=headless),
-        timeout=CRAWL_TIMEOUT,
-    )
-    logger.info("   ✅ Saved %s team pitching records", len(stats))
-
-
-async def _aggregate_team_defense_step(year: int) -> None:
-    from src.aggregators.team_fielding_aggregator import TeamFieldingAggregator
-    from src.models.team import Team
-
-    with SessionLocal() as session:
-        active_teams = [team.team_id for team in session.query(Team.team_id).filter(Team.is_active).all()]
-        TeamFieldingAggregator(session).run_all(year, active_teams)
-    logger.info("   ✅ Team defense aggregated for %s teams", len(active_teams))
-
-
-async def _rebuild_rankings_step(year: int) -> None:
-    from src.cli.calc.calculate_rankings import rebuild_rankings
-
-    saved_rankings = await asyncio.wait_for(asyncio.to_thread(rebuild_rankings, year), timeout=CRAWL_TIMEOUT)
-    logger.info("   ✅ Recalculated %s ranking records", saved_rankings)
 
 
 async def run_advanced_update(
@@ -129,7 +56,6 @@ async def run_advanced_update(
     Args:
         year: Season year.
         headless: Whether to run the browser in headless mode.
-        year: Season year.
 
     """
     logger.info("\n%s", "=" * 60)
@@ -139,35 +65,35 @@ async def run_advanced_update(
 
     any_error = False
 
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "🛡️ Step 1: Crawling Fielding Stats...",
         "Error crawling fielding stats",
-        lambda: _crawl_fielding_step(year),
+        lambda: crawl_fielding_step(year),
     )
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "🏃 Step 2: Crawling Baserunning Stats...",
         "Error crawling baserunning stats",
-        lambda: _crawl_baserunning_step(year),
+        lambda: crawl_baserunning_step(year),
     )
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "🏏 Step 3: Crawling Team Batting Stats...",
         "Error crawling team batting stats",
-        lambda: _crawl_team_batting_step(year, headless=headless),
+        lambda: crawl_team_batting_step(year, headless=headless),
     )
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "⚾ Step 4: Crawling Team Pitching Stats...",
         "Error crawling team pitching stats",
-        lambda: _crawl_team_pitching_step(year, headless=headless),
+        lambda: crawl_team_pitching_step(year, headless=headless),
     )
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "🏰 Step 5: Aggregating Team Fielding & Baserunning...",
         "Error aggregating team defense stats",
-        lambda: _aggregate_team_defense_step(year),
+        lambda: aggregate_team_defense_step(year),
     )
-    any_error |= await _run_step(
+    any_error |= await run_step(
         "🏷️ Step 6: Recalculating Stat Rankings...",
         "Error recalculating rankings",
-        lambda: _rebuild_rankings_step(year),
+        lambda: rebuild_rankings_step(year),
     )
 
     logger.info("\n%s", "=" * 60)

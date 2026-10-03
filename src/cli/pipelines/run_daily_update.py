@@ -26,6 +26,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.cli.backfill.auto_healer import run_healer_async
+from src.cli.pipelines.advanced_daily_steps import (
+    aggregate_team_defense_step,
+    crawl_baserunning_step,
+    crawl_fielding_step,
+)
 from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -987,6 +992,38 @@ async def _step_6_1_team_season_stats(ctx: _RunContext) -> None:
             logger.info("   \u2705 Team %s stats refreshed (%s records)", label, len(stats))
 
 
+async def _step_6_2_fielding_baserunning(ctx: _RunContext) -> None:
+    """Refresh player fielding and baserunning, the inputs to team defense.
+
+    These pages were only crawled by GitHub Actions' ``run_advanced_daily``, so on the
+    canonical scheduler the player lines feeding ``TeamSeasonFielding`` /
+    ``TeamSeasonBaserunning`` never moved.
+    """
+    logger.info("\n\U0001f9e4 Step 6.2: Refreshing player fielding and baserunning...")
+    if ctx.skip_season_stats:
+        logger.info("   \u23ed\ufe0f Fielding/baserunning update skipped by operator flag")
+        return
+
+    for label, step in (("fielding", crawl_fielding_step), ("baserunning", crawl_baserunning_step)):
+        try:
+            await step(ctx.year)
+        except CRAWLER_STEP_EXCEPTIONS:
+            logger.exception("   \u274c Error refreshing %s stats", label)
+
+
+async def _step_6_3_team_defense_aggregate(ctx: _RunContext) -> None:
+    """Aggregate team defense from the fielding/baserunning lines refreshed above."""
+    logger.info("\n\U0001f3f0 Step 6.3: Aggregating team defense...")
+    if ctx.skip_season_stats:
+        logger.info("   \u23ed\ufe0f Team defense aggregation skipped by operator flag")
+        return
+
+    try:
+        await aggregate_team_defense_step(ctx.year)
+    except CRAWLER_STEP_EXCEPTIONS:
+        logger.exception("   \u274c Error aggregating team defense")
+
+
 async def _step_6_5_maintenance(ctx: _RunContext) -> None:
     logger.info("\n\U0001fa79 Step 6.5: Backfilling starting pitchers from stats...")
     try:
@@ -1436,9 +1473,21 @@ def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
         allow_failure=True,
     )
     dag.add_task(
+        "step_6_2_fielding_baserunning",
+        lambda _c: _step_6_2_fielding_baserunning(ctx),
+        dependencies={"step_6_1_team_season_stats"},
+        allow_failure=True,
+    )
+    dag.add_task(
+        "step_6_3_team_defense_aggregate",
+        lambda _c: _step_6_3_team_defense_aggregate(ctx),
+        dependencies={"step_6_2_fielding_baserunning"},
+        allow_failure=True,
+    )
+    dag.add_task(
         "step_6_5_maintenance",
         lambda _c: _step_6_5_maintenance(ctx),
-        dependencies={"step_6_1_team_season_stats"},
+        dependencies={"step_6_3_team_defense_aggregate"},
         allow_failure=True,
     )
     dag.add_task(
