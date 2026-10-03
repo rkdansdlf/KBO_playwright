@@ -118,6 +118,11 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.apply_oracle_migrations`: Legacy Oracle chain (`migrations/oracle/`). Required only for the residual Oracle paths listed in the Database Contract, not for the operational database.
 - `python3 -m src.cli.apply_oracle_migrations --check`: Check Oracle migrations without writing.
 - `python3 -m src.cli.sync.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --dry-run`: Legacy SQLite→Oracle loader preview. Not the primary path.
+- `python3 -m src.cli.kbo dlq status|stats|list|show [--json]`: Read-only crawl dead-letter inspection (`list` filters: `--status`, `--crawler`, `--error-code`, `--limit`).
+- `python3 -m src.cli.kbo dlq retry|requeue|ignore <dlq_id> [--reason R] [--apply]`: Guarded DLQ lifecycle actions; requires `--apply` **and** `KBO_ALLOW_DLQ_MUTATION=1` (exit 3 on denial, exit 2 on invalid state).
+- `python3 -m src.cli.kbo crawl replay --run-id <RUN-ID> [--apply]`: Replay one past crawl execution run. Read-only unless `--apply` + `KBO_ALLOW_CRAWL_REPLAY=1`.
+- `python3 -m src.cli.kbo snapshot validate [--snapshot-id N | --limit N] [--fail-on-drift] [--json]`: Read-only re-parse of stored artifacts against the recorded `parsed_records` baseline (exit 3 with `--fail-on-drift`).
+- `python3 -m src.cli.kbo snapshot replay [--snapshot-id N | --limit N] [--strict] [--apply] [--persist] [--json]`: Read-only by default; `--apply` needs `KBO_ALLOW_SNAPSHOT_REPLAY=1` and records ledger runs, `--persist` needs `KBO_ALLOW_SNAPSHOT_PERSIST=1` and writes domain tables; `--strict` exits 4 on any failure/skip. See `Docs/runbooks/DATA_RELIABILITY.md`.
 - `pytest`: Run the test suite.
 
 ### Additional CLI Inventory
@@ -132,6 +137,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
 | Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
 | Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `sync_sqlite_to_oci`, `verify_chunk_quality`, `load_text_relay` |
+| Data reliability | `dlq` (read-only `status`/`stats`/`list`/`show`), `dlq_operator` (guarded `retry`/`requeue`/`ignore`), `crawl_replay`, `snapshot_replay`, `snapshot_validate` |
 
 ## Code Quality & Linting
 - `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
@@ -176,6 +182,14 @@ These modules are operational or diagnostic entrypoints that are less frequently
 ## Configuration & Secrets
 - Use `.env` for `DATABASE_URL`, request throttling (e.g., `KBO_REQUEST_DELAY_MIN`), and external API keys (`YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`).
 - Crawler stability depends on consistent delays; avoid reducing throttling without review.
+- **Data-reliability guards are default-deny.** Mutation commands require an explicit flag **and** a `KBO_ALLOW_*` variable; without both they preview and exit 3 without writing.
+  - `KBO_ALLOW_DLQ_MUTATION=1` — `kbo dlq retry|requeue|ignore --apply`.
+  - `KBO_ALLOW_CRAWL_REPLAY=1` — `kbo crawl replay --apply`.
+  - `KBO_ALLOW_SNAPSHOT_REPLAY=1` — `kbo snapshot replay --apply` (ledger run only).
+  - `KBO_ALLOW_SNAPSHOT_PERSIST=1` — `kbo snapshot replay --persist` (writes domain tables; highest risk, separate guard).
+  - `CRAWL_EVIDENCE_DIR` — evidence root for content-addressed artifacts; replay rejects any stored path outside it (default `data/crawl_evidence`). A wrong root surfaces as `success=false` for every snapshot, **not** as drift.
+  - Stale thresholds: `DLQ_STALE_RETRYING_SECONDS` (1800), `DLQ_RUN_STALE_SECONDS` (3600). Snapshot drift gate: `SNAPSHOT_DRIFT_SAMPLE_LIMIT` (100), `SNAPSHOT_DRIFT_MAX` (0), `SNAPSHOT_DRIFT_FAIL_MAX` (5).
+- Operational procedures for these commands live in `Docs/runbooks/DATA_RELIABILITY.md`.
 
 ## Concurrency & Scheduling
 - Automated tasks (`scripts/scheduler.py`) use a **3-stage locking mechanism** to prevent concurrent execution conflicts:
@@ -183,6 +197,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
   - **`DAILY_LOCK`**: Core daily data pipeline — `crawl_daily_games` (03:00, runs `run_daily_update`), `compute_standings` (03:30), `crawl_p0_non_game` (06:20), `crawl_p1p2_data` (06:45), `crawl_operation_notices` (09:00/11:30), `crawl_operation_notices_naver` (09:30/13:00). `DAILY_LOCK` is a **`ForceProcessLock`** so a stale lock file left by a crashed job is auto-cleared on the next acquire.
   - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, season stat recalc, report generation). Also a `ForceProcessLock`.
   - **`SQLITE_WRITE_LOCK`**: See writer-lock notes below.
+- **Data-reliability jobs** run under `MAINTENANCE_LOCK` with `max_instances=1`: `crawl_dead_letter_retry` (every 10 min), `crawl_dead_letter_recovery` (every 30 min), `snapshot_drift_check` (daily 06:45, validates `SNAPSHOT_DRIFT_SAMPLE_LIMIT` snapshots and opens one `drift:snapshot` incident). During a database outage they block on connect **while holding the lock**, so unrelated maintenance jobs skip via the bounded lock timeout (60s) and log `lock_skip` warnings; APScheduler skips the overlapping reliability run itself. Operate a single scheduler host during an outage, because PostgreSQL advisory locks fall back to local file locks. See `Docs/runbooks/DATA_RELIABILITY.md`.
 - **Single-instance guard**: `scripts/scheduler.py` enforces one scheduler process via `data/locks/scheduler.pid` (`_ensure_single_scheduler_instance`). A live PID blocks a second instance (`exit 1`); a dead PID is treated as stale and cleared. This prevents duplicate scheduler containers/processes from contending for the same tier locks (the root cause of the 2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`).
 - **Nested-lock fix**: `run_daily_update_main` accepts `acquire_lock: bool = True`. The scheduler calls it with `acquire_lock=False` because `crawl_daily_games` already holds `DAILY_LOCK`; otherwise the inner `ProcessLock("daily_update")` collides with the scheduler's shared `threading.Lock` and falsely reports "Another instance already running". CLI/direct invocations keep the self-guard.
 - **Tier-lock acquisition now has a bounded timeout.** `_scheduler_job_lock` passes `lock_timeout=SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) to the tier lock; on timeout it raises `_LockSkipped` (caught by `@_with_lock_skip_guard` → logs a warning, no crash) instead of a `LockAcquisitionError`. `crawl_p1p2_data_job` retry policy is `stop_after_attempt(4)` / `wait_exponential(min=300, max=1800)`.
@@ -248,7 +263,19 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-09-08
+Last updated: 2026-10-03
+
+### Phase 107: Data Reliability Subsystem (Crawl Ledger → DLQ → Retry/Recovery → Snapshot Replay) — STATUS: 리뷰 수정 완료(P0/P1/P2), 운영 실측 대기(프로덕션 DB 장애)
+- **Phase A 원장**: `CrawlExecutionRun` + `track_crawl_run(spec, *, session=None, session_factory=None)`. 서비스가 트랜잭션 경계를 소유하며, 비기본 DB를 쓰는 호출자는 `session_factory=`로 같은 DB에 원장을 기록한다.
+- **Phase B 실패 분류 + DLQ**: `failure_taxonomy`; `crawl_dead_letters`(unique `crawler+target_type+target_id+original_run_id`; 마이그레이션 sqlite 062 / postgresql 057); 상태 머신(`ALLOWED_TRANSITIONS`, operator `requeue`는 `ignored/exhausted`에서만·`retry_count` 보존); 재시도 정책(`RETRY_SCHEDULE=(60,300,900,3600)`, `DEFAULT_MAX_RETRIES=5`, 백오프 인덱스 clamp); replay dispatcher.
+- **Phase C/D 회수·재시도**: stale `retrying` 감지/회수, interrupted replay run 종료, `crawl_dead_letter_retry`(*/10)·`crawl_dead_letter_recovery`(*/30) 잡.
+- **Phase E/F 스냅샷**: `parse_snapshot`(읽기 전용) / `validate_snapshot`(baseline 대조) / `persist_snapshot`(도메인 테이블) + `snapshot_drift_check`(매일 06:45, 단일 `drift:snapshot` 인시던트).
+- **운영 CLI**: `kbo dlq status|stats|list|show`(읽기 전용), `kbo dlq retry|requeue|ignore --apply`, `kbo crawl replay [--apply]`, `kbo snapshot validate|replay [--apply|--persist]`. 모든 mutation은 `--apply` + `KBO_ALLOW_*` 이중 가드(가드 거부 시 exit 3, 쓰기 없음). 절차는 `Docs/runbooks/DATA_RELIABILITY.md`.
+- **리뷰 수정 (P0 3 · P1 3 · P2 6; 커밋 `a6cbac43`~`1adc8f59`)**: replay 원장 세션 라우팅 / partial 저장 명시(`SaveOutcome`, `failed_count`, `partial` 상태) / mutation 전 가드 선검증 / `--strict`(exit 4) / artifact를 `evidence_root()` 하위로 제한 + 대소문자 무시 URL 차단 / `outcome_status` 단일 토큰 / `--limit 0` 존중(`non_negative_int`) / recent 조회 헬퍼화 / drift 알림에 `failed_ids` / `SnapshotParseResult.records` 불변 tuple + 명시적 unhashable / 모듈 docstring 정정 / **레코드별 커밋**(구 동작 실증: saved 0·failed 3 → saved 2·failed 1·partial).
+- **계약(주의)**: 도메인 저장소는 `session.add()`만 하므로 제약 위반은 flush/commit 시점에 발생한다. `persist_parsed_records`가 레코드별 트랜잭션으로 격리한다. **`begin_nested()` savepoint는 이 저장소에서 금지** — pysqlite에서 외부 트랜잭션에 참여하지 않아 rollback 후에도 행이 남는다(`tests/notifications/test_incident_manager.py` 회귀 테스트).
+- **DLQ 커버리지 주의**: enqueue는 4곳만 도입됨(`award_crawler`, `roster_transaction_crawler`, `schedule_crawler`, `game_collection_service`). DLQ가 비어 있다고 실패가 없는 것이 아니다. `src/crawlers/adoption_matrix.py`가 모듈별 도입 여부를 계산한다.
+- **검증**: 비-integration 전체 스위트 **12,245 passed, 1 skipped**; `ruff check src/ tests/ scripts/` = 0 errors; `ruff format --check` clean.
+- **운영 실측 상태 (2026-10-03)**: 프로덕션 PostgreSQL(`ch806-08`, Tailscale) 미응답 — 전 연결 `SYN_SENT`, ping은 정상. 최초 경보 04:36, 12:00부터 시간당 700+ 실패, 20:36까지 지속. 스케줄러는 생존(PID 2610), 락 진단 clean, 신규 잡 3/3 등록 확인, DLQ retry는 `max_instances=1`로 중첩 skip, advisory lock은 로컬 락으로 폴백. `data/crawl_evidence` 최신 아티팩트가 **2026-09-18**(약 15일 공백) → 드리프트 서브시스템에 검증할 실데이터 없음(원인 미조사). Phase G(G1 마이그레이션 확인, G4~G7 실측)는 DB 복구 후 재개.
 
 ### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106F LEVEL_3_VERIFIED (FULLY CERTIFIED)
 - **Gate 106A: Crawler Inventory & Taxonomy (PASS_REPORTED)**: 30 canonical crawlers classified across 9 categories; 242 deselected tests categorized into 8 operational buckets.
