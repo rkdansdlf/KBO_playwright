@@ -149,16 +149,27 @@ def compute_standings_job() -> None:
 
 @_with_lock_skip_guard
 def aggregate_team_defense_job() -> None:
-    """Aggregate daily team defense statistics (SB, CS, CS%, PB, WP). Runs daily at 03:45 KST."""
+    """Aggregate daily team defense statistics. Runs daily at 03:45 KST.
+
+    The daily pipeline already aggregates team defense right after it refreshes the
+    player fielding/baserunning lines. This job stays as a safety net for days when
+    that pipeline fails before reaching the step.
+
+    ``ImportError`` is caught explicitly: this job previously imported
+    ``src.aggregators.team_defense_aggregator``, a module that has never existed, and
+    the resulting ``ModuleNotFoundError`` was outside ``SCHEDULER_JOB_EXCEPTIONS``, so
+    it escaped the job's own handler every night instead of being reported as a job
+    failure.
+    """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Team Defense Aggregation ===")
         try:
-            from src.aggregators.team_defense_aggregator import aggregate_team_defense
+            from src.cli.pipelines.advanced_daily_steps import aggregate_team_defense_step
 
             current_year = datetime.now(KST).year
-            aggregate_team_defense(current_year)
+            asyncio.run(aggregate_team_defense_step(current_year))
             logger.info("=== Team Defense Aggregation Completed ===")
-        except SCHEDULER_JOB_EXCEPTIONS:
+        except (*SCHEDULER_JOB_EXCEPTIONS, ImportError):
             logger.exception("Team defense aggregation failed")
 
 

@@ -76,4 +76,6 @@ def test_dag_runs_team_refresh_after_players_and_before_maintenance() -> None:
     tasks = dag._tasks
 
     assert tasks["step_6_1_team_season_stats"].dependencies == {"step_6_player_stats"}
-    assert tasks["step_6_5_maintenance"].dependencies == {"step_6_1_team_season_stats"}
+    assert tasks["step_6_2_fielding_baserunning"].dependencies == {"step_6_1_team_season_stats"}
+    assert tasks["step_6_3_team_defense_aggregate"].dependencies == {"step_6_2_fielding_baserunning"}
+    assert tasks["step_6_5_maintenance"].dependencies == {"step_6_3_team_defense_aggregate"}
