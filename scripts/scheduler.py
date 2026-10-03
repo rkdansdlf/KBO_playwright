@@ -19,7 +19,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
-from requests import RequestException
 import requests
 
 from src.cli.live.live_crawler import run_live_crawler_cycle
@@ -111,10 +110,12 @@ from src.scheduler import (
     heal_unverified_pbp_job,
     job_lifecycle_listener,
     job_start_times,
+    lock_health_check_job,
     lock_skip_monitor_job,
     log_path,
     main,
     recalc_milestones_and_rag_job,
+    selector_drift_sentinel_job,
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
@@ -123,83 +124,16 @@ from src.scheduler.jobs.live import (
     LAST_LIVE_RUN_TIME,
     LAST_PREGAME_RUN_TIME,
 )
-from src.utils.alerting import SlackWebhookClient
 from src.utils.lock import LockAcquisitionError
 from src.utils.metrics import KBO_SCHEDULER_LOCK_SKIP_TOTAL
 
 logger = logging.getLogger("scripts.scheduler")
 HTTP_STATUS_OK = 200
 
-
-def selector_drift_sentinel_job() -> None:
-    """Daily Canary Check for KBO Website Selector Drift."""
-    try:
-        from src.monitoring.selector_drift_sentinel import (
-            PageContract,
-            create_default_kbo_sentinel,
-        )
-
-        sentinel = create_default_kbo_sentinel()
-        sentinel.register_contract(
-            PageContract(
-                page_name="schedule",
-                required_selectors=(".tbl",),
-                min_table_columns={".tbl": 2},
-            ),
-        )
-
-        page_url = "https://www.koreabaseball.com/Schedule/Schedule.aspx"
-        response = requests.get(page_url, timeout=20)
-        if response.status_code != HTTP_STATUS_OK:
-            logger.warning("[Sentinel] KBO schedule page fetch returned HTTP %s", response.status_code)
-            return
-
-        report = sentinel.check_html("schedule", response.text)
-        if report.is_healthy:
-            logger.info("[Sentinel] Schedule page contract healthy (drift check passed).")
-            return
-
-        logger.warning(
-            "[Sentinel] Selector drift detected on schedule page: missing_selectors=%s mismatched_columns=%s",
-            list(report.missing_selectors),
-            list(report.mismatched_columns),
-        )
-        try:
-            from src.utils.alerting import SlackWebhookClient
-
-            SlackWebhookClient.send_alert(
-                f"⚠️ Selector drift detected on KBO schedule page: "
-                f"missing={list(report.missing_selectors)} columns={list(report.mismatched_columns)}",
-            )
-        except ALERT_EXCEPTIONS:
-            logger.exception("[Sentinel] Failed to send drift alert")
-    except (RequestException, RuntimeError, ValueError, TypeError, OSError):
-        logger.exception("[Sentinel] Selector drift canary check failed")
-
-
-def lock_health_check_job() -> None:
-    """Post-run lock-health verification for the 06:45 P1/P2 job."""
-    logger.info("=== Starting Scheduler Lock Health Check ===")
-    try:
-        result = subprocess.run(
-            [sys.executable, "scripts/check_p1p2_lock_health.py", "--require-run"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError as exc:
-        logger.exception("Scheduler lock health check failed to launch")
-        alert_warning("lock_health_check", details=f"Could not run check script: {exc}")
-        return
-
-    output = f"{result.stdout or ''}{result.stderr or ''}"
-    for line in output.splitlines():
-        logger.info("[lock_health] %s", line)
-    if result.returncode != 0:
-        alert_warning("lock_health_check", details=output[-1500:])
-        logger.warning("Scheduler lock health check reported problems (alert sent).")
-    else:
-        logger.info("=== Scheduler Lock Health Check Passed ===")
+# NOTE: `selector_drift_sentinel_job` and `lock_health_check_job` are imported
+# from `src.scheduler` above. Their canonical bodies live in
+# `src/scheduler/jobs/sentinel.py` and `src/scheduler/jobs/daily.py`; this module
+# must stay a thin bootstrap/re-export wrapper and never redefine job bodies.
 
 
 __all__ = [
@@ -226,7 +160,6 @@ __all__ = [
     "CronTrigger",
     "LockAcquisitionError",
     "SessionLocal",
-    "SlackWebhookClient",
     "_LockSkipped",
     "_analyze_game_rows",
     "_backfill_phase_detail",

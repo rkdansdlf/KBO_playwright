@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 from pathlib import Path
 
 from scripts.lint_alert_transport_bypass import (
@@ -65,13 +67,25 @@ def test_violation_returns_one(tmp_path: Path) -> None:
     assert lint_main([str(path)]) == 1
 
 
-def test_classification_covers_exactly_the_grandfather_set() -> None:
-    """Every grandfathered file has a migration class, and nothing else does."""
-    assert set(CLASSIFICATION) == set(GRANDFATHERED)
+def test_migration_is_complete() -> None:
+    """Prove the empty exemption lists mean "no bypass exists", not "unlisted".
 
+    The exit code alone cannot carry that claim: a file with a brand new
+    violation that also happens to sit in ``GRANDFATHERED`` still exits 0. Only
+    stdout separates "the tree is clean" from "the tree is hiding behind an
+    exemption", which is why the per-file assertions on GRANDFATHERED and
+    CLASSIFICATION below are vacuous on their own once both are empty.
+    """
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        exit_code = lint_main([])
+    output = buffer.getvalue()
 
-def test_classification_values_are_known() -> None:
-    assert set(CLASSIFICATION.values()) <= {"A", "B", "C", "D"}
+    assert exit_code == 0, f"transport bypass lint failed:\n{output}"
+    assert not GRANDFATHERED, f"exemption list is not empty: {sorted(GRANDFATHERED)}"
+    assert not CLASSIFICATION, f"classification list is not empty: {CLASSIFICATION}"
+    assert "[grandfathered]" not in output, f"a file is still exempt:\n{output}"
+    assert "ERROR:" not in output, f"lint reported a violation:\n{output}"
 
 
 if __name__ == "__main__":

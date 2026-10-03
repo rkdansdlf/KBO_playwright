@@ -654,13 +654,9 @@ def lock_health_check_job() -> None:
         logger.warning("Skipping lock_health_check_job: %s", reason)
         return
 
-    target_mod = sys.modules.get("scheduler_under_test") or sys.modules.get("scripts.scheduler")
-    sp = getattr(target_mod, "subprocess", subprocess) if target_mod else subprocess
-    warn_fn = getattr(target_mod, "alert_warning", alert_warning) if target_mod else alert_warning
-
     logger.info("=== Starting Scheduler Lock Health Check ===")
     try:
-        result = sp.run(
+        result = subprocess.run(
             [sys.executable, "scripts/check_p1p2_lock_health.py", "--require-run"],
             capture_output=True,
             text=True,
@@ -668,7 +664,7 @@ def lock_health_check_job() -> None:
         )
     except OSError as exc:
         logger.exception("Scheduler lock health check failed to launch")
-        warn_fn("lock_health_check", details=f"Could not run check script: {exc}")
+        alert_warning("lock_health_check", details=f"Could not run check script: {exc}")
         _update_job_status("lock_health_check_job", JobStatus.FAILURE, f"Launch failed: {exc}")
         return
 
@@ -676,7 +672,7 @@ def lock_health_check_job() -> None:
     for line in output.splitlines():
         logger.info("[lock_health] %s", line)
     if result.returncode != 0:
-        warn_fn("lock_health_check", details=output[-1500:])
+        alert_warning("lock_health_check", details=output[-1500:])
         logger.warning("Scheduler lock health check reported problems (alert sent).")
         _update_job_status("lock_health_check_job", JobStatus.FAILURE, "Health check failed")
     else:
