@@ -53,6 +53,25 @@ def test_allowed_files_are_not_reported(tmp_path: Path) -> None:
         assert (ROOT / allowed).exists(), f"allowlisted file missing: {allowed}"
 
 
+def test_only_the_two_sanctioned_callers_are_allowlisted() -> None:
+    """Pin ALLOWED_FILES, because widening it is a bypass no assertion catches.
+
+    `lint_main` skips an allowlisted path before it is ever scanned
+    (`if relative in ALLOWED_FILES: continue`), so a third entry would silence
+    any violation in that file: exit 0, no ERROR line, no `[grandfathered]`
+    line. `test_migration_is_complete` cannot see it, because it only rules out
+    the exemption list. Existence is therefore not enough — the set itself has
+    to be asserted.
+    """
+    actual = ALLOWED_FILES  # lowercase alias; SIM300 reads UPPER_CASE as the constant side
+    assert actual == frozenset(
+        {
+            "src/utils/alerting.py",
+            "src/notifications/dispatcher.py",
+        },
+    ), f"ALLOWED_FILES widened; every listed file is unlinted by design: {sorted(actual)}"
+
+
 def test_grandfathered_files_exist() -> None:
     for grandfathered in GRANDFATHERED:
         assert (ROOT / grandfathered).exists(), f"grandfathered file missing: {grandfathered}"
