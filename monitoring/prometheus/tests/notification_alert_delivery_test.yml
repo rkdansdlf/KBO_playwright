@@ -1,0 +1,106 @@
+# Rule-level tests for the notification alerts in
+# monitoring/prometheus/alert_rules_notifications.yml.
+#
+#   promtool test rules monitoring/prometheus/tests/notification_alert_delivery_test.yml
+#
+# `promtool check rules` proves the expressions parse; this proves they fire
+# when they should and stay quiet when they should not. promtool compares
+# annotations exactly (`exp_annotations` omitted means "must be empty"), so the
+# templated strings are pinned here on purpose: if the rule's wording or its
+# templating changes, this fixture is what notices.
+#
+# promtool does not accept a per-test `evaluation_interval`, so the sample
+# interval must match the global interval.
+
+rule_files:
+  - ../alert_rules_notifications.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── NotificationDeliveryFailureRateHigh ────────────────────────────────
+  # A channel failing a third of its deliveries with real volume: this is the
+  # case the rule exists for.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_dispatch_total{channel="telegram",status="SENT"}'
+        values: '0+10x30'
+      - series: 'kbo_notification_dispatch_total{channel="telegram",status="FAILED"}'
+        values: '0+5x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: NotificationDeliveryFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              channel: telegram
+            exp_annotations:
+              summary: "KBO 알림 전달 실패율 급증 (telegram)"
+              description: "최근 15분 telegram 채널의 전달 실패율이 33.33%입니다. 채널 자격증명과 네트워크를 확인하세요."
+
+  # Healthy channel: a sprinkle of failures must not page.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_dispatch_total{channel="slack",status="SENT"}'
+        values: '0+100x30'
+      - series: 'kbo_notification_dispatch_total{channel="slack",status="FAILED"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: NotificationDeliveryFailureRateHigh
+        exp_alerts: []
+
+  # 100% failure but far too little traffic to page on: without the volume
+  # guard this would fire on a single failed send.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_dispatch_total{channel="webhook",status="FAILED"}'
+        values: '0x20 1x5'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: NotificationDeliveryFailureRateHigh
+        exp_alerts: []
+
+  # ── CriticalIncidentDeliveryFailed ─────────────────────────────────────
+  # A CRITICAL incident is open and dispatches are failing: the page never
+  # arrived, so this is the one delivery failure worth waking someone for.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_open_incidents{source="database",severity="CRITICAL"}'
+        values: '1x30'
+      - series: 'kbo_notification_dispatch_total{channel="telegram",status="FAILED"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CriticalIncidentDeliveryFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "CRITICAL incident가 열려 있는데 알림 전달이 실패 중"
+              description: "열린 CRITICAL incident가 있는 상태에서 최근 15분간 전달 실패가 발생했습니다. 전달 채널이 실제로 도달 가능한지 확인하세요."
+
+  # Failures without an open CRITICAL incident are already covered by the rate
+  # rule; this one must stay quiet so the two do not page for the same cause.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_open_incidents{source="database",severity="CRITICAL"}'
+        values: '0x30'
+      - series: 'kbo_notification_dispatch_total{channel="telegram",status="FAILED"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CriticalIncidentDeliveryFailed
+        exp_alerts: []
+
+  # A WARNING incident is not a CRITICAL one.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_open_incidents{source="quality",severity="WARNING"}'
+        values: '1x30'
+      - series: 'kbo_notification_dispatch_total{channel="telegram",status="FAILED"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: CriticalIncidentDeliveryFailed
+        exp_alerts: []

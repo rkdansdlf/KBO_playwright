@@ -1,0 +1,53 @@
+# Alerts for the notification/incident delivery path.
+#
+# These read the metrics exported by `src/utils/metrics.py` and are evaluated by
+# Prometheus -> Alertmanager. They deliberately live on the infrastructure path
+# rather than in the in-process incident manager: a delivery failure is one of
+# the conditions under which the incident manager cannot be trusted to page
+# anyone, so it must not be the only thing watching itself.
+#
+# Contract tests: tests/monitoring/test_notification_alert_rules_contract.py
+# Rule-level firing tests: monitoring/prometheus/tests/notification_alert_*_test.yml
+groups:
+  - name: kbo_notification_alerts
+    rules:
+      # A channel failing a meaningful share of its deliveries is not "noisy",
+      # it is silently dropping pages. The ratio alone would page on a single
+      # failed send against one attempt on a quiet channel, so a minimum volume
+      # is required over the same window.
+      #
+      # The denominator always covers the numerator (FAILED is one of the
+      # statuses counted by the denominator), so a zero denominator forces a
+      # zero numerator and yields NaN, which `> 0.2` discards.
+      - alert: NotificationDeliveryFailureRateHigh
+        expr: |
+          (
+            sum by (channel) (rate(kbo_notification_dispatch_total{status="FAILED"}[15m]))
+            /
+            sum by (channel) (rate(kbo_notification_dispatch_total[15m]))
+          ) > 0.2
+          and
+          sum by (channel) (increase(kbo_notification_dispatch_total{status=~"SENT|FAILED"}[15m])) >= 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KBO 알림 전달 실패율 급증 ({{ $labels.channel }})"
+          description: "최근 15분 {{ $labels.channel }} 채널의 전달 실패율이 {{ $value | humanizePercentage }}입니다. 채널 자격증명과 네트워크를 확인하세요."
+
+      # A CRITICAL incident that is open while dispatches are failing means the
+      # page that was supposed to raise it never arrived. Delivery failure alone
+      # is too noisy to page on; an open CRITICAL incident is what makes it
+      # actionable. Both sides are label-free, so `and` matches on the empty
+      # label set (any failure anywhere in the window).
+      - alert: CriticalIncidentDeliveryFailed
+        expr: |
+          max(kbo_notification_open_incidents{severity="CRITICAL"}) > 0
+          and
+          sum(increase(kbo_notification_dispatch_total{status="FAILED"}[15m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL incident가 열려 있는데 알림 전달이 실패 중"
+          description: "열린 CRITICAL incident가 있는 상태에서 최근 15분간 전달 실패가 발생했습니다. 전달 채널이 실제로 도달 가능한지 확인하세요."
