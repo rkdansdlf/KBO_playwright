@@ -1,5 +1,6 @@
 """Tests for compliance — robots.txt checker."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,7 +12,7 @@ class TestComplianceChecker:
     @pytest.mark.asyncio
     async def test_is_allowed_blocks_disallowed(self):
         checker = ComplianceChecker()
-        checker.last_fetch_time = 1  # pretend loaded
+        checker.last_fetch_time = time.time()  # pretend loaded, without fetching
         checker.parser = MagicMock()
         checker.parser.can_fetch.return_value = False
         allowed = await checker.is_allowed("https://www.koreabaseball.com/Manager", "*")
@@ -20,7 +21,7 @@ class TestComplianceChecker:
     @pytest.mark.asyncio
     async def test_is_allowed_allows_allowed(self):
         checker = ComplianceChecker()
-        checker.last_fetch_time = 1
+        checker.last_fetch_time = time.time()  # pretend loaded
         checker.parser = MagicMock()
         checker.parser.can_fetch.return_value = True
         allowed = await checker.is_allowed("https://www.koreabaseball.com/Schedule", "*")
@@ -39,7 +40,7 @@ class TestComplianceChecker:
 
     def test_is_allowed_sync_blocks_disallowed(self):
         checker = ComplianceChecker()
-        checker.last_fetch_time = 1
+        checker.last_fetch_time = time.time()  # pretend loaded
         checker.parser = MagicMock()
         checker.parser.can_fetch.return_value = False
         allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Manager", "*")
@@ -47,7 +48,7 @@ class TestComplianceChecker:
 
     def test_is_allowed_sync_allows_allowed(self):
         checker = ComplianceChecker()
-        checker.last_fetch_time = 1
+        checker.last_fetch_time = time.time()  # pretend loaded
         checker.parser = MagicMock()
         checker.parser.can_fetch.return_value = True
         allowed = checker.is_allowed_sync("https://www.koreabaseball.com/Schedule", "*")
