@@ -147,6 +147,28 @@ def test_install_oracle_json_compiler_patches_missing_visit_json(monkeypatch) ->
     assert OracleTypeCompiler.visit_JSON(object(), object()) == "CLOB"
 
 
+def test_install_oracle_json_compiler_overrides_a_native_visit_json(monkeypatch) -> None:
+    """A SQLAlchemy-native `visit_JSON` must not shadow the CLOB contract.
+
+    SQLAlchemy 2.1.x added a native `OracleTypeCompiler.visit_JSON` that renders
+    the generic `JSON` name. The installer used to skip its own patch whenever
+    `visit_JSON` already existed, so that upgrade silently changed Oracle DDL
+    instead of failing the `test_json_column_renders_as_clob` contract.
+    """
+    from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
+
+    from src.db import engine
+
+    def native_visit_JSON(self: object, type_: object, **kw: object) -> str:
+        return "JSON"
+
+    monkeypatch.setattr(OracleTypeCompiler, "visit_JSON", native_visit_JSON, raising=False)
+
+    engine._install_oracle_json_compiler()
+
+    assert OracleTypeCompiler.visit_JSON(object(), object()) == "CLOB"
+
+
 def test_oracle_compatible_time_binds_and_reads_string_values() -> None:
     time_type = OracleCompatibleTime()
     dialect = oracle.dialect()
