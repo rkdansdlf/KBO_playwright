@@ -309,6 +309,20 @@ DECLARED: dict[str, DesignFacts] = {
         fallback=Fallback.NONE,
         note="Deferred: large surface with validation and partial-recovery logic to preserve.",
     ),
+    "food_crawler": DesignFacts(
+        granularity=Granularity.TEAM,
+        empty=EmptySemantics.TYPED,
+        note="A page that could not be read used to arrive as an empty list with a log line and nothing "
+        "else, which is indistinguishable from a stadium that genuinely sells nothing. The failure is "
+        "now recorded per team and enqueued as that team's own letter, so the replay unit is the "
+        "stadium that failed rather than the sweep.",
+    ),
+    "parking_crawler": DesignFacts(
+        granularity=Granularity.TEAM,
+        empty=EmptySemantics.TYPED,
+        note="Same shape as the food sweep: per-team isolation so one unreadable lot page cannot "
+        "quietly become an empty result for the whole stadium.",
+    ),
     "relay_crawler": DesignFacts(
         granularity=Granularity.GAME,
         empty=EmptySemantics.TYPED,
@@ -327,12 +341,20 @@ DECLARED: dict[str, DesignFacts] = {
 #: Migration order decided by upstream impact rather than by how little work is
 #: left. The large surfaces are done -- schedule, game detail and relay all feed
 #: something downstream, and a silent failure in any of them poisons whatever
-#: reads it. What remains is the small, repeatable work: food and parking still
-#: reach their data through a raw `httpx` path inherited from `BaseHttpCrawler`,
-#: so they carry a second, unthrottled request path for no benefit.
+#: reads it. Food and parking closed the last unthrottled request path.
+#:
+#: What remains on top already records a ledger, queues dead letters and can be
+#: replayed; what it has not adopted is the shared client's request policy and
+#: the typed result vocabulary, so that is what the next pass is for. Note that
+#: `shared_http` and `uses_crawl_result` currently agree on every row -- a
+#: crawler with the shared client always has the typed results and vice versa --
+#: so dropping either one today would not change which crawlers count as adopted.
+#: Both are kept because they answer different questions: one is "is the request
+#: path rate-limited and circuit-broken like everything else", the other is "can
+#: this crawler tell a quiet source from a broken one".
 PRIORITY_ORDER: tuple[str, ...] = (
-    "food_crawler",
-    "parking_crawler",
+    "kbo_event_crawler",
+    "player_movement_crawler",
 )
 
 #: Base classes whose subclasses inherit their HTTP transport.
@@ -423,24 +445,76 @@ def _transport_of_node(node: ast.AST) -> Transport | None:
     return None
 
 
-def _resolve_transports(tree: ast.Module, base_class: str, *, mentions_httpx: bool) -> frozenset[Transport]:
+#: Module-level httpx helpers that perform a request with no client object of
+#: their own, so finding one means the module reaches httpx directly.
+_HTTPX_REQUEST_FUNCS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "request", "stream"},
+)
+
+#: httpx names that mean a transport, as opposed to one of its error types.
+_HTTPX_CLIENT_CLASSES = frozenset({"AsyncClient", "Client"})
+
+
+def _reaches_httpx_itself(tree: ast.Module) -> bool:
+    """Return whether the module makes its own HTTP calls.
+
+    Inheriting ``BaseHttpCrawler`` only makes a raw client *available*; it does
+    not mean the crawler uses one. So the test is whether the module builds a
+    client or calls a module-level httpx helper, not whether the word appears.
+
+    The word is a poor proxy, and this gate has been wrong about it twice. A
+    crawler that listed ``httpx.HTTPError`` among the exceptions it catches was
+    reported as still reaching for httpx, so a fully migrated crawler read as
+    half-converted forever -- the opposite of what a migration gate is for. The
+    same string search also drove ``uses_crawl_result``, which missed crawlers
+    that fully branch on ``CrawlOutcome`` without ever naming ``CrawlResult``.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute):
+            continue
+        if not isinstance(func.value, ast.Name) or func.value.id != "httpx":
+            continue
+        if func.attr in _HTTPX_CLIENT_CLASSES or func.attr in _HTTPX_REQUEST_FUNCS:
+            return True
+    return False
+
+
+#: The typed result vocabulary a crawler imports to classify its outcome.
+_RESULT_VOCABULARY = frozenset({"CrawlResult", "CrawlOutcome"})
+
+
+def _imports_result_vocabulary(tree: ast.Module) -> bool:
+    """Return whether the module classifies outcomes with the shared result types.
+
+    Importing the vocabulary is the evidence: a crawler can only branch on
+    ``result.outcome`` or compare against ``CrawlOutcome.SCHEMA_CHANGED`` if it
+    imported them. Searching the source for the string ``CrawlResult`` missed
+    crawlers that use ``CrawlOutcome`` alone, and reported them as untyped.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module != "src.crawlers.result":
+            continue
+        if any(alias.name in _RESULT_VOCABULARY for alias in node.names):
+            return True
+    return False
+
+
+def _resolve_transports(tree: ast.Module, base_class: str, *, reaches_httpx: bool) -> frozenset[Transport]:
     """Return every transport a module reaches a source through.
 
     A crawler can be genuinely hybrid -- an API primary with a browser fallback --
     so this returns a set rather than picking a winner. Detection walks the AST so
     a mention in a comment or a URL cannot register as a transport.
-
-    Inheriting `BaseHttpCrawler` only means a raw client is *available*, not that
-    it is used. Reporting it unconditionally made a fully migrated crawler look
-    half-converted forever, which is the opposite of what this gate is for, so
-    the base class counts only when the module still reaches for httpx itself.
     """
     found: set[Transport] = set()
     for node in ast.walk(tree):
         transport = _transport_of_node(node)
         if transport is not None:
             found.add(transport)
-    if base_class in _HTTP_BASES and mentions_httpx:
+    if base_class in _HTTP_BASES and reaches_httpx:
         found.add(Transport.RAW_HTTPX)
     if base_class in _PLAYWRIGHT_BASES:
         found.add(Transport.PLAYWRIGHT)
@@ -496,7 +570,7 @@ def scan_module(module: str) -> ModuleFacts:
     tree = ast.parse(source)
     node = _crawler_class(tree)
     base_class = _base_name(node) if node is not None else ""
-    transports = _resolve_transports(tree, base_class, mentions_httpx="httpx" in source)
+    transports = _resolve_transports(tree, base_class, reaches_httpx=_reaches_httpx_itself(tree))
 
     return ModuleFacts(
         module=module,
@@ -510,7 +584,7 @@ def scan_module(module: str) -> ModuleFacts:
         persistence="SessionLocal" in source,
         ledger=_owns(module, source, ("track_crawl_run",), 1),
         dead_letter=_owns(module, source, ("DeadLetterSpec", "enqueue_failure"), 0),
-        uses_crawl_result="CrawlResult" in source,
+        uses_crawl_result=_imports_result_vocabulary(tree),
         has_entrypoint=_has_entrypoint(tree),
     )
 

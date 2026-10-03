@@ -9,6 +9,7 @@ that quietly undoes one of them fails here rather than in production.
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 
@@ -30,12 +31,18 @@ from src.crawlers.adoption_matrix import (
     Transport,
     advise_row,
     build_matrix,
+    _reaches_httpx_itself,
     discover_modules,
     render_markdown,
     scan_module,
     transports_of,
     verify_row,
 )
+
+
+def _module_source(module: str) -> str:
+    """Read a crawler module the way the matrix reads it."""
+    return (SRC_CRAWLERS / f"{module}.py").read_text()
 
 
 @pytest.fixture(scope="module")
@@ -186,6 +193,91 @@ class TestTransportDetection:
         assert facts.has_transport
 
 
+class TestDetectionFollowsCallsNotWords:
+    """Naming httpx, or ending a class name with CrawlResult, proves nothing.
+
+    Both of these gates were once string searches, and both were wrong in a way
+    that pointed at the wrong work. A crawler that listed `httpx.HTTPError`
+    among the exceptions it catches read as still reaching for httpx, so a fully
+    migrated one looked half-converted forever. In the other direction, a
+    crawler's own `RelayCrawlResult` dataclass satisfied a search for the string
+    `CrawlResult`, so a crawler with no typed results at all read as having them.
+    """
+
+    def test_a_crawler_naming_its_own_result_type_is_not_typed(self) -> None:
+        """`RelayCrawlResult` ends in the word the old search looked for."""
+        facts = scan_module("text_relay_crawler")
+
+        assert "RelayCrawlResult" in _module_source("text_relay_crawler")
+        assert facts.uses_crawl_result is False
+
+    def test_an_external_stats_result_type_is_not_the_shared_one(self) -> None:
+        facts = scan_module("external_stats_crawler")
+
+        assert "ExternalCrawlResult" in _module_source("external_stats_crawler")
+        assert facts.uses_crawl_result is False
+
+    def test_importing_the_shared_outcome_is_what_counts_as_typed(self) -> None:
+        """`CrawlOutcome` alone is enough: branching on it is the whole point."""
+        facts = scan_module("food_crawler")
+
+        assert "CrawlOutcome" in _module_source("food_crawler")
+        assert "CrawlResult" not in _module_source("food_crawler")
+        assert facts.uses_crawl_result is True
+
+    def test_catching_an_httpx_error_is_not_reaching_for_httpx(self) -> None:
+        """The exception list is how a migrated crawler names what it handles."""
+        source = _module_source("food_crawler")
+
+        assert "httpx.HTTPError" in source
+        facts = scan_module("food_crawler")
+        assert Transport.RAW_HTTPX not in facts.transports
+
+    def test_a_migrated_crawler_reports_only_the_shared_client(self) -> None:
+        facts = scan_module("food_crawler")
+
+        assert facts.shared_http
+        assert transports_of(facts) == (Transport.CRAWLER_HTTP_CLIENT,)
+
+    def test_building_a_client_still_counts_as_raw(self) -> None:
+        """The gate must not have been tightened into reporting nothing."""
+        assert _reaches_httpx_itself(
+            ast.parse("async def f():\n    return httpx.AsyncClient()\n"),
+        )
+        assert _reaches_httpx_itself(ast.parse("x = httpx.get('https://x.test')\n"))
+
+    def test_naming_an_error_type_is_not_building_a_client(self) -> None:
+        assert not _reaches_httpx_itself(ast.parse("E = (httpx.HTTPError,)\n"))
+        assert not _reaches_httpx_itself(ast.parse("# httpx.AsyncClient is documented here\n"))
+
+    def test_a_typed_crawler_is_fully_adopted_once_replay_exists(self) -> None:
+        """The point of the fix: the crawler was already safe, and said so."""
+        facts = scan_module("food_crawler")
+        row = _row("food_crawler")
+
+        assert facts.uses_crawl_result
+        assert facts.ledger
+        assert facts.dead_letter
+        assert Transport.RAW_HTTPX not in facts.transports
+        assert row.fully_adopted is True
+
+    def test_the_two_adoption_axes_have_not_separated_yet(self) -> None:
+        """Shared client and typed results currently agree on every row.
+
+        This is asserted because the coincidence is easy to misread. Dropping
+        either condition would change nothing today, so someone who removed one
+        would see no movement and conclude it was already dead weight. When this
+        fails, a crawler has adopted one and not the other, and the question the
+        gate is really asking has changed: a browser-first crawler with typed
+        results is protected differently from an HTTP one, and the condition that
+        used to stand in for both needs to be said out loud.
+        """
+        for row in build_matrix().rows:
+            assert row.facts.shared_http == row.facts.uses_crawl_result, (
+                f"{row.facts.module} has adopted one of the two axes but not the other"
+            )
+
+
 class TestDriftDetection:
     def test_a_dead_letter_without_a_ledger_is_drift(self) -> None:
         row = CrawlerRow(facts=_facts(dead_letter=True))
@@ -275,7 +367,9 @@ class TestAdvisories:
 #: separately.
 FULLY_ADOPTED = (
     "award_crawler",
+    "food_crawler",
     "game_detail_crawler",
+    "parking_crawler",
     "relay_crawler",
     "roster_transaction_crawler",
     "schedule_crawler",
@@ -330,7 +424,7 @@ class TestRendering:
         # An adopted crawler is not recommended for migration again.
         for module in FULLY_ADOPTED:
             assert module not in payload["roadmap"]
-        assert payload["roadmap"][0] == "food_crawler"
+        assert payload["roadmap"][0] == PRIORITY_ORDER[0]
 
     def test_summary_counts_match_the_rows(self, matrix: AdoptionMatrix) -> None:
         summary = matrix.to_dict()["summary"]
