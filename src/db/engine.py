@@ -7,11 +7,13 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus, unquote, urlsplit
 
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import create_engine, event, inspect
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -302,6 +304,42 @@ Engine = create_engine_for_url(
     disable_sqlite_wal=DISABLE_SQLITE_WAL,
     sqlite_synchronous=SQLITE_SYNCHRONOUS,
 )
+
+#: Connect timeout for the fail-fast reachability probe. A dead database must
+#: cost a scheduler job seconds rather than the OS-level connect timeout, because
+#: the probe runs *before* the job takes a tier lock.
+DB_PROBE_CONNECT_TIMEOUT_SECONDS = 3
+
+
+@lru_cache(maxsize=4)
+def _probe_engine(url: str, timeout_seconds: int) -> SQLAlchemyEngine:
+    """Build and cache a one-connection engine with a short connect timeout."""
+    if _is_sqlite(url):
+        # SQLite answers immediately and rejects ``connect_timeout``.
+        return create_engine(url, pool_pre_ping=True)
+    parsed = make_url(url)
+    query = {**dict(parsed.query), "connect_timeout": str(timeout_seconds)}
+    return create_engine(parsed.set(query=query), pool_pre_ping=True, pool_size=1, max_overflow=0)
+
+
+def database_reachable(*, timeout_seconds: int = DB_PROBE_CONNECT_TIMEOUT_SECONDS) -> bool:
+    """Return whether the operational database answers ``SELECT 1`` quickly.
+
+    Scheduler jobs run on fixed cron ticks, and a job that blocks on connect
+    while holding a tier lock starves every other job sharing that lock. During
+    the 2026-10-03 outage each dead-letter job spent ~150s on connect retries
+    under ``MAINTENANCE_LOCK`` and other maintenance jobs were skipped, so
+    DB-bound jobs gate on this probe **before** acquiring a lock and return early
+    when it is false. Alerting is owned by the Prometheus ``kbo_db_available``
+    gauge, so this gate stays silent apart from a warning from its caller.
+    """
+    from src.monitoring.db_availability import probe_engine
+
+    engine = _probe_engine(Engine.url.render_as_string(hide_password=False), timeout_seconds)
+    available, _latency = probe_engine(engine)
+    return available
+
+
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
