@@ -83,6 +83,12 @@ from src.utils.sentry import init_sentry
 
 logger = logging.getLogger("src.scheduler.registry")
 
+#: Grace window for the 10s live-refresh ticks. A refresh cycle measures 70-152s
+#: (2026-09 logs), so the previous 5s window discarded every tick that landed while a
+#: cycle was running -- up to ~15 per cycle -- and the job read as dead whenever the
+#: scheduler fell behind. The window only bounds how late a tick may still start.
+LIVE_MISFIRE_GRACE_SECONDS = 600
+
 _SCHEDULER_REF: BlockingScheduler | None = None
 
 
@@ -296,7 +302,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         trigger=trigger_cls(hour="12-22", second="*/10"),
         id="crawl_live_refresh_day",
         name="Live Refresh Day Window",
-        misfire_grace_time=5,
+        misfire_grace_time=LIVE_MISFIRE_GRACE_SECONDS,
         max_instances=1,
     )
     scheduler.add_job(
@@ -304,7 +310,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         trigger=trigger_cls(hour=23, minute="0-30", second="*/10"),
         id="crawl_live_refresh_night",
         name="Live Refresh Night Window",
-        misfire_grace_time=5,
+        misfire_grace_time=LIVE_MISFIRE_GRACE_SECONDS,
         max_instances=1,
     )
     logger.info("Registered job: crawl_live_refresh (Every 10s, 12:00-23:30 KST)")

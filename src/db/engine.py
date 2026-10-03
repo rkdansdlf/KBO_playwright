@@ -269,6 +269,21 @@ def _create_oracle_engine(
     return eng
 
 
+#: Bound the connect phase for the operational database. Without it psycopg2 waits
+#: for the OS TCP timeout (~300s against the remote Tailscale host), so during the
+#: 2026-10-03 outage every DB-bound scheduler job stalled for minutes while holding
+#: its tier lock and starved the jobs that shared it. A ``connect_timeout`` bounds
+#: only establishing a connection, never query execution.
+DB_CONNECT_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "10"))
+
+
+def _postgres_connect_args(url: str) -> dict[str, Any]:
+    """Return bounded connect arguments for a PostgreSQL URL."""
+    if url.startswith(("postgresql", "postgres")):
+        return {"connect_timeout": DB_CONNECT_TIMEOUT_SECONDS}
+    return {}
+
+
 def create_engine_for_url(
     url: str,
     *,
@@ -296,6 +311,16 @@ def create_engine_for_url(
     if url.startswith("oracle"):
         return _create_oracle_engine(url, tns_admin=tns_admin, wallet_password=wallet_password)
 
+    connect_args = _postgres_connect_args(url)
+    if connect_args:
+        return create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            echo=False,
+            connect_args=connect_args,
+        )
     return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20, echo=False)
 
 

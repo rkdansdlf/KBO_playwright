@@ -106,3 +106,22 @@ class TestAcquirePgLock:
         lock = ProcessLock("test_pg_err", lock_dir=str(tmp_path))
         result = lock._acquire_pg_lock(effective_blocking=True)
         assert result is True
+
+    def test_pg_engine_url_carries_a_bounded_connect_timeout(self, tmp_path):
+        """A dead database must not stall the advisory-lock connect for ~300s."""
+        captured = {}
+
+        def fake_create_engine(url, **kwargs):
+            captured["url"] = url
+            return MagicMock()
+
+        with patch("sqlalchemy.create_engine", side_effect=fake_create_engine):
+            ProcessLock._pg_engines.clear()
+            try:
+                ProcessLock("test_pg_timeout", lock_dir=str(tmp_path))._get_pg_engine(
+                    "postgresql://user:pass@host:5432/db"
+                )
+            finally:
+                ProcessLock._pg_engines.clear()
+
+        assert "connect_timeout=" in str(captured["url"])

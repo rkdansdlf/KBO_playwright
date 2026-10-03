@@ -59,3 +59,46 @@ def test_main_single_run():
         main(["--run-once"])
         mock_dispatch.assert_called_once()
         mock_start.assert_not_called()
+
+
+def test_live_refresh_jobs_register_the_measured_grace_window(monkeypatch):
+    """The 10s live-refresh jobs must not discard ticks that overlap a running cycle.
+
+    A refresh cycle measured 70-152s while the grace window was 5s, so up to ~15 ticks
+    per cycle were dropped and the job read as dead whenever the scheduler fell behind.
+    """
+    import scripts.scheduler as scripts_scheduler
+
+    from src.scheduler import registry
+
+    added = {}
+
+    class _FakeScheduler:
+        def add_job(self, fn, **kwargs):
+            if kwargs.get("id"):
+                added[kwargs["id"]] = kwargs
+
+        def add_listener(self, *args, **kwargs):
+            return None
+
+        def start(self):
+            return None
+
+    def _fake_scheduler_cls(**kwargs):
+        return _FakeScheduler()
+
+    # ``_start_scheduler`` resolves the class through ``sys.modules`` and prefers
+    # ``scripts.scheduler``. Patching only the registry global would let the real
+    # blocking scheduler start, which hangs the test instead of failing it.
+    monkeypatch.setattr(scripts_scheduler, "BlockingScheduler", _fake_scheduler_cls)
+    monkeypatch.setattr(registry, "BlockingScheduler", _fake_scheduler_cls)
+    monkeypatch.setattr(registry, "_SCHEDULER_REF", None, raising=False)
+    monkeypatch.setenv("STARTUP_RUN", "0")
+
+    with patch("signal.signal"):
+        registry._start_scheduler(registry.build_arg_parser().parse_args(["--no-startup-run"]))
+
+    for job_id in ("crawl_live_refresh_day", "crawl_live_refresh_night"):
+        registered = added[job_id]
+        assert registered["misfire_grace_time"] == registry.LIVE_MISFIRE_GRACE_SECONDS
+        assert registered["misfire_grace_time"] >= 300
