@@ -13,10 +13,6 @@ inputs:
     description: 'Initialize database and seed metadata'
     required: false
     default: 'false'
-  extras:
-    description: 'Optional dependency extras to install (comma separated, e.g. dev or dev,postgres)'
-    required: false
-    default: ''
 
 runs:
   using: 'composite'
@@ -30,15 +26,18 @@ runs:
       with:
         enable-cache: true
 
-    - name: Install dependencies
+    # `uv pip install` resolves version ranges fresh on every run and ignores
+    # uv.lock, so the runner silently drifts off the lock (SQLAlchemy 2.1.x
+    # flipped the default `postgresql://` driver to psycopg v3 and added a
+    # native Oracle `visit_JSON`, breaking three unit tests). `uv sync
+    # --frozen --all-extras` installs exactly what uv.lock pins, and fails
+    # loudly when pyproject.toml and uv.lock disagree instead of drifting.
+    - name: Install dependencies from the lockfile
       shell: bash
       run: |
         set -euo pipefail
-        target=".[dev]"
-        if [ -n "${{ inputs.extras }}" ]; then
-          target=".[dev,${{ inputs.extras }}]"
-        fi
-        uv pip install --system "$target"
+        export UV_PROJECT_ENVIRONMENT="$(python3 -c 'import sys; print(sys.prefix)')"
+        uv sync --frozen --all-extras
 
     - name: Get Playwright version
       if: ${{ inputs.playwright == 'true' }}

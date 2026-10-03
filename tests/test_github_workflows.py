@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github/workflows"
 ACTION_DIR = ROOT / ".github/actions"
-NODE24_CHECKOUT_REF = "actions/checkout@v5"
+
+#: Lowest major of each action the Node 24 line requires. These are floors, not
+#: pins: an exact `== "actions/checkout@v5"` assertion made every Dependabot
+#: major bump fail the very test that is supposed to allow it, so the PR could
+#: never merge. What the contract actually protects is the floor (Node 24
+#: support), not the particular number.
+MIN_ACTION_MAJORS = {
+    "actions/checkout": 5,
+    "actions/setup-python": 6,
+    "actions/cache": 5,
+    "actions/upload-artifact": 4,
+    "actions/download-artifact": 4,
+}
+
+_USES_REF = re.compile(r"uses:\s*([\w.\-/]+)@v(\d+)")
 
 
 def _workflow_files() -> list[Path]:
@@ -22,6 +37,35 @@ def _github_ci_files() -> list[Path]:
 
 def _joined_ref(*parts: str) -> str:
     return "".join(parts)
+
+
+def _action_majors(config: str) -> dict[str, set[int]]:
+    """Map each pinned action to the major versions `config` references."""
+    majors: dict[str, set[int]] = {}
+    for action, major in _USES_REF.findall(config):
+        majors.setdefault(action, set()).add(int(major))
+    return majors
+
+
+def _assert_major_at_least(config: str, action: str, where: str) -> None:
+    """Assert every `uses: <action>@vN` in `config` is at or above the floor.
+
+    Raises when the action is absent, so a workflow that quietly stops using it
+    still fails loudly instead of passing on a vacuous loop.
+    """
+    floor = MIN_ACTION_MAJORS[action]
+    majors = _action_majors(config).get(action)
+    assert majors, f"{where} does not pin {action} to a major version"
+    below = sorted(major for major in majors if major < floor)
+    assert not below, f"{where} pins {action} below the required v{floor}: found {sorted(majors)}"
+
+
+def _action_ref(config: str, action: str, where: str) -> str:
+    """Return the single `action@vN` reference `config` pins, for ordering checks."""
+    majors = _action_majors(config).get(action)
+    assert majors, f"{where} does not pin {action} to a major version"
+    assert len(majors) == 1, f"{where} pins {action} at several majors: {sorted(majors)}"
+    return f"{action}@v{majors.pop()}"
 
 
 def _read(path: Path) -> str:
@@ -107,7 +151,7 @@ def test_daily_kbo_sync_runs_scoped_regression_pack_with_artifacts():
     assert '--output "$RUNNER_TEMP/data_quality_regression_local.json"' in workflow
     assert '--output "$RUNNER_TEMP/data_quality_regression_postrun.json"' in workflow
     assert "Upload Data Quality Regression Artifacts" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    _assert_major_at_least(workflow, "actions/upload-artifact", "daily_kbo_sync.yml")
 
 
 def test_daily_kbo_sync_includes_quality_and_gap_report():
@@ -163,11 +207,11 @@ def test_github_ci_uses_node24_compatible_action_versions():
         )
 
     python_env = _read(ACTION_DIR / "python-env/action.yml")
-    assert "actions/setup-python@v6" in python_env
-    assert "actions/cache@v5" in python_env
+    _assert_major_at_least(python_env, "actions/setup-python", "python-env/action.yml")
+    _assert_major_at_least(python_env, "actions/cache", "python-env/action.yml")
 
     security_audit = _read(WORKFLOW_DIR / "security_audit.yml")
-    assert "actions/setup-python@v6" in security_audit
+    _assert_major_at_least(security_audit, "actions/setup-python", "security_audit.yml")
 
     test_suite = _read(WORKFLOW_DIR / "test_suite.yml")
     assert 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"' in test_suite
@@ -230,7 +274,9 @@ def test_backfill_prunes_matrix_before_expensive_setup():
     assert "matrix: ${{ fromJson(needs.select-backfills.outputs.matrix) }}" in backfill
     assert "Check Matrix Dispatch" not in workflow
     assert "steps.should_run.outputs.run" not in workflow
-    assert backfill.index(f"uses: {NODE24_CHECKOUT_REF}") < backfill.index("uses: ./.github/actions/kbo-job-setup")
+    assert backfill.index(f"uses: {_action_ref(backfill, 'actions/checkout', 'backfill.yml')}") < backfill.index(
+        "uses: ./.github/actions/kbo-job-setup"
+    )
 
 
 def test_kbo_automation_recalc_stats_uses_supported_cli_flags_without_sync():
@@ -265,10 +311,9 @@ def test_local_github_actions_are_used_after_checkout():
             ]
             assert step_lines, f"{path.name}:{job_name} has no steps"
 
-            assert step_lines[0] == f"- uses: {NODE24_CHECKOUT_REF}", (
-                f"{path.name}:{job_name} must start with {NODE24_CHECKOUT_REF}"
-            )
-            first_checkout = job_block.find(f"uses: {NODE24_CHECKOUT_REF}")
+            checkout_ref = _action_ref(_read(path), "actions/checkout", path.name)
+            assert step_lines[0] == f"- uses: {checkout_ref}", f"{path.name}:{job_name} must start with {checkout_ref}"
+            first_checkout = job_block.find(f"uses: {checkout_ref}")
             first_local_action = min(local_positions)
             assert first_checkout < first_local_action, f"{path.name}:{job_name} local action before checkout"
 
@@ -339,7 +384,7 @@ def test_security_audit_uses_pip_audit():
     assert "--local --desc on" in workflow
     assert "timeout-minutes: 10" in workflow
     assert "Dependency Security Audit" in workflow
-    assert "actions/setup-python@v6" in workflow
+    _assert_major_at_least(workflow, "actions/setup-python", "security_audit.yml")
 
 
 def test_security_audit_fails_on_unallowlisted_vulnerabilities():

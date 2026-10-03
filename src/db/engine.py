@@ -97,16 +97,22 @@ def _custom_json_deserializer(val: object) -> object:
 
 
 def _install_oracle_json_compiler() -> None:
-    """Ensure Oracle dialect compiles JSON column types as CLOB."""
+    """Ensure Oracle dialect compiles JSON column types as CLOB.
+
+    The override is unconditional, like `visit_TIME` below. It used to be
+    guarded by `if not hasattr(OracleTypeCompiler, "visit_JSON")`, which made
+    this a silent no-op the moment SQLAlchemy shipped a native `visit_JSON`
+    (2.1.x) that renders the generic `JSON` name instead of CLOB. That is a
+    contract change, not an improvement: Oracle ADB needs CLOB, and the guard
+    turned the regression into a quiet DDL change rather than a visible one.
+    """
     try:
         from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
 
-        if not hasattr(OracleTypeCompiler, "visit_JSON"):
+        def visit_JSON(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
+            return "CLOB"
 
-            def visit_JSON(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
-                return "CLOB"
-
-            OracleTypeCompiler.visit_JSON = visit_JSON  # type: ignore[attr-defined]
+        OracleTypeCompiler.visit_JSON = visit_JSON  # type: ignore[attr-defined]
 
         def visit_TIME(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
             return "VARCHAR2(8 CHAR)"

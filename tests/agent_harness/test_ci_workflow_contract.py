@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/agent_harness.yml"
 
+_UPLOAD_ARTIFACT_MAJOR = re.compile(r"uses:\s*actions/upload-artifact@v(\d+)")
+
 
 def _workflow() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
+
+
+def _upload_artifact_major(workflow: str) -> int:
+    """Return the highest major the workflow pins `actions/upload-artifact` to.
+
+    A floor rather than a pin: Dependabot bumps this action often, and an exact
+    `== "actions/upload-artifact@v4"` assertion made the bump PR fail the test
+    meant to permit it.
+    """
+    majors = [int(major) for major in _UPLOAD_ARTIFACT_MAJOR.findall(workflow)]
+    assert majors, "agent_harness.yml does not pin actions/upload-artifact to a major version"
+    return max(majors)
 
 
 def test_agent_harness_workflow_is_a_separate_fast_gate() -> None:
@@ -39,7 +54,7 @@ def test_agent_harness_workflow_replays_every_round_with_metrics() -> None:
             f"replay --round {round_id} --metrics-out artifacts/agent-harness/ci/round-{round_id}-metrics.json"
             in workflow
         )
-    assert "actions/upload-artifact@v4" in workflow
+    assert _upload_artifact_major(workflow) >= 4
     assert "path: artifacts/agent-harness/ci" in workflow
 
 

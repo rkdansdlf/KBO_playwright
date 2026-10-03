@@ -141,7 +141,6 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
       - name: Initialize PostgreSQL ORM baseline schema
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
@@ -223,7 +222,6 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
@@ -319,7 +317,6 @@ jobs:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
       - name: Initialize primary evaluation schema
         env:
           RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
