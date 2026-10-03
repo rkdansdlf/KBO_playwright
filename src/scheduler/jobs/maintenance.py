@@ -111,8 +111,7 @@ def _crawl_team_info_history() -> None:
             asyncio.run(crawler_info.save(data_info))
 
             crawler_hist = TeamHistoryCrawler()
-            data_hist = asyncio.run(crawler_hist.crawl())
-            asyncio.run(crawler_hist.save(data_hist))
+            asyncio.run(crawler_hist.run(save=True))
             logger.info("=== Team Info/History Refresh Completed ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Team info/history refresh failed")
