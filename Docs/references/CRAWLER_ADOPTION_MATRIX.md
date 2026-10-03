@@ -15,13 +15,13 @@
 | `external_stats_crawler` | raw_httpx | - | - | - | - | - | - | - |
 | `fan_culture_crawler` | api_client | - | - | - | - | - | - | - |
 | `fielding_stats_crawler` | playwright | - | - | - | - | - | - | - |
-| `food_crawler` | crawler_http_client+raw_httpx | - | - | - | Y | - | - | - |
+| `food_crawler` | crawler_http_client+raw_httpx | - | - | - | Y | Y | Y | Y |
 | `foreign_player_crawler` | playwright | - | - | - | - | - | - | - |
 | `futures_schedule_crawler` | playwright | - | - | - | - | - | - | - |
 | `game_mvp_crawler` | raw_httpx | - | - | - | - | - | - | - |
 | `historical_season_crawler` | - | - | - | - | - | - | - | - |
 | `injury_crawler` | playwright | - | - | - | - | - | - | - |
-| `kbo_event_crawler` | playwright | - | - | - | Y | - | - | - |
+| `kbo_event_crawler` | playwright | - | - | - | Y | Y | Y | Y |
 | `legacy_game_detail_crawler` | - | - | - | - | - | - | - | - |
 | `manager_change_crawler` | playwright | - | - | - | - | - | - | - |
 | `milestone_crawler` | playwright | - | - | - | - | - | - | - |
@@ -29,11 +29,11 @@
 | `operation_notice_doosan_crawler` | playwright | - | - | - | - | - | - | - |
 | `operation_notice_lg_crawler` | raw_httpx | - | - | - | - | - | - | - |
 | `operation_notice_naver_crawler` | api_client | - | - | - | - | - | - | - |
-| `parking_crawler` | crawler_http_client+raw_httpx | - | - | - | Y | - | - | - |
+| `parking_crawler` | crawler_http_client+raw_httpx | - | - | - | Y | Y | Y | Y |
 | `pbp_crawler` | playwright | - | - | - | - | - | - | - |
 | `player_batting_all_series_crawler` | playwright | - | - | - | - | - | - | - |
 | `player_list_crawler` | - | - | - | - | - | - | - | - |
-| `player_movement_crawler` | playwright | - | - | - | Y | Y | Y | - |
+| `player_movement_crawler` | playwright | - | - | - | Y | Y | Y | Y |
 | `player_pitching_all_series_crawler` | playwright | - | - | - | - | - | - | - |
 | `player_profile_crawler` | playwright | - | - | - | - | - | - | - |
 | `player_search_crawler` | playwright | - | - | - | - | - | - | - |
@@ -46,7 +46,7 @@
 | `static_text_crawler` | playwright | - | - | - | Y | - | - | - |
 | `team_batting_stats_crawler` | playwright | - | - | - | - | - | - | - |
 | `team_event_crawler` | raw_httpx | - | - | - | Y | - | - | - |
-| `team_history_crawler` | playwright | - | - | - | Y | Y | Y | - |
+| `team_history_crawler` | playwright | - | - | - | Y | Y | Y | Y |
 | `team_info_crawler` | playwright | - | - | - | Y | - | - | - |
 | `team_pitching_stats_crawler` | playwright | - | - | - | - | - | - | - |
 | `text_relay_crawler` | playwright | - | - | - | - | - | - | - |
@@ -58,9 +58,9 @@
 **Migration order** (fewest satisfied axes first):
 1. `food_crawler`
 2. `parking_crawler`
-3. `player_movement_crawler`
-4. `team_history_crawler`
-5. `kbo_event_crawler`
+3. `kbo_event_crawler`
+4. `player_movement_crawler`
+5. `team_history_crawler`
 6. `baserunning_stats_crawler`
 7. `broadcast_crawler`
 8. `fan_culture_crawler`
