@@ -161,10 +161,12 @@ def test_daily_kbo_sync_includes_quality_and_gap_report():
     assert "Run Gap Report" in workflow
 
 
-def test_daily_kbo_sync_includes_advanced_sync_and_quality_checks():
+def test_daily_kbo_sync_includes_quality_checks():
     workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
 
-    assert "Run Advanced Daily" in workflow
+    # The advanced daily run moved into the scheduled daily pipeline; the gates stay
+    # here. See test_advanced_daily_is_not_run_by_any_workflow.
+    assert "Run Advanced Daily" not in workflow
     assert "Reference Integrity Gate" in workflow
     assert "Quality Gate" in workflow
     assert "Completeness Audit" in workflow
@@ -336,9 +338,9 @@ def test_daily_kbo_sync_does_not_hydrate_fresh_runner_jobs():
     jobs = dict(_job_blocks(workflow))
 
     assert "needs: [finalize, post-process]" in jobs["quality"]
-    assert "needs: [finalize, quality]" in jobs["advanced-sync"]
+    assert "needs: [finalize, quality]" in jobs["daily-extras"]
 
-    for job_name in ("post-process", "quality", "advanced-sync"):
+    for job_name in ("post-process", "quality", "daily-extras"):
         job_block = jobs[job_name]
         assert "hydrate" not in job_block
 
@@ -548,3 +550,42 @@ def test_full_recalculation_full_pipeline():
     assert "python3 -m scripts.verification.verify_player_game_stats --exit-code" in workflow
     assert "if: always()" in workflow
     assert "concurrency:" in workflow
+
+
+def test_advanced_daily_is_not_run_by_any_workflow():
+    """The advanced daily work belongs to the scheduled pipeline, not to a workflow.
+
+    GitHub Actions ran ``run_advanced_daily`` while the canonical scheduler did not,
+    which is how ``team_season_*`` froze for months and the quality gate failed on every
+    run. Re-adding a workflow invocation reintroduces two divergent pipelines; the
+    scheduler step is covered by the daily-update DAG tests.
+    """
+    for path in _workflow_files():
+        assert "run_advanced_daily" not in _read(path)
+
+
+def test_daily_extras_keeps_the_work_the_scheduler_does_not_cover():
+    """Guard against deleting this job as "redundant" — these steps have no other path."""
+    jobs = dict(_job_blocks(_read(WORKFLOW_DIR / "daily_kbo_sync.yml")))
+    job_block = jobs["daily-extras"]
+
+    for command in (
+        "src.cli.crawl_milestones",
+        "src.cli.crawl_player_splits",
+        "src.cli.crawl_player_drafts",
+        "src.cli.send_today_pregame_alerts",
+        "src.cli.send_milestone_daily_summary",
+    ):
+        assert command in job_block
+
+    assert "src.cli.run_advanced_daily" not in job_block
+
+
+def test_daily_sync_has_no_legacy_oracle_step_or_wallet_secrets():
+    """The Oracle-era sync step had no target URL and the wallet vars had no reader."""
+    workflow = _read(WORKFLOW_DIR / "daily_kbo_sync.yml")
+
+    assert "kbo sync --apply" not in workflow
+    assert "sync_sqlite_to_oci" not in workflow
+    assert "ORACLE_WALLET_B64" not in workflow
+    assert "OCI_WALLET_PASSWORD" not in workflow
