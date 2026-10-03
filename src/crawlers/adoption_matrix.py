@@ -305,8 +305,10 @@ DECLARED: dict[str, DesignFacts] = {
     ),
     "relay_crawler": DesignFacts(
         granularity=Granularity.GAME,
-        empty=EmptySemantics.COLLAPSED,
-        note="Third in line after the schedule and game-detail migrations.",
+        empty=EmptySemantics.TYPED,
+        note="Typed per-game outcome. Absence, a mid-game fetch stop and a hard failure are distinct: only a "
+        "genuine absence is a clean empty, because reporting a blocked or unparseable crawl as an empty game "
+        "tells an operator the source has no relay when it was never asked.",
     ),
     "ticket_crawler": DesignFacts(
         granularity=Granularity.TEAM,

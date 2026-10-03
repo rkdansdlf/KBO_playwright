@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.crawlers.relay_crawler import RelayCrawler
+from src.crawlers.relay_outcome import RelayStatus
 
 from .base import NormalizedRelayResult, RelaySourceAdapter, events_have_minimum_state
 
@@ -37,21 +38,30 @@ class NaverRelayAdapter(RelaySourceAdapter):
             NormalizedRelayResult instance.
 
         """
-        result = await self.crawler.crawl_game_relay(game_id, last_payload_hash=last_payload_hash)
+        # The typed entrypoint, not the raw one. Reading `crawl_game_relay`
+        # directly meant this adapter could only see a payload or nothing, so a
+        # game that stopped mid-game -- eight innings in, the ninth never
+        # fetched -- arrived here indistinguishable from a finished one, and the
+        # recovery path would store it as complete. Going through the attempt
+        # keeps every relay consumer on one vocabulary.
+        attempt = await self.crawler.crawl_relay_attempt(game_id, last_payload_hash=last_payload_hash)
+        result = attempt.result
 
         events = list((result or {}).get("events") or [])
         raw_pbp_rows = list((result or {}).get("raw_pbp_rows") or [])
-        status = (result or {}).get("status")
-        failure_reason = None
-        getter = getattr(self.crawler, "get_last_failure_reason", None)
-        if callable(getter):
-            failure_reason = getter(game_id)
+        status = (result or {}).get("status") or attempt.status.value
 
         notes: str | None
-        if status == "not_modified":
+        if attempt.status is RelayStatus.NOT_MODIFIED:
             notes = "not_modified"
+        elif attempt.status is RelayStatus.PARTIAL:
+            # Kept as a note rather than dropped: the rows are stored, and the
+            # note is what tells a later recovery that this game is short.
+            notes = attempt.error_message or attempt.reason or "relay fetch stopped mid-game"
+        elif attempt.status is RelayStatus.EMPTY:
+            notes = attempt.error_message or attempt.reason or "No events extracted from Naver relay"
         else:
-            notes = None if events or raw_pbp_rows else failure_reason or "No events extracted from Naver relay"
+            notes = None if events or raw_pbp_rows else attempt.error_message or attempt.reason
 
         return NormalizedRelayResult(
             game_id=game_id,

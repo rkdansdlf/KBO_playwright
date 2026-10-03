@@ -40,7 +40,7 @@
 | `press_release_crawler` | playwright | - | - | - | - | - | - | - |
 | `preview_crawler` | raw_httpx+playwright | - | - | - | - | - | - | - |
 | `realtime_issue_crawler` | - | - | - | - | Y | - | - | - |
-| `relay_crawler` | crawler_http_client+playwright | collapsed | game | none | - | - | - | - |
+| `relay_crawler` | crawler_http_client+playwright | typed | game | none | - | - | - | - |
 | `seat_crawler` | raw_httpx | - | - | - | Y | - | - | - |
 | `staff_register_crawler` | playwright | - | - | - | - | - | - | - |
 | `static_text_crawler` | playwright | - | - | - | Y | - | - | - |

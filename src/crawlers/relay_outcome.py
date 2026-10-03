@@ -85,10 +85,19 @@ class RelayStatus(StrEnum):
     rows it matched.
     """
 
+    PARTIAL = "partial"
+    """Some innings arrived and then the fetch stopped.
+
+    Worth keeping and worth resuming: the rows already received are real, and a
+    later attempt can carry on from the inning that failed. Reporting this as a
+    success is how a game silently ends up with eight innings and no record that
+    the ninth was never fetched.
+    """
+
     EMPTY = "empty"
     """The source genuinely has no relay for this game.
 
-    Terminal by definition: the public source does not carry it, so another
+    Not a failure at all: the public source does not carry it, so another
     attempt cannot produce it. Recorded so the absence is explainable, never
     retried.
     """
@@ -105,7 +114,8 @@ class RelayFailure:
         code: The failure taxonomy code.
         message: Human-readable detail for logs and evidence.
         terminal: True when re-fetching cannot change the outcome. A terminal
-            failure must never reach the dead-letter queue.
+            failure must never reach the retry queue.
+        absence: True when the source simply does not carry this game.
         bucket: The downstream recovery bucket this maps onto.
 
     """
@@ -113,18 +123,30 @@ class RelayFailure:
     code: str
     message: str
     terminal: bool
+    absence: bool
     bucket: str
 
 
-#: Reason to (code, message, terminal, bucket). A table rather than a chain of
-#: branches so the vocabulary reads in one place, and so an unrecognised reason
-#: is visibly absent from the table instead of hiding in a last branch.
-_REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, str]] = {
-    # Refused on purpose. Another attempt now would be another refusal.
+#: Reason to (code, message, terminal, absence, bucket). A table rather than a
+#: chain of branches so the vocabulary reads in one place, and so an
+#: unrecognised reason is visibly absent from the table instead of hiding in a
+#: last branch.
+#:
+#: `terminal` and `absence` are separate columns because they answer different
+#: questions. `terminal` asks "would trying again change this?" -- a blocked
+#: request and a malformed body both answer no. `absence` asks "did the source
+#: have nothing to give?" -- only a real absence answers yes, and only an
+#: absence is not a failure. Collapsing them made a blocked crawl look like a
+#: clean empty result, which is how an operator concludes a game has no relay
+#: when the truth is that the crawl never got to ask.
+_REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, bool, str]] = {
+    # Refused on purpose. Another attempt now would be another refusal -- but the
+    # crawl did fail, and the ledger must say so.
     "blocked": (
         FailureCode.FETCH_BLOCKED,
         "relay request blocked by compliance policy",
         True,
+        False,
         BUCKET_API_FAILED,
     ),
     # The request failed before a payload was parsed.
@@ -132,11 +154,13 @@ _REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, str]] = {
         FailureCode.FETCH_HTTP_ERROR,
         "relay request failed before a payload was parsed",
         False,
+        False,
         BUCKET_API_FAILED,
     ),
     "relay_request_failed": (
         FailureCode.FETCH_HTTP_ERROR,
         "relay request failed before a payload was parsed",
+        False,
         False,
         BUCKET_API_FAILED,
     ),
@@ -147,19 +171,23 @@ _REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, str]] = {
         FailureCode.VALIDATION_QUALITY,
         "no schedule entry matched this game",
         False,
+        False,
         BUCKET_MATCH_FAILED,
     ),
     "relay_match_failed": (
         FailureCode.VALIDATION_QUALITY,
         "no schedule entry matched this game",
         False,
+        False,
         BUCKET_MATCH_FAILED,
     ),
     # The schedule query succeeded and carried no games for this date, so the
-    # source does not have this game at all.
+    # source does not have this game at all. This is the only kind of terminal
+    # outcome that is not also a failure.
     "relay_not_found": (
         FailureCode.PARSE_SELECTOR_MISSING,
         "schedule carried no games for this game",
+        True,
         True,
         BUCKET_EMPTY,
     ),
@@ -169,27 +197,30 @@ _REASON_FAILURES: dict[str, tuple[FailureCode, str, bool, str]] = {
         FailureCode.VALIDATION_QUALITY,
         "relay payload produced no events or rows",
         False,
+        False,
         BUCKET_EMPTY,
     ),
     # A response arrived but did not parse. The shape changed, so the same
-    # request returns the same unusable body.
+    # request returns the same unusable body -- but the crawl still failed.
     "relay_schema_drift": (
         FailureCode.PARSE_INVALID_FORMAT,
         "relay response was not in the expected shape",
         True,
+        False,
         BUCKET_EMPTY,
     ),
     "relay_invalid_payload": (
         FailureCode.PARSE_INVALID_FORMAT,
         "relay response was not in the expected shape",
         True,
+        False,
         BUCKET_EMPTY,
     ),
 }
 
 
-def _failure(code: FailureCode, message: str, *, terminal: bool, bucket: str) -> RelayFailure:
-    return RelayFailure(code=code.value, message=message, terminal=terminal, bucket=bucket)
+def _failure(code: FailureCode, message: str, *, terminal: bool, absence: bool, bucket: str) -> RelayFailure:
+    return RelayFailure(code=code.value, message=message, terminal=terminal, absence=absence, bucket=bucket)
 
 
 def _status_failure(status: str, *, source: str) -> RelayFailure:
@@ -201,12 +232,14 @@ def _status_failure(status: str, *, source: str) -> RelayFailure:
             FailureCode.PARSE_SELECTOR_MISSING,
             "relay endpoint reports no relay (status 404)",
             terminal=True,
+            absence=True,
             bucket=BUCKET_EMPTY,
         )
     return _failure(
         FailureCode.FETCH_HTTP_ERROR,
         f"relay request returned status {status}",
         terminal=False,
+        absence=False,
         bucket=BUCKET_API_FAILED,
     )
 
@@ -229,14 +262,15 @@ def classify_relay_failure(reason: str | None, *, source: str = SOURCE_UNKNOWN) 
     value = str(reason or "").strip().lower()
     spec = _REASON_FAILURES.get(value)
     if spec is not None:
-        code, message, terminal, bucket = spec
-        return _failure(code, message, terminal=terminal, bucket=bucket)
+        code, message, terminal, absence, bucket = spec
+        return _failure(code, message, terminal=terminal, absence=absence, bucket=bucket)
     if value.startswith("http_"):
         return _status_failure(value.removeprefix("http_"), source=source)
     return _failure(
         FailureCode.UNKNOWN,
         f"unclassified relay failure: {value or '<none>'}",
         terminal=False,
+        absence=False,
         bucket=BUCKET_API_FAILED,
     )
 
@@ -305,24 +339,37 @@ def build_attempt(game_id: str, seed: AttemptSeed) -> RelayAttempt:
     first is never retried and the second always is. It carries no error code,
     since there is no failure to retry.
     """
-    if seed.status is not RelayStatus.FAILED or seed.reason is None:
+    if seed.status is not RelayStatus.PARTIAL:
+        if seed.status is not RelayStatus.FAILED or seed.reason is None:
+            return RelayAttempt(
+                game_id=game_id,
+                status=seed.status,
+                result=seed.result,
+                reason=seed.reason,
+                naver_game_id=seed.naver_game_id,
+                innings_fetched=seed.innings_fetched,
+                stop=seed.stop,
+                resolution_attempted=seed.resolution_attempted,
+            )
+
+        failure = classify_relay_failure(seed.reason, source=seed.source)
+        if failure.absence:
+            return RelayAttempt(
+                game_id=game_id,
+                status=RelayStatus.EMPTY,
+                result=seed.result,
+                error_message=failure.message,
+                reason=seed.reason,
+                naver_game_id=seed.naver_game_id,
+                innings_fetched=seed.innings_fetched,
+                stop=seed.stop,
+                resolution_attempted=seed.resolution_attempted,
+            )
         return RelayAttempt(
             game_id=game_id,
             status=seed.status,
             result=seed.result,
-            reason=seed.reason,
-            naver_game_id=seed.naver_game_id,
-            innings_fetched=seed.innings_fetched,
-            stop=seed.stop,
-            resolution_attempted=seed.resolution_attempted,
-        )
-
-    failure = classify_relay_failure(seed.reason, source=seed.source)
-    if failure.terminal:
-        return RelayAttempt(
-            game_id=game_id,
-            status=RelayStatus.EMPTY,
-            result=seed.result,
+            error_code=failure.code,
             error_message=failure.message,
             reason=seed.reason,
             naver_game_id=seed.naver_game_id,
@@ -330,12 +377,18 @@ def build_attempt(game_id: str, seed: AttemptSeed) -> RelayAttempt:
             stop=seed.stop,
             resolution_attempted=seed.resolution_attempted,
         )
+
+    # A partial is a failure of completeness, not of the whole crawl: the rows
+    # that arrived are stored, so the code that stopped the fetch travels with
+    # it. Losing the code would leave a ledger entry saying "incomplete" with no
+    # way to tell a network blip from a rejected request.
+    partial_failure = classify_relay_failure(seed.reason, source=seed.source) if seed.reason is not None else None
     return RelayAttempt(
         game_id=game_id,
-        status=seed.status,
+        status=RelayStatus.PARTIAL,
         result=seed.result,
-        error_code=failure.code,
-        error_message=failure.message,
+        error_code=partial_failure.code if partial_failure else None,
+        error_message=partial_failure.message if partial_failure else "relay fetch stopped mid-game",
         reason=seed.reason,
         naver_game_id=seed.naver_game_id,
         innings_fetched=seed.innings_fetched,
