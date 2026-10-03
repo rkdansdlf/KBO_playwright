@@ -260,8 +260,10 @@ def _check_receipt_replay(  # noqa: C901, PLR0911
                         return (
                             False,
                             receipt,
-                            f"db_postcondition_missing: chunk {chunk_id} source_row_id={row.source_row_id} "
-                            f"does not match natural_id={natural_id}",
+                            (
+                                f"db_postcondition_missing: chunk {chunk_id} source_row_id={row.source_row_id} "
+                                f"does not match natural_id={natural_id}"
+                            ),
                         )
                     if disposition == DISPOSITION_TOMBSTONE and row.index_status != "DELETED":
                         return (
@@ -278,8 +280,10 @@ def _check_receipt_replay(  # noqa: C901, PLR0911
     return (
         False,
         None,
-        f"transaction ID collision: transaction '{transaction_id}' was already executed "
-        f"with different manifest payload (stored sha={stored_sha}, requested sha={manifest_sha})",
+        (
+            f"transaction ID collision: transaction '{transaction_id}' was already executed "
+            f"with different manifest payload (stored sha={stored_sha}, requested sha={manifest_sha})"
+        ),
     )
 
 
