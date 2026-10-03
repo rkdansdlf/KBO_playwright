@@ -31,12 +31,17 @@ from src.crawlers.schedule_crawler import (
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
-from src.services.game_collection_service import GameCollectionConfig, replay_single_game_detail
+from src.services.game_collection_service import (
+    GameCollectionConfig,
+    replay_single_game_detail,
+    replay_single_relay,
+)
 from src.services.game_detail_runs import (
     GAME_DETAIL_CRAWLER_NAME,
     GAME_DETAIL_TARGET_TYPE,
     season_of,
 )
+from src.services.relay_runs import RELAY_CRAWLER_NAME, RELAY_TARGET_TYPE
 from src.utils.async_bridge import run_coro_blocking
 
 if TYPE_CHECKING:
@@ -159,6 +164,69 @@ def _replay_game_detail(dead_letter: CrawlDeadLetter, replay_run_id: str) -> Rep
         run_id=replay_run_id,
     )
     run_coro_blocking(_execute_game_detail_replay(game_id, spec))
+
+    with SessionLocal() as session:
+        run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
+    if run is None:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="missing",
+            error_message="replay run was not recorded",
+        )
+    success = run.status == RUN_STATUS_SUCCESS
+    return ReplayOutcome(
+        success=success,
+        replay_run_id=replay_run_id,
+        status=run.status,
+        error_message=None if success else run.error_message,
+        error_code=None if success else run.error_code,
+    )
+
+
+async def _execute_relay_replay(game_id: str, spec: CrawlRunSpec) -> None:
+    """Run the single-game relay collection for one dead letter."""
+    from src.crawlers.relay_crawler import RelayCrawler
+
+    await replay_single_relay(
+        game_id,
+        spec,
+        relay_crawler=RelayCrawler(),
+        config=GameCollectionConfig(),
+    )
+
+
+def _replay_relay(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
+    """Re-crawl one game's relay and report the persisted replay run.
+
+    The authority is the stored RUN-B, not whatever this call returned: the run
+    ledger writes on its own session, so a crash between the work and this return
+    must not be reported as a successful retry.
+
+    `success` is only ever `success`. A partial replay stored some innings and is
+    still missing others, and closing that as resolved would retire an incident
+    that is still true. An empty or unchanged result counts as success -- the
+    replay confirmed there is nothing to fetch or that nothing changed.
+    """
+    game_id = dead_letter.target_id or dead_letter.game_id
+    if not game_id:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="unaddressable",
+            error_message="dead letter carries no game id",
+        )
+    spec = CrawlRunSpec(
+        crawler=RELAY_CRAWLER_NAME,
+        target_type=dead_letter.target_type or RELAY_TARGET_TYPE,
+        target_id=game_id,
+        season=dead_letter.season or season_of(game_id),
+        game_id=game_id,
+        parent_run_id=dead_letter.original_run_id,
+        replay_of_run_id=dead_letter.original_run_id,
+        run_id=replay_run_id,
+    )
+    run_coro_blocking(_execute_relay_replay(game_id, spec))
 
     with SessionLocal() as session:
         run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
@@ -325,4 +393,5 @@ def build_default_dispatcher() -> ReplayDispatcher:
     dispatcher.register(ROSTER_CRAWLER_NAME, _replay_roster_transactions)
     dispatcher.register(SCHEDULE_CRAWLER_NAME, _replay_schedule)
     dispatcher.register(GAME_DETAIL_CRAWLER_NAME, _replay_game_detail)
+    dispatcher.register(RELAY_CRAWLER_NAME, _replay_relay)
     return dispatcher
