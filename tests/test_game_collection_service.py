@@ -7,6 +7,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.services.game_collection_service as service
+from src.crawlers.relay_outcome import RelayAttempt, RelayStatus
+from src.models.crawl_dead_letter import CrawlDeadLetter
+from src.models.crawl_execution import CrawlExecutionRun
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.models.player import PlayerBasic
 
@@ -39,6 +42,15 @@ class _FakeRelayCrawler:
         self.calls.append(game_id)
         return {"events": [{"event_seq": 1, "inning": 1, "inning_half": "top", "description": game_id}]}
 
+    async def crawl_relay_attempt(self, game_id: str, *, last_payload_hash: str | None = None):
+        # The service calls the typed attempt, not the raw fetch, so the fake has
+        # to answer that seam or the relay step never runs at all.
+        return RelayAttempt(
+            game_id=game_id,
+            status=RelayStatus.SUCCESS,
+            result=await self.crawl_game_events(game_id),
+        )
+
 
 class _RawRelayCrawler:
     async def crawl_game_events(self, game_id: str):
@@ -48,6 +60,13 @@ class _RawRelayCrawler:
                 {"inning": 1, "inning_half": "top", "play_description": f"{game_id} raw"},
             ],
         }
+
+    async def crawl_relay_attempt(self, game_id: str, *, last_payload_hash: str | None = None):
+        return RelayAttempt(
+            game_id=game_id,
+            status=RelayStatus.SUCCESS,
+            result=await self.crawl_game_events(game_id),
+        )
 
 
 class _FailingDetailCrawler:
@@ -104,6 +123,11 @@ def _build_session_factory():
         GamePitchingStat.__table__,
         GameEvent.__table__,
         GamePlayByPlay.__table__,
+        # The detail and relay steps each open a crawl run first, and a run that
+        # cannot be recorded reports `run_unopened` instead of the status under
+        # test. Without these tables every case here stopped at the ledger.
+        CrawlExecutionRun.__table__,
+        CrawlDeadLetter.__table__,
     ):
         table.create(bind=engine)
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

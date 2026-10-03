@@ -589,9 +589,15 @@ async def _crawl_detail_batch(
     return synthesized
 
 
-def _run_ledger() -> GameDetailRunLedger:
-    """Return a run ledger. Overridable so tests can observe the transitions."""
-    return GameDetailRunLedger()
+def _run_ledger(session_factory: Callable[[], Session] | None = None) -> GameDetailRunLedger:
+    """Return a run ledger. Overridable so tests can observe the transitions.
+
+    `session_factory` is threaded through for the same reason as
+    `_relay_run_ledger`, and the fallback is read from the module global at call
+    time rather than bound as a default argument, which would be evaluated once
+    and ignore a later rebinding of `SessionLocal`.
+    """
+    return GameDetailRunLedger(session_factory=session_factory or SessionLocal)
 
 
 def _mark_skipped_detail_targets(
@@ -1236,9 +1242,21 @@ async def _collect_relay_phase(
         await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
 
 
-def _relay_run_ledger() -> RelayRunLedger:
-    """Return the relay run ledger. Overridable so tests can observe the transitions."""
-    return RelayRunLedger()
+def _relay_run_ledger(session_factory: Callable[[], Session] | None = None) -> RelayRunLedger:
+    """Return the relay run ledger. Overridable so tests can observe the transitions.
+
+    `session_factory` is threaded through so the ledger records against the
+    caller's database. Left to its own `SessionLocal`, a caller running against
+    anything but the default store writes its ledger rows to a different
+    database than its data, and a test cannot observe the transitions at all.
+
+    The fallback is read from the module global at call time rather than bound
+    as a default argument. A default is evaluated once, when the `def` runs, so
+    rebinding `SessionLocal` afterwards -- which is how a caller points the
+    service at another database -- would silently keep reaching for the
+    original one.
+    """
+    return RelayRunLedger(session_factory=session_factory or SessionLocal)
 
 
 def _abandon_relay_without_run(

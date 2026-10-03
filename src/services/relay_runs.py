@@ -38,7 +38,9 @@ from src.services.crawl_run_ledger import RunCounts, RunOpenResult
 from src.services.crawl_run_service import CrawlRunService
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,19 @@ def season_of(game_id: str) -> int | None:
 
 
 class RelayRunLedger:
-    """Record the outcome of each game's relay collection."""
+    """Record the outcome of each game's relay collection.
+
+    `session_factory` builds the session each transition is recorded on. A
+    caller on a database other than the default has to pass its own, or its
+    ledger rows land somewhere its data does not.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
+        """Keep the session factory every transition is recorded through."""
+        # Resolved at construction, not bound as a default argument: a default is
+        # evaluated when the `def` runs, so rebinding `SessionLocal` later would
+        # be ignored and the ledger would keep using the original session.
+        self._session_factory = session_factory or SessionLocal
 
     def open_runs(self, game_ids: Sequence[str]) -> RunOpenResult:
         """Start a run for every game, before any of them is fetched.
@@ -104,7 +118,7 @@ class RelayRunLedger:
         failures: dict[str, tuple[str, str]] = {}
         for game_id in game_ids:
             try:
-                with SessionLocal() as session:
+                with self._session_factory() as session:
                     run = CrawlRunService(session).start(_spec_for(game_id))
                     session.commit()
                     started[game_id] = run.run_id
@@ -131,7 +145,7 @@ class RelayRunLedger:
         """
         game_id = str(spec.target_id)
         try:
-            with SessionLocal() as session:
+            with self._session_factory() as session:
                 run = CrawlRunService(session).start(spec)
                 session.commit()
         except Exception as exc:
@@ -225,7 +239,7 @@ class RelayRunLedger:
 
         """
         try:
-            with SessionLocal() as session:
+            with self._session_factory() as session:
                 service = CrawlRunService(session)
                 run = CrawlExecutionRepository(session).get_by_run_id(run_id)
                 if run is None:
