@@ -3,9 +3,29 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.crawlers.parking_crawler import TEAM_PARKING_SOURCES, ParkingCrawler
 from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.models.crawl_dead_letter import CrawlDeadLetter
+from src.models.crawl_execution import CrawlExecutionRun
+
+
+@pytest.fixture(autouse=True)
+def ledger_sessions(monkeypatch):
+    """원장은 이제 ``run()``의 필수 의존성이므로 테스트용 DB를 연결한다."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    CrawlExecutionRun.__table__.create(engine)
+    CrawlDeadLetter.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    monkeypatch.setattr("src.services.crawl_dead_letter_service.SessionLocal", factory)
 
 
 class TestParseParkingPage:
