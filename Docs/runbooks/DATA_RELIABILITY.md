@@ -236,8 +236,20 @@ the scheduler stayed up). Expected behaviour, not a bug list:
   scheduler on exactly one host.
 - **The reliability jobs do not pile up** — `max_instances=1` makes APScheduler
   skip an overlapping run (`maximum number of running instances reached (1)`).
-- **A job blocked on connect still holds `MAINTENANCE_LOCK`**, so other
-  maintenance jobs skip via the bounded lock timeout (default 60s) and log
+- **The reliability jobs fail fast when the database is dead.** `crawl_dead_letter_retry`,
+  `crawl_dead_letter_recovery`, and `snapshot_drift_check` probe the database with a short
+  connect timeout (`DB_PROBE_CONNECT_TIMEOUT_SECONDS`, default 3s) **before** taking
+  `MAINTENANCE_LOCK` and return early when it does not answer. Without the gate a single
+  job spent ~150s on connect retries *while holding the lock* (measured 2026-10-03:
+  `@retry(wait_exponential(min=120))` on top of the connect timeout), and other
+  maintenance jobs were skipped after their bounded 60s lock wait. The gate is silent by
+  design: it does not raise, so the job's tenacity retry and `alert_failure` callback stay
+  quiet — the Prometheus `kbo_db_available` gauge owns the alerting.
+- **Jobs without the gate still hold the lock while connecting.** Most maintenance jobs
+  keep the older behaviour: they block on connect and other jobs sharing their tier lock
+  skip via the bounded timeout.
+- **A job blocked on connect still holds `MAINTENANCE_LOCK`** when it has no gate, so
+  unrelated maintenance jobs skip via the bounded lock timeout (default 60s) and log
   `lock_skip` warnings. This is the designed fail-fast path, not a crash.
 - **Alerting keeps working** — Telegram/Slack delivery is HTTP and independent
   of the database.

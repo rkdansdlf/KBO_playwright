@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.collection.crawl_retire import main as crawl_retire_main
-from src.db.engine import SessionLocal, get_db_session
+from src.db.engine import SessionLocal, database_reachable, get_db_session
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
@@ -704,6 +704,9 @@ def _refresh_dlq_metrics() -> None:
 )
 def crawl_dead_letter_recovery_job() -> None:
     """Recover dead letters stranded in ``retrying`` after a crash."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping dead letter recovery")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Recovery ===")
         try:
@@ -737,6 +740,9 @@ def crawl_dead_letter_recovery_job() -> None:
 )
 def crawl_dead_letter_retry_job() -> None:
     """Retry due ``pending`` dead letters through their replay handlers."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping dead letter retry")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Retry ===")
         try:
@@ -763,6 +769,9 @@ SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 @_with_lock_skip_guard
 def snapshot_drift_check_job() -> None:
     """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping snapshot drift check")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Snapshot Drift Check ===")
         try:
