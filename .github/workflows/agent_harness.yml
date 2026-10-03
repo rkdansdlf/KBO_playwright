@@ -41,7 +41,7 @@ jobs:
           init-db: 'false'
 
       - name: Install harness lint dependencies
-        run: pip install ruff==0.15.14
+        run: pip install ruff==0.16.9
 
       - name: Scoped Ruff lint check
         run: ruff check --output-format=github tools/agent_harness tests/agent_harness 2>&1

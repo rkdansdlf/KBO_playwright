@@ -374,7 +374,7 @@ exit 2로 끝납니다.
 DENY하므로 `scripts/` 게이트도 `python -m scripts.check_mypy_scoped` 형태여야 합니다).
 덕분에 게이트 도구 버전은 **Harness를 실행한 인터프리터**에서 나옵니다.
 
-- CI는 문제없습니다. `.[dev]`가 `ruff==0.15.14`를 pin하고 `kbo-job-setup`이 `.[dev]`를 설치합니다.
+- CI는 문제없습니다. `.[dev]`가 `ruff==0.16.9`를 pin하고 `kbo-job-setup`이 lock 그대로를 설치합니다.
 - 로컬에서는 **프로젝트 인터프리터로 실행하십시오** (`venv/bin/python -m tools.agent_harness ...`).
   시스템 python으로 실행하면 설치된 ruff 버전을 그대로 씁니다. 실제로 ruff 0.15.20은
   이 트리에서 `src/crawlers/http_client.py`의 F821 등 **오탐**을 냅니다(해당 이름은
@@ -467,7 +467,7 @@ v1 run을 실제 검증할 때는 first verification 전에 현재 schema로 재
   `timed_out_check`로 어느 게이트인지 확인하고, 느린 것이면 그 게이트의 timeout을 올립니다.
   300s로 되돌리지 마십시오 — `full`의 300s는 baseline 186s 대비 여유 1.57배였습니다.
 - 게이트가 `ruff`에서만 이상하게 실패한다면: 실행 인터프리터의 ruff 버전을 확인합니다.
-  이 트리에서는 ruff 0.15.20이 F821 등 오탐을 냅니다. `.[dev]`는 0.15.14를 pin합니다.
+  이 트리에서는 ruff 0.15.20이 F821 등 오탐을 냅니다. `.[dev]`는 0.16.9를 pin합니다.
 - `PermissionDeniedError`: allowlist에 없는 실행 시도. 정책을 우회하지 말고
   `permissions.yaml` 변경 + 보안 회귀 테스트(`test_command_runner.py`)로 승인.
   `python scripts/x.py`는 항상 DENY이므로 `python -m scripts.x` 형태와 `python_modules` 등록이 필요합니다.
