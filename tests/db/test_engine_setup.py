@@ -225,3 +225,29 @@ class TestModuleLevel:
 
     def test_disable_sqlite_wal_default(self):
         assert DISABLE_SQLITE_WAL is not None
+
+
+class TestPostgresConnectTimeout:
+    """A dead database must not hold a caller for the OS TCP timeout."""
+
+    def test_postgres_urls_get_a_bounded_connect_timeout(self):
+        from src.db.engine import DB_CONNECT_TIMEOUT_SECONDS, _postgres_connect_args
+
+        assert _postgres_connect_args("postgresql://user:pw@host:5432/db") == {
+            "connect_timeout": DB_CONNECT_TIMEOUT_SECONDS
+        }
+        assert 0 < DB_CONNECT_TIMEOUT_SECONDS < 300
+
+    def test_other_dialects_get_no_connect_timeout(self):
+        from src.db.engine import _postgres_connect_args
+
+        assert _postgres_connect_args("sqlite:///./data/x.db") == {}
+        assert _postgres_connect_args("oracle+oracledb://user:pw@host/db") == {}
+
+    def test_postgres_engine_is_built_with_the_bounded_timeout(self):
+        from src.db.engine import create_engine_for_url
+
+        with patch("src.db.engine.create_engine") as mock_create:
+            create_engine_for_url("postgresql://user:pw@host:5432/db")
+
+        assert mock_create.call_args.kwargs["connect_args"]["connect_timeout"] > 0

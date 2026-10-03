@@ -143,12 +143,22 @@ class ProcessLock:
 
     @classmethod
     def _get_pg_engine(cls, url: str) -> object:
-        """Get or create a cached SQLAlchemy engine for PostgreSQL advisory locks."""
+        """Get or create a cached SQLAlchemy engine for PostgreSQL advisory locks.
+
+        The connect phase is bounded: an unreachable database must not hold a tier
+        lock for the OS TCP timeout (~300s), which is what starved every sibling job
+        sharing that lock during the 2026-10-03 outage.
+        """
         with cls._pg_engines_lock:
             if url not in cls._pg_engines:
                 from sqlalchemy import create_engine
+                from sqlalchemy.engine import make_url
 
-                cls._pg_engines[url] = create_engine(url, pool_pre_ping=True)
+                parsed = make_url(url)
+                if parsed.get_backend_name().startswith("postgres"):
+                    timeout = os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "10")
+                    parsed = parsed.set(query={**dict(parsed.query), "connect_timeout": timeout})
+                cls._pg_engines[url] = create_engine(parsed, pool_pre_ping=True)
             return cls._pg_engines[url]
 
     def _acquire_pg_lock(self, *, effective_blocking: bool, timeout: float | None = None) -> bool:
