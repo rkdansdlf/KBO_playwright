@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.crawlers.kbo_event_crawler import (
     KboEventCrawler,
@@ -12,11 +15,28 @@ from src.crawlers.kbo_event_crawler import (
     _extract_page_title,
     _build_event_payload,
 )
+from src.models.crawl_dead_letter import CrawlDeadLetter
+from src.models.crawl_execution import CrawlExecutionRun
 
 
 @pytest.fixture(autouse=True)
 def allow_kbo_source(monkeypatch):
     monkeypatch.setattr("src.crawlers.kbo_event_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def ledger_sessions(monkeypatch):
+    """The crawl run ledger is now a hard dependency of ``run()``."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    CrawlExecutionRun.__table__.create(engine)
+    CrawlDeadLetter.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    monkeypatch.setattr("src.services.crawl_dead_letter_service.SessionLocal", factory)
 
 
 class TestKboEventCrawlerFunctions:

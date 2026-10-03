@@ -425,9 +425,16 @@ class TestDedup:
 
 class TestWikiFetchSnapshot:
     @pytest.mark.asyncio
-    async def test_wiki_fetch_stores_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_wiki_fetch_stores_snapshot(self) -> None:
         crawler = AwardCrawler()
-        crawler._fetch = AsyncMock(return_value=('{"parse":{"text":{"*":"<p>hi</p>"}}}', 200))
+        # Same dead-seam mistake as the yagoonara case below: the crawler fetches
+        # through `self._http`, so this hit the live Wikipedia API.
+        crawler._http.fetch_json = AsyncMock(  # type: ignore[method-assign]
+            return_value=CrawlResult.success(
+                {"parse": {"text": {"*": "<p>hi</p>"}}},
+                http_status=200,
+            )
+        )
         soup = await crawler._fetch_wiki_page("KBO MVP")
         assert soup is not None
         assert len(crawler._raw_snapshots) == 1
@@ -456,10 +463,19 @@ class TestWikiFetchSnapshot:
         assert crawler._raw_snapshots[0]["capture_metadata"] == {"parsed_records": 12}
 
     @pytest.mark.asyncio
-    async def test_yagoonara_fetch_stores_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_yagoonara_fetch_stores_snapshot(self) -> None:
         crawler = AwardCrawler()
-        crawler._fetch = AsyncMock(return_value=("<html></html>", 200))
+        # Patch the seam the crawler actually uses. It fetches through
+        # `self._http`, so stubbing `crawler._fetch` left the real transport
+        # live and this test silently depended on yagoonara.com being
+        # reachable: it passed on a developer machine and asserted `0 == 1`
+        # in CI.
+        crawler._http.fetch_text = AsyncMock(  # type: ignore[method-assign]
+            return_value=CrawlResult.success("<html></html>", http_status=200)
+        )
+
         await crawler._fetch_yagoonara()
+
         assert len(crawler._raw_snapshots) == 1
         assert crawler._raw_snapshots[0]["source_key"] == "kbo_awards_yagoonara"
         assert crawler._raw_snapshots[0]["status_code"] == 200

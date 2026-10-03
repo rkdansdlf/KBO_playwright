@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -38,6 +38,8 @@ jobs:
         run: python scripts/lint_module_level_dotenv.py 2>&1
       - name: Alert transport bypass check
         run: python scripts/lint_alert_transport_bypass.py 2>&1
+      - name: Notification layering check
+        run: python scripts/lint_notification_layering.py 2>&1
       - name: Unreachable code lint check
         run: python scripts/lint_unreachable_code.py 2>&1
       - name: Unreferenced public symbol lint check
@@ -70,7 +72,7 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -92,7 +94,7 @@ jobs:
 
       - name: Upload unit test profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-unit-${{ matrix.python-version }}-${{ github.run_number }}
           path: pytest-unit.log
@@ -100,7 +102,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.python-version }}-${{ github.run_number }}
           path: coverage.xml
@@ -135,13 +137,12 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
       - name: Initialize PostgreSQL ORM baseline schema
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
@@ -169,7 +170,7 @@ jobs:
     needs: test
     if: always() && needs.test.result == 'success'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -191,7 +192,7 @@ jobs:
 
       - name: Upload SQLite integration profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-integration-sqlite-${{ github.run_number }}
           path: pytest-integration-sqlite.log
@@ -216,14 +217,13 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
 
@@ -241,7 +241,7 @@ jobs:
 
       - name: Upload PostgreSQL integration profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-integration-postgres-${{ github.run_number }}
           path: pytest-integration-postgres.log
@@ -253,7 +253,7 @@ jobs:
     needs: test
     if: always() && needs.test.result == 'success'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -276,7 +276,7 @@ jobs:
 
       - name: Upload slow test profile
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-slow-no-network-${{ github.run_number }}
           path: pytest-slow-no-network.log
@@ -313,13 +313,12 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/kbo-job-setup
         with:
           python-version: "3.12"
           playwright: "false"
           init-db: 'false'
-          extras: "postgres"
       - name: Initialize primary evaluation schema
         env:
           RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
@@ -359,7 +358,7 @@ jobs:
           --json
       - name: Upload RAG acceptance artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rag-acceptance-${{ github.run_number }}
           path: rag-retrieval-evaluation.json

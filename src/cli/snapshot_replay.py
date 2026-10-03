@@ -1,9 +1,10 @@
 """CLI for replaying stored raw snapshots through their parsers.
 
-Without ``--apply`` the command is strictly read-only. With ``--apply`` **and**
-``KBO_ALLOW_SNAPSHOT_REPLAY=1`` it records one ``CrawlExecutionRun`` per replay
-(no domain-table persistence). Parsing always reads the content-addressed
-artifact recorded at crawl time, so there is no network access.
+By default the command is read-only. ``--apply`` + ``KBO_ALLOW_SNAPSHOT_REPLAY=1``
+records one ``CrawlExecutionRun`` per replay; ``--persist`` +
+``KBO_ALLOW_SNAPSHOT_PERSIST=1`` writes parsed records into their domain tables.
+Parsing always reads the content-addressed artifact recorded at crawl time, so
+there is no network access.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import os
 import sys
 from typing import TYPE_CHECKING
 
+from src.cli.common import non_negative_int
 from src.services.snapshot_persist import (
     SnapshotPersistResult,
     persist_recent_snapshots,
@@ -37,6 +39,7 @@ EXIT_OK = 0
 EXIT_NOT_FOUND = 1
 EXIT_REPLAY_ERROR = 2
 EXIT_GUARD_DENIED = 3
+EXIT_STRICT_FAILURE = 4
 
 
 def _write(text: str) -> None:
@@ -60,9 +63,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kbo snapshot replay", description="Replay stored snapshots offline.")
     selector = parser.add_mutually_exclusive_group()
     selector.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot id.")
-    selector.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    selector.add_argument(
+        "--limit",
+        type=non_negative_int,
+        default=50,
+        help="Replay the N most recent snapshots (default: 50).",
+    )
     parser.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     parser.add_argument("--persist", action="store_true", help="Persist parsed records (requires its env guard).")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when any snapshot fails or is skipped.")
     parser.add_argument("--json", action="store_true", help="Emit JSON.")
     return parser
 
@@ -121,6 +130,8 @@ def _persist_dict(result: SnapshotPersistResult) -> dict[str, object]:
         "source_key": result.source_key,
         "target_domain": result.target_domain,
         "saved": result.saved,
+        "failed_count": result.failed_count,
+        "outcome": result.outcome_status,
         "success": result.success,
         "skipped": result.skipped,
         "error": result.error,
@@ -135,13 +146,14 @@ def _render_persist(results: list[SnapshotPersistResult], *, json_out: bool) -> 
         _write("(no snapshots)")
         return
     for result in results:
-        if result.skipped:
+        status = result.outcome_status
+        if status == "skipped":
             detail = f"skipped ({result.error})"
-        elif result.success:
+        elif status == "saved":
             detail = f"saved {result.saved} to {result.target_domain}"
         else:
-            detail = f"failed: {result.error or 'error'}"
-        _write(f"{result.snapshot_id:<8} {detail}")
+            detail = f"{status}: {result.error or 'error'}"
+        _write(f"{result.snapshot_id:<8} {status:<8} {detail}")
 
 
 def _run_persist(args: argparse.Namespace) -> int:
@@ -158,8 +170,10 @@ def _run_persist(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = persist_recent_snapshots(limit=args.limit or 50)
+        results = persist_recent_snapshots(limit=args.limit)
     _render_persist(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
@@ -174,8 +188,10 @@ def _run_read_only(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = replay_recent_snapshots(limit=args.limit or 50)
+        results = replay_recent_snapshots(limit=args.limit)
     _render(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
@@ -193,14 +209,22 @@ def _run_ledger(args: argparse.Namespace) -> int:
             _error(str(exc))
             return EXIT_REPLAY_ERROR
     else:
-        results = record_recent_snapshot_replays(limit=args.limit or 50)
+        results = record_recent_snapshot_replays(limit=args.limit)
     _render_runs(results, json_out=args.json)
+    if args.strict and any(not result.success for result in results):
+        return EXIT_STRICT_FAILURE
     return EXIT_OK
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint for snapshot replay (read-only by default)."""
     args = build_parser().parse_args(argv)
+    if args.persist and args.apply and not (_persist_enabled() and _replay_enabled()):
+        _error(
+            "refusing mutation: --persist --apply requires "
+            "KBO_ALLOW_SNAPSHOT_PERSIST=1 and KBO_ALLOW_SNAPSHOT_REPLAY=1",
+        )
+        return EXIT_GUARD_DENIED
     if args.persist:
         code = _run_persist(args)
         if code != EXIT_OK or not args.apply:

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.collection.crawl_retire import main as crawl_retire_main
-from src.db.engine import SessionLocal, get_db_session
+from src.db.engine import SessionLocal, database_reachable, get_db_session
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
@@ -111,8 +111,7 @@ def _crawl_team_info_history() -> None:
             asyncio.run(crawler_info.save(data_info))
 
             crawler_hist = TeamHistoryCrawler()
-            data_hist = asyncio.run(crawler_hist.crawl())
-            asyncio.run(crawler_hist.save(data_hist))
+            asyncio.run(crawler_hist.run(save=True))
             logger.info("=== Team Info/History Refresh Completed ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Team info/history refresh failed")
@@ -149,16 +148,27 @@ def compute_standings_job() -> None:
 
 @_with_lock_skip_guard
 def aggregate_team_defense_job() -> None:
-    """Aggregate daily team defense statistics (SB, CS, CS%, PB, WP). Runs daily at 03:45 KST."""
+    """Aggregate daily team defense statistics. Runs daily at 03:45 KST.
+
+    The daily pipeline already aggregates team defense right after it refreshes the
+    player fielding/baserunning lines. This job stays as a safety net for days when
+    that pipeline fails before reaching the step.
+
+    ``ImportError`` is caught explicitly: this job previously imported
+    ``src.aggregators.team_defense_aggregator``, a module that has never existed, and
+    the resulting ``ModuleNotFoundError`` was outside ``SCHEDULER_JOB_EXCEPTIONS``, so
+    it escaped the job's own handler every night instead of being reported as a job
+    failure.
+    """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Team Defense Aggregation ===")
         try:
-            from src.aggregators.team_defense_aggregator import aggregate_team_defense
+            from src.cli.pipelines.advanced_daily_steps import aggregate_team_defense_step
 
             current_year = datetime.now(KST).year
-            aggregate_team_defense(current_year)
+            asyncio.run(aggregate_team_defense_step(current_year))
             logger.info("=== Team Defense Aggregation Completed ===")
-        except SCHEDULER_JOB_EXCEPTIONS:
+        except (*SCHEDULER_JOB_EXCEPTIONS, ImportError):
             logger.exception("Team defense aggregation failed")
 
 
@@ -694,6 +704,9 @@ def _refresh_dlq_metrics() -> None:
 )
 def crawl_dead_letter_recovery_job() -> None:
     """Recover dead letters stranded in ``retrying`` after a crash."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping dead letter recovery")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Recovery ===")
         try:
@@ -727,6 +740,9 @@ def crawl_dead_letter_recovery_job() -> None:
 )
 def crawl_dead_letter_retry_job() -> None:
     """Retry due ``pending`` dead letters through their replay handlers."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping dead letter retry")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Retry ===")
         try:
@@ -753,6 +769,9 @@ SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 @_with_lock_skip_guard
 def snapshot_drift_check_job() -> None:
     """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
+    if not database_reachable():
+        logger.warning("Database unreachable; skipping snapshot drift check")
+        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Snapshot Drift Check ===")
         try:
@@ -774,7 +793,9 @@ def snapshot_drift_check_job() -> None:
                 return
 
             severity = AlertSeverity.ERROR if summary.drifted > drift_max else AlertSeverity.WARNING
-            remediation = tuple(f"kbo snapshot validate --snapshot-id {sid}" for sid in summary.drifted_ids[:5])
+            remediation = tuple(
+                f"kbo snapshot validate --snapshot-id {sid}" for sid in summary.drifted_ids[:5]
+            ) + tuple(f"kbo snapshot replay --snapshot-id {sid}" for sid in summary.failed_ids[:5])
             apply_incidents(
                 [
                     AlertEvent(
@@ -790,6 +811,8 @@ def snapshot_drift_check_job() -> None:
                             "drifted": summary.drifted,
                             "failed": summary.failed,
                             "with_baseline": summary.with_baseline,
+                            "drifted_ids": list(summary.drifted_ids),
+                            "failed_ids": list(summary.failed_ids),
                         },
                     ),
                 ],

@@ -17,6 +17,13 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      # One action bump touched 18 workflows; splitting it across five PRs just
+      # multiplied the same review. Actions move together and are tested
+      # together here, so land them as one change.
+      actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "docker"
     directory: "/"

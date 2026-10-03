@@ -10,12 +10,18 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - `data/`, `logs/`: Local SQLite source/test data and runtime logs.
 
 ## Current Database Contract
-- **Primary operational database**: Oracle Autonomous Database via `DATABASE_URL=oracle+oracledb://...`.
-- **Oracle Wallet**: `TNS_ADMIN` and optional `OCI_WALLET_PASSWORD`; wallet files remain outside version control.
-- **SQLite**: Local tests and the verified source for the one-time SQLite→Oracle initial load.
-- **RAG**: Oracle stores both sparse/BM25 chunks and dense embeddings in `rag_chunks.embedding_vector` using native `VECTOR`; PostgreSQL/pgvector is local acceptance-only.
-- **Initial load**: Use `src.cli.apply_oracle_migrations` first, then `src.cli.sync_sqlite_to_oci` with explicit source and target URLs. Always run dry-run and data-quality checks before `--apply`.
-- **PostgreSQL**: Keep only for local development/integration acceptance; it is not used by the production RAG path or primary baseball-data store.
+- **Primary operational database**: PostgreSQL, reached over Tailscale via `DATABASE_URL=postgresql://...`. It hosts all production baseball data and RAG.
+- **Keepalives are required, not optional**: the host is remote, so `DATABASE_URL` carries `keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`. Dropping them lets idle connections be reaped mid-transaction, which surfaces as a spurious `PERSIST_TIMEOUT` rather than as a connectivity complaint.
+- **Migration runners are per-dialect and hardcoded**: `python3 -m src.cli.apply_postgres_migrations` applies `migrations/postgresql/`; `python3 -m src.cli.apply_oracle_migrations` applies `migrations/oracle/`. Neither takes a `--dialect` switch, so the module you pick is what decides the chain. Both are idempotent; re-run to confirm, and `--check` exits non-zero while anything is pending.
+- **SQLite**: Local tests and scratch data only. `migrations/sqlite/` and `migrations/pgvector/` are separate chains. Never point a production write at SQLite.
+- **Oracle is legacy, not gone.** It is no longer the operational store, but it is still in the tree and must not be described as absent:
+  - `migrations/oracle/` is the longer and older chain (65 migrations, numbered up to `076`) against PostgreSQL's 13 (up to `059`).
+  - `src/models/rag_chunk.py` binds `rag_chunks.embedding_vector` to Oracle's native `VECTOR`; other dialects fall back to JSON.
+  - `.github/workflows/oci_connection_probe.yml` and `oci_live_verification.yml` still exercise Oracle via `OCI_DB_URL`.
+  - `src/cli/sync/sync_sqlite_to_oci.py` is a legacy loader, not the primary path.
+  - `src/orchestration/master.py` carries a note that its live Oracle sync stage is **unwired**; the DAG does not depend on it.
+- **Known footgun**: `kbo migrate --dialect` still defaults to `oracle`, so a bare `kbo migrate` inspects the wrong chain. Pass `--dialect postgresql` explicitly.
+- **Do not** describe a PostgreSQL production write as SQLite-lock protected, and do not reintroduce `OCI_DB_URL` as a primary URL.
 
 ## Agent Skill Defaults
 Agents should apply the repository's crawler-oriented skill set automatically; the user should not need to invoke these skills one by one.
@@ -44,7 +50,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.kbo config --env production --strict`: Audit environment configuration and credentials.
 - `python3 -m src.cli.kbo notify --channel telegram --title "Title" --body "Body"`: Dispatch multi-channel notifications.
 - `python3 -m src.cli.kbo detect --sensitivity medium --json`: Run statistical anomaly detection.
-- `python3 -m src.cli.kbo migrate --dialect oracle --status`: Inspect database schema migration status.
+- `python3 -m src.cli.kbo migrate --dialect postgresql --status`: Inspect database schema migration status.
 - `python3 -m src.cli.kbo seed --season 2026 --games-per-team 2`: Generate synthetic KBO scenario data.
 - `python3 -m tools.agent_harness doctor`: Validate the pinned skill stack, adapters, permissions, and OpenCode skill path.
 - `python3 -m tools.agent_harness plan "<task>"`: Select a Harness profile and render its stages without executing external skills.
@@ -107,11 +113,16 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
 - `python3 -m src.cli.smart_polling_gate --json`: Lightweight gate to check if today's KBO games are finished (used in CI polling).
 - `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
-- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --dry-run`: Preview the SQLite→Oracle initial load.
-- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --apply --mode incremental`: Incremental Oracle sync using native MERGE bulk upsert.
-- `python3 -m src.cli.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --verify`: Verify row count consistency between SQLite and Oracle.
-- `python3 -m src.cli.apply_oracle_migrations`: Bootstrap and apply Oracle ORM baseline/migrations.
+- `python3 -m src.cli.apply_postgres_migrations`: Bootstrap and apply PostgreSQL ORM baseline/migrations against `DATABASE_URL`.
+- `python3 -m src.cli.apply_postgres_migrations --check`: Check PostgreSQL migrations without writing (non-zero exit while anything is pending).
+- `python3 -m src.cli.apply_oracle_migrations`: Legacy Oracle chain (`migrations/oracle/`). Required only for the residual Oracle paths listed in the Database Contract, not for the operational database.
 - `python3 -m src.cli.apply_oracle_migrations --check`: Check Oracle migrations without writing.
+- `python3 -m src.cli.sync.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --dry-run`: Legacy SQLite→Oracle loader preview. Not the primary path.
+- `python3 -m src.cli.kbo dlq status|stats|list|show [--json]`: Read-only crawl dead-letter inspection (`list` filters: `--status`, `--crawler`, `--error-code`, `--limit`).
+- `python3 -m src.cli.kbo dlq retry|requeue|ignore <dlq_id> [--reason R] [--apply]`: Guarded DLQ lifecycle actions; requires `--apply` **and** `KBO_ALLOW_DLQ_MUTATION=1` (exit 3 on denial, exit 2 on invalid state).
+- `python3 -m src.cli.kbo crawl replay --run-id <RUN-ID> [--apply]`: Replay one past crawl execution run. Read-only unless `--apply` + `KBO_ALLOW_CRAWL_REPLAY=1`.
+- `python3 -m src.cli.kbo snapshot validate [--snapshot-id N | --limit N] [--fail-on-drift] [--json]`: Read-only re-parse of stored artifacts against the recorded `parsed_records` baseline (exit 3 with `--fail-on-drift`).
+- `python3 -m src.cli.kbo snapshot replay [--snapshot-id N | --limit N] [--strict] [--apply] [--persist] [--json]`: Read-only by default; `--apply` needs `KBO_ALLOW_SNAPSHOT_REPLAY=1` and records ledger runs, `--persist` needs `KBO_ALLOW_SNAPSHOT_PERSIST=1` and writes domain tables; `--strict` exits 4 on any failure/skip. See `Docs/runbooks/DATA_RELIABILITY.md`.
 - `pytest`: Run the test suite.
 
 ### Additional CLI Inventory
@@ -126,6 +137,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 | Calculations | `calculate_matchups`, `calculate_rankings`, `calculate_sabermetrics`, `calculate_standings`, `monthly_team_audit` |
 | Monitoring / reports | `check_data_status`, `crawler_live_smoke`, `crawler_selector_gate`, `dashboard_report`, `data_quality_report`, `db_healthcheck`, `health_check`, `historical_coverage_report`, `monitor_data_freshness`, `morning_pbp_report`, `quality_dashboard`, `smart_polling_gate`, `data_integrity_checker` |
 | Analysis / sync utilities | `analyze_data`, `diagnose_coach_pitching`, `discover_historical_players`, `fetch_kbo_pbp`, `ingest_mock_game_html`, `ingest_schedule_html`, `seed_relay_validation_metrics`, `sync_pregame_previews`, `sync_sqlite_to_oci`, `verify_chunk_quality`, `load_text_relay` |
+| Data reliability | `dlq` (read-only `status`/`stats`/`list`/`show`), `dlq_operator` (guarded `retry`/`requeue`/`ignore`), `crawl_replay`, `snapshot_replay`, `snapshot_validate` |
 
 ## Code Quality & Linting
 - `ruff check src/ tests/ scripts/` = **0 errors** (enforced by pre-commit).
@@ -158,6 +170,9 @@ These modules are operational or diagnostic entrypoints that are less frequently
   `tests/conftest.py` already blocks `.env` loading (`KBO_ENV_FILE_LOADING=0`)
   and rewrites a non-SQLite `DATABASE_URL` to a per-worker SQLite file. Those
   variables are unnecessary and misleading; `OCI_DB_URL` is a legacy Oracle var.
+  Leaving it exported matters more now that `DATABASE_URL` points at a real
+  remote host: a stale `OCI_DB_URL` in the environment is how a test run quietly
+  reaches for a database it was never meant to touch.
 - Example: `./venv/bin/python -m pytest tests/test_player_profile_parser.py -q`.
 
 ## Commit & Pull Request Guidelines
@@ -167,6 +182,14 @@ These modules are operational or diagnostic entrypoints that are less frequently
 ## Configuration & Secrets
 - Use `.env` for `DATABASE_URL`, request throttling (e.g., `KBO_REQUEST_DELAY_MIN`), and external API keys (`YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`).
 - Crawler stability depends on consistent delays; avoid reducing throttling without review.
+- **Data-reliability guards are default-deny.** Mutation commands require an explicit flag **and** a `KBO_ALLOW_*` variable; without both they preview and exit 3 without writing.
+  - `KBO_ALLOW_DLQ_MUTATION=1` — `kbo dlq retry|requeue|ignore --apply`.
+  - `KBO_ALLOW_CRAWL_REPLAY=1` — `kbo crawl replay --apply`.
+  - `KBO_ALLOW_SNAPSHOT_REPLAY=1` — `kbo snapshot replay --apply` (ledger run only).
+  - `KBO_ALLOW_SNAPSHOT_PERSIST=1` — `kbo snapshot replay --persist` (writes domain tables; highest risk, separate guard).
+  - `CRAWL_EVIDENCE_DIR` — evidence root for content-addressed artifacts; replay rejects any stored path outside it (default `data/crawl_evidence`). A wrong root surfaces as `success=false` for every snapshot, **not** as drift.
+  - Stale thresholds: `DLQ_STALE_RETRYING_SECONDS` (1800), `DLQ_RUN_STALE_SECONDS` (3600). Snapshot drift gate: `SNAPSHOT_DRIFT_SAMPLE_LIMIT` (100), `SNAPSHOT_DRIFT_MAX` (0), `SNAPSHOT_DRIFT_FAIL_MAX` (5).
+- Operational procedures for these commands live in `Docs/runbooks/DATA_RELIABILITY.md`.
 
 ## Concurrency & Scheduling
 - Automated tasks (`scripts/scheduler.py`) use a **3-stage locking mechanism** to prevent concurrent execution conflicts:
@@ -174,6 +197,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
   - **`DAILY_LOCK`**: Core daily data pipeline — `crawl_daily_games` (03:00, runs `run_daily_update`), `compute_standings` (03:30), `crawl_p0_non_game` (06:20), `crawl_p1p2_data` (06:45), `crawl_operation_notices` (09:00/11:30), `crawl_operation_notices_naver` (09:30/13:00). `DAILY_LOCK` is a **`ForceProcessLock`** so a stale lock file left by a crashed job is auto-cleared on the next acquire.
   - **`MAINTENANCE_LOCK`**: Long-running maintenance jobs (futures profile crawl, season stat recalc, report generation). Also a `ForceProcessLock`.
   - **`SQLITE_WRITE_LOCK`**: See writer-lock notes below.
+- **Data-reliability jobs** run under `MAINTENANCE_LOCK` with `max_instances=1`: `crawl_dead_letter_retry` (every 10 min), `crawl_dead_letter_recovery` (every 30 min), `snapshot_drift_check` (daily 06:45, validates `SNAPSHOT_DRIFT_SAMPLE_LIMIT` snapshots and opens one `drift:snapshot` incident). During a database outage they block on connect **while holding the lock**, so unrelated maintenance jobs skip via the bounded lock timeout (60s) and log `lock_skip` warnings; APScheduler skips the overlapping reliability run itself. Operate a single scheduler host during an outage, because PostgreSQL advisory locks fall back to local file locks. See `Docs/runbooks/DATA_RELIABILITY.md`.
 - **Single-instance guard**: `scripts/scheduler.py` enforces one scheduler process via `data/locks/scheduler.pid` (`_ensure_single_scheduler_instance`). A live PID blocks a second instance (`exit 1`); a dead PID is treated as stale and cleared. This prevents duplicate scheduler containers/processes from contending for the same tier locks (the root cause of the 2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`).
 - **Nested-lock fix**: `run_daily_update_main` accepts `acquire_lock: bool = True`. The scheduler calls it with `acquire_lock=False` because `crawl_daily_games` already holds `DAILY_LOCK`; otherwise the inner `ProcessLock("daily_update")` collides with the scheduler's shared `threading.Lock` and falsely reports "Another instance already running". CLI/direct invocations keep the self-guard.
 - **Tier-lock acquisition now has a bounded timeout.** `_scheduler_job_lock` passes `lock_timeout=SQLITE_WRITE_LOCK_TIMEOUT_SECONDS` (default 60s) to the tier lock; on timeout it raises `_LockSkipped` (caught by `@_with_lock_skip_guard` → logs a warning, no crash) instead of a `LockAcquisitionError`. `crawl_p1p2_data_job` retry policy is `stop_after_attempt(4)` / `wait_exponential(min=300, max=1800)`.
@@ -181,7 +205,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - Use `python3 scripts/diagnose_scheduler_locks.py` to read-only diagnose stale lock files and duplicate scheduler processes (exit 0 = clean, 1 = problem found).
 - All data save logic uses **UPSERT** for idempotency; failed jobs can be safely re-run.
 - **`ProcessLock` is a thread-safe singleton with thread-local state.** `ProcessLock` (and `ForceProcessLock`) instances such as `SQLITE_WRITE_LOCK` are shared as module-level singletons across APScheduler's thread pool. Per-acquisition state (`thread_lock_acquired`, `file_fd`, `db_connection`) lives on a `threading.local` (`_LockState`) so each worker thread tracks its own ownership; the shared `threading.Lock` in `_thread_locks` still provides correct cross-thread mutual exclusion. Do **not** move this state back to instance attributes — that reintroduces a spurious `LockAcquisitionError` when two jobs contend for the same singleton lock (see `crawl_congestion` incident, 2026-07).
-- **SQLite writer lock (`SQLITE_WRITE_LOCK`)** applies only to local SQLite compatibility jobs. Oracle production writes use Oracle transactions and the configured connection pool; do not describe Oracle writes as SQLite-lock protected.
+- **SQLite writer lock (`SQLITE_WRITE_LOCK`)** applies only to local SQLite compatibility jobs. PostgreSQL production writes use PostgreSQL transactions and the configured connection pool; do not describe PostgreSQL writes as SQLite-lock protected.
 - **Lock-skip monitoring**: `lock_skip_monitor_job` runs every 15 minutes and warns (Slack) when any `(job_id, lock)` pair's skip count exceeds `LOCK_SKIP_ALERT_THRESHOLD` (env, default 5) per interval — a signal that the SQLite writer lock is contended and real-time data may be going stale.
 
 ## GitHub Actions Automation
@@ -221,17 +245,17 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `pitcher_backfill.yml`: Live pitcher stat backfill during game hours
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
-- `full_recalculation.yml`: Manual dispatch — season stat recalculation against Oracle
+- `full_recalculation.yml`: Manual dispatch — season stat recalculation against the configured database
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.12)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
 
 ### Required Secrets
-- `DATABASE_URL`: Oracle Autonomous Database URL
-- `OCI_DB_URL`: dedicated disposable Oracle schema URL for migration/smoke verification only; never use as the application primary URL
-- `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for GitHub Actions
-- `OCI_WALLET_PASSWORD`: Wallet password when required
+- `DATABASE_URL`: PostgreSQL URL for the Tailscale-hosted operational database. Carry the `keepalives` query parameters; without them idle connections get reaped mid-transaction.
+- `OCI_DB_URL`: legacy disposable Oracle schema URL, used only by `oci_connection_probe.yml` and `oci_live_verification.yml`. Never use it as the application primary URL.
+- `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for the two legacy OCI workflows only.
+- `OCI_WALLET_PASSWORD`: Wallet password when the legacy OCI workflows require it.
 - `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
 - External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
@@ -239,7 +263,37 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-09-08
+Last updated: 2026-10-03
+
+### Phase 108: Notification Incident & Delivery Pipeline — STATUS: COMPLETED (P1-3 · P1-4 · B5 · P2 · 계층 lint · 운영 런북)
+- **P1-3 delivery 영속화** (`5a149503`): `src/notifications/` 패키지 정립 — `IncidentManager` → `NotificationDispatcher`/`AlertPublisher` → transport. `notification_deliveries`는 append-only이며 `incident_id`는 soft reference이고 **unique 제약이 없다**(일반 인덱스 3종만: `incident_id+dispatched_at`, `channel+status+dispatched_at`, `batch_id`). 마이그레이션 postgresql 059 · sqlite 064 · oracle 076. `DeliveryRecorder`는 caller와 **독립된 짧은 트랜잭션**을 소유한다 — 외부 전송이라는 실 부수효과는 caller가 rollback해도 감사에 남아야 하고, 감사 실패가 전송 결과를 바꿔선 안 된다(오류는 포섭·계수·로깅). batch 단위 1회 기록(`NotificationBatchReport` → `batch_id` 하나 공유), `SUPPRESSED`는 delivery로 기록하지 않는다(SENT/FAILED/SKIPPED_UNCONFIGURED/DRY_RUN만). retention은 `NOTIFICATION_DELIVERY_RETENTION_DAYS=90` / `NOTIFICATION_INCIDENT_RETENTION_DAYS=30`, `notification_retention_job`이 일요일 03:00 KST에 실행.
+- **원자성 계약 (저장소 전역)**: incident 생성 경합은 **dialect-native insert-if-absent**로 해소한다 — PostgreSQL/SQLite `INSERT ... ON CONFLICT DO NOTHING`, Oracle `MERGE`(`_oracle_merge_insert`), 그 외 dialect만 savepoint fallback. **`begin_nested()` SAVEPOINT는 이 저장소에서 금지** — pysqlite 기본 트랜잭션 제어에서는 SAVEPOINT가 외부 트랜잭션에 참여하지 않아 rollback 후에도 행이 남는다. 회귀: `tests/notifications/test_incident_manager.py`(재도입 시 FAIL). 미지원 dialect fallback으로만 남긴다.
+- **P1-4 transport 경계 이관 (grandfather 17 → 1)**: `scripts/lint_alert_transport_bypass.py` 기준 `ALLOWED_FILES={src/utils/alerting.py, src/notifications/dispatcher.py}`, `GRANDFATHERED={scripts/scheduler.py}`, `CLASSIFICATION={scripts/scheduler.py: C}`. 커밋: `a9fda33c` fallback_monitor, `06cc3dea` sla_tracker, `821a221e` run_all_crawlers/monitor_data_freshness/daily_highlight, `4438a114` gap_report, `90384394` dashboard/quality/morning_pbp, `d2470872` notification_service+audit_fallback_stats, `fd6c3aa4` live_crawler+run_daily_update, `c27fa523` auto_healer, `c8864a37` freshness_gate, `2c3fa916` sqlite_integrity_guard, `028cf571` per-DB recovery identity. 분류 교정은 증거 기반이다: `notification_service` C→B(살아있는 서비스), `sla_tracker` A→B(테스트가 조건 없이 전송을 assert), `live_crawler` A→B(유일한 호출이 성공 통지).
+- **격리 복구 identity**: `apply_incidents(events, *, resolve_keys=, reconcile_prefix=)`가 B/이관 코드의 공통 진입점. `sqlite_integrity_guard`는 `reconcile_prefix`가 아니라 **`resolve_keys=[PREFIX+path]`**를 쓴다 — prefix reconcile은 다른 DB를 잘못 resolve해 격리 목표와 충돌한다. `freshness_gate`는 `FRESHNESS_GATE_INCIDENT_KEY` + `_apply_freshness_incident`.
+- **P2 알림 규칙 + PG 동시성** (`98937400`, `1f347cfd`): 신규 `monitoring/prometheus/alert_rules_notifications.yml`(그룹 `kbo_notification_alerts`) — `NotificationDeliveryFailureRateHigh`(warning; 실패율 > 0.2 **+ 최소 물량 가드 ≥ 5**, 분모가 분자를 항상 포함하므로 분모 0이면 NaN이 되어 걸러진다) / `CriticalIncidentDeliveryFailed`(critical; 열린 CRITICAL incident **and** 전달 실패 — 전달 실패 단독은 너무 시끄럽다). `prometheus.yml` rule_files 등록 + dev/prod compose 마운트. 계약은 `tests/monitoring/test_notification_alert_rules_contract.py` — 참조 메트릭이 코드에 실존하는지, 선언된 메트릭이 읽히거나 이유와 함께 예외 등록됐는지(orphan 0), promtool `check rules`/`test rules`(firing 2 + quiet 4). 메트릭은 `kbo_notification_dispatch_total{channel,status}`·`kbo_notification_dispatch_failures_total`·`kbo_notification_dispatch_duration_seconds`·`kbo_notification_open_incidents{source,severity}`·`kbo_notification_deliveries_persisted_total`·`kbo_notification_delivery_audit_failures_total`·`kbo_notification_delivery_retries_total`. Alertmanager는 `severity: critical` → `kbo-alerts-critical`, 그 외 → `kbo-alerts-default`(두 receiver가 동일 Telegram 설정). 동시성: incident ledger는 `test_incident_concurrency_integration.py`, **delivery audit은 신규 `test_delivery_recorder_concurrency_integration.py`** — `record()`가 영속화 오류를 삼키므로 경합이 예외가 아니라 "행 수 부족"이나 `kbo_notification_delivery_audit_failures_total` 증가로만 드러난다. 두 파일 모두 `KBO_E2E_DATABASE_URL`/non-SQLite `DATABASE_URL`이면 실제 동시 writer를, 아니면 WAL + `BEGIN IMMEDIATE` 파일 SQLite로 skip 없이 실 스레드를 돌린다.
+- **B5 경계 폐쇄 (완료, `79a757ad`)**: `scripts/scheduler.py`의 인라인 `selector_drift_sentinel_job`/`lock_health_check_job`을 `src/scheduler/jobs/`(sentinel.py · daily.py)로 옮기고 bootstrap의 transport 사용을 제거해 `GRANDFATHERED=frozenset()` / `CLASSIFICATION={}`에 도달했다. 이제 transport를 import할 수 있는 파일은 `ALLOWED_FILES` 2개(`src/utils/alerting.py`, `src/notifications/dispatcher.py`)뿐이다. **폐쇄의 증명은 exit code가 아니라 stdout이다** — `GRANDFATHERED`에 있으면서 새 위반이 있는 파일도 exit 0이 나오므로, `test_migration_is_complete()`가 `[grandfathered]`·`ERROR:` 미출력 + 두 목록 공백 + exit 0을 함께 단언한다. `set(CLASSIFICATION) == set(GRANDFATHERED)`는 `{}`/`{}`에서 vacuous true라 완결성 증명이 되지 않으므로 classification 테스트 2건은 제거되고 `test_repository_is_clean`(빈 목록에서 strict gate를 실제 실행)만 남았다.
+- **계층 lint (완료, `0b9be58d`)**: `scripts/lint_notification_layering.py`가 `src/notifications/`의 계층 방향을 강제한다 — `MODULE_RANKS` 11개 모듈(0 계약 / 1 표현·정책 / 2 원장·감사 / 3 dispatch / 4 조합 루트 / 5 진입점)에 대해 **상향 import를 위반**으로 잡고 하향·동형(sideways)은 허용한다(`retention`이 같은 rank의 `incident`를 쓰는 경우가 실제로 있다). 경계 2곳도 고정: `src/utils/alerting.py`(transport)는 순수 계약(`alert_dto`, `policy`)만 import 가능하고, `src/services/notification_service.py`는 메시지를 조합해 전달을 위임하므로 원장(`incident`)을 직접 몰라야 한다. rank 없는 신규 모듈과 모듈 없는 stale rank가 모두 실패하므로 조용히 잘못된 층에 합류할 수 없다. 검출이 디렉터리·파일명 기준이라 합성 파일로 테스트 가능하며, `from src.notifications import Symbol`(facade)은 계층 엣지가 아니므로 제외한다. 등록: pre-commit hook `notification-layering`(해당 파일 변경 시) + `test_suite.yml` lint job 스텝 + 워크플로우 계약 테스트 assert. 회귀: `tests/scripts/test_lint_notification_layering.py`(31건; 실제 의존 그래프 일치, 경계 규칙, facade 예외, bypass 마커, allowlist 미사용 감지). `CLI/jobs → transport 직접 접근`은 `lint_alert_transport_bypass.py`가 계속 커버한다.
+- **운영 런북 (`Docs/runbooks/NOTIFICATIONS.md`)**: 알림 경로 구조도와 진단 절차 — "알림이 오지 않는다"(dispatch 메트릭 → 원장 `occurrence_count` vs `notification_count` 구분 → delivery `error_code` → audit 실패 카운터), "incident가 계속 열려 있다"(정상 회복은 `apply_incidents`의 `resolve_keys`; prefix reconcile은 배치에 없는 다른 대상을 잘못 resolve할 수 있어 비선호), 쿨다운(WARNING 30m / ERROR 10m / CRITICAL 5m / INFO 6h)과 `ALERT_MIN_SEVERITY`, 알림 규칙 2종 1차 대응, retention 검증(회복된 incident만 삭제되므로 OPEN은 영구 잔존), 경계 린트 실패 대응, DB 장애 시 동작. **알림 전용 CLI 부재를 명시**했다 — incident 조회·ack·종료 수단이 없어 운영은 SQL(`notification_incidents`/`notification_deliveries`)과 메트릭 기반이고, 정상 종료는 원인 체크의 자동 회복뿐이다(`IncidentManager.acknowledge`는 코드에서만 도달 가능). 이 도구 부재는 후속 작업 후보다.
+- **검증**: authoritative `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2` = **12,413 passed, 1 skipped**. monitoring 225, 신규 계약 16, 실제 PostgreSQL 통합 9(SQLite에서 skip되던 delivery rollback 테스트 포함; 일회성 DB로 검증 후 drop), 계층 lint 31.
+
+### Phase 107: Data Reliability Subsystem (Crawl Ledger → DLQ → Retry/Recovery → Snapshot Replay) — STATUS: 리뷰 수정 완료(P0/P1/P2), 운영 실측 대기(프로덕션 DB 장애)
+- **Phase A 원장**: `CrawlExecutionRun` + `track_crawl_run(spec, *, session=None, session_factory=None)`. 서비스가 트랜잭션 경계를 소유하며, 비기본 DB를 쓰는 호출자는 `session_factory=`로 같은 DB에 원장을 기록한다.
+- **Phase B 실패 분류 + DLQ**: `failure_taxonomy`; `crawl_dead_letters`(unique `crawler+target_type+target_id+original_run_id`; 마이그레이션 sqlite 062 / postgresql 057); 상태 머신(`ALLOWED_TRANSITIONS`, operator `requeue`는 `ignored/exhausted`에서만·`retry_count` 보존); 재시도 정책(`RETRY_SCHEDULE=(60,300,900,3600)`, `DEFAULT_MAX_RETRIES=5`, 백오프 인덱스 clamp); replay dispatcher.
+- **Phase C/D 회수·재시도**: stale `retrying` 감지/회수, interrupted replay run 종료, `crawl_dead_letter_retry`(*/10)·`crawl_dead_letter_recovery`(*/30) 잡.
+- **Phase E/F 스냅샷**: `parse_snapshot`(읽기 전용) / `validate_snapshot`(baseline 대조) / `persist_snapshot`(도메인 테이블) + `snapshot_drift_check`(매일 06:45, 단일 `drift:snapshot` 인시던트).
+- **운영 CLI**: `kbo dlq status|stats|list|show`(읽기 전용), `kbo dlq retry|requeue|ignore --apply`, `kbo crawl replay [--apply]`, `kbo snapshot validate|replay [--apply|--persist]`. 모든 mutation은 `--apply` + `KBO_ALLOW_*` 이중 가드(가드 거부 시 exit 3, 쓰기 없음). 절차는 `Docs/runbooks/DATA_RELIABILITY.md`.
+- **리뷰 수정 (P0 3 · P1 3 · P2 6; 커밋 `a6cbac43`~`1adc8f59`)**: replay 원장 세션 라우팅 / partial 저장 명시(`SaveOutcome`, `failed_count`, `partial` 상태) / mutation 전 가드 선검증 / `--strict`(exit 4) / artifact를 `evidence_root()` 하위로 제한 + 대소문자 무시 URL 차단 / `outcome_status` 단일 토큰 / `--limit 0` 존중(`non_negative_int`) / recent 조회 헬퍼화 / drift 알림에 `failed_ids` / `SnapshotParseResult.records` 불변 tuple + 명시적 unhashable / 모듈 docstring 정정 / **레코드별 커밋**(구 동작 실증: saved 0·failed 3 → saved 2·failed 1·partial).
+- **계약(주의)**: 도메인 저장소는 `session.add()`만 하므로 제약 위반은 flush/commit 시점에 발생한다. `persist_parsed_records`가 레코드별 트랜잭션으로 격리한다. **`begin_nested()` savepoint는 이 저장소에서 금지** — pysqlite에서 외부 트랜잭션에 참여하지 않아 rollback 후에도 행이 남는다(`tests/notifications/test_incident_manager.py` 회귀 테스트).
+- **DLQ 커버리지 주의**: enqueue 도입은 일부 크롤러에 한정됨(`award_crawler`, `roster_transaction_crawler`, `schedule_crawler`, `team_history_crawler`, `player_movement_crawler`, `kbo_event_crawler`, `parking_crawler`, `food_crawler`, `game_collection_service`). DLQ가 비어 있다고 실패가 없는 것이 아니다. `src/crawlers/adoption_matrix.py`가 모듈별 도입 여부를 계산한다(`roadmap()`이 마이그레이션 순서를 제공).
+- **Phase I 체인 도입 (2026-10-03, 배치 진행 중)**: 참조 구현은 `roster_transaction_crawler`. 공통 계약 — 크롤 실패는 예외 전파 대신 원장+DLQ에 기록 후 반환(`track_crawl_run`이 예외 시 `error_code`를 예외 속성에서 읽으므로 전파하면 taxonomy가 덮어써진다), `failure_stage`는 `stage_for_code(error_code)`로만 파생.
+  - 1차 `team_history_crawler`: `run(*, save, run_spec, record_dead_letters, raise_on_persist_error)` 신설; `save(*, raise_on_error)`가 `(saved, failed)`를 반환하고 해결 못 한 팀을 silent drop 대신 failed로 집계. 회귀: `tests/crawlers/test_team_history_reliability_canary.py`(10건).
+  - 2차 `player_movement_crawler`: 이미 `_crawl_year`가 연도를 삼키던 구조라 **실패 가시화**가 핵심 — `_year_failures`로 포착해 연도 단위 DLQ(`target_id=str(year)`, `season=year`) + 실행 `partial`. `run(start, end, *, save_snapshots, run_spec, record_dead_letters)`, target_id는 단일 연도면 `"2026"`, 범위면 `"2023-2024"`. 호출부 `run_daily_update` Step 7 전환. 회귀: `tests/crawlers/test_player_movement_reliability_canary.py`(9건) + 기존 파일에 포착/리셋 2건.
+  - 3차 `kbo_event_crawler`: 7개 페이지 스윕이라 **URL 하나 실패가 전체를 중단시키던 것**을 페이지별 격리로 변경(`_collect_page`가 실패를 `_page_failures`에 담고 계속). 페이지 단위 DLQ(`target_id`는 URL이 아니라 짧은 page slug — `CrawlDeadLetter.target_id`가 `String(128)`이라 URL은 부적합), 모두 실패하면 `failed`, 일부면 `partial`. **저장 실패는 전파 유지**(우리 쓰기 실패이고 CLI가 성공 exit하면 안 됨) — 분류·DLQ 기록 후 `exc.error_code`를 부착해 `track_crawl_run`이 taxonomy를 읽게 한다. 회귀: `tests/crawlers/test_kbo_event_reliability_canary.py`(6건) + 기존 2개 파일에 원장 픽스처 추가(원장이 이제 `run()`의 필수 의존성).
+  - 4·5차 `parking_crawler`/`food_crawler`: **실패가 예외가 아니라 빈 결과로 나타나던** 유형(`_crawl_team_*`가 `not result.ok`에서 `[]` 반환). 팀 단위 격리 — `_team_failures`에 `(team_code, error_code, message)`를 담아 실행 `partial`/`failed` + 팀 단위 DLQ(`target_id`=팀 코드, `source_url`=해당 페이지). 기존 동작(예외 격리·엔트리별 저장 실패 삼킴)은 유지하고 `records_written`만 원장에 추가. 회귀: `test_parking_reliability_canary.py`(5건)·`test_food_reliability_canary.py`(5건) + 기존 파일에 원장 픽스처, food는 `_save_to_db` 반환값 정수화에 맞춰 `MagicMock(return_value=1)`.
+  - **남은 미도입 축**: 5개 크롤러 모두 `replay=False`(replay 핸들러 미등록)라 `fully_adopted`에는 도달하지 않는다. 또한 `parking`/`food`의 저장 경로는 배치 실패를 여전히 삼킨다(로그만) — 별도 항목.
+- **DB 장애 fail-fast (2026-10-04)**: `src/db/engine.py`에 `database_reachable()` 추가 — 프로브 전용 엔진에 `connect_timeout`을 주입하고(`lru_cache`, 기본 `DB_PROBE_CONNECT_TIMEOUT_SECONDS=3`) `src/monitoring/db_availability.probe_engine`을 재사용한다. `crawl_dead_letter_retry`/`crawl_dead_letter_recovery`/`snapshot_drift_check`가 **락 획득과 tenacity 재시도 이전**에 게이트를 확인하고 즉시 반환한다(예외를 던지지 않으므로 `retry_error_callback`/실패 알림이 발동하지 않는다). 근거: 2026-10-03 장애에서 잡당 약 150초를 `MAINTENANCE_LOCK` 점유(연결 타임아웃 + `wait_exponential(min=120)`)했고 다른 유지보수 잡이 60초 대기 후 스킵됐다. 회귀: `tests/db/test_engine_probe.py`(6건)·`tests/scheduler/test_db_fail_fast_jobs.py`(5건). 게이트 없는 나머지 DB 의존 잡은 기존 동작 유지(후속 확대 후보).
+- **검증**: 비-integration 전체 스위트 **12,413 passed, 1 skipped**; `ruff check src/ tests/ scripts/` = 0 errors; `ruff format --check` clean.
+- **운영 실측 상태 (2026-10-03)**: 프로덕션 PostgreSQL(`ch806-08`, Tailscale) 미응답 — 전 연결 `SYN_SENT`, ping은 정상. 최초 경보 04:36, 12:00부터 시간당 700+ 실패, 20:36까지 지속. 스케줄러는 생존(PID 2610), 락 진단 clean, 신규 잡 3/3 등록 확인, DLQ retry는 `max_instances=1`로 중첩 skip, advisory lock은 로컬 락으로 폴백. `data/crawl_evidence` 최신 아티팩트가 **2026-09-18**(약 15일 공백) → 드리프트 서브시스템에 검증할 실데이터 없음(원인 미조사). Phase G(G1 마이그레이션 확인, G4~G7 실측)는 DB 복구 후 재개.
 
 ### Phase 106: Crawler Core Operational Certification — STATUS: GATES 106A~106F LEVEL_3_VERIFIED (FULLY CERTIFIED)
 - **Gate 106A: Crawler Inventory & Taxonomy (PASS_REPORTED)**: 30 canonical crawlers classified across 9 categories; 242 deselected tests categorized into 8 operational buckets.

@@ -3,6 +3,10 @@
 Shared by the batch parser script and the guarded ``kbo snapshot replay
 --persist`` CLI. Writes rely on the domain repositories' upsert semantics and
 unique constraints, so re-persisting the same snapshot is idempotent.
+
+Records are committed individually because the domain repositories only call
+``session.add``: a flush-time constraint violation would otherwise abort the
+whole batch and discard the records that had already parsed cleanly.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.services.snapshot_replay import SnapshotReplayError, parse_snapshot
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -44,6 +48,14 @@ DOMAIN_FLAT_REPOS: dict[str, type] = {
 
 
 @dataclass(frozen=True)
+class SaveOutcome:
+    """Per-record save counts for one domain batch."""
+
+    saved: int = 0
+    failed: int = 0
+
+
+@dataclass(frozen=True)
 class SnapshotPersistResult:
     """Outcome of persisting one snapshot's parsed records."""
 
@@ -54,51 +66,66 @@ class SnapshotPersistResult:
     success: bool
     error: str | None = None
     skipped: bool = False
+    failed_count: int = 0
+
+    @property
+    def outcome_status(self) -> str:
+        """Return the outcome as a single unambiguous status token."""
+        if self.skipped:
+            return "skipped"
+        if self.success:
+            return "saved"
+        if self.failed_count > 0 and self.saved > 0:
+            return "partial"
+        return "failed"
 
 
-def _save_flat(session: Session, domain: str, data: list[dict]) -> int:
+def _save_flat(session: Session, domain: str, data: Sequence[dict]) -> SaveOutcome:
     repo = cast("Any", DOMAIN_FLAT_REPOS[domain](session))
-    count = 0
+    saved = failed = 0
     for item in data:
         try:
             repo.save(item)
-            count += 1
+            saved += 1
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Save failed in domain=%s: %s", domain, item.get("title", item.get("player_name", "")))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_parking(session: Session, data: list[dict]) -> int:
+def _save_parking(session: Session, data: Sequence[dict]) -> SaveOutcome:
     lot_repo = ParkingLotRepository(session)
     fee_repo = ParkingFeeRuleRepository(session)
-    count = 0
+    saved = failed = 0
     for entry in data:
         try:
             lot = lot_repo.save(entry.get("lot", {}))
-            count += 1
+            saved += 1
             for fee in entry.get("fee_rules", []):
                 fee_repo.save({"parking_lot_id": lot.id, **fee})
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-def _save_food(session: Session, data: list[dict]) -> int:
+def _save_food(session: Session, data: Sequence[dict]) -> SaveOutcome:
     vendor_repo = StadiumFoodVendorRepository(session)
     menu_repo = StadiumFoodMenuItemRepository(session)
-    count = 0
+    saved = failed = 0
     for entry in data:
         try:
             vendor = vendor_repo.save(entry.get("vendor", {}))
-            count += 1
+            saved += 1
             for menu in entry.get("menus", []):
                 menu_repo.save({"vendor_id": vendor.id, **menu})
         except PERSIST_EXCEPTIONS:
+            failed += 1
             logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
-    return count
+    return SaveOutcome(saved=saved, failed=failed)
 
 
-_DOMAIN_SAVERS: dict[str, Callable[[Session, list[dict]], int]] = {
+_DOMAIN_SAVERS: dict[str, Callable[[Session, Sequence[dict]], SaveOutcome]] = {
     "parking": _save_parking,
     "food": _save_food,
 }
@@ -109,7 +136,7 @@ def supported_domains() -> frozenset[str]:
     return frozenset(DOMAIN_FLAT_REPOS) | frozenset(_DOMAIN_SAVERS)
 
 
-def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -> int:
+def save_parsed(session: Session, target_domain: str, parsed_data: Sequence[dict]) -> SaveOutcome:
     """Persist parsed records into the repository matching ``target_domain``."""
     if target_domain in DOMAIN_FLAT_REPOS:
         return _save_flat(session, target_domain, parsed_data)
@@ -117,7 +144,44 @@ def save_parsed(session: Session, target_domain: str, parsed_data: list[dict]) -
     if saver:
         return saver(session, parsed_data)
     logger.warning("No repository for domain: %s", target_domain)
-    return 0
+    return SaveOutcome(saved=0, failed=len(parsed_data))
+
+
+def persist_parsed_records(
+    factory: Callable[[], Session],
+    target_domain: str,
+    records: Sequence[dict],
+) -> SaveOutcome:
+    """Persist records one transaction per record.
+
+    Domain repositories upsert but only call ``session.add``, so a flush-time
+    constraint violation aborts the enclosing transaction and would discard
+    every record saved before it. Committing per record confines the damage to
+    the offending row; re-running the batch is idempotent, so the extra commits
+    are cheap insurance rather than a correctness trade-off.
+
+    Args:
+        factory: Session factory owning each per-record transaction.
+        target_domain: Repository family that receives the records.
+        records: Parsed records to persist.
+
+    Returns:
+        The aggregate saved/failed counts across all records.
+
+    """
+    saved = failed = 0
+    for record in records:
+        try:
+            with factory() as session:
+                outcome = save_parsed(session, target_domain, [record])
+                session.commit()
+        except PERSIST_EXCEPTIONS:
+            failed += 1
+            logger.exception("Record persist failed in domain=%s", target_domain)
+            continue
+        saved += outcome.saved
+        failed += outcome.failed
+    return SaveOutcome(saved=saved, failed=failed)
 
 
 def _target_domain(factory: Callable[[], Session], snapshot_id: int) -> str | None:
@@ -180,29 +244,29 @@ def persist_snapshot(
             error=parsed.error,
         )
 
-    try:
-        with factory() as session:
-            saved = save_parsed(session, target_domain, parsed.records)
-            session.commit()
-    except PERSIST_EXCEPTIONS as exc:
-        logger.exception("Persist failed for snapshot %s", snapshot_id)
-        _mark_status(factory, snapshot_id, "failed", error_message=str(exc))
+    outcome = persist_parsed_records(factory, target_domain, parsed.records)
+
+    if outcome.failed == 0:
+        _mark_status(factory, snapshot_id, "done", parser_version=parsed.parser_version)
         return SnapshotPersistResult(
             snapshot_id=snapshot_id,
             source_key=parsed.source_key,
             target_domain=target_domain,
-            saved=0,
-            success=False,
-            error=str(exc),
+            saved=outcome.saved,
+            success=True,
         )
 
-    _mark_status(factory, snapshot_id, "done", parser_version=parsed.parser_version)
+    summary = f"saved={outcome.saved} failed={outcome.failed}"
+    status = "partial" if outcome.saved > 0 else "failed"
+    _mark_status(factory, snapshot_id, status, error_message=summary)
     return SnapshotPersistResult(
         snapshot_id=snapshot_id,
         source_key=parsed.source_key,
         target_domain=target_domain,
-        saved=saved,
-        success=True,
+        saved=outcome.saved,
+        success=False,
+        error=summary,
+        failed_count=outcome.failed,
     )
 
 

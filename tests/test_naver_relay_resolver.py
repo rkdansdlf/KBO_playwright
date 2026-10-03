@@ -4,6 +4,8 @@ import asyncio
 
 import src.crawlers.relay_crawler as relay_module
 from src.crawlers.relay_crawler import RelayCrawler
+from src.crawlers.relay_outcome import InningStop
+from src.crawlers.result import CrawlOutcome
 from src.sources.relay.base import default_source_order_for_bucket
 
 
@@ -121,53 +123,34 @@ def test_schedule_query_context_switches_to_premier12_bucket():
 
 
 def test_resolve_naver_game_id_scans_nearby_dates_for_rescheduled_postseason_game(monkeypatch):
-    monkeypatch.setattr(relay_module, "compliance", _FakeCompliance())
     crawler = RelayCrawler(policy=_FakePolicy())
 
-    class _Response:
-        def __init__(self, payload):
-            self.status_code = 200
-            self._payload = payload
+    # The seam is now `_request_json`, which delegates to the shared transport.
+    # Patching it keeps this test about the date scan, which is what it is for.
+    requested_dates: list[str] = []
 
-        def json(self):
-            return self._payload
+    def _games(game_ids: list[str]) -> dict:
+        return {
+            "result": {
+                "games": [{"gameId": game_id, "awayTeamCode": "SS", "homeTeamCode": "HT"} for game_id in game_ids],
+            },
+        }
 
-    class _Client:
-        def __init__(self):
-            self.requested_dates = []
+    async def _request(url, *, params=None, headers=None):
+        date = params["date"]
+        requested_dates.append(date)
+        if date == "2024-10-22":
+            return _games(["77771022SSHT02024"]), None
+        if date == "2024-10-23":
+            return _games(["77771023SSHT02024", "77771021SSHT02024"]), None
+        return _games([]), None
 
-        async def get(self, url, params=None, headers=None, timeout=None):
-            date = params["date"]
-            self.requested_dates.append(date)
-            if date == "2024-10-22":
-                return _Response(
-                    {
-                        "result": {
-                            "games": [
-                                {"gameId": "77771022SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
-                            ],
-                        },
-                    },
-                )
-            if date == "2024-10-23":
-                return _Response(
-                    {
-                        "result": {
-                            "games": [
-                                {"gameId": "77771023SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
-                                {"gameId": "77771021SSHT02024", "awayTeamCode": "SS", "homeTeamCode": "HT"},
-                            ],
-                        },
-                    },
-                )
-            return _Response({"result": {"games": []}})
+    monkeypatch.setattr(crawler, "_request_json", _request)
 
-    client = _Client()
-
-    resolved = asyncio.run(crawler._resolve_naver_game_id(client, "20241021SSHT0"))
+    resolved = asyncio.run(crawler._resolve_naver_game_id("20241021SSHT0"))
 
     assert resolved == "77771021SSHT02024"
-    assert client.requested_dates[:4] == ["2024-10-21", "2024-10-22", "2024-10-20", "2024-10-23"]
+    assert requested_dates[:4] == ["2024-10-21", "2024-10-22", "2024-10-20", "2024-10-23"]
 
 
 def test_special_bucket_source_order_includes_naver_after_kbo():
@@ -411,66 +394,130 @@ def test_parse_naver_payload_keeps_all_batter_segments_in_chronological_order():
     assert all(t for t in header_titles)
 
 
-def test_fetch_text_relays_handles_null_result_payload(monkeypatch):
-    compliance = _FakeCompliance()
-    monkeypatch.setattr(relay_module, "compliance", compliance)
+def test_fetch_text_relays_handles_null_result_payload():
     crawler = RelayCrawler(policy=_FakePolicy())
 
-    class _Response:
-        def __init__(self, payload):
-            self.status_code = 200
-            self._payload = payload
+    async def _request(url, *, params=None, headers=None):
+        return {"result": None}, None
 
-        def json(self):
-            return self._payload
+    crawler._request_json = _request
 
-    class _Client:
-        def __init__(self):
-            self.calls = 0
+    fetched = asyncio.run(crawler._fetch_text_relays("dummy"))
 
-        async def get(self, *args, **kwargs):
-            self.calls += 1
-            if self.calls == 1:
-                return _Response({"result": None})
-            return _Response({"result": {"textRelayData": {"textRelays": []}}})
-
-    relays = asyncio.run(crawler._fetch_text_relays(_Client(), "dummy"))
-
-    assert relays == []
-    assert compliance.urls
+    # The fetch also says why it stopped. A `result: None` envelope is the source
+    # answering with nothing, which is an empty first inning rather than a failed
+    # request -- the two used to arrive as the same empty list.
+    assert fetched.relays == []
+    assert fetched.stop == InningStop.EMPTY_INNING
+    assert fetched.innings_fetched == 0
+    assert fetched.failure_reason is None
 
 
-def test_relay_request_helper_uses_compliance_delay_and_retry(monkeypatch):
-    compliance = _FakeCompliance()
-    policy = _FakePolicy()
-    monkeypatch.setattr(relay_module, "compliance", compliance)
-    crawler = RelayCrawler(policy=policy)
+class _FakeHttp:
+    """Stands in for the shared transport, recording how it was called."""
 
-    class _Response:
-        status_code = 200
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
 
-        def json(self):
-            return {"result": {"ok": True}}
+    async def fetch_json(self, url, *, params=None, headers=None):
+        self.calls.append((url, params, headers))
+        return self.result
 
-    class _Client:
-        async def get(self, url, params=None, headers=None, timeout=None):
-            self.call = (url, params, headers, timeout)
-            return _Response()
 
-    client = _Client()
+def _crawl_result(outcome, *, status=None, code=None, data=None):
+    """Build the transport result the shared client would produce."""
+    from src.crawlers.result import CrawlResult
+
+    if outcome is CrawlOutcome.SUCCESS:
+        return CrawlResult.success(data, http_status=status or 200)
+    if outcome is CrawlOutcome.EMPTY:
+        return CrawlResult.empty(http_status=status or 200)
+    return CrawlResult.failure(outcome, error="x", http_status=status, error_code=code)
+
+
+def test_request_json_delegates_to_the_shared_transport():
+    """Compliance, throttling and retries are the shared client's job now.
+
+    Kept here as a delegation contract: the crawler must hand the shared client
+    the URL, the query and the per-request headers, because the shared client
+    merges its own defaults with what it is given.
+    """
+    fake = _FakeHttp(_crawl_result(CrawlOutcome.PERMANENT_ERROR, status=500, code="FETCH_HTTP_ERROR"))
+    crawler = RelayCrawler(http=fake)
+
     payload, reason = asyncio.run(
         crawler._request_json(
-            client,
             "https://api-gw.sports.naver.com/schedule/today-games",
             params={"date": "2025-04-01"},
-        ),
+            headers={"Referer": "https://m.sports.naver.com/"},
+        )
     )
 
-    assert payload == {"result": {"ok": True}}
+    # A permanent status keeps its number, so the ledger can tell a 500 from
+    # a 404 without the reason string having to encode every case.
+    assert (payload, reason) == (None, "http_500")
+    url, params, headers = fake.calls[0]
+    assert url.endswith("/schedule/today-games")
+    assert params == {"date": "2025-04-01"}
+    assert headers == {"Referer": "https://m.sports.naver.com/"}
+
+
+def test_request_json_does_not_throttle_itself():
+    """Two throttles on one request means every wait is paid twice.
+
+    The shared client already waits on the same per-host limiter, so a second
+    delay here would double every request's pause and quietly slow the crawl.
+    """
+    policy = _FakePolicy()
+    crawler = RelayCrawler(policy=policy, http=_FakeHttp(_crawl_result(CrawlOutcome.PERMANENT_ERROR, status=500)))
+
+    asyncio.run(crawler._request_json("https://api-gw.sports.naver.com/schedule/today-games"))
+
+    assert policy.delay_hosts == []
+
+
+def test_a_relay_404_stays_an_absence_and_not_a_transport_fault():
+    """The translation the whole vocabulary rests on.
+
+    The shared client reports a 404 as a permanent HTTP error, which is right in
+    general and wrong here: for a relay endpoint it means the source does not
+    have the game. Collapsing the two would queue every absent game for retries
+    that cannot succeed.
+    """
+    crawler = RelayCrawler(
+        http=_FakeHttp(_crawl_result(CrawlOutcome.PERMANENT_ERROR, status=404, code="FETCH_HTTP_ERROR"))
+    )
+
+    payload, reason = asyncio.run(crawler._request_json("https://api-gw.sports.naver.com/schedule/games/x/relay"))
+
+    assert payload is None
+    assert reason == "http_404"
+
+
+def test_an_undecodable_body_is_named_as_drift_not_as_an_api_error():
+    """A shape we no longer read is our problem, not the site's."""
+    crawler = RelayCrawler(
+        http=_FakeHttp(_crawl_result(CrawlOutcome.SCHEMA_CHANGED, status=200, code="PARSE_INVALID_FORMAT"))
+    )
+
+    payload, reason = asyncio.run(crawler._request_json("https://api-gw.sports.naver.com/schedule/games/x/relay"))
+
+    assert payload is None
+    assert reason == "relay_schema_drift"
+
+
+def test_an_empty_body_is_a_successful_request_with_nothing_in_it():
+    """It stays a payload, because the inning loop reads an envelope.
+
+    Turning it into a failure would report every finished game as a broken one.
+    """
+    crawler = RelayCrawler(http=_FakeHttp(_crawl_result(CrawlOutcome.EMPTY, status=200)))
+
+    payload, reason = asyncio.run(crawler._request_json("https://api-gw.sports.naver.com/schedule/games/x/relay"))
+
+    assert payload == {}
     assert reason is None
-    assert policy.retry_calls == 1
-    assert policy.delay_hosts == ["api-gw.sports.naver.com"]
-    assert compliance.urls == ["https://api-gw.sports.naver.com/schedule/today-games?date=2025-04-01"]
 
 
 def test_match_schedule_game_rejects_team_mismatch_even_when_id_suffix_matches():

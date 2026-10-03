@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.cli.kbo import main as kbo_main
 from src.cli.snapshot_replay import main as snapshot_main
 from src.services.snapshot_persist import SnapshotPersistResult
@@ -125,6 +127,7 @@ def test_persist_single_json(monkeypatch, capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["saved"] == 3
     assert payload[0]["target_domain"] == "event"
+    assert payload[0]["outcome"] == "saved"
 
 
 def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
@@ -138,6 +141,36 @@ def test_persist_combo_with_ledger(monkeypatch, capsys) -> None:
     assert "run-replay" in out
 
 
+def test_strict_read_only_fails_on_error(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "src.cli.snapshot_replay.replay_snapshot",
+        lambda _sid, **_k: _result(success=False, error="boom"),
+    )
+    assert snapshot_main(["--snapshot-id", "5", "--strict"]) == 4
+
+
+def test_strict_persist_fails_on_skipped(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    monkeypatch.setattr(
+        "src.cli.snapshot_replay.persist_snapshot",
+        lambda _sid, **_k: _persist_result(success=False, skipped=True),
+    )
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--strict"]) == 4
+
+
+def test_combo_missing_replay_guard_denies_before_mutation(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("KBO_ALLOW_SNAPSHOT_REPLAY", raising=False)
+    monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_PERSIST", "1")
+    persisted: list[int] = []
+    recorded: list[int] = []
+    monkeypatch.setattr("src.cli.snapshot_replay.persist_snapshot", lambda *a, **k: persisted.append(1))
+    monkeypatch.setattr("src.cli.snapshot_replay.record_snapshot_replay", lambda *a, **k: recorded.append(1))
+    assert snapshot_main(["--snapshot-id", "5", "--persist", "--apply"]) == 3
+    assert persisted == []
+    assert recorded == []
+    assert "KBO_ALLOW_SNAPSHOT_REPLAY" in capsys.readouterr().err
+
+
 def test_apply_batch_records(monkeypatch, capsys) -> None:
     monkeypatch.setenv("KBO_ALLOW_SNAPSHOT_REPLAY", "1")
     monkeypatch.setattr(
@@ -147,3 +180,41 @@ def test_apply_batch_records(monkeypatch, capsys) -> None:
     assert snapshot_main(["--limit", "2", "--apply"]) == 0
     out = capsys.readouterr().out
     assert "run-replay" in out
+
+
+def test_explicit_limit_zero_is_honored(monkeypatch, capsys) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotReplayResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_replay.replay_recent_snapshots", _fake)
+    assert snapshot_main(["--limit", "0"]) == 0
+    assert captured["limit"] == 0
+    assert "(no snapshots)" in capsys.readouterr().out
+
+
+def test_limit_defaults_to_fifty(monkeypatch) -> None:
+    captured: dict[str, int] = {}
+
+    def _fake(*, limit: int, **_k: object) -> list[SnapshotReplayResult]:
+        captured["limit"] = limit
+        return []
+
+    monkeypatch.setattr("src.cli.snapshot_replay.replay_recent_snapshots", _fake)
+    assert snapshot_main([]) == 0
+    assert captured["limit"] == 50
+
+
+def test_negative_limit_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        snapshot_main(["--limit", "-1"])
+    assert exc.value.code == 2
+    assert ">= 0" in capsys.readouterr().err
+
+
+def test_master_cli_rejects_negative_limit(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        kbo_main(["snapshot", "replay", "--limit", "-1"])
+    assert exc.value.code == 2

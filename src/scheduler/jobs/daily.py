@@ -46,9 +46,16 @@ class JobStatus(Enum):
     """Job execution status for dependency tracking."""
 
     SUCCESS = "success"
+    WARNING = "warning"
     FAILURE = "failure"
     SKIPPED = "skipped"
     RUNNING = "running"
+
+
+#: Statuses that let dependent jobs proceed. WARNING is included because it marks
+#: a job that *ran to completion* and only reported a data-quality concern; blocking
+#: downstream work on that would convert a quality problem into an outage.
+DEPENDENCY_PASSING_STATUSES = frozenset({JobStatus.SUCCESS, JobStatus.WARNING})
 
 
 @dataclass
@@ -90,7 +97,7 @@ def _can_run_job(job_name: str) -> tuple[bool, str]:
         if dep not in _JOB_REGISTRY:
             return False, f"Dependency {dep} not registered"
         dep_status = _JOB_REGISTRY[dep].status
-        if dep_status != JobStatus.SUCCESS:
+        if dep_status not in DEPENDENCY_PASSING_STATUSES:
             return False, f"Dependency {dep} has status {dep_status.value}"
     return True, ""
 
@@ -272,8 +279,15 @@ def crawl_daily_games() -> None:
                         alert_warn("crawl_daily_games", msg)
                         _update_job_status("crawl_daily_games", JobStatus.FAILURE, msg)
                     else:
+                        # Data quality is its own incident (``quality:daily`` is
+                        # published above), and the remediation command rides on it.
+                        # Recording FAILURE here would make ``_can_run_job`` skip
+                        # every dependent job, turning one stale aggregate table
+                        # into a pipeline-wide outage -- as it did when
+                        # ``team_season_*`` froze in July and prod went unwritten for
+                        # a week. The pipeline completed; only the gate is unhappy.
                         msg = "Daily DAG Sync quality gate warning (incident-tracked)"
-                        _update_job_status("crawl_daily_games", JobStatus.FAILURE, msg)
+                        _update_job_status("crawl_daily_games", JobStatus.WARNING, msg)
                 else:
                     err_msg = f"Master DAG Daily Sync failed: {report.overall_status}"
                     _update_job_status("crawl_daily_games", JobStatus.FAILURE, err_msg)
@@ -640,13 +654,9 @@ def lock_health_check_job() -> None:
         logger.warning("Skipping lock_health_check_job: %s", reason)
         return
 
-    target_mod = sys.modules.get("scheduler_under_test") or sys.modules.get("scripts.scheduler")
-    sp = getattr(target_mod, "subprocess", subprocess) if target_mod else subprocess
-    warn_fn = getattr(target_mod, "alert_warning", alert_warning) if target_mod else alert_warning
-
     logger.info("=== Starting Scheduler Lock Health Check ===")
     try:
-        result = sp.run(
+        result = subprocess.run(
             [sys.executable, "scripts/check_p1p2_lock_health.py", "--require-run"],
             capture_output=True,
             text=True,
@@ -654,7 +664,7 @@ def lock_health_check_job() -> None:
         )
     except OSError as exc:
         logger.exception("Scheduler lock health check failed to launch")
-        warn_fn("lock_health_check", details=f"Could not run check script: {exc}")
+        alert_warning("lock_health_check", details=f"Could not run check script: {exc}")
         _update_job_status("lock_health_check_job", JobStatus.FAILURE, f"Launch failed: {exc}")
         return
 
@@ -662,7 +672,7 @@ def lock_health_check_job() -> None:
     for line in output.splitlines():
         logger.info("[lock_health] %s", line)
     if result.returncode != 0:
-        warn_fn("lock_health_check", details=output[-1500:])
+        alert_warning("lock_health_check", details=output[-1500:])
         logger.warning("Scheduler lock health check reported problems (alert sent).")
         _update_job_status("lock_health_check_job", JobStatus.FAILURE, "Health check failed")
     else:

@@ -4,7 +4,7 @@ For each pending snapshot:
   1. Re-parses the stored content-addressed artifact (no network fetch)
   2. Dispatches to the appropriate parser via registry
   3. Saves parsed data to the correct repository
-  4. Marks parse_status as 'done' or 'failed'
+  4. Marks parse_status as 'done', 'partial', or 'failed'
 
 The offline replay itself is owned by ``src.services.snapshot_replay``.
 """
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from src.db.engine import SessionLocal
 from src.models.source_registry import DataSource as DSModel
 from src.repositories.source_registry_repository import RawSourceSnapshotRepository
-from src.services.snapshot_persist import save_parsed
+from src.services.snapshot_persist import persist_parsed_records
 from src.services.snapshot_replay import SnapshotReplayError, parse_snapshot
 
 logger = logging.getLogger(__name__)
@@ -53,11 +53,17 @@ def _process_snapshot(session, snap_repo, snapshot, dry_run: bool, session_facto
         session.commit()
         return "done"
 
-    saved = save_parsed(session, ds.target_domain, parsed.records)
-    snap_repo.update_parse_status(snapshot.id, "done", parser_version=parsed.parser_version or PARSER_VERSION)
+    outcome = persist_parsed_records(session_factory, ds.target_domain, parsed.records)
+    if outcome.failed == 0:
+        status = "done"
+    elif outcome.saved > 0:
+        status = "partial"
+    else:
+        status = "failed"
+    snap_repo.update_parse_status(snapshot.id, status, parser_version=parsed.parser_version or PARSER_VERSION)
     session.commit()
-    logger.info("[PARSE] %s: %d items saved", ds.source_key, saved)
-    return "done"
+    logger.info("[PARSE] %s: %d saved, %d failed", ds.source_key, outcome.saved, outcome.failed)
+    return status
 
 
 def run_batch_parse(
@@ -67,7 +73,7 @@ def run_batch_parse(
     retry_after_hours: int = 1,
     session_factory=None,
 ) -> dict[str, int]:
-    stats: dict[str, int] = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
+    stats: dict[str, int] = {"processed": 0, "done": 0, "partial": 0, "failed": 0, "skipped": 0}
     factory = session_factory or SessionLocal
     with factory() as session:
         snap_repo = RawSourceSnapshotRepository(session)
@@ -83,7 +89,13 @@ def run_batch_parse(
             stats["processed"] += 1
             result = _process_snapshot(session, snap_repo, snapshot, dry_run, factory)
             stats[result] += 1
-    logger.info("[PARSE] Done: %d, Failed: %d, Skipped: %d", stats["done"], stats["failed"], stats["skipped"])
+    logger.info(
+        "[PARSE] Done: %d, Partial: %d, Failed: %d, Skipped: %d",
+        stats["done"],
+        stats["partial"],
+        stats["failed"],
+        stats["skipped"],
+    )
     return stats
 
 

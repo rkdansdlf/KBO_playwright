@@ -19,62 +19,34 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
 from src.db.engine import SessionLocal
+from src.monitoring.crawler_metrics import (
+    LEDGER_OPERATION_FINALIZE,
+    LEDGER_OPERATION_OPEN,
+    record_ledger_failure,
+)
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
+from src.services.crawl_run_ledger import RunCounts, RunOpenResult, TerminalOutcome
 from src.services.crawl_run_service import CrawlRunService
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+#: Shared empty counts, so a default is not a fresh object per call.
+_NO_ROWS = RunCounts()
 
 GAME_DETAIL_CRAWLER_NAME = "game_detail"
 GAME_DETAIL_TARGET_TYPE = "game"
 _GAME_ID_YEAR_LEN = 4
 #: ``YYYYMMDD`` at the head of a KBO game ID.
 _GAME_ID_DATE_LEN = 8
-
-
-@dataclass(frozen=True)
-class RunCounts:
-    """Rows moved by one game, as the run ledger records them.
-
-    `written` counts rows actually stored, which includes a degraded partial:
-    the payload was persisted. A "full detail" flag must not be used here,
-    because it is false for exactly the partial case that did write.
-    """
-
-    read: int = 0
-    written: int = 0
-    failed: int = 0
-
-
-#: Shared empty counts, so a default is not a fresh object per call.
-_NO_ROWS = RunCounts()
-
-
-@dataclass(frozen=True)
-class TerminalOutcome:
-    """What became of one game after its fetch and its write.
-
-    Returned only when the ledger transition actually committed. A caller must
-    not treat a run it could not record as finished, and must not report a
-    success the ledger never accepted.
-
-    For a replay, the persisted run row is still the authority: this is how the
-    collection service reports back to its own caller, not a substitute for
-    reading the run back.
-    """
-
-    status: str
-    error_code: str | None = None
-    error_message: str | None = None
-    counts: RunCounts = _NO_ROWS
-    run_id: str | None = None
 
 
 def game_date_of(game_id: str) -> str:
@@ -90,7 +62,7 @@ def game_date_of(game_id: str) -> str:
     return ""
 
 
-def _season_of(game_id: str) -> int | None:
+def season_of(game_id: str) -> int | None:
     """Return the season encoded in a game ID, when it looks like a KBO one."""
     prefix = game_id[:_GAME_ID_YEAR_LEN]
     return int(prefix) if len(prefix) == _GAME_ID_YEAR_LEN and prefix.isdigit() else None
@@ -103,7 +75,7 @@ def _spec_for(game_id: str) -> CrawlRunSpec:
         target_type=GAME_DETAIL_TARGET_TYPE,
         target_id=game_id,
         game_id=game_id,
-        season=_season_of(game_id),
+        season=season_of(game_id),
     )
 
 
@@ -112,32 +84,48 @@ class GameDetailRunLedger:
 
     Each method owns its own transaction, so a failure in one game never rolls
     back the records of the others.
+
+    `session_factory` builds the session each transition is recorded on. A
+    caller on a database other than the default has to pass its own, or its
+    ledger rows land somewhere its data does not.
     """
 
-    def open_runs(self, game_ids: Sequence[str]) -> dict[str, str]:
+    def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
+        """Keep the session factory every transition is recorded through."""
+        # Resolved at construction, not bound as a default argument: a default is
+        # evaluated when the `def` runs, so rebinding `SessionLocal` later would
+        # be ignored and the ledger would keep using the original session.
+        self._session_factory = session_factory or SessionLocal
+
+    def open_runs(self, game_ids: Sequence[str]) -> RunOpenResult:
         """Start a run for every game, before any of them is fetched.
 
         Args:
             game_ids: The games about to be crawled.
 
         Returns:
-            A mapping of game ID to run ID. A game whose run could not be started
-            is simply absent, and its outcome is then recorded nowhere rather than
-            half-recorded.
+            Which games got a run, and the classified cause for each that did
+            not. A run is opened before the fetch so the crawl time is part of
+            the duration, which means a game can reach this method's caller with
+            no run at all; the caller needs the reason to do anything about it.
 
         """
         started: dict[str, str] = {}
+        failures: dict[str, tuple[str, str]] = {}
         for game_id in game_ids:
             try:
-                with SessionLocal() as session:
+                with self._session_factory() as session:
                     run = CrawlRunService(session).start(_spec_for(game_id))
                     session.commit()
                     started[game_id] = run.run_id
-            except Exception:
+            except Exception as exc:
+                _stage, code = classify_persist_failure(exc)
+                failures[game_id] = (code.value, f"{type(exc).__name__}: {exc}")
+                record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
                 logger.exception("Failed to open crawl run for %s", game_id)
-        return started
+        return RunOpenResult(started=started, failures=failures)
 
-    def open_run(self, spec: CrawlRunSpec) -> str | None:
+    def open_run(self, spec: CrawlRunSpec) -> RunOpenResult:
         """Start a run from a spec the caller already built.
 
         A replay has to run under the identity the dead letter's dispatcher
@@ -149,17 +137,23 @@ class GameDetailRunLedger:
             spec: The run identity, including the replay link.
 
         Returns:
-            The run ID, or None when the run could not be started.
+            The run that was started, or the classified reason none was. A
+            replay that cannot open its run must not write anything: it would
+            store data with no record of having stored it, and the letter would
+            have nothing to resolve against.
 
         """
+        game_id = str(spec.target_id)
         try:
-            with SessionLocal() as session:
+            with self._session_factory() as session:
                 run = CrawlRunService(session).start(spec)
                 session.commit()
-        except Exception:
+        except Exception as exc:
+            _stage, code = classify_persist_failure(exc)
+            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
             logger.exception("Failed to open replay run %s", spec.run_id)
-            return None
-        return run.run_id
+            return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
+        return RunOpenResult(started={game_id: run.run_id})
 
     def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
         """Close a run whose game was fetched completely and stored.
@@ -251,10 +245,20 @@ class GameDetailRunLedger:
 
         """
         try:
-            with SessionLocal() as session:
+            with self._session_factory() as session:
                 service = CrawlRunService(session)
                 run = CrawlExecutionRepository(session).get_by_run_id(run_id)
                 if run is None:
+                    # Nothing raised, so there is no cause to classify. The run
+                    # row is simply absent, which is what REPLAY_RUN_MISSING
+                    # means; the name reads as replay-specific but a scheduled
+                    # run can vanish the same way, and inventing a persistence
+                    # code would blame the database for a missing row.
+                    record_ledger_failure(
+                        GAME_DETAIL_CRAWLER_NAME,
+                        LEDGER_OPERATION_FINALIZE,
+                        FailureCode.REPLAY_RUN_MISSING.value,
+                    )
                     logger.warning("Crawl run %s vanished before finalize", run_id)
                     return False
                 if status == "success":
@@ -278,7 +282,9 @@ class GameDetailRunLedger:
                     )
                 session.commit()
                 return True
-        except Exception:
+        except Exception as exc:
+            _stage, code = classify_persist_failure(exc)
+            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
             logger.exception("Failed to finalize crawl run %s", run_id)
             return False
 
@@ -288,6 +294,8 @@ __all__ = [
     "GAME_DETAIL_TARGET_TYPE",
     "GameDetailRunLedger",
     "RunCounts",
+    "RunOpenResult",
     "TerminalOutcome",
     "game_date_of",
+    "season_of",
 ]

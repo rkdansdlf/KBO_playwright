@@ -1057,13 +1057,14 @@ def _log_relay_save_result(
         logger.info("Relay save for %s: saved_event_rows=%d saved_pbp_rows=%d", game_id, event_count, pbp_count)
 
 
-def save_relay_data(
+def save_relay_data(  # noqa: PLR0913 - keyword-only options are the public contract here
     game_id: str,
     events: list[dict[str, Any]] | None = None,
     raw_pbp_rows: list[dict[str, Any]] | None = None,
     *,
     options: RelaySaveOptions | None = None,
     session: Session | None = None,
+    raise_on_error: bool = False,
     **overrides: object,
 ) -> int:
     """Persist normalized relay data.
@@ -1073,12 +1074,20 @@ def save_relay_data(
     - When only lightweight play-by-play rows exist, persist game_play_by_play only.
     - Never synthesize game_events if WPA/state coverage is insufficient.
 
+    `0` means two different things, and a caller cannot tell them apart unless it
+    asks: a payload with nothing persistable in it, and a database that refused
+    the write. Only the second is a persistence failure. `raise_on_error` lets the
+    ledger path hold the real exception and classify it at the point it was raised,
+    while every other caller keeps the lenient behaviour this function has always
+    had.
+
     Args:
         game_id: Game ID.
         events: Events.
         raw_pbp_rows: Raw Pbp Rows.
         options: Options.
         session: Session instance.
+        raise_on_error: Re-raise a persistence failure instead of returning 0.
         overrides: Overrides.
         game_id: Game ID.
         events: Events.
@@ -1095,6 +1104,7 @@ def save_relay_data(
                 raw_pbp_rows=raw_pbp_rows,
                 options=options,
                 session=s,
+                raise_on_error=raise_on_error,
                 **overrides,
             )
 
@@ -1208,5 +1218,10 @@ def save_relay_data(
         _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
         return len(event_rows) if event_rows else len(pbp_rows)
     except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
+        if raise_on_error:
+            # The caller asked to classify this itself, and it can only do that
+            # with the exception in hand. Swallowing it here would hand back a 0
+            # that reads exactly like "nothing to persist".
+            raise
         logger.exception("[ERROR] DB Error (Relay)")
         return 0

@@ -1,14 +1,19 @@
-"""Read-only replay and validation of stored raw source snapshots.
+"""Replay and validation of stored raw source snapshots.
 
-Unlike ``scripts/batch_parse_snapshots`` (which re-fetches the URL), this reads
+Unlike ``scripts/batch_parse_snapshots`` (which re-fetches the URL), replay reads
 the content-addressed artifact recorded at crawl time, so parser changes can be
-re-validated without any network call or database write.
+re-validated without any network call.
+
+Parsing and validation are read-only. The ``record_*`` helpers are the only
+writers in this module: they persist one crawl execution ledger run per snapshot
+and never touch the domain tables (see :mod:`src.services.snapshot_persist` for
+that).
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +21,7 @@ from src.crawlers.failure_taxonomy import FailureCode
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED
 from src.parsers.registry import get_parser
+from src.repositories.crawl_evidence_repository import evidence_root
 from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import (
     DataSourceRepository,
@@ -50,14 +56,21 @@ class SnapshotNotFoundError(SnapshotReplayError):
 
 @dataclass(frozen=True)
 class SnapshotParseResult:
-    """Result of re-parsing one stored snapshot (records included)."""
+    """Result of re-parsing one stored snapshot (records included).
+
+    ``records`` is an immutable tuple so frozen instances cannot be mutated in
+    place. Instances stay intentionally unhashable: record payloads are dicts,
+    which cannot participate in a meaningful hash.
+    """
 
     snapshot_id: int
     source_key: str | None
     parser_version: str | None
-    records: list[dict] = field(default_factory=list)
+    records: tuple[dict, ...] = ()
     success: bool = True
     error: str | None = None
+
+    __hash__ = None  # type: ignore[assignment]
 
     @property
     def parsed_count(self) -> int:
@@ -102,6 +115,7 @@ class SnapshotDriftSummary:
     unknown_baseline: int = 0
     failed: int = 0
     drifted_ids: tuple[int, ...] = ()
+    failed_ids: tuple[int, ...] = ()
     ok: bool = True
 
     def to_dict(self) -> dict[str, object]:
@@ -114,6 +128,7 @@ class SnapshotDriftSummary:
             "unknown_baseline": self.unknown_baseline,
             "failed": self.failed,
             "drifted_ids": list(self.drifted_ids),
+            "failed_ids": list(self.failed_ids),
             "ok": self.ok,
         }
 
@@ -145,23 +160,35 @@ class _SnapshotView:
 
 @dataclass(frozen=True)
 class _ParserResult:
-    records: list[dict]
+    records: tuple[dict, ...]
     error: str | None
 
 
-def load_snapshot_text(raw_path: str | None) -> str:
-    """Load the stored snapshot artifact as text, rejecting URL-style paths."""
+def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None) -> str:
+    """Load the stored snapshot artifact as text.
+
+    Rejects URL-style paths and, by default, any file outside the configured
+    evidence root so a corrupted ``raw_html_or_json_path`` cannot turn replay
+    into an arbitrary local file read.
+    """
     if not raw_path:
         msg = "snapshot has no stored artifact path"
         raise SnapshotReplayError(msg)
-    if raw_path.startswith(_URL_PREFIXES):
+    lowered = raw_path.casefold()
+    if lowered.startswith((*_URL_PREFIXES, "file://")):
         msg = f"snapshot artifact is a URL, not a replayable file: {raw_path}"
         raise SnapshotReplayError(msg)
-    path = Path(raw_path)
-    if not path.is_file():
-        msg = f"stored snapshot artifact not found: {path}"
+    resolved = Path(raw_path).expanduser().resolve()
+    if not resolved.is_file():
+        msg = f"stored snapshot artifact not found: {resolved}"
         raise SnapshotReplayError(msg)
-    return path.read_text(encoding="utf-8", errors="replace")
+    root = (allowed_root or evidence_root()).expanduser().resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        msg = f"snapshot artifact is outside the evidence root: {resolved}"
+        raise SnapshotReplayError(msg) from exc
+    return resolved.read_text(encoding="utf-8", errors="replace")
 
 
 def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _ParserResult:
@@ -175,11 +202,11 @@ def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _Pars
         }
         parsed = parser(text, view.source_key or "", metadata)
     except SnapshotReplayError as exc:
-        return _ParserResult([], str(exc))
+        return _ParserResult((), str(exc))
     except Exception as exc:
         logger.exception("Snapshot replay parser failed for snapshot %s", view.snapshot_id)
-        return _ParserResult([], str(exc))
-    return _ParserResult(list(parsed), None)
+        return _ParserResult((), str(exc))
+    return _ParserResult(tuple(parsed), None)
 
 
 def _baseline_count(capture_metadata: dict | None) -> int | None:
@@ -255,6 +282,12 @@ def replay_snapshot(
     )
 
 
+def _recent_snapshot_ids(limit: int, factory: Callable[[], Session]) -> list[int]:
+    """Return the ids of the most recent snapshots, newest first."""
+    with factory() as session:
+        return [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+
+
 def replay_recent_snapshots(
     *,
     limit: int = 50,
@@ -262,8 +295,7 @@ def replay_recent_snapshots(
 ) -> list[SnapshotReplayResult]:
     """Replay the most recent snapshots, isolating per-snapshot failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotReplayResult] = []
     for snapshot_id in snapshot_ids:
@@ -316,8 +348,7 @@ def validate_recent_snapshots(
 ) -> list[SnapshotValidationResult]:
     """Validate the most recent snapshots, isolating per-snapshot failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotValidationResult] = []
     for snapshot_id in snapshot_ids:
@@ -349,16 +380,20 @@ def summarize_snapshot_drift(
     """Summarize validation results into a gate-friendly drift report.
 
     ``unknown_baseline`` snapshots are reported but never counted as drift, since
-    they simply predate ``parsed_records`` capture.
+    they simply predate ``parsed_records`` capture. Both ``drifted_ids`` and
+    ``failed_ids`` are capped at ``sample_size`` so an alert stays readable.
     """
     failed = 0
     with_baseline = 0
     drifted = 0
     unknown_baseline = 0
     drifted_ids: list[int] = []
+    failed_ids: list[int] = []
     for result in results:
         if not result.success:
             failed += 1
+            if len(failed_ids) < sample_size:
+                failed_ids.append(result.snapshot_id)
             continue
         if result.baseline_count is None:
             unknown_baseline += 1
@@ -377,6 +412,7 @@ def summarize_snapshot_drift(
         unknown_baseline=unknown_baseline,
         failed=failed,
         drifted_ids=tuple(drifted_ids),
+        failed_ids=tuple(failed_ids),
         ok=drifted <= drift_max and failed <= fail_max,
     )
 
@@ -387,7 +423,8 @@ def record_snapshot_replay(
     session_factory: Callable[[], Session] | None = None,
 ) -> SnapshotReplayRunResult:
     """Re-parse a snapshot and record the result as a crawl execution run."""
-    parsed = parse_snapshot(snapshot_id, session_factory=session_factory)
+    factory: Callable[[], Session] = session_factory or SessionLocal
+    parsed = parse_snapshot(snapshot_id, session_factory=factory)
     spec = CrawlRunSpec(
         crawler=SNAPSHOT_REPLAY_CRAWLER,
         target_type=SNAPSHOT_REPLAY_TARGET_TYPE,
@@ -395,7 +432,7 @@ def record_snapshot_replay(
         snapshot_id=parsed.snapshot_id,
         parser_version=parsed.parser_version,
     )
-    with track_crawl_run(spec) as run:
+    with track_crawl_run(spec, session_factory=factory) as run:
         run.records_read = parsed.parsed_count
         run.records_written = 0
         if not parsed.success:
@@ -421,8 +458,7 @@ def record_recent_snapshot_replays(
 ) -> list[SnapshotReplayRunResult]:
     """Record ledger runs for the most recent snapshots, isolating failures."""
     factory: Callable[[], Session] = session_factory or SessionLocal
-    with factory() as session:
-        snapshot_ids = [snapshot.id for snapshot in RawSourceSnapshotRepository(session).get_recent(limit=limit)]
+    snapshot_ids = _recent_snapshot_ids(limit, factory)
 
     results: list[SnapshotReplayRunResult] = []
     for snapshot_id in snapshot_ids:

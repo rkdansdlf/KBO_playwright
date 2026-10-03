@@ -273,6 +273,12 @@ REPLAY_HANDLERS: dict[str, str] = {
     "roster_transactions": "roster_transaction_crawler",
     "schedule": "schedule_crawler",
     "game_detail": "game_detail_crawler",
+    "relay": "relay_crawler",
+    "food": "food_crawler",
+    "parking": "parking_crawler",
+    "kbo_event": "kbo_event_crawler",
+    "player_movement": "player_movement_crawler",
+    "team_history": "team_history_crawler",
 }
 
 #: The module names behind those handlers, for lookup by module.
@@ -305,8 +311,10 @@ DECLARED: dict[str, DesignFacts] = {
     ),
     "relay_crawler": DesignFacts(
         granularity=Granularity.GAME,
-        empty=EmptySemantics.COLLAPSED,
-        note="Third in line after the schedule and game-detail migrations.",
+        empty=EmptySemantics.TYPED,
+        note="Typed per-game outcome. Absence, a mid-game fetch stop and a hard failure are distinct: only a "
+        "genuine absence is a clean empty, because reporting a blocked or unparseable crawl as an empty game "
+        "tells an operator the source has no relay when it was never asked.",
     ),
     "ticket_crawler": DesignFacts(
         granularity=Granularity.TEAM,
@@ -317,11 +325,15 @@ DECLARED: dict[str, DesignFacts] = {
 }
 
 #: Migration order decided by upstream impact rather than by how little work is
-#: left. The schedule is done -- it fed nearly every other crawl, so a silent
-#: failure there poisoned everything downstream. Game detail is done too, so
-#: relay leads: it is the largest surface still without a run, a dead letter or
-#: a replay, and a silent failure there corrupts the relay-driven game narrative.
-PRIORITY_ORDER: tuple[str, ...] = ("relay_crawler",)
+#: left. The large surfaces are done -- schedule, game detail and relay all feed
+#: something downstream, and a silent failure in any of them poisons whatever
+#: reads it. What remains is the small, repeatable work: food and parking still
+#: reach their data through a raw `httpx` path inherited from `BaseHttpCrawler`,
+#: so they carry a second, unthrottled request path for no benefit.
+PRIORITY_ORDER: tuple[str, ...] = (
+    "food_crawler",
+    "parking_crawler",
+)
 
 #: Base classes whose subclasses inherit their HTTP transport.
 _HTTP_BASES = frozenset({"BaseHttpCrawler"})
@@ -411,19 +423,24 @@ def _transport_of_node(node: ast.AST) -> Transport | None:
     return None
 
 
-def _resolve_transports(tree: ast.Module, base_class: str) -> frozenset[Transport]:
+def _resolve_transports(tree: ast.Module, base_class: str, *, mentions_httpx: bool) -> frozenset[Transport]:
     """Return every transport a module reaches a source through.
 
     A crawler can be genuinely hybrid -- an API primary with a browser fallback --
     so this returns a set rather than picking a winner. Detection walks the AST so
     a mention in a comment or a URL cannot register as a transport.
+
+    Inheriting `BaseHttpCrawler` only means a raw client is *available*, not that
+    it is used. Reporting it unconditionally made a fully migrated crawler look
+    half-converted forever, which is the opposite of what this gate is for, so
+    the base class counts only when the module still reaches for httpx itself.
     """
     found: set[Transport] = set()
     for node in ast.walk(tree):
         transport = _transport_of_node(node)
         if transport is not None:
             found.add(transport)
-    if base_class in _HTTP_BASES:
+    if base_class in _HTTP_BASES and mentions_httpx:
         found.add(Transport.RAW_HTTPX)
     if base_class in _PLAYWRIGHT_BASES:
         found.add(Transport.PLAYWRIGHT)
@@ -442,6 +459,14 @@ DELEGATED_CAPABILITIES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "game_detail_crawler": (
         ("src/services/game_collection_service.py", ("enqueue_failure", "DeadLetterSpec")),
         ("src/services/game_detail_runs.py", ("open_runs", "record_success")),
+    ),
+    # Relay reaches its ledger and its queue the same way game detail does: the
+    # crawler fetches, and the service that owns the write decides what was
+    # stored. Pointing this at the crawler module would have gone stale the
+    # moment either half moved.
+    "relay_crawler": (
+        ("src/services/game_collection_service.py", ("enqueue_failure", "DeadLetterSpec")),
+        ("src/services/relay_runs.py", ("open_runs", "record_success")),
     ),
 }
 
@@ -471,7 +496,7 @@ def scan_module(module: str) -> ModuleFacts:
     tree = ast.parse(source)
     node = _crawler_class(tree)
     base_class = _base_name(node) if node is not None else ""
-    transports = _resolve_transports(tree, base_class)
+    transports = _resolve_transports(tree, base_class, mentions_httpx="httpx" in source)
 
     return ModuleFacts(
         module=module,

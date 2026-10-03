@@ -8,6 +8,8 @@ import importlib
 import sys
 from typing import TYPE_CHECKING
 
+from src.cli.common import non_negative_int
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -94,7 +96,14 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     """Add migrate, seed, detect, and sync subparsers."""
     # 7. Migrate
     p_mig = subparsers.add_parser("migrate", help="Run and inspect database schema migrations.")
-    p_mig.add_argument("--dialect", type=str, default="oracle", choices=["oracle", "sqlite", "postgresql", "pgvector"])
+    p_mig.add_argument(
+        "--dialect",
+        type=str,
+        required=True,
+        choices=["oracle", "sqlite", "postgresql", "pgvector"],
+        help="Target migration chain (oracle, sqlite, postgresql, pgvector). Required rather than defaulted: "
+        "the chains are separate files, and a wrong guess applies one chain's schema changes to the wrong database.",
+    )
     p_mig.add_argument("--db-url", type=str, default=None, help="Target database connection URL.")
     p_mig.add_argument("--dry-run", action="store_true", help="Preview SQL statements without executing.")
     p_mig.add_argument("--status", action="store_true", help="Show migration status report without applying.")
@@ -164,9 +173,15 @@ def _add_crawl_and_snapshot_subparsers(
     snap_subs = p_snapshot.add_subparsers(dest="snapshot_command")
     p_snap_replay = snap_subs.add_parser("replay", help="Replay stored snapshots through their parsers (read-only).")
     p_snap_replay.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None, help="Replay one snapshot.")
-    p_snap_replay.add_argument("--limit", type=int, default=None, help="Replay the N most recent snapshots.")
+    p_snap_replay.add_argument(
+        "--limit",
+        type=non_negative_int,
+        default=50,
+        help="Replay the N most recent snapshots (default: 50).",
+    )
     p_snap_replay.add_argument("--apply", action="store_true", help="Record ledger runs (requires the env guard).")
     p_snap_replay.add_argument("--persist", action="store_true", help="Persist parsed records (env guard required).")
+    p_snap_replay.add_argument("--strict", action="store_true", help="Exit non-zero on any failure or skip.")
     p_snap_replay.add_argument("--json", action="store_true", help="Emit JSON.")
 
     p_snap_validate = snap_subs.add_parser(
@@ -174,7 +189,7 @@ def _add_crawl_and_snapshot_subparsers(
         help="Validate stored snapshots against their recorded baseline (read-only).",
     )
     p_snap_validate.add_argument("--snapshot-id", dest="snapshot_id", type=int, default=None)
-    p_snap_validate.add_argument("--limit", type=int, default=None)
+    p_snap_validate.add_argument("--limit", type=non_negative_int, default=50, help="N most recent snapshots.")
     p_snap_validate.add_argument("--fail-on-drift", action="store_true")
     p_snap_validate.add_argument("--json", action="store_true")
 

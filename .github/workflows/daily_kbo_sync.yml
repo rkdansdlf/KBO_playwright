@@ -17,8 +17,6 @@ concurrency:
 env:
   PYTHONPATH: ${{ github.workspace }}
   DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  ORACLE_WALLET_B64: ${{ secrets.ORACLE_WALLET_B64 }}
-  OCI_WALLET_PASSWORD: ${{ secrets.OCI_WALLET_PASSWORD }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -30,7 +28,7 @@ jobs:
       date: ${{ steps.job-setup.outputs.KST_DATE }}
       year: ${{ steps.job-setup.outputs.KST_YEAR }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         id: job-setup
@@ -94,7 +92,7 @@ jobs:
 
       - name: Upload Data Quality Regression Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-quality-regression-${{ steps.job-setup.outputs.KST_DATE }}
           path: ${{ runner.temp }}/data_quality_regression_*.json
@@ -114,7 +112,7 @@ jobs:
     needs: finalize
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -143,7 +141,7 @@ jobs:
     needs: [finalize, post-process]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
@@ -221,7 +219,7 @@ jobs:
 
       - name: Upload Completeness Audit Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: completeness-audit-${{ needs.finalize.outputs.date }}
           path: ${{ runner.temp }}/completeness_audit.json
@@ -235,23 +233,22 @@ jobs:
           channels: telegram
 
   # ──────────────────────────────────────────────────────────────────────────
-  # JOB 4 — Advanced Daily Sync
+  # JOB 4 — Daily Extras (manual full-run complement to the scheduler)
   # ──────────────────────────────────────────────────────────────────────────
-  advanced-sync:
+  # The advanced daily work (team/player stat crawls, team defense aggregate) now
+  # runs inside the scheduled daily pipeline, so this job no longer repeats it.
+  # What remains is the work the canonical scheduler does not cover: milestone,
+  # split and draft crawls, alert dispatch, and the extended integrity gates.
+  daily-extras:
     needs: [finalize, quality]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/kbo-job-setup
         with:
           playwright: 'true'
           init-db: 'true'
-
-      - name: Run Advanced Daily
-        run: |
-          python3 -m src.cli.run_advanced_daily \
-            --year ${{ needs.finalize.outputs.year }}
 
       - name: Crawl KBO Press Releases & Notices
         run: |
@@ -284,10 +281,6 @@ jobs:
       - name: Run Automated Maintenance (PA Formula & Null IDs)
         run: |
           python3 -m src.cli.kbo maintenance --task all --apply
-
-      - name: Incremental OCI Cloud Data Lake Sync
-        run: |
-          python3 -m src.cli.kbo sync --apply --mode incremental
 
       - name: Reference Integrity Gate
         run: |

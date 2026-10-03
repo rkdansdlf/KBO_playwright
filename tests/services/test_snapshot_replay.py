@@ -18,8 +18,10 @@ from src.repositories.source_registry_repository import (
 )
 from src.services.snapshot_replay import (
     SnapshotNotFoundError,
+    SnapshotParseResult,
     SnapshotReplayError,
     SnapshotValidationResult,
+    load_snapshot_text,
     record_recent_snapshot_replays,
     record_snapshot_replay,
     replay_recent_snapshots,
@@ -41,6 +43,12 @@ def session_factory() -> sessionmaker:
     RawSourceSnapshot.__table__.create(engine)
     CrawlExecutionRun.__table__.create(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+def _evidence_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the evidence root at the per-test tmp dir so artifacts are in-scope."""
+    monkeypatch.setenv("CRAWL_EVIDENCE_DIR", str(tmp_path))
 
 
 def _seed(
@@ -91,6 +99,20 @@ def test_successful_replay_returns_parsed_count(session_factory, tmp_path: Path,
     assert result.source_key == "lg_twins_events"
     assert result.parser_version == "team-event-v1"
     assert result.error is None
+
+
+def test_load_snapshot_text_rejects_outside_evidence_root(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_text("x", encoding="utf-8")
+    with pytest.raises(SnapshotReplayError, match="outside the evidence root"):
+        load_snapshot_text(str(outside), allowed_root=root)
+
+
+def test_load_snapshot_text_is_case_insensitive_about_urls() -> None:
+    with pytest.raises(SnapshotReplayError, match="URL"):
+        load_snapshot_text("HTTP://example.com/x.html")
 
 
 def test_missing_snapshot_raises(session_factory) -> None:
@@ -218,6 +240,17 @@ def test_validate_recent_isolates_failures(session_factory, tmp_path: Path, monk
     assert {result.success for result in results} == {True, False}
 
 
+def test_parse_result_is_frozen_and_unhashable() -> None:
+    result = SnapshotParseResult(1, "k", "v1", ({"a": 1},))
+
+    assert result.parsed_count == 1
+    assert isinstance(result.records, tuple)
+    with pytest.raises(AttributeError):
+        result.records.append({"b": 2})
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(result)
+
+
 def test_summarize_snapshot_drift_counts() -> None:
     results = [
         SnapshotValidationResult(1, "k", 3, 3, 0, False, True),
@@ -235,8 +268,10 @@ def test_summarize_snapshot_drift_counts() -> None:
     assert summary.unknown_baseline == 1
     assert summary.failed == 1
     assert summary.drifted_ids == (2,)
+    assert summary.failed_ids == (4,)
     assert summary.ok is True
     assert summary.to_dict()["drifted_ids"] == [2]
+    assert summary.to_dict()["failed_ids"] == [4]
 
 
 def test_summarize_snapshot_drift_gate_fails_on_drift() -> None:
@@ -256,11 +291,17 @@ def test_summarize_snapshot_drift_caps_sample_ids() -> None:
     assert summary.drifted_ids == (1, 2)
 
 
+def test_summarize_snapshot_drift_caps_failed_ids() -> None:
+    results = [SnapshotValidationResult(i, None, None, 0, None, False, False, "x") for i in range(1, 6)]
+    summary = summarize_snapshot_drift(results, drift_max=9, fail_max=9, sample_size=2)
+    assert summary.failed == 5
+    assert summary.failed_ids == (1, 2)
+
+
 def test_record_snapshot_replay_creates_ledger_run(session_factory, tmp_path: Path, monkeypatch) -> None:
     artifact = tmp_path / "snap.bin"
     artifact.write_text("x", encoding="utf-8")
     snapshot_id = _seed(session_factory, raw_path=str(artifact))
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
     monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(2))
 
     result = record_snapshot_replay(snapshot_id, session_factory=session_factory)
@@ -281,7 +322,6 @@ def test_record_snapshot_replay_marks_parse_failure(session_factory, tmp_path: P
     artifact = tmp_path / "snap.bin"
     artifact.write_text("x", encoding="utf-8")
     snapshot_id = _seed(session_factory, raw_path=str(artifact))
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
 
     def _boom(*_a: object, **_k: object) -> list[dict]:
         raise ValueError("bad html")
@@ -302,7 +342,6 @@ def test_record_recent_skips_bad_snapshots(session_factory, tmp_path: Path, monk
     good.write_text("x", encoding="utf-8")
     _seed(session_factory, raw_path=str(good))
     _seed(session_factory, raw_path="https://example.com/raw.html", source_key="other_source")
-    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", session_factory)
     monkeypatch.setattr("src.services.snapshot_replay.get_parser", lambda _key: _fake_parser(1))
 
     results = record_recent_snapshot_replays(limit=10, session_factory=session_factory)
