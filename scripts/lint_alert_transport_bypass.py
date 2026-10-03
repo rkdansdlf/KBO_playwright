@@ -34,11 +34,14 @@ ALLOWED_FILES = frozenset(
 
 #: Files still importing a transport directly while they migrate to AlertPublisher.
 #: Each entry should disappear as its call site adopts the incident pipeline.
-GRANDFATHERED = frozenset(
-    {
-        "scripts/scheduler.py",
-    }
-)
+#:
+#: Empty since the migration completed: the last exemption was
+#: ``scripts/scheduler.py``, whose only remaining reference was a dead re-export
+#: left behind once ``selector_drift_sentinel_job`` moved to
+#: ``src/scheduler/jobs/sentinel.py``. Re-adding an entry is allowed but it
+#: re-opens a bypass, so it needs a reason in review and a matching entry in
+#: ``CLASSIFICATION``.
+GRANDFATHERED: frozenset[str] = frozenset()
 
 #: Explicit, reviewable escape hatch for a legitimate raw-transport need.
 BYPASS_MARKER = "alert-transport-bypass"
@@ -49,13 +52,13 @@ BYPASS_MARKER = "alert-transport-bypass"
 #:   A = stateful alert -> AlertPublisher (needs OPEN / RECOVERED / cooldown)
 #:   B = stateless notification -> NotificationDispatcher / send_notification
 #:   C = dead, duplicate or pure wrapper -> delete or unwrap
-CLASSIFICATION: dict[str, str] = {
-    # A: stateful alerts
-    # B: stateless notifications / digests
-    # B: domain service that composes messages and must delegate delivery
-    # C: wrapper / bootstrap re-export
-    "scripts/scheduler.py": "C",
-}
+#:
+#: Empty while ``GRANDFATHERED`` is empty. The set is not removed rather than
+#: frozen at ``{}``: a future migration re-populates it, and
+#: ``test_classification_covers_exactly_the_grandfather_set`` keeps the two in
+#: step. ``test_migration_is_complete`` is what proves the empty state means
+#: "no bypass exists", not merely "nobody listed one".
+CLASSIFICATION: dict[str, str] = {}
 
 TRANSPORT_MODULE = "src.utils.alerting"
 TRANSPORT_CLASSES = frozenset({"TelegramBotClient", "SlackWebhookClient", "GenericWebhookClient"})
