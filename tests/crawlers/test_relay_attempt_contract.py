@@ -276,3 +276,69 @@ class TestAFetchFailureIsNotReportedAsAnAbsence:
 
         assert attempt.status is RelayStatus.EMPTY
         assert attempt.error_code is None
+
+
+@pytest.mark.asyncio
+class TestEightInningsAndALostNinth:
+    """The regression this contract exists for.
+
+    A game that gave up eight innings and then lost the ninth request used to be
+    reported as a completed relay: the payload existed, so the attempt was a
+    success, and nothing anywhere recorded that the ninth inning was missing.
+    """
+
+    async def _attempt_after(self, tail: list[Any]) -> Any:
+        crawler = _crawler()
+        responses = [(_in_relay([_entry()]), None)] * 8 + tail
+        with (
+            patch.object(crawler, "_request_json", AsyncMock(side_effect=responses)),
+            patch.object(
+                crawler,
+                "_build_relay_result",
+                side_effect=lambda g, n, r: {"status": "completed", "events": [1], "raw_pbp_rows": [1]},
+            ),
+        ):
+            return await crawler.crawl_relay_attempt(GAME)
+
+    async def test_a_failed_ninth_inning_is_partial_not_success(self) -> None:
+        attempt = await self._attempt_after([(None, "relay_api_error")])
+
+        assert attempt.status is RelayStatus.PARTIAL
+        assert attempt.status is not RelayStatus.SUCCESS
+        assert attempt.error_code == FailureCode.FETCH_HTTP_ERROR.value
+
+    async def test_the_eight_innings_are_kept(self) -> None:
+        """Partial is not the same as empty: the rows are real and get stored."""
+        attempt = await self._attempt_after([(None, "relay_api_error")])
+
+        assert attempt.result is not None
+        assert attempt.result["events"] == [1]
+        assert attempt.innings_fetched == 8
+
+    async def test_a_blocked_ninth_inning_keeps_that_reason(self) -> None:
+        """Which kind of stop matters: a blocked request and a timeout do not
+        resume the same way, so the reason has to survive into the code.
+
+        `blocked` is what `_reason_for` produces for a 403 -- the shared client
+        already classifies that as FETCH_BLOCKED before it reaches here.
+        """
+        attempt = await self._attempt_after([(None, "blocked")])
+
+        assert attempt.status is RelayStatus.PARTIAL
+        assert attempt.error_code == FailureCode.FETCH_BLOCKED.value
+
+    async def test_a_complete_run_is_still_a_success(self) -> None:
+        """The fix must not make every multi-inning game partial."""
+        crawler = _crawler()
+        responses = [(_in_relay([_entry()]), None)] * 9 + [(_in_relay(None), None)]
+        with (
+            patch.object(crawler, "_request_json", AsyncMock(side_effect=responses)),
+            patch.object(
+                crawler,
+                "_build_relay_result",
+                side_effect=lambda g, n, r: {"status": "completed", "events": [1]},
+            ),
+        ):
+            attempt = await crawler.crawl_relay_attempt(GAME)
+
+        assert attempt.status is RelayStatus.SUCCESS

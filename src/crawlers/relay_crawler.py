@@ -217,6 +217,7 @@ class RelayCrawler(BaseHttpCrawler):
         self._last_failure_reason: dict[str, str] = {}
         self.last_failure_reason: str | None = None
         self._last_fetch_failure_reason: str | None = None
+        self._last_fetch: _InningFetch | None = None
         self._http = http or CrawlerHttpClient(
             # Named for the transport, not the crawler: the circuit registry is
             # keyed by name, so a shared "relay" breaker would refuse this Naver
@@ -867,13 +868,27 @@ class RelayCrawler(BaseHttpCrawler):
         naver_game_id = self.last_resolved_naver_game_id or self._map_to_naver_id(kbo_game_id)
 
         if result is not None:
+            # A payload is not automatically a finished game. If the inning loop
+            # stopped on a failed request, the rows that arrived are real but the
+            # game is incomplete, and calling it a success is how a game ends up
+            # holding eight innings with no record that the ninth was never asked
+            # for. The partial keeps the fetch's own code so a resume knows what
+            # stopped it.
+            fetch = self._last_fetch
             status = RelayStatus.NOT_MODIFIED if result.get("status") == "not_modified" else RelayStatus.SUCCESS
+            if fetch is not None and fetch.stop is InningStop.FETCH_FAILED and result.get("status") != "not_modified":
+                status = RelayStatus.PARTIAL
             return build_attempt(
                 kbo_game_id,
                 AttemptSeed(
                     status=status,
                     result=result,
+                    reason=fetch.failure_reason if (fetch and fetch.stop is InningStop.FETCH_FAILED) else None,
+                    source=SOURCE_RELAY,
                     naver_game_id=str(naver_game_id) if naver_game_id else None,
+                    innings_fetched=fetch.innings_fetched if fetch else 0,
+                    stop=fetch.stop if fetch else InningStop.COMPLETED,
+                    resolution_attempted=bool(fetch and fetch.resolution_attempted),
                 ),
             )
 
@@ -951,6 +966,7 @@ class RelayCrawler(BaseHttpCrawler):
         naver_id = direct_naver_id or ""
         fetched = await self._fetch_text_relays(naver_id)
         fetched = dataclasses.replace(fetched, naver_game_id=naver_id or None)
+        self._last_fetch = fetched
 
         if fetched.relays:
             return fetched
@@ -963,11 +979,13 @@ class RelayCrawler(BaseHttpCrawler):
         if resolved_naver_id and resolved_naver_id != direct_naver_id:
             self.last_resolved_naver_game_id = resolved_naver_id
             second = await self._fetch_text_relays(resolved_naver_id)
-            return dataclasses.replace(
+            fetched = dataclasses.replace(
                 second,
                 naver_game_id=resolved_naver_id,
                 resolution_attempted=True,
             )
+            self._last_fetch = fetched
+            return fetched
 
         return dataclasses.replace(fetched, resolution_attempted=True)
 

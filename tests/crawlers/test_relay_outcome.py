@@ -189,3 +189,97 @@ class TestTheInningStopIsRecorded:
 
         assert looked.resolution_attempted is True
         assert never_looked.resolution_attempted is False
+
+
+class TestTerminalAbsenceIsNotTerminalFailure:
+    """`terminal` answers "would retrying help?", `absence` answers "did it fail?".
+
+    Collapsing them made a blocked or unparseable crawl look like a clean empty
+    result, which is how an operator concludes a game has no relay when the truth
+    is that the crawl never got to ask. Both are terminal, so neither is retried;
+    they still disagree about whether the run succeeded.
+    """
+
+    @pytest.mark.parametrize("reason", ["blocked", "relay_schema_drift"])
+    def test_a_terminal_failure_stays_failed_and_keeps_its_code(self, reason: str) -> None:
+        attempt = build_attempt(GAME, AttemptSeed(status=RelayStatus.FAILED, reason=reason))
+
+        assert attempt.status is RelayStatus.FAILED
+        assert attempt.error_code is not None
+
+    def test_blocked_reports_the_block(self) -> None:
+        attempt = build_attempt(GAME, AttemptSeed(status=RelayStatus.FAILED, reason="blocked"))
+
+        assert attempt.error_code == FailureCode.FETCH_BLOCKED.value
+
+    def test_drift_reports_the_shape(self) -> None:
+        attempt = build_attempt(GAME, AttemptSeed(status=RelayStatus.FAILED, reason="relay_schema_drift"))
+
+        assert attempt.error_code == FailureCode.PARSE_INVALID_FORMAT.value
+
+    @pytest.mark.parametrize("reason", ["relay_not_found"])
+    def test_only_a_real_absence_becomes_empty(self, reason: str) -> None:
+        attempt = build_attempt(GAME, AttemptSeed(status=RelayStatus.FAILED, reason=reason, source=SOURCE_RELAY))
+
+        assert attempt.status is RelayStatus.EMPTY
+        assert attempt.error_code is None
+
+    def test_the_two_answers_are_reported_separately(self) -> None:
+        """Both are terminal; only one is an absence."""
+        blocked = classify_relay_failure("blocked")
+        absence = classify_relay_failure("relay_not_found")
+
+        assert blocked.terminal is absence.terminal is True
+        assert blocked.absence is False
+        assert absence.absence is True
+
+
+class TestAMidGameFetchFailureIsPartial:
+    """Eight innings in and a ninth that was never fetched is not a finished game.
+
+    The payload is real and gets stored, so the run carries rows; the game is
+    incomplete, so the run must not read as a success. Calling this a success is
+    how a game ends up holding eight innings with nothing recording that the
+    ninth was missed.
+    """
+
+    def _seed(self, **overrides: object) -> AttemptSeed:
+        base = {
+            "status": RelayStatus.PARTIAL,
+            "result": {"status": "completed", "events": [{}]},
+            "reason": "relay_api_error",
+            "source": SOURCE_RELAY,
+            "stop": InningStop.FETCH_FAILED,
+            "innings_fetched": 8,
+        }
+        base.update(overrides)
+        return AttemptSeed(**base)  # type: ignore[arg-type]
+
+    def test_it_carries_the_code_that_stopped_the_fetch(self) -> None:
+        attempt = build_attempt(GAME, self._seed())
+
+        assert attempt.status is RelayStatus.PARTIAL
+        assert attempt.error_code == FailureCode.FETCH_HTTP_ERROR.value
+
+    def test_the_rows_that_arrived_are_kept(self) -> None:
+        attempt = build_attempt(GAME, self._seed())
+
+        assert attempt.result is not None
+        assert attempt.innings_fetched == 8
+        assert attempt.stop is InningStop.FETCH_FAILED
+
+    def test_it_says_so_even_without_a_reason(self) -> None:
+        """The completeness gap is the important half; the code is a refinement."""
+        attempt = build_attempt(GAME, self._seed(reason=None))
+
+        assert attempt.status is RelayStatus.PARTIAL
+        assert attempt.error_message
+
+    def test_a_partial_is_not_an_empty_and_not_a_success(self) -> None:
+        partial = build_attempt(GAME, self._seed()).status
+        empty = build_attempt(GAME, AttemptSeed(status=RelayStatus.FAILED, reason="relay_not_found")).status
+
+        assert partial is RelayStatus.PARTIAL
+        assert partial is not RelayStatus.EMPTY
+        assert partial is not RelayStatus.SUCCESS
+        assert empty is RelayStatus.EMPTY
