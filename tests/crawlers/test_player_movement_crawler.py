@@ -179,3 +179,59 @@ class TestCrawlYears:
         assert pages[0]["status_code"] == 200
         assert len(pages) == 2
         mock_session.commit.assert_called_once()
+
+
+class TestYearFailureCapture:
+    @mark.asyncio
+    @patch("src.crawlers.player_movement_crawler.AsyncPlaywrightPool")
+    async def test_every_failed_year_is_kept_for_the_ledger(self, mock_pool_cls, crawler):
+        """A swallowed year failure must still be recoverable by the run ledger."""
+        mock_pool = MagicMock()
+        mock_pool_cls.return_value = mock_pool
+        mock_pool.start = AsyncMock()
+        mock_pool.release = AsyncMock()
+        mock_pool.close = AsyncMock()
+        mock_page = MagicMock()
+        mock_pool.acquire = AsyncMock(return_value=mock_page)
+        mock_page.goto = AsyncMock()
+        mock_page.select_option = AsyncMock()
+        mock_page.click = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_page.content = AsyncMock(return_value="<html>movement</html>")
+
+        crawler._extract_table = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await crawler.crawl_years(2023, 2024)
+
+        assert result == []
+        assert [year for year, _ in crawler._year_failures] == [2023, 2024]
+        assert all(isinstance(exc, RuntimeError) for _, exc in crawler._year_failures)
+
+    @mark.asyncio
+    @patch("src.crawlers.player_movement_crawler.AsyncPlaywrightPool")
+    async def test_a_fresh_call_does_not_accumulate_stale_failures(self, mock_pool_cls, crawler):
+        mock_pool = MagicMock()
+        mock_pool_cls.return_value = mock_pool
+        mock_pool.start = AsyncMock()
+        mock_pool.release = AsyncMock()
+        mock_pool.close = AsyncMock()
+        mock_page = MagicMock()
+        mock_pool.acquire = AsyncMock(return_value=mock_page)
+        mock_page.goto = AsyncMock()
+        mock_page.select_option = AsyncMock()
+        mock_page.click = AsyncMock()
+        mock_page.wait_for_load_state = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_page.content = AsyncMock(return_value="<html>movement</html>")
+        mock_page.get_by_role.return_value.count = AsyncMock(return_value=0)
+        mock_page.locator.return_value.count = AsyncMock(return_value=0)
+
+        crawler._extract_table = AsyncMock(side_effect=RuntimeError("boom"))
+        await crawler.crawl_years(2023, 2023)
+        assert len(crawler._year_failures) == 1
+
+        crawler._extract_table = AsyncMock(return_value=[])
+        await crawler.crawl_years(2024, 2024)
+
+        assert crawler._year_failures == []

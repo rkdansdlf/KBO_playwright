@@ -1057,7 +1057,7 @@ async def _step_7_rosters(ctx: _RunContext) -> None:
     logger.info("\n\U0001f504 Step 7: Updating player movements and daily rosters...")
     try:
         m_crawler = PlayerMovementCrawler()
-        movements = await m_crawler.crawl_years(ctx.year, ctx.year, save_snapshots=True)
+        movements = await m_crawler.run(ctx.year, ctx.year, save_snapshots=True)
         if movements:
             with SessionLocal() as session:
                 m_repo = PlayerRepository(session)
