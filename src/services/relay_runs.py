@@ -1,24 +1,29 @@
 """One crawl run per game, opened before the fetch and closed after the save.
 
-Game detail is a batch: one crawl covers many games, and each game can end up
-complete, degraded, or failed. Wrapping the whole batch in a single run would say
-nothing useful, and wrapping the save in a run of its own would leave the fetch
-time out of the duration. So the run is opened before the crawl, kept open
-across it, and closed only after the write -- one row per game.
+Relay is the second unit of work to be recorded this way, and it borrows only the
+value types from game detail. The transitions are separate because the questions
+differ: game detail asks whether a box score is complete, relay asks whether the
+innings arrived, and a game can be complete on one axis and missing on the other
+without either of them being wrong.
 
-Every transition commits on its own short session. A game write that rolls back
-must not take the run record with it, and vice versa: the ledger is the only
-durable trace of what was attempted, so it has to survive a failed write.
+What makes relay's terminal different is that a fetch can stop *after* some
+innings have already arrived. Those rows are real and get stored, so the run
+records `written > 0` and the status a caller must not read as success. Recording
+that as a failure with nothing written would be equally wrong: the data exists,
+and throwing away the fact that it exists loses the reason the game is short.
 
-No dead letter is created here. That belongs with the replay path, which has to
-decide what a partial run means for a re-fetch; writing one from inside the save
+Every transition commits on its own short session, so a relay write that rolls
+back cannot take the record of the attempt with it.
+
+No dead letter is created here. That belongs to the DLQ boundary, which has to
+decide what a partial relay means for a retry, and enqueueing from inside the save
 path would double-enqueue.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure
@@ -29,7 +34,7 @@ from src.monitoring.crawler_metrics import (
     record_ledger_failure,
 )
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
-from src.services.crawl_run_ledger import RunCounts, RunOpenResult, TerminalOutcome
+from src.services.crawl_run_ledger import RunCounts, RunOpenResult
 from src.services.crawl_run_service import CrawlRunService
 
 if TYPE_CHECKING:
@@ -37,27 +42,41 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+RELAY_CRAWLER_NAME = "relay"
+RELAY_TARGET_TYPE = "game"
+
+#: Length of the ``YYYY`` season prefix of a KBO game ID.
+_GAME_ID_YEAR_LEN = 4
+
 #: Shared empty counts, so a default is not a fresh object per call.
 _NO_ROWS = RunCounts()
 
-GAME_DETAIL_CRAWLER_NAME = "game_detail"
-GAME_DETAIL_TARGET_TYPE = "game"
-_GAME_ID_YEAR_LEN = 4
-#: ``YYYYMMDD`` at the head of a KBO game ID.
-_GAME_ID_DATE_LEN = 8
 
+@dataclass(frozen=True)
+class RelayOutcome:
+    """What became of one game after its relay fetch and its relay write.
 
-def game_date_of(game_id: str) -> str:
-    """Return the ``YYYYMMDD`` date a KBO game ID carries.
-
-    A replay cannot read this from the database: the row may be exactly what is
-    broken or missing, and the letter would then be unreplayable. The ID is
-    self-describing, so the date is taken from it instead.
+    Returned only when the ledger transition committed. A caller must not report
+    an outcome the ledger never accepted, and for a replay the persisted run row
+    remains the authority over this value.
     """
-    prefix = game_id[:_GAME_ID_DATE_LEN]
-    if len(prefix) == _GAME_ID_DATE_LEN and prefix.isdigit():
-        return prefix
-    return ""
+
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    counts: RunCounts = _NO_ROWS
+    run_id: str | None = None
+
+
+def _spec_for(game_id: str) -> CrawlRunSpec:
+    """Describe one game as a unit of relay crawl work."""
+    return CrawlRunSpec(
+        crawler=RELAY_CRAWLER_NAME,
+        target_type=RELAY_TARGET_TYPE,
+        target_id=game_id,
+        game_id=game_id,
+        season=season_of(game_id),
+    )
 
 
 def season_of(game_id: str) -> int | None:
@@ -66,23 +85,8 @@ def season_of(game_id: str) -> int | None:
     return int(prefix) if len(prefix) == _GAME_ID_YEAR_LEN and prefix.isdigit() else None
 
 
-def _spec_for(game_id: str) -> CrawlRunSpec:
-    """Describe one game as a unit of crawl work."""
-    return CrawlRunSpec(
-        crawler=GAME_DETAIL_CRAWLER_NAME,
-        target_type=GAME_DETAIL_TARGET_TYPE,
-        target_id=game_id,
-        game_id=game_id,
-        season=season_of(game_id),
-    )
-
-
-class GameDetailRunLedger:
-    """Record the outcome of each game in a detail batch.
-
-    Each method owns its own transaction, so a failure in one game never rolls
-    back the records of the others.
-    """
+class RelayRunLedger:
+    """Record the outcome of each game's relay collection."""
 
     def open_runs(self, game_ids: Sequence[str]) -> RunOpenResult:
         """Start a run for every game, before any of them is fetched.
@@ -92,9 +96,8 @@ class GameDetailRunLedger:
 
         Returns:
             Which games got a run, and the classified cause for each that did
-            not. A run is opened before the fetch so the crawl time is part of
-            the duration, which means a game can reach this method's caller with
-            no run at all; the caller needs the reason to do anything about it.
+            not. A game with no run is fetched and written by nobody, so the
+            caller has to be able to tell that it was skipped.
 
         """
         started: dict[str, str] = {}
@@ -108,15 +111,14 @@ class GameDetailRunLedger:
             except Exception as exc:
                 _stage, code = classify_persist_failure(exc)
                 failures[game_id] = (code.value, f"{type(exc).__name__}: {exc}")
-                record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
-                logger.exception("Failed to open crawl run for %s", game_id)
+                record_ledger_failure(RELAY_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
+                logger.exception("Failed to open relay run for %s", game_id)
         return RunOpenResult(started=started, failures=failures)
 
     def open_run(self, spec: CrawlRunSpec) -> RunOpenResult:
         """Start a run from a spec the caller already built.
 
-        A replay has to run under the identity the dead letter's dispatcher
-        allocated -- its `run_id`, and the link back to the run that failed.
+        A replay runs under the identity the dead letter's dispatcher allocated.
         Minting a fresh id here would record the retry as an unrelated crawl and
         break the lineage from incident to recovery.
 
@@ -124,10 +126,7 @@ class GameDetailRunLedger:
             spec: The run identity, including the replay link.
 
         Returns:
-            The run that was started, or the classified reason none was. A
-            replay that cannot open its run must not write anything: it would
-            store data with no record of having stored it, and the letter would
-            have nothing to resolve against.
+            The run that was started, or the classified reason none was.
 
         """
         game_id = str(spec.target_id)
@@ -137,17 +136,17 @@ class GameDetailRunLedger:
                 session.commit()
         except Exception as exc:
             _stage, code = classify_persist_failure(exc)
-            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
-            logger.exception("Failed to open replay run %s", spec.run_id)
+            record_ledger_failure(RELAY_CRAWLER_NAME, LEDGER_OPERATION_OPEN, code.value)
+            logger.exception("Failed to open relay replay run %s", spec.run_id)
             return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
         return RunOpenResult(started={game_id: run.run_id})
 
     def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
-        """Close a run whose game was fetched completely and stored.
+        """Close a run whose relay was obtained and stored.
 
-        Args:
-            run_id: The run to close.
-            counts: Rows moved.
+        An unchanged payload and a game the source does not carry both land here.
+        Neither wrote a row, and both are finished work rather than unfinished
+        work, so `counts.written` carries the distinction and the status does not.
 
         Returns:
             True when the transition was committed.
@@ -163,13 +162,13 @@ class GameDetailRunLedger:
         error_message: str,
         counts: RunCounts,
     ) -> bool:
-        """Close a run whose game was stored but is not a complete box score.
+        """Close a run that stored some innings and then stopped.
 
         Args:
             run_id: The run to close.
-            error_code: Failure taxonomy code describing the shortfall.
-            error_message: Human-readable explanation.
-            counts: Rows moved, with `written` counting the stored payload.
+            error_code: The taxonomy code that stopped the fetch.
+            error_message: Human-readable detail.
+            counts: Rows moved.
 
         Returns:
             True when the transition was committed.
@@ -189,15 +188,9 @@ class GameDetailRunLedger:
         *,
         error_code: str,
         error_message: str,
-        counts: RunCounts = _NO_ROWS,
+        counts: RunCounts,
     ) -> bool:
-        """Close a run that produced nothing storable.
-
-        Args:
-            run_id: The run to close.
-            error_code: Failure taxonomy code.
-            error_message: Human-readable explanation.
-            counts: Rows moved, normally all zero when the fetch itself failed.
+        """Close a run whose relay could not be obtained or stored.
 
         Returns:
             True when the transition was committed.
@@ -222,7 +215,7 @@ class GameDetailRunLedger:
     ) -> bool:
         """Apply a terminal transition on its own session.
 
-        A failure to record is logged and swallowed: the game's data is already
+        A failure to record is logged and swallowed: the relay rows are already
         written or already lost, and raising here would turn a recoverable
         bookkeeping problem into a lost crawl. The return value says whether the
         transition landed, so a caller never treats an unrecorded run as final.
@@ -236,17 +229,12 @@ class GameDetailRunLedger:
                 service = CrawlRunService(session)
                 run = CrawlExecutionRepository(session).get_by_run_id(run_id)
                 if run is None:
-                    # Nothing raised, so there is no cause to classify. The run
-                    # row is simply absent, which is what REPLAY_RUN_MISSING
-                    # means; the name reads as replay-specific but a scheduled
-                    # run can vanish the same way, and inventing a persistence
-                    # code would blame the database for a missing row.
                     record_ledger_failure(
-                        GAME_DETAIL_CRAWLER_NAME,
+                        RELAY_CRAWLER_NAME,
                         LEDGER_OPERATION_FINALIZE,
                         FailureCode.REPLAY_RUN_MISSING.value,
                     )
-                    logger.warning("Crawl run %s vanished before finalize", run_id)
+                    logger.warning("Relay run %s vanished before finalize", run_id)
                     return False
                 if status == "success":
                     service.success(run, records_read=counts.read, records_written=counts.written)
@@ -271,18 +259,15 @@ class GameDetailRunLedger:
                 return True
         except Exception as exc:
             _stage, code = classify_persist_failure(exc)
-            record_ledger_failure(GAME_DETAIL_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
-            logger.exception("Failed to finalize crawl run %s", run_id)
+            record_ledger_failure(RELAY_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
+            logger.exception("Failed to finalize relay run %s", run_id)
             return False
 
 
 __all__ = [
-    "GAME_DETAIL_CRAWLER_NAME",
-    "GAME_DETAIL_TARGET_TYPE",
-    "GameDetailRunLedger",
-    "RunCounts",
-    "RunOpenResult",
-    "TerminalOutcome",
-    "game_date_of",
+    "RELAY_CRAWLER_NAME",
+    "RELAY_TARGET_TYPE",
+    "RelayOutcome",
+    "RelayRunLedger",
     "season_of",
 ]
