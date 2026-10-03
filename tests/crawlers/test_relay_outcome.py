@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.relay_outcome import (
     BUCKET_API_FAILED,
     BUCKET_EMPTY,
@@ -283,3 +284,73 @@ class TestAMidGameFetchFailureIsPartial:
         assert partial is not RelayStatus.EMPTY
         assert partial is not RelayStatus.SUCCESS
         assert empty is RelayStatus.EMPTY
+
+
+class TestTheClientsCodeSurvivesTheTrip:
+    """The reason a crawler reports has to name the fault the client found.
+
+    The ledger, the dead letter and the metric breakdown are all keyed on the
+    failure code, and the only thing connecting them is this string. A reason
+    table that drops the code turns a slow site into a sick one all the way to
+    the dashboard, which is why the round trip is asserted rather than assumed.
+    """
+
+    @pytest.mark.parametrize(
+        ("code", "reason"),
+        [
+            (FailureCode.FETCH_TIMEOUT.value, "relay_timeout"),
+            (FailureCode.FETCH_RATE_LIMITED.value, "relay_rate_limited"),
+            (FailureCode.FETCH_BLOCKED.value, "blocked"),
+        ],
+    )
+    def test_each_carried_reason_names_its_own_code(self, code: str, reason: str) -> None:
+        from src.crawlers.relay_crawler import RelayCrawler
+
+        crawler = RelayCrawler()
+        result = CrawlResult.failure(CrawlOutcome.RETRYABLE_ERROR, error="upstream", error_code=code)
+
+        assert crawler._reason_for(result) == reason
+
+    @pytest.mark.parametrize(
+        ("code", "reason"),
+        [
+            (FailureCode.FETCH_TIMEOUT.value, "relay_timeout"),
+            (FailureCode.FETCH_RATE_LIMITED.value, "relay_rate_limited"),
+        ],
+    )
+    def test_classifying_that_reason_gives_the_code_back(self, code: str, reason: str) -> None:
+        """Round trip: the client's code -> the reason -> the same code."""
+        classified = classify_relay_failure(reason, source=SOURCE_RELAY)
+
+        assert classified.code == code
+
+    def test_a_schema_change_still_reads_as_a_schema_change(self) -> None:
+        """Drift is reported by outcome, not by code, so it is checked first.
+
+        The carried map has no entry for it, so ordering this the other way round
+        would work today only by luck.
+        """
+        from src.crawlers.relay_crawler import RelayCrawler
+
+        crawler = RelayCrawler()
+        result = CrawlResult.failure(
+            CrawlOutcome.SCHEMA_CHANGED,
+            error="not json",
+            error_code=FailureCode.PARSE_INVALID_FORMAT.value,
+            http_status=200,
+        )
+
+        assert crawler._reason_for(result) == "relay_schema_drift"
+
+    def test_an_uncharacterised_transport_fault_keeps_the_old_wording(self) -> None:
+        """The catch-all stays as the fallback so nothing loses its reason."""
+        from src.crawlers.relay_crawler import RelayCrawler
+
+        crawler = RelayCrawler()
+        result = CrawlResult.failure(
+            CrawlOutcome.RETRYABLE_ERROR,
+            error="connection reset",
+            error_code=FailureCode.FETCH_HTTP_ERROR.value,
+        )
+
+        assert crawler._reason_for(result) == "relay_api_error"

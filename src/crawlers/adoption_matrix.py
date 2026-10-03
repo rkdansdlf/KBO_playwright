@@ -274,6 +274,11 @@ REPLAY_HANDLERS: dict[str, str] = {
     "schedule": "schedule_crawler",
     "game_detail": "game_detail_crawler",
     "relay": "relay_crawler",
+    "food": "food_crawler",
+    "parking": "parking_crawler",
+    "kbo_event": "kbo_event_crawler",
+    "player_movement": "player_movement_crawler",
+    "team_history": "team_history_crawler",
 }
 
 #: The module names behind those handlers, for lookup by module.

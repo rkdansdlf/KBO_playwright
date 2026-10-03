@@ -47,6 +47,12 @@ repos:
         language: system
         files: ^(src|scripts)/.*\.py$
         pass_filenames: false
+      - id: notification-layering
+        name: notification layering check
+        entry: python3 scripts/lint_notification_layering.py
+        language: system
+        files: ^src/(notifications/.*|utils/alerting|services/notification_service)\.py$
+        pass_filenames: false
       - id: forbid-env-files
         name: block .env files
         entry: "bash -c 'echo \"ERROR: .env files must not be committed\" && exit 1'"

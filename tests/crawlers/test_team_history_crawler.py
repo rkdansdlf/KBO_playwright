@@ -49,7 +49,12 @@ class TestStartAndClose:
 class TestCrawl:
     @mark.asyncio
     @patch.object(TeamHistoryCrawler, "start", new=AsyncMock())
-    async def test_returns_history_data(self, crawler):
+    @patch("src.crawlers.team_history_crawler.compliance")
+    async def test_returns_history_data(self, _compliance, crawler):
+        # The crawler consults robots.txt before fetching. Left real, that is a
+        # live HTTP call, so these cases reached the network and their result
+        # depended on the site rather than on the page stub below.
+        _compliance.is_allowed = AsyncMock(return_value=True)
         page = MagicMock()
         page.goto = AsyncMock()
         page.content = AsyncMock(return_value="<html></html>")
@@ -87,7 +92,9 @@ class TestCrawl:
 
     @mark.asyncio
     @patch.object(TeamHistoryCrawler, "start", new=AsyncMock())
-    async def test_handles_empty_rows(self, crawler):
+    @patch("src.crawlers.team_history_crawler.compliance")
+    async def test_handles_empty_rows(self, _compliance, crawler):
+        _compliance.is_allowed = AsyncMock(return_value=True)
         page = MagicMock()
         page.goto = AsyncMock()
         page.content = AsyncMock(return_value="<html></html>")

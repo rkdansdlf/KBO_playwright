@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kbo.monthly_embed_upgrade</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mac/project/KBO_platform/bega_AI/scripts/monthly_embed_upgrade.sh</string>
+    </array>
+
+    <!-- 매월 1일 오전 3시 KST -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kbo_monthly_upgrade.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kbo_monthly_upgrade.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

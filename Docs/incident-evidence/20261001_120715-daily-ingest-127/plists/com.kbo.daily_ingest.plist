@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kbo.daily_ingest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mac/project/KBO_platform/bega_AI/scripts/daily_ingest_kbo.sh</string>
+    </array>
+
+    <!-- 매일 밤 22시 KST (경기 종료 후) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>22</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kbo_daily_ingest.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kbo_daily_ingest.err</string>
+
+    <!-- 시스템이 잠들었다 깨어난 경우 놓친 실행을 즉시 보정 -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
