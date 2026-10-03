@@ -47,6 +47,15 @@ def _action_majors(config: str) -> dict[str, set[int]]:
     return majors
 
 
+def _run_script_lines(config: str) -> list[str]:
+    """Return the lines a composite action actually executes.
+
+    Comments are stripped first. A contract that greps the raw text can be
+    satisfied by a line that explains the gate without ever running it.
+    """
+    return [line for line in (raw.strip() for raw in config.splitlines()) if line and not line.startswith("#")]
+
+
 def _assert_major_at_least(config: str, action: str, where: str) -> None:
     """Assert every `uses: <action>@vN` in `config` is at or above the floor.
 
@@ -387,6 +396,42 @@ def test_security_audit_uses_pip_audit():
     assert "timeout-minutes: 10" in workflow
     assert "Dependency Security Audit" in workflow
     _assert_major_at_least(workflow, "actions/setup-python", "security_audit.yml")
+
+
+def test_python_env_rejects_a_lockfile_that_drifted_from_pyproject():
+    """`uv sync --frozen` does not check the lock still matches pyproject.
+
+    It only refuses to update the lock, so a bump applied to pyproject alone
+    installed the stale locked version and every job stayed green with the
+    change silently absent. `--check` is what turns that into a failure.
+    """
+    steps = _run_script_lines(_read(ACTION_DIR / "python-env/action.yml"))
+    check = [i for i, line in enumerate(steps) if line.strip() == "uv lock --check"]
+    install = [i for i, line in enumerate(steps) if line.strip().startswith("uv sync --frozen")]
+
+    assert check, "no lock drift gate: a pyproject-only bump installs silently"
+    assert install, "expected the lockfile install to still be there"
+    assert min(check) < min(install), "the check has to run before the install, or the stale lock is already used"
+
+
+def test_security_audit_installs_the_locked_runtime():
+    """The audit has to see the dependency set every other job installs.
+
+    A plain `pip install` re-resolves the version ranges, so this job could pass
+    on a set nothing else ever used. It installed soupsieve 2.10 while the
+    lockfile pinned 2.8.4, which hid two ReDoS advisories that `pip-audit
+    --local` reports against the locked version.
+    """
+    workflow = _read(WORKFLOW_DIR / "security_audit.yml")
+    steps = _run_script_lines(workflow)
+
+    assert not [line for line in steps if line.startswith("pip install .")], (
+        "a plain pip install re-resolves the ranges and audits a set nothing else installs"
+    )
+    sync = [line for line in steps if line.startswith("uv sync")]
+    assert sync, "expected the locked install"
+    # The dev extras would make the report cover tools the runtime never ships.
+    assert all("--no-dev" in line for line in sync), "the audit must cover the runtime set only"
 
 
 def test_security_audit_fails_on_unallowlisted_vulnerabilities():
