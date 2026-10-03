@@ -35,13 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Deliberately not kbo-job-setup: that action installs the dev extras and
+      # would make the audit report dev-only pins. This job audits the runtime
+      # set, so it installs uv itself and syncs the locked runtime dependencies.
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - name: Install the project runtime dependencies
-        run: pip install .
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Auditing what CI actually runs. A plain pip install of the project
+      # re-resolved the version ranges here, so this job could pass on a
+      # dependency set no other job ever installs.
+      - name: Install the locked runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          export UV_PROJECT_ENVIRONMENT="$(python3 -c 'import sys; print(sys.prefix)')"
+          uv sync --frozen --no-dev
 
       - name: Install pip-audit
         run: pip install pip-audit

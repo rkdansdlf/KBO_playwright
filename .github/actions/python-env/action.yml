@@ -26,12 +26,21 @@ runs:
       with:
         enable-cache: true
 
+    # `--frozen` only refuses to *update* the lock; it does not check that the
+    # lock still describes pyproject. Bumping a requirement in pyproject alone
+    # therefore installed the stale locked version and the job stayed green with
+    # the change silently absent. `uv lock --check` closes that.
+    - name: Verify uv.lock matches pyproject.toml
+      shell: bash
+      run: |
+        set -euo pipefail
+        uv lock --check
+
     # `uv pip install` resolves version ranges fresh on every run and ignores
     # uv.lock, so the runner silently drifts off the lock (SQLAlchemy 2.1.x
     # flipped the default `postgresql://` driver to psycopg v3 and added a
     # native Oracle `visit_JSON`, breaking three unit tests). `uv sync
-    # --frozen --all-extras` installs exactly what uv.lock pins, and fails
-    # loudly when pyproject.toml and uv.lock disagree instead of drifting.
+    # --frozen --all-extras` installs exactly what uv.lock pins.
     - name: Install dependencies from the lockfile
       shell: bash
       run: |
