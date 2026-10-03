@@ -16,7 +16,11 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 
 ### 일일 파이프라인 (`daily_kbo_sync.yml`)
 - **Trigger**: 현재 `workflow_dispatch` (schedule 블록은 운영 재활성화 전 검토 필요)
-- **Jobs**: finalize → post-process → quality → advanced-sync
+- **Jobs**: finalize → post-process → quality → daily-extras
+- **`daily-extras`**: manual-run complement to the canonical scheduler. The advanced daily
+  work (team/player stat crawls, team defense aggregate) moved into the scheduled
+  `run_daily_update` pipeline; this job keeps the work the scheduler does not cover
+  (milestone/split/draft crawls, alert dispatch, extended integrity gates).
 - **Secrets**: `KBO_USER_ID`, `KBO_USER_PWD`
 
 ### 경기 전 새로고침 (`daily_preview.yml`)
