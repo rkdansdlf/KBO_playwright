@@ -22,8 +22,13 @@ from src.crawlers.game_detail_outcome import (
     has_full_detail_rows,
     has_partial_detail_anchor,
 )
+from src.crawlers.relay_outcome import RelayAttempt, RelayStatus
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
+from src.monitoring.crawler_metrics import (
+    LEDGER_OPERATION_FINALIZE,
+    record_ledger_failure,
+)
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.crawl_dead_letter_service import enqueue_failure
@@ -38,6 +43,11 @@ from src.services.game_detail_runs import (
 )
 from src.services.game_write_contract import GameWriteContract, GameWriteSource
 from src.services.pbp_sh_sf_derivation import apply_sh_sf_to_batting_stats
+from src.services.relay_runs import (
+    RELAY_CRAWLER_NAME,
+    RelayOutcome,
+    RelayRunLedger,
+)
 from src.utils.team_codes import normalize_kbo_game_id
 from src.validators.game_data_validator import validate_game_data
 
@@ -166,6 +176,14 @@ class GameCollectionResult:
     relay_targets: int = 0
     relay_saved_games: int = 0
     relay_rows_saved: int = 0
+    #: Relay games whose fetch and payload were fine but which had no run to
+    #: write under. Separate from the detail counters because they mean the relay
+    #: ledger could not record anything at all.
+    relay_runs_unopened: int = 0
+    #: Relay games whose work finished but whose terminal transition was not
+    #: recorded. The worse of the two: the rows exist and the run may still read
+    #: as running, so nothing about the game's real outcome survives.
+    relay_runs_unfinalized: int = 0
     relay_missing: int = 0
     relay_skipped_existing: int = 0
     processed_game_ids: list[str] = field(default_factory=list)
@@ -1118,48 +1136,224 @@ async def _collect_relay_phase(
             elif ctx.cfg.relay_requires_detail and target.game_id not in detail_ready:
                 item.relay_status = "skipped_no_detail"
 
+    # Runs are opened before the first fetch, so the crawl time is part of the
+    # duration and a crash mid-loop leaves a trace of the games that were in
+    # flight. A game whose run cannot be opened is skipped entirely: fetching it
+    # would store rows that nothing records having stored them.
+    ledger = _relay_run_ledger()
+    opened = ledger.open_runs([target.game_id for target in relay_targets])
+
     for index, target in enumerate(relay_targets, start=1):
+        run_id = opened.run_id_for(target.game_id)
+        run_open_failure = opened.failure_for(target.game_id)
+        if run_open_failure is not None:
+            _abandon_relay_without_run(target, ctx, run_open_failure)
+            await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
+            continue
+
         ctx.contract.claim_game(target.game_id, relay_source)
         ctx.cfg.log(f"[RELAY] {index}/{len(relay_targets)} {target.game_id}")
-        relay_data = await ctx.relay_crawler.crawl_game_events(target.game_id)
-        item = ctx.result.items[target.game_id]
-        flat_events = list((relay_data or {}).get("events") or [])
-        raw_pbp_rows = list((relay_data or {}).get("raw_pbp_rows") or [])
-        if flat_events or raw_pbp_rows:
-            saved_rows = save_relay_data(
+        terminal = await _collect_one_relay(target, ctx, relay_source, run_id)
+        if terminal is None:
+            ctx.result.relay_runs_unfinalized += 1
+        await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
+
+
+def _relay_run_ledger() -> RelayRunLedger:
+    """Return the relay run ledger. Overridable so tests can observe the transitions."""
+    return RelayRunLedger()
+
+
+def _abandon_relay_without_run(
+    target: GameCollectionTarget,
+    ctx: RelayProcessingContext,
+    failure: tuple[str, str],
+) -> None:
+    """Give up on a relay game that has no run to record anything under.
+
+    The game is not fetched. Writing relay rows with no run, no letter and no
+    metric explaining them is the one outcome the ledger exists to prevent, and
+    the next scheduled run fetches it again.
+    """
+    code, message = failure
+    ctx.result.relay_runs_unopened += 1
+    ctx.result.relay_missing += 1
+    item = ctx.result.items[target.game_id]
+    item.relay_status = "run_unopened"
+    item.failure_reason = code
+    ctx.cfg.log(f"   [ERROR] Could not open relay run ({code} {message}); {target.game_id} not fetched")
+
+
+async def _collect_one_relay(
+    target: GameCollectionTarget,
+    ctx: RelayProcessingContext,
+    relay_source: GameWriteSource,
+    run_id: str,
+) -> RelayOutcome | None:
+    """Fetch, write and close one game's relay run.
+
+    Returns:
+        The recorded outcome, or None when the ledger did not accept the
+        transition. A run nobody could record is not a finished run.
+
+    """
+    item = ctx.result.items[target.game_id]
+    attempt = await ctx.relay_crawler.crawl_relay_attempt(target.game_id)
+    payload = attempt.result or {}
+
+    has_rows = bool(payload.get("events") or payload.get("raw_pbp_rows"))
+    if attempt.status in (RelayStatus.SUCCESS, RelayStatus.PARTIAL) and has_rows:
+        save_outcome = _write_relay(target, ctx, relay_source, payload)
+        saved_rows = save_outcome.rows
+        counts = RunCounts(read=1, written=saved_rows)
+        if save_outcome.error_code is not None:
+            # The write raised, so this run fails with the code that classified it
+            # where the exception was in hand. Recording it as a quality rejection
+            # would blame the payload for a database that refused it.
+            recorded = _relay_run_ledger().record_failed(
+                run_id,
+                error_code=save_outcome.error_code,
+                error_message=save_outcome.error_message or "relay save failed",
+                counts=RunCounts(read=1, written=0, failed=1),
+            )
+            item.relay_status = "save_failed"
+            item.failure_reason = save_outcome.error_code
+        elif attempt.status is RelayStatus.PARTIAL:
+            recorded = _relay_partial_outcome(run_id, attempt, counts)
+            item.relay_status = "partial"
+            item.relay_rows_saved = saved_rows
+            item.failure_reason = attempt.error_message or attempt.reason
+            ctx.result.relay_rows_saved += saved_rows
+            ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows), fetch stopped mid-game")
+        elif saved_rows:
+            recorded = _relay_run_ledger().record_success(run_id, counts=counts)
+            ctx.result.relay_rows_saved += saved_rows
+            ctx.result.relay_saved_games += 1
+            item.relay_rows_saved = saved_rows
+            item.relay_status = "saved"
+            if target.game_id not in ctx.result.processed_game_ids:
+                ctx.result.processed_game_ids.append(target.game_id)
+            ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows)")
+        else:
+            # The write ran and declined the payload. That is a data decision, not
+            # a broken database, so it is a quality failure rather than PERSIST_*.
+            recorded = _relay_run_ledger().record_failed(
+                run_id,
+                error_code=FailureCode.VALIDATION_QUALITY.value,
+                error_message="relay payload produced no persistable rows",
+                counts=RunCounts(read=1, written=0, failed=1),
+            )
+            ctx.result.relay_missing += 1
+            item.relay_status = "save_failed"
+            item.failure_reason = "relay payload produced no persistable rows"
+            ctx.cfg.log("   [WARN] Relay save returned 0 rows")
+        return recorded or None
+
+    if attempt.status in (RelayStatus.SUCCESS, RelayStatus.NOT_MODIFIED, RelayStatus.EMPTY):
+        # Nothing to store: an unchanged payload, or a game the source does not
+        # carry. Both are finished work, so the run succeeds with nothing written
+        # and there is nothing to retry. Recording an absence as a failure is how
+        # a game the source never had ends up in a retry queue.
+        recorded = _relay_run_ledger().record_success(run_id, counts=RunCounts(read=1, written=0))
+        if attempt.status is RelayStatus.NOT_MODIFIED:
+            item.relay_status = "not_modified"
+        else:
+            # Counted as missing: the game genuinely has no relay, which is the
+            # signal the gap report reads. Not a failure, but not covered either.
+            item.relay_status = "empty"
+            ctx.result.relay_missing += 1
+        ctx.cfg.log(f"   [INFO] No relay to store ({attempt.status.value})")
+        return recorded or None
+
+    code = attempt.error_code or FailureCode.UNKNOWN.value
+    recorded = _relay_run_ledger().record_failed(
+        run_id,
+        error_code=code,
+        error_message=attempt.error_message or attempt.reason or "relay crawl failed",
+        counts=RunCounts(read=1, written=0, failed=1),
+    )
+    ctx.result.relay_missing += 1
+    item.relay_status = "failed"
+    item.failure_reason = attempt.error_message or attempt.reason or code
+    ctx.cfg.log(f"   [WARN] Relay crawl failed ({code})")
+    return recorded or None
+
+
+@dataclass(frozen=True)
+class RelaySaveOutcome:
+    """What one relay write did, with the two zero-row cases kept apart.
+
+    `save_relay_data` returns an int, and 0 means both "nothing persistable came
+    back" and "the database refused". Collapsing them is how a broken database
+    ends up recorded as a data-quality rejection. This carries the distinction
+    that the int cannot.
+    """
+
+    rows: int
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+def _write_relay(
+    target: GameCollectionTarget,
+    ctx: RelayProcessingContext,
+    relay_source: GameWriteSource,
+    payload: dict[str, Any],
+) -> RelaySaveOutcome:
+    """Write one game's relay rows, classifying a write failure where it happens.
+
+    A persistence error has to be recorded against the same run that did the
+    fetching, so the write is classified here -- where the exception is in hand --
+    rather than downstream from a `0` that reads exactly like an empty payload.
+    """
+    try:
+        with SessionLocal() as session:
+            rows = save_relay_data(
                 target.game_id,
-                flat_events,
-                raw_pbp_rows=raw_pbp_rows,
+                list(payload.get("events") or []),
+                raw_pbp_rows=list(payload.get("raw_pbp_rows") or []),
                 write_contract=ctx.contract,
                 source_stage=relay_source.stage,
                 source_crawler=relay_source.crawler,
                 source_reason=relay_source.reason,
-                parser_version=(relay_data or {}).get("parser_version"),
-                source_schema_version=(relay_data or {}).get("source_schema_version"),
-                payload_hash=(relay_data or {}).get("payload_hash"),
-                source_payload=(relay_data or {}).get("source_payload"),
+                parser_version=payload.get("parser_version"),
+                source_schema_version=payload.get("source_schema_version"),
+                payload_hash=payload.get("payload_hash"),
+                source_payload=payload.get("source_payload"),
+                session=session,
+                raise_on_error=True,
             )
-            ctx.result.relay_rows_saved += saved_rows
-            item.relay_rows_saved = saved_rows
-            if saved_rows:
-                ctx.result.relay_saved_games += 1
-                item.relay_status = "saved"
-                if target.game_id not in ctx.result.processed_game_ids:
-                    ctx.result.processed_game_ids.append(target.game_id)
-                ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows)")
-            else:
-                ctx.result.relay_missing += 1
-                item.relay_status = "save_failed"
-                item.failure_reason = item.failure_reason or "relay_save_returned_zero"
-                ctx.cfg.log("   [WARN] Relay save returned 0 rows")
-        else:
-            ctx.result.relay_missing += 1
-            item.relay_status = "missing"
-            item.failure_reason = (
-                item.failure_reason or _get_failure_reason(ctx.relay_crawler, target.game_id) or "no_relay_payload"
-            )
-            ctx.cfg.log("   [INFO] No relay data available")
-        await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
+        return RelaySaveOutcome(rows=rows)
+    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError) as exc:
+        _stage, code = classify_persist_failure(exc)
+        ctx.result.relay_missing += 1
+        ctx.result.items[target.game_id].relay_status = "save_failed"
+        ctx.result.items[target.game_id].failure_reason = f"{code.value}: {type(exc).__name__}"
+        ctx.cfg.log(f"   [ERROR] Relay save failed ({code.value}: {type(exc).__name__})")
+        record_ledger_failure(RELAY_CRAWLER_NAME, LEDGER_OPERATION_FINALIZE, code.value)
+        return RelaySaveOutcome(rows=0, error_code=code.value, error_message=f"{type(exc).__name__}: {exc}")
+
+
+def _relay_partial_outcome(
+    run_id: str,
+    attempt: RelayAttempt,
+    counts: RunCounts,
+) -> RelayOutcome | None:
+    """Close a run whose relay was stored but whose fetch stopped mid-game."""
+    if not _relay_run_ledger().record_partial(
+        run_id,
+        error_code=attempt.error_code or FailureCode.FETCH_HTTP_ERROR.value,
+        error_message=attempt.error_message or "relay fetch stopped mid-game",
+        counts=counts,
+    ):
+        return None
+    return RelayOutcome(
+        status="partial",
+        error_code=attempt.error_code,
+        error_message=attempt.error_message,
+        counts=counts,
+        run_id=run_id,
+    )
 
 
 def _get_value(obj: object, key: str) -> object | None:

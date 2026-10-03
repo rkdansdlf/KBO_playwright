@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import contextlib
 import src.repositories.game_relay
+from src.repositories.game_relay import save_relay_data
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -921,3 +922,53 @@ class TestBuildPlayerResolutionPayload:
         ctx = PlayerResolutionContext(pitcher_name="Park")
         result = _build_player_resolution_payload(ctx)
         assert result == {}
+
+
+class TestRaiseOnErrorSeparatesTheTwoZeros:
+    """`save_relay_data` returning 0 means two different things.
+
+    A payload with nothing persistable in it, and a database that refused the
+    write. A caller can only tell them apart if the exception is allowed out, so
+    the ledger path asks for that and every other caller keeps the lenient
+    behaviour this function has always had.
+    """
+
+    def _rows(self) -> list:
+        return [{"inning": 1, "event_type": "hit", "description": "single"}]
+
+    def test_a_database_failure_is_swallowed_by_default(self) -> None:
+        """Existing callers are unchanged: they get 0, not an exception."""
+        from sqlalchemy.exc import OperationalError
+
+        boom = OperationalError("SELECT 1", {}, Exception("refused"))
+        with patch("src.repositories.game_relay._ensure_game_stub", side_effect=boom):
+            assert save_relay_data("20250501LGOB0", self._rows(), session=MagicMock()) == 0
+
+    def test_ask_and_the_exception_comes_out(self) -> None:
+        """Without this the ledger cannot tell a broken database from a thin payload."""
+        from sqlalchemy.exc import OperationalError
+
+        boom = OperationalError("SELECT 1", {}, Exception("refused"))
+        with (
+            patch("src.repositories.game_relay._ensure_game_stub", side_effect=boom),
+            pytest.raises(OperationalError),
+        ):
+            save_relay_data(
+                "20250501LGOB0",
+                self._rows(),
+                session=MagicMock(),
+                raise_on_error=True,
+            )
+
+    def test_a_nothing_to_persist_payload_is_not_raised_even_when_asked(self) -> None:
+        """It is a data decision, not a failure, so there is nothing to raise."""
+        assert (
+            save_relay_data(
+                "20250501LGOB0",
+                [],
+                raw_pbp_rows=[],
+                session=MagicMock(),
+                raise_on_error=True,
+            )
+            == 0
+        )

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.crawlers.relay_outcome import InningStop, RelayStatus
 from src.services.game_collection_service import (
     DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE,
     DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE,
@@ -307,6 +308,49 @@ class TestCollectDetailPhase:
         assert ctx.result.detail_targets == 1
 
 
+def _relay_attempt(payload, *, status=RelayStatus.SUCCESS, reason=None):
+    """A typed relay attempt, so these tests exercise the real classification."""
+    from src.crawlers.relay_outcome import AttemptSeed, build_attempt
+
+    return build_attempt(
+        "g1",
+        AttemptSeed(
+            status=status,
+            result=payload,
+            reason=reason,
+            stop=InningStop.COMPLETED,
+        ),
+    )
+
+
+class _FakeRelayLedger:
+    """Records transitions without a database.
+
+    The phase now opens a run per game before fetching, so a test that does not
+    provide one would exercise the "no run" path instead of the one it means to.
+    """
+
+    def __init__(self) -> None:
+        self.transitions: list[tuple[str, object]] = []
+
+    def open_runs(self, game_ids):
+        from src.services.crawl_run_ledger import RunOpenResult
+
+        return RunOpenResult(started={gid: f"run-{gid}" for gid in game_ids}, failures={})
+
+    def record_success(self, run_id, *, counts):
+        self.transitions.append(("success", run_id))
+        return True
+
+    def record_partial(self, run_id, *, error_code, error_message, counts):
+        self.transitions.append(("partial", run_id))
+        return True
+
+    def record_failed(self, run_id, *, error_code, error_message, counts):
+        self.transitions.append(("failed", run_id))
+        return True
+
+
 class TestCollectRelayPhase:
     @pytest.mark.asyncio
     async def test_skips_existing_relay(self):
@@ -347,15 +391,16 @@ class TestCollectRelayPhase:
         ctx.contract = MagicMock()
         ctx.relay_crawler = MagicMock()
         ctx.relay_crawler.__class__.__name__ = "TestRelayCrawler"
-        ctx.relay_crawler.crawl_game_events = AsyncMock(
-            return_value={
-                "events": [{"inning": 1}],
-                "raw_pbp_rows": [],
-            },
+        ctx.relay_crawler.crawl_relay_attempt = AsyncMock(
+            return_value=_relay_attempt({"events": [{"inning": 1}], "raw_pbp_rows": []}),
         )
-        with patch("src.services.game_collection_service.save_relay_data", return_value=1):
+        with (
+            patch("src.services.game_collection_service.save_relay_data", return_value=1),
+            patch("src.services.game_collection_service._relay_run_ledger", _FakeRelayLedger),
+        ):
             await _collect_relay_phase(targets, exist_map, set(), ctx)
             assert ctx.result.relay_saved_games == 1
+            assert ctx.result.items["g1"].relay_status == "saved"
 
     @pytest.mark.asyncio
     async def test_no_relay_data(self):
@@ -369,10 +414,13 @@ class TestCollectRelayPhase:
         ctx.result.items = {"g1": GameCollectionItemResult(game_id="g1", game_date="20240315")}
         ctx.contract = MagicMock()
         ctx.relay_crawler = MagicMock()
-        ctx.relay_crawler.crawl_game_events = AsyncMock(return_value=None)
-        await _collect_relay_phase(targets, exist_map, set(), ctx)
+        ctx.relay_crawler.crawl_relay_attempt = AsyncMock(
+            return_value=_relay_attempt(None, status=RelayStatus.FAILED, reason="relay_not_found"),
+        )
+        with patch("src.services.game_collection_service._relay_run_ledger", _FakeRelayLedger):
+            await _collect_relay_phase(targets, exist_map, set(), ctx)
         assert ctx.result.relay_missing == 1
-        assert ctx.result.items["g1"].relay_status == "missing"
+        assert ctx.result.items["g1"].relay_status == "empty"
 
 
 class TestMaybePause:
