@@ -328,9 +328,11 @@ class TestImportIsSideEffectFree:
             [
                 sys.executable,
                 "-c",
-                "import sys; import src.monitoring.crawler_metrics;"
-                " print(','.join(m for m in sys.modules"
-                " if m.startswith('src.db') or m.startswith('src.models')))",
+                (
+                    "import sys; import src.monitoring.crawler_metrics;"
+                    " print(','.join(m for m in sys.modules"
+                    " if m.startswith('src.db') or m.startswith('src.models')))"
+                ),
             ],
             cwd=Path(__file__).resolve().parents[2],
             capture_output=True,

@@ -74,7 +74,7 @@ def _publish_selector_drift(report: object) -> None:
                 incident_key=SELECTOR_DRIFT_KEY,
                 remediation=(
                     "python3 -m src.cli.crawler_selector_gate "
-                    "--config Docs/references/crawler_selector_gate.json --json",
+                    "--config Docs/references/crawler_selector_gate.json --json"
                 ),
                 metadata={"missing_count": len(missing), "mismatched_count": len(mismatched)},
             ),
