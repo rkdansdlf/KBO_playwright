@@ -1,0 +1,80 @@
+=== evidence bundle: com.kbo.daily_ingest / monthly_embed_upgrade exit 127 ===
+collected_at: 2026-10-01 12:07:15 KST
+collected_host: gangmun-il-ui-MacBookPro.local (Darwin 27.0.0 arm64)
+
+--- launchctl status (exit code) ---
+-	127	com.kbo.monthly_embed_upgrade
+-	127	com.kbo.daily_ingest
+
+--- plist: com.kbo.daily_ingest ---
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kbo.daily_ingest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mac/project/KBO_platform/bega_AI/scripts/daily_ingest_kbo.sh</string>
+    </array>
+
+    <!-- 매일 밤 22시 KST (경기 종료 후) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>22</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kbo_daily_ingest.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kbo_daily_ingest.err</string>
+
+    <!-- 시스템이 잠들었다 깨어난 경우 놓친 실행을 즉시 보정 -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+
+--- plist: com.kbo.monthly_embed_upgrade ---
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kbo.monthly_embed_upgrade</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mac/project/KBO_platform/bega_AI/scripts/monthly_embed_upgrade.sh</string>
+    </array>
+
+    <!-- 매월 1일 오전 3시 KST -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/kbo_monthly_upgrade.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/kbo_monthly_upgrade.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

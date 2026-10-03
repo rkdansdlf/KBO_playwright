@@ -1,0 +1,10 @@
+err_line_count:       10
+err_birth: 2026-09-21 22:00:04
+err_last_modify: 2026-09-30 22:00:04
+
+NOTE: the .err stream carries no per-line timestamps.
+Occurrences are reconstructed from launchd schedule + file birth/last-modify:
+  StartCalendarInterval = daily 22:00
+  birth  2026-09-21 22:00:04  (1st failed run)
+  modify 2026-09-30 22:00:04  (10th failed run)
+  2026-09-21 .. 2026-09-30 inclusive = 10 days = 10 identical error lines
