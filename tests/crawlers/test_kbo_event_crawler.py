@@ -39,6 +39,13 @@ def ledger_sessions(monkeypatch):
     monkeypatch.setattr("src.services.crawl_dead_letter_service.SessionLocal", factory)
 
 
+#: The crawler only reads a document that still carries the site frame. These
+#: fixtures are hand-written, so the frame is stated explicitly rather than
+#: hoped for -- without it every run reports drift and the orchestration these
+#: tests exercise never happens.
+KBO_SITE_FRAME = "<header></header><nav></nav><footer></footer>"
+
+
 class TestKboEventCrawlerFunctions:
     def test_extract_kbo_event_links_matches_keywords(self):
         html = """
@@ -115,10 +122,11 @@ class TestKboEventCrawlerRun:
     @pytest.mark.asyncio
     async def test_run_without_save(self, mock_fetch):
         mock_fetch.return_value = (
-            """
+            f"""
             <html>
                 <head><title>KBO 공식 행사</title></head>
                 <body>
+                    {KBO_SITE_FRAME}
                     <a href="/Kbo/Event/Promotion.aspx">공식 이벤트</a>
                 </body>
             </html>
@@ -152,7 +160,7 @@ class TestKboEventCrawlerRun:
         mock_fetch,
     ):
         mock_fetch.return_value = (
-            "<html><head><title>KBO 공식 행사</title></head></html>",
+            f"<html><head><title>KBO 공식 행사</title></head><body>{KBO_SITE_FRAME}</body></html>",
             "https://www.koreabaseball.com/Kbo/Event/Main.aspx",
         )
 
@@ -183,7 +191,7 @@ class TestKboEventCrawlerRun:
         mock_fetch,
     ):
         mock_fetch.return_value = (
-            "<html><head><title>KBO 공식 행사</title></head></html>",
+            f"<html><head><title>KBO 공식 행사</title></head><body>{KBO_SITE_FRAME}</body></html>",
             "https://www.koreabaseball.com/Kbo/Event/Main.aspx",
         )
 
@@ -201,10 +209,11 @@ class TestKboEventCrawlerRun:
     @pytest.mark.asyncio
     async def test_run_with_no_page_event_and_duplicate_urls(self, mock_fetch):
         mock_fetch.return_value = (
-            """
+            f"""
             <html>
                 <head><title>KBO 공식 행사 | KBO | 주요 사업/행사</title></head>
                 <body>
+                    {KBO_SITE_FRAME}
                     <a href="/Kbo/Event/Main.aspx">이벤트 링크 동일</a>
                 </body>
             </html>
@@ -233,7 +242,7 @@ class TestKboEventCrawlerRun:
         mock_fetch,
     ):
         mock_fetch.return_value = (
-            "<html><head><title>KBO 공식 행사</title></head></html>",
+            f"<html><head><title>KBO 공식 행사</title></head><body>{KBO_SITE_FRAME}</body></html>",
             "https://www.koreabaseball.com/Kbo/Event/Main.aspx",
         )
 
