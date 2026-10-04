@@ -102,3 +102,45 @@ def test_live_refresh_jobs_register_the_measured_grace_window(monkeypatch):
         registered = added[job_id]
         assert registered["misfire_grace_time"] == registry.LIVE_MISFIRE_GRACE_SECONDS
         assert registered["misfire_grace_time"] >= 300
+
+
+def test_notification_jobs_are_registered_on_schedule(monkeypatch):
+    """Pregame alerts and the milestone summary had no scheduler entry at all before.
+
+    They were only ever invoked from the manually dispatched ``daily-extras`` job.
+    """
+    import scripts.scheduler as scripts_scheduler
+
+    from src.scheduler import registry
+
+    added = {}
+
+    class _FakeScheduler:
+        def add_job(self, fn, **kwargs):
+            if kwargs.get("id"):
+                added[kwargs["id"]] = kwargs
+
+        def add_listener(self, *args, **kwargs):
+            return None
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(scripts_scheduler, "BlockingScheduler", lambda **kwargs: _FakeScheduler())
+    monkeypatch.setattr(registry, "BlockingScheduler", lambda **kwargs: _FakeScheduler())
+    monkeypatch.setattr(registry, "_SCHEDULER_REF", None, raising=False)
+    monkeypatch.setenv("STARTUP_RUN", "0")
+
+    with patch("signal.signal"):
+        registry._start_scheduler(registry.build_arg_parser().parse_args(["--no-startup-run"]))
+
+    expected = {
+        "send_milestone_summary": (8, 30),
+        "send_pregame_alerts": (16, 0),
+    }
+    for job_id, (hour, minute) in expected.items():
+        registered = added[job_id]
+        trigger = str(registered["trigger"])
+        assert f"hour='{hour}'" in trigger, trigger
+        assert f"minute='{minute}'" in trigger, trigger
+        assert registered["misfire_grace_time"] >= 600

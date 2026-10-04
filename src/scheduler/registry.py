@@ -25,6 +25,10 @@ from src.scheduler.config import (
     SCHEDULER_JOB_EXCEPTIONS,
     _env_int,
 )
+from src.scheduler.jobs.alerts import (
+    send_milestone_summary_job,
+    send_pregame_alerts_job,
+)
 from src.scheduler.jobs.daily import (
     backfill_missed_daily_crawls,
     crawl_daily_games,
@@ -295,6 +299,24 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         id="crawl_pregame_refresh",
         name="Pregame Refresh",
         misfire_grace_time=900,
+        max_instances=1,
+    )
+    # Notification dispatch. Both ran only in the manually dispatched ``daily-extras``
+    # job, so nothing sent them on a schedule before this.
+    scheduler.add_job(
+        send_milestone_summary_job,
+        trigger=trigger_cls(hour=8, minute=30),
+        id="send_milestone_summary",
+        name="Milestone Summary Dispatch",
+        misfire_grace_time=1800,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        send_pregame_alerts_job,
+        trigger=trigger_cls(hour=16, minute=0),
+        id="send_pregame_alerts",
+        name="Pregame Alert Dispatch",
+        misfire_grace_time=1800,
         max_instances=1,
     )
     scheduler.add_job(
