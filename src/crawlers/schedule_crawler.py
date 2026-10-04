@@ -25,6 +25,7 @@ from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.crawl_run_service import track_crawl_run
+from src.services.schedule_collection_service import save_schedule_games
 from src.urls import SCHEDULE
 from src.utils.compliance import compliance
 from src.utils.game_status import (
@@ -45,6 +46,7 @@ from src.utils.stadium_codes import STADIUM_SHORT_NAME_MAP
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
 if TYPE_CHECKING:
+    from src.services.game_write_contract import GameWriteContract
     from src.utils.playwright_pool import AsyncPlaywrightPool
     from src.utils.request_policy import RequestPolicy
 
@@ -142,12 +144,14 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         suffix = series_id if series_id is not None else "all"
         return f"{year}-{month:02d}:{suffix}"
 
-    async def crawl_schedule(
+    async def crawl_schedule(  # noqa: PLR0913
         self,
         year: int,
         month: int,
         series_id: str | None = None,
         *,
+        save: bool = False,
+        write_contract: GameWriteContract | None = None,
         run_spec: CrawlRunSpec | None = None,
         record_dead_letters: bool = True,
     ) -> list[dict]:
@@ -158,10 +162,17 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         schedule feeds nearly every other crawl, so a silent gap here would go on
         to look like missing data everywhere downstream.
 
+        When ``save`` is set, persistence happens **inside** this ledger context so
+        ``records_written`` describes what actually landed. Previously every caller
+        saved after the context had closed, so the row always reported ``written=0``
+        and a run that persisted nothing looked identical to one that persisted all.
+
         Args:
             year: 시즌 연도 (예: 2024)
             month: 월 (1-12)
             series_id: 시리즈 ID (옵션)
+            save: 이 달의 경기를 이 원장 안에서 저장할지.
+            write_contract: 저장 시 사용할 쓰기 계약 (호출자의 라벨 유지).
             run_spec: 사전에 만들어 둔 ledger 명세 (replay가 전달).
             record_dead_letters: 실패한 달을 DLQ에 넣을지.
 
@@ -190,6 +201,17 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 if record_dead_letters:
                     self._enqueue_dead_letter(run.run_id, target, result)
                 return games
+            if save:
+                save_result = save_schedule_games(
+                    games,
+                    log=logger.info,
+                    write_contract=write_contract,
+                    source_reason=f"schedule_refresh:{target}",
+                )
+                run.records_written = save_result.saved
+                # A filtered row is not merely unsaved, it was rejected as invalid;
+                # counting it as failed keeps read/accounted-for reconcilable.
+                run.records_failed = save_result.failed + save_result.filtered
             return games
 
     async def _resolve_month(
@@ -307,40 +329,42 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         year: int,
         months: list[int] | None = None,
         series_id: str | None = None,
+        *,
+        save: bool = False,
+        write_contract: GameWriteContract | None = None,
     ) -> list[dict]:
         """주어진 시즌의 여러 달에 걸쳐 경기 일정을 크롤링합니다.
+
+        Every month goes through :meth:`crawl_schedule`, so each one gets its own
+        ledger row and — with ``save`` — its own persistence. The month is the unit the
+        ledger, the DLQ and the retry policy all agree on, and this method previously
+        bypassed the ledger entirely by accumulating the whole season itself.
+
+        Trade-off: the browser fallback used to be opened once per season. It is now
+        opened per month that actually needs it, which is bounded by the months Naver
+        could not answer.
 
         Args:
             year: 시즌 연도
             months: 크롤링할 월 목록 (기본값: 3월-10월)
             series_id: 시리즈 ID (옵션)
+            save: 각 달의 경기를 해당 원장 안에서 저장할지.
+            write_contract: 저장 시 사용할 쓰기 계약.
 
         """
         months = months or list(range(3, 11))
 
         all_games: list[dict] = []
-        browser_months: list[int] = []
-
         for month in months:
-            if series_id in (None, "0"):
-                naver = await self._crawl_naver_month(year, month)
-                if naver.ok:
-                    all_games.extend(naver.data or [])
-                    continue
-                if naver.outcome is CrawlOutcome.EMPTY:
-                    # An off-season month needs no browser confirmation.
-                    logger.info("Naver reports no games for %s-%02d; skipping browser", year, month)
-                    continue
-            browser_months.append(month)
-
-        if browser_months:
-            if not await self._kbo_fallback_allowed(f"{year}:season"):
-                return all_games
-            async with self.page_context() as page:
-                for month in browser_months:
-                    await self.policy.delay_async(host="www.koreabaseball.com")
-                    month_games = await self._crawl_month(page, year, month, series_id=series_id)
-                    all_games.extend(month_games)
+            all_games.extend(
+                await self.crawl_schedule(
+                    year,
+                    month,
+                    series_id,
+                    save=save,
+                    write_contract=write_contract,
+                ),
+            )
         return all_games
 
     async def _kbo_fallback_allowed(self, key: str) -> bool:

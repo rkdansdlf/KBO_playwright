@@ -10,80 +10,58 @@ from src.cli.crawl_schedule import _crawl_upcoming_months, crawl_schedule, main,
 
 class TestCrawlScheduleCLI:
     def test_main_default_args(self):
-        with (
-            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
-            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
-        ):
+        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler:
             mock_instance = MagicMock()
             mock_instance.crawl_season = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance
-            mock_save.return_value = MagicMock(saved=0, failed=0)
 
             main(["--year", "2025"])
 
             MockCrawler.assert_called_once_with(request_delay=1.2)
             mock_instance.crawl_season.assert_called_once()
-            mock_save.assert_called_once_with([])
+            # Persistence now happens inside each month's ledger row.
+            assert mock_instance.crawl_season.await_args.kwargs == {"save": True}
 
     def test_main_custom_delay(self):
-        with (
-            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
-            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
-        ):
+        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler:
             mock_instance = MagicMock()
             mock_instance.crawl_season = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance
-            mock_save.return_value = MagicMock(saved=0, failed=0)
 
             main(["--year", "2025", "--delay", "0.5"])
 
             MockCrawler.assert_called_once_with(request_delay=0.5)
 
     def test_main_upcoming(self):
-        with (
-            patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler,
-            patch("src.cli.crawl_schedule.save_schedule_games") as mock_save,
-        ):
+        with patch("src.cli.crawl_schedule.ScheduleCrawler") as MockCrawler:
             mock_instance = MagicMock()
             mock_instance.crawl_schedule = AsyncMock(return_value=[])
             MockCrawler.return_value = mock_instance
-            mock_save.return_value = MagicMock(saved=0, failed=0)
 
             main(["--upcoming"])
 
             mock_instance.crawl_schedule.assert_called()
-            mock_save.assert_called()
+            assert all(call_.kwargs == {"save": True} for call_ in mock_instance.crawl_schedule.await_args_list)
 
-    async def test_crawl_schedule_parses_months_and_saves_crawled_games(self):
+    async def test_crawl_schedule_parses_months_and_delegates_persistence(self):
         args = Namespace(year=2025, months="3-4,6", delay=0.25, upcoming=False)
         crawler = MagicMock()
         crawler.crawl_season = AsyncMock(return_value=[{"game_id": "G1"}])
-        result = MagicMock(saved=1, failed=0)
 
-        with (
-            patch("src.cli.crawl_schedule.ScheduleCrawler", return_value=crawler),
-            patch("src.cli.crawl_schedule.save_schedule_games", return_value=result) as save_games,
-        ):
+        with patch("src.cli.crawl_schedule.ScheduleCrawler", return_value=crawler):
             await crawl_schedule(args)
 
-        crawler.crawl_season.assert_awaited_once_with(2025, [3, 4, 6])
-        save_games.assert_called_once_with([{"game_id": "G1"}])
+        crawler.crawl_season.assert_awaited_once_with(2025, [3, 4, 6], save=True)
 
     async def test_upcoming_uses_explicit_year_and_months(self):
         args = Namespace(year=2025, months="3, 5", delay=0.25, upcoming=True)
         crawler = MagicMock()
         crawler.crawl_schedule = AsyncMock(side_effect=[[{"game_id": "G1"}], [{"game_id": "G2"}]])
 
-        with (
-            patch("src.cli.crawl_schedule.ScheduleCrawler", return_value=crawler),
-            patch(
-                "src.cli.crawl_schedule.save_schedule_games", side_effect=[MagicMock(saved=2), MagicMock(saved=3)]
-            ) as save_games,
-        ):
+        with patch("src.cli.crawl_schedule.ScheduleCrawler", return_value=crawler):
             await _crawl_upcoming_months(args)
 
-        crawler.crawl_schedule.assert_has_awaits([call(2025, 3), call(2025, 5)])
-        assert save_games.call_args_list == [call([{"game_id": "G1"}]), call([{"game_id": "G2"}])]
+        crawler.crawl_schedule.assert_has_awaits([call(2025, 3, save=True), call(2025, 5, save=True)])
 
 
 class TestParseMonths:

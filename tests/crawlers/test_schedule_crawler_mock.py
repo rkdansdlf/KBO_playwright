@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -248,22 +248,20 @@ class TestCrawlerOrchestration:
         pool.close.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_crawl_season_reuses_page_and_applies_request_delay_per_month(self):
-        page = MagicMock()
-        pool = self._pool(page)
-        policy = MagicMock()
-        policy.delay_async = AsyncMock()
-        crawler = ScheduleCrawler(pool=pool, policy=policy)
-        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
-        crawler._crawl_month = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
+    async def test_crawl_season_delegates_every_month_to_crawl_schedule(self):
+        """Each month must own its ledger row, so the season delegates per month."""
+        crawler = ScheduleCrawler()
+        crawler.crawl_schedule = AsyncMock(side_effect=[[{"game_id": "march"}], [{"game_id": "april"}]])
 
-        with patch("src.crawlers.schedule_crawler.compliance.is_allowed", new=AsyncMock(return_value=True)):
-            games = await crawler.crawl_season(2025, months=[3, 4], series_id="0")
+        games = await crawler.crawl_season(2025, months=[3, 4], series_id="0", save=True)
 
         assert games == [{"game_id": "march"}, {"game_id": "april"}]
-        assert policy.delay_async.await_count == 2
-        assert crawler._crawl_month.await_args_list[0].kwargs == {"series_id": "0"}
-        pool.release.assert_awaited_once_with(page)
+        crawler.crawl_schedule.assert_has_awaits(
+            [
+                call(2025, 3, "0", save=True, write_contract=None),
+                call(2025, 4, "0", save=True, write_contract=None),
+            ],
+        )
 
     @pytest.mark.asyncio
     async def test_navigation_wait_and_select_report_expected_failure_reasons(self, crawler, monkeypatch):
@@ -448,7 +446,7 @@ class TestNaverSchedulePath:
         assert crawler.get_last_failure_reason("2026-08:all") == "kbo_robots_blocked"
 
     @pytest.mark.asyncio
-    async def test_crawl_season_uses_naver_per_month_when_available(self):
+    async def test_crawl_season_uses_naver_per_month_when_available(self, ledger):
         crawler = ScheduleCrawler()
         crawler._crawl_naver_month = AsyncMock(
             side_effect=[
@@ -463,3 +461,49 @@ class TestNaverSchedulePath:
         assert games == [{"game_id": "march"}, {"game_id": "april"}]
         assert crawler._crawl_naver_month.await_count == 2
         crawler._crawl_month.assert_not_awaited()
+
+
+class TestTheLedgerRecordsWhatLanded:
+    """The ledger row must describe persistence, not only discovery.
+
+    Every caller used to save *after* ``track_crawl_run`` had closed, so the row always
+    reported ``written=0``; a month that persisted nothing looked identical to one that
+    persisted everything, which is what made the 2026-09 silence invisible.
+    """
+
+    @pytest.mark.asyncio
+    async def test_save_fills_written_and_failed_from_the_save_result(self, ledger, monkeypatch):
+        from src.crawlers import schedule_crawler as module
+
+        save_result = MagicMock(saved=7, failed=1, filtered=2)
+        monkeypatch.setattr(module, "save_schedule_games", MagicMock(return_value=save_result))
+
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=CrawlResult.success([{"game_id": "g"}] * 10))
+
+        await crawler.crawl_schedule(2026, 3, save=True)
+
+        with ledger() as session:
+            run = session.query(CrawlExecutionRun).one()
+        assert run.records_read == 10
+        assert run.records_written == 7
+        # A filtered row was rejected as invalid, so it never landed.
+        assert run.records_failed == 3
+
+    @pytest.mark.asyncio
+    async def test_without_save_nothing_is_persisted_and_written_stays_zero(self, ledger, monkeypatch):
+        from src.crawlers import schedule_crawler as module
+
+        save_mock = MagicMock()
+        monkeypatch.setattr(module, "save_schedule_games", save_mock)
+
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=CrawlResult.success([{"game_id": "g"}]))
+
+        await crawler.crawl_schedule(2026, 3)
+
+        save_mock.assert_not_called()
+        with ledger() as session:
+            run = session.query(CrawlExecutionRun).one()
+        assert run.records_read == 1
+        assert run.records_written == 0

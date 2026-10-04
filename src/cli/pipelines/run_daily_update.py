@@ -68,7 +68,6 @@ from src.services.postgame_reconciliation_service import (
     reconcile_postgame_range,
 )
 from src.services.recovery_manager import RecoveryManager
-from src.services.schedule_collection_service import save_schedule_games
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -427,18 +426,15 @@ async def _step_0_auto_healer(ctx: _RunContext) -> None:
 async def _step_1_schedule(ctx: _RunContext) -> None:
     logger.info("\n\U0001f4c5 Step 1: Crawling + saving monthly schedule...")
     s_crawler = ScheduleCrawler()
-    schedule_games = await s_crawler.crawl_schedule(ctx.year, ctx.month)
-    schedule_result = save_schedule_games(
-        schedule_games,
-        log=logger.info,
+    schedule_games = await s_crawler.crawl_schedule(
+        ctx.year,
+        ctx.month,
+        save=True,
         write_contract=ctx.write_contract,
-        source_reason=f"monthly_schedule_refresh:{ctx.year}-{ctx.month:02d}",
     )
     logger.info(
-        "   ✅ Schedule discovered=%s saved=%s failed=%s",
-        schedule_result.discovered,
-        schedule_result.saved,
-        schedule_result.failed,
+        "   ✅ Schedule discovered=%s (persisted inside the month ledger)",
+        len(schedule_games),
     )
 
     daily_games = [g for g in schedule_games if str(g.get("game_date", "")).replace("-", "") == ctx.target_date]
