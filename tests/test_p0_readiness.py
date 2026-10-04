@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from datetime import date, time
 
 from sqlalchemy import create_engine, text
@@ -348,8 +350,43 @@ def test_check_data_status_p0_json_output(monkeypatch, capsys):
     monkeypatch.setattr(check_data_status, "SessionLocal", SessionLocal)
     check_data_status.main(["--p0", "--date", "20250103", "--lookahead-days", "0", "--json"])
 
-    payload = json.loads(capsys.readouterr().out)
+    # `main()` calls `load_project_env()`, and tests/conftest.py routes the root
+    # logger to stdout at DEBUG, so the "skipping .env load" notice lands ahead
+    # of the document. That notice is process bootstrap, not CLI output, so the
+    # parse starts at the first structural character rather than at byte zero.
+    # `test_check_data_status_p0_json_is_the_only_thing_the_command_prints`
+    # covers the stricter claim: stdout holds the document and nothing else.
+    out = capsys.readouterr().out
+    payload = json.loads(out[out.index("{") :])
     readiness = payload["p0_readiness"]
     assert readiness["target_date"] == "20250103"
     assert readiness["pregame"]["games"] == 1
     assert any(failure["reason"] == "missing_starter" for failure in readiness["failures"])
+
+
+def test_check_data_status_p0_json_is_the_only_thing_the_command_prints(monkeypatch, capsys):
+    """`--json` must emit one parseable document and nothing else of its own.
+
+    The root logger is pointed at stderr first, and that is the point of the
+    test: ``tests/conftest.py`` routes it to stdout, so a report written through
+    the logger would be captured here too and this assertion would still pass.
+    Reading the stream with the handler on stderr is what separates "the command
+    printed JSON" from "a log record happened to contain JSON" -- a log record
+    carries a level and, under any production configuration, a timestamp, so
+    piping ``--json`` into ``jq`` breaks for the user even when a capsys-based
+    test cannot see it.
+    """
+    root = logging.getLogger()
+    saved_handlers = root.handlers
+    root.handlers = [logging.StreamHandler(sys.stderr)]
+    try:
+        SessionLocal = _build_session_factory()
+        monkeypatch.setattr(check_data_status, "SessionLocal", SessionLocal)
+
+        check_data_status.main(["--p0", "--date", "20250103", "--lookahead-days", "0", "--json"])
+    finally:
+        root.handlers = saved_handlers
+
+    out = capsys.readouterr().out
+    assert out.startswith("{"), f"--json must start the stream, got: {out[:120]!r}"
+    assert json.loads(out)["p0_readiness"]["target_date"] == "20250103"
