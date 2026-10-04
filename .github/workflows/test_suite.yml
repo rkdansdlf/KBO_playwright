@@ -87,6 +87,34 @@ jobs:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
       - name: Clean stale test DBs
         run: find data -maxdepth 1 -type f -name 'test_runtime*.db*' -delete
+      - name: Crawler adoption contract check
+        # The matrix classifies crawlers by reading their source, so it is a
+        # contract about the code rather than a report about a database. It
+        # exits non-zero when the declared adoption disagrees with the source --
+        # a crawler claiming a dead letter queue it does not enqueue, or closing
+        # the whole chain with no declared design. Un-gated, that drift sat in
+        # the tree unnoticed while the matrix kept rendering it.
+        #
+        # It lives in this job rather than `lint` because importing the CLI pulls
+        # in `src/crawlers/__init__.py`, which needs httpx, playwright and
+        # sqlalchemy; the lint job installs ruff alone.
+        run: python -m src.cli.reports.crawler_adoption_matrix --output reports/crawler_adoption_matrix.md
+      - name: Check captured crawler selectors
+        # Twelve captured KBO pages, held against the selectors the crawlers
+        # actually read. This is the same chain as the adoption matrix a step
+        # earlier and for the same reason: both are contracts about code, not
+        # reports about a database, so they belong in a job that runs the code.
+        #
+        # Every target is fixture-backed, so this never touches the network. It
+        # has to be run here rather than left to whoever remembers, because the
+        # failure it prevents is invisible from outside -- a renamed class turns
+        # a sweep into a run that reports it read a page and stored nothing.
+        #
+        # The companion test (test_selector_gate_follows_the_crawlers.py) holds
+        # this config against the crawler source, which is the half the gate
+        # itself cannot do: a stale selector list would otherwise pass here
+        # forever while guarding nothing.
+        run: python -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json
       - name: Run tests
         run: |
           set -o pipefail

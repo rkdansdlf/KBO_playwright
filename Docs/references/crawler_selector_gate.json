@@ -308,6 +308,130 @@
           "min_count": 1
         }
       ]
+    },
+    {
+      "name": "kbo_team_history",
+      "source": "../../tests/fixtures/html/kbo_team_history.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "history_rows",
+          "selector": "table.tData.tbd02 tbody tr",
+          "min_count": 40
+        },
+        {
+          "name": "history_year_headers",
+          "selector": "table.tData.tbd02 tbody tr th",
+          "min_count": 40
+        },
+        {
+          "name": "history_rank_cells",
+          "selector": "table.tData.tbd02 td span.nums",
+          "min_count": 300
+        },
+        {
+          "name": "history_team_logos",
+          "selector": "table.tData.tbd02 td img",
+          "min_count": 5
+        },
+        {
+          "name": "history_cells",
+          "selector": "table.tData.tbd02 tbody tr td",
+          "min_count": 300
+        },
+        {
+          "name": "history_team_names",
+          "selector": "table.tData.tbd02 span:not(.nums)",
+          "min_count": 5
+        }
+      ]
+    },
+    {
+      "name": "kbo_business_event_guide",
+      "source": "../../tests/fixtures/html/kbo_business_event_safeguide.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "site_header",
+          "selector": "header",
+          "min_count": 1
+        },
+        {
+          "name": "site_nav",
+          "selector": "nav",
+          "min_count": 1
+        },
+        {
+          "name": "site_footer",
+          "selector": "footer",
+          "min_count": 1
+        },
+        {
+          "name": "page_links",
+          "selector": "a[href]",
+          "min_count": 50
+        }
+      ]
+    },
+    {
+      "name": "kbo_business_event_announcement",
+      "source": "../../tests/fixtures/html/kbo_business_event_mvp.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "site_header",
+          "selector": "header",
+          "min_count": 1
+        },
+        {
+          "name": "site_nav",
+          "selector": "nav",
+          "min_count": 1
+        },
+        {
+          "name": "site_footer",
+          "selector": "footer",
+          "min_count": 1
+        },
+        {
+          "name": "page_links",
+          "selector": "a[href]",
+          "min_count": 50
+        }
+      ]
+    },
+    {
+      "name": "kbo_player_trade",
+      "source": "../../tests/fixtures/html/kbo_player_trade.html",
+      "source_type": "file",
+      "checks": [
+        {
+          "name": "trade_table",
+          "selector": ".tbl-type02",
+          "min_count": 1
+        },
+        {
+          "name": "trade_rows",
+          "selector": ".tbl-type02 tbody tr",
+          "min_count": 10
+        },
+        {
+          "name": "trade_row_cells",
+          "selector": ".tbl-type02 tbody tr td",
+          "min_count": 50
+        },
+        {
+          "name": "trade_headers",
+          "selector": ".tbl-type02 thead th",
+          "min_count": 5,
+          "required_text": "선수"
+        },
+        {
+          "name": "trade_pagination",
+          "selector": "a.pg_next",
+          "min_count": 1
+        }
+      ]
     }
   ]
 }
