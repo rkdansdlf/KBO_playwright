@@ -414,6 +414,29 @@ def test_python_env_rejects_a_lockfile_that_drifted_from_pyproject():
     assert min(check) < min(install), "the check has to run before the install, or the stale lock is already used"
 
 
+def test_database_workflows_notify_on_failure():
+    """A database outage has to reach someone.
+
+    Both Oracle workflows ran without a notify step, so
+    `oci_live_verification` failed every Sunday from 2026-08-23 onward
+    without an alert. The condition the job exists to detect is the one
+    that was going unreported, which is what let it run six weeks.
+    """
+    for name in ("oci_live_verification.yml", "oci_connection_probe.yml"):
+        workflow = _read(WORKFLOW_DIR / name)
+        steps = _run_script_lines(workflow)
+        notify = [i for i, line in enumerate(steps) if line.endswith("uses: ./.github/actions/notify")]
+
+        assert notify, f"{name} cannot report a failure"
+        # The `if:` belongs to the notify step, so it is written after the
+        # `uses:` line. Reading the pair rather than searching the whole file
+        # keeps a stray `if: always()` elsewhere from standing in for it.
+        after = steps[notify[0] + 1 : notify[0] + 3]
+        assert any(line == "if: always()" for line in after), (
+            f"{name}: notify is skipped on failure, so only green runs would report"
+        )
+
+
 def test_security_audit_installs_the_locked_runtime():
     """The audit has to see the dependency set every other job installs.
 
