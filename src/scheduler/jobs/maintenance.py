@@ -8,7 +8,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from src.cli.collection.crawl_retire import main as crawl_retire_main
 from src.db.engine import SessionLocal, get_db_session
@@ -22,6 +22,7 @@ from src.scheduler.config import (
 from src.scheduler.jobs.live import _previous_day_kst
 from src.scheduler.locks import (
     MAINTENANCE_LOCK,
+    _LockSkipped,
     _scheduler_job_lock,
     _with_db_fail_fast_guard,
     _with_lock_skip_guard,
@@ -31,6 +32,19 @@ logger = logging.getLogger("src.scheduler.jobs.maintenance")
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+#: Tenacity must not retry a tier-lock skip.
+#:
+#: ``_scheduler_job_lock`` raises ``_LockSkipped`` to mean "another process holds
+#: the lock; release it and let the scheduler come back on the next tick". The
+#: retry wrapper sits *inside* ``_with_lock_skip_guard`` on every job that carries
+#: both, so a default policy turns that cheap skip into three body attempts with
+#: 120s and 240s of backoff, fires ``alert_failure`` for routine contention, and
+#: consumes the exception before the guard outside it can log anything.
+#:
+#: Measured on 2026-10-04: three attempts per job, and a failure alert whose
+#: incident write went to the same database that was contended.
+_RETRY_EXCEPT_LOCK_SKIP = retry_if_not_exception_type(_LockSkipped)
 
 # Write-intent gates required by build_rag_index._write_target_errors for the
 # production Oracle RAG target. Scoped to this job only so manual CLI builds
@@ -71,13 +85,14 @@ def _rag_vector_backend_configured() -> bool:
     return DATABASE_URL in targets
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 @retry(
+    retry=_RETRY_EXCEPT_LOCK_SKIP,
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
-@_with_db_fail_fast_guard
 def crawl_retired_players_job(limit: int | None = None) -> None:
     """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 02:00 KST."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -113,8 +128,8 @@ def crawl_retired_players_job(limit: int | None = None) -> None:
             raise
 
 
-@_with_lock_skip_guard
 @_with_db_fail_fast_guard
+@_with_lock_skip_guard
 def _crawl_team_info_history() -> None:
     """Weekly job: Refresh team info and team history data."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -746,13 +761,14 @@ def _refresh_dlq_metrics() -> None:
         logger.exception("Failed to refresh DLQ metrics")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 @retry(
+    retry=_RETRY_EXCEPT_LOCK_SKIP,
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
-@_with_db_fail_fast_guard
 def crawl_dead_letter_recovery_job() -> None:
     """Recover dead letters stranded in ``retrying`` after a crash."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -780,13 +796,14 @@ def crawl_dead_letter_recovery_job() -> None:
             raise
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 @retry(
+    retry=_RETRY_EXCEPT_LOCK_SKIP,
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
-@_with_db_fail_fast_guard
 def crawl_dead_letter_retry_job() -> None:
     """Retry due ``pending`` dead letters through their replay handlers."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
