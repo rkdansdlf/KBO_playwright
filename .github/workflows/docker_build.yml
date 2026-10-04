@@ -23,14 +23,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Without this the job sat "in progress" for hours after the build itself
+    # had stopped making progress. The text relay build caps at 120 minutes for
+    # the same image family.
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      # No QEMU: the build has no `platforms:` input, so it is a single amd64
+      # image and emulation is pure setup cost.
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -58,5 +62,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # `mode=max` exports every intermediate layer of a Playwright-based
+          # image, which runs the build past GitHub's cache quota and leaves the
+          # export running long after the push finished. `mode=min` keeps the
+          # final image layers, which is what makes the next build fast.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min

@@ -414,6 +414,30 @@ def test_python_env_rejects_a_lockfile_that_drifted_from_pyproject():
     assert min(check) < min(install), "the check has to run before the install, or the stale lock is already used"
 
 
+def test_docker_build_cannot_hang_without_a_timeout():
+    """A build with no cap has to stop on its own.
+
+    `docker_build` ran with neither a `timeout-minutes` nor a cache bound, and
+    the job sat in progress for hours after the push had finished. Every run
+    since 2026-09-16 either timed out on GitHub's side or was cancelled
+    manually, so nothing was reaching ghcr.io.
+
+    `mode=max` is the other half: it exports every intermediate layer of a
+    Playwright image, which is what pushed the export past the cache quota.
+    """
+    workflow = _read(WORKFLOW_DIR / "docker_build.yml")
+    steps = _run_script_lines(workflow)
+
+    assert "timeout-minutes: 120" in workflow, "the build job has no time cap"
+    assert "cache-to: type=gha,mode=max" not in workflow, (
+        "mode=max exports every intermediate layer and overruns the cache quota"
+    )
+    # A single amd64 image needs no emulation; QEMU is setup cost only.
+    assert not [line for line in steps if "setup-qemu-action" in line], (
+        "QEMU is only needed for a multi-platform build, and this one is single-arch"
+    )
+
+
 def test_database_workflows_notify_on_failure():
     """A database outage has to reach someone.
 
@@ -557,7 +581,6 @@ def test_oci_live_verification_uses_dedicated_target_and_smoke_gates():
 def test_docker_build_has_full_build_chain():
     workflow = _read(WORKFLOW_DIR / "docker_build.yml")
 
-    assert "docker/setup-qemu-action@v4" in workflow
     assert "docker/setup-buildx-action@v4" in workflow
     assert "docker/login-action@v4" in workflow
     assert "docker/metadata-action@v6" in workflow
@@ -567,8 +590,10 @@ def test_docker_build_has_full_build_chain():
     assert "packages: write" in workflow
     assert "type=gha" in workflow
 
+    # QEMU used to be first in this list. It is dropped now: the build declares
+    # no `platforms:`, so it produces a single amd64 image and the emulator is
+    # setup cost with nothing to emulate.
     step_order = [
-        "Set up QEMU",
         "Set up Docker Buildx",
         "Login to GHCR",
         "Generate tags",
