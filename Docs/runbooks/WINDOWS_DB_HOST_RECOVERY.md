@@ -180,13 +180,17 @@ PGCONNECT_TIMEOUT=5 venv/bin/python -m src.cli.apply_postgres_migrations --check
 ```
 
 - 스케줄러는 별도로 꺼져 있다(`~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist.disabled`).
-  **DB 복구 확인 후** 이 Mac에서 재개한다:
+  **DB 복구 확인 후** 이 Mac에서 스크립트 하나로 재개한다:
   ```bash
-  cd ~/Library/LaunchAgents
-  mv com.kbo-playwright.scheduler.plist.disabled com.kbo-playwright.scheduler.plist
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist
+  bash scripts/restore_scheduler_launchd.sh --dry-run   # 예정 동작 확인 (부작용 없음)
+  bash scripts/restore_scheduler_launchd.sh             # 복구 + 검증 (원샷)
   ```
+  - 스크립트는 repo 템플릿(`scripts/launchd/`)과 `scripts/install_scheduler_launchd.sh`를 재사용하고,
+    `state = running`·`scheduler.py` 프로세스·`Registered job: crawl_daily_games` 로그까지 확인한 뒤에만
+    `.disabled` 복사본을 정리한다. 이미 로드돼 있으면 아무 것도 하지 않는다(멱등).
+  - DB가 아직 불통이면 경고만 출력하고 진행한다 — fail-fast 게이트가 DB 잡을 조용히 건너뛴다.
   > `com.kbo.daily_ingest`·`com.kbo.monthly_embed_upgrade`는 다른 프로젝트(KBO_platform/bega_AI) 소유이므로 손대지 않는다.
+  > 복구 스크립트도 스케줄러 라벨만 건드린다.
 
 ## 8. 서버 접근자가 기록해 줄 것
 
