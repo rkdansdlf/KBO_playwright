@@ -1,6 +1,6 @@
 # KBO Playwright Crawler
 
-Korean Baseball Organization (KBO) data collection system using Playwright, with CLI orchestration and Oracle Autonomous Database primary storage.
+Korean Baseball Organization (KBO) data collection system using Playwright, with CLI orchestration over a single `DATABASE_URL`.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Two-track data pipeline:
 - **Core (src/)**: CLI entrypoints (`src/cli/`), Playwright crawlers (`src/crawlers/`), parsers, SQLAlchemy ORM models, and repositories (UPSERT).
 - **Scripts (scripts/)**: Batch utilities for crawling, maintenance, verification, and historical backfill.
 
-**Database**: Oracle Autonomous Database is the primary database and the single production RAG store. SQLite is used for local tests and one-time initial-load source data. Oracle `VECTOR` stores dense embeddings beside the canonical `rag_chunks` rows; PostgreSQL remains optional for isolated local acceptance tests. All save logic uses **UPSERT** for idempotency.
+**Database**: `DATABASE_URL` is the one application database, and the dialect follows from that URL. The current deployment is PostgreSQL, reached over Tailscale. Oracle is still wired in and is not gone — `src/models/rag_chunk.py` binds `embedding_vector` to Oracle's native `VECTOR`, `src/repositories/oracle_vector_search_repository.py` serves Oracle vector search, and `migrations/oracle/` remains the longest chain — so treat it as a supported legacy target rather than removing it. SQLite is used for local tests and scratch data; never point a production write at it. All save logic uses **UPSERT** for idempotency.
 
 ## Quick Start
 
@@ -38,7 +38,8 @@ python3 -m src.cli.crawl_schedule --year 2025 --month 10
 # Futures League stats
 python3 -m src.cli.crawl_futures --season 2025 --concurrency 3
 
-# Oracle schema and SQLite initial load
+# Schema migrations for whichever database DATABASE_URL points at
+python3 -m src.cli.apply_postgres_migrations
 python3 -m src.cli.apply_oracle_migrations
 python3 -m src.cli.sync_sqlite_to_oci \
   --source-url "sqlite:///./data/kbo_dev.db" \
