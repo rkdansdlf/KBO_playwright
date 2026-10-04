@@ -170,6 +170,23 @@ class BuildTargets:
             "write_enabled": self.write_enabled,
         }
 
+    def urls(self) -> frozenset[str]:
+        """Return every distinct database URL this build will open.
+
+        A build can reach up to three stores, and they overlap: an Oracle sparse
+        target doubles as the vector store, so ``sparse_index_db`` and
+        ``vector_db`` can be the same URL. De-duplicating matters because the
+        scheduler probes this set before taking a tier lock, and a repeated
+        entry would mean paying for the same query twice.
+
+        Read off the resolved targets rather than recomputed from the
+        environment: the resolution has real precedence (``PGVECTOR_TEST_URL``
+        beats ``PGVECTOR_URL``, an Oracle sparse target becomes the vector store)
+        and a second implementation of those rules would eventually disagree with
+        the build it is meant to describe.
+        """
+        return frozenset(url for url in (self.source_db, self.sparse_index_db, self.vector_db) if url)
+
 
 @dataclass(frozen=True, slots=True)
 class IncrementalSelectionOptions:
@@ -298,6 +315,110 @@ def _write_target_errors(
     return errors
 
 
+#: Environment variables that can point a RAG build at a database other than
+#: ``DATABASE_URL``. A build resolves its source from
+#: :data:`SOURCE_URL_ENV_VARS`, its sparse store from
+#: :data:`RAG_INDEX_URL_ENV_VAR`, and its vector store from
+#: :data:`VECTOR_URL_ENV_VARS` -- so a single-store deployment is not the only
+#: shape, and anything asking "which databases will this touch?" has to resolve
+#: rather than assume the default.
+SOURCE_URL_ENV_VARS = ("RAG_SOURCE_DB_URL",)
+RAG_INDEX_URL_ENV_VAR = "RAG_INDEX_DB_URL"
+VECTOR_URL_ENV_VARS = ("PGVECTOR_TEST_URL", "PGVECTOR_URL")
+
+
+def planned_rag_target_urls(*, embedding_mode: str = "oracle") -> frozenset[str]:
+    """Return the databases a build would open, without validating the write guards.
+
+    The scheduler asks this *before* taking a tier lock, so it needs the answer
+    without the exceptions that a real build raises. Resolution happens through
+    :func:`_resolve_build_targets` in dry-run mode for exactly that reason: the
+    precedence between the vector variables is not something to restate here,
+    because a second implementation is a second opinion that eventually disagrees
+    with the build it claims to describe.
+
+    A configuration the build would reject still reports the operational
+    database rather than nothing. Failing closed here would skip the job and
+    leave the operator with silence instead of the guard's own message. The one
+    exception is a deployment with **no dense target at all**, which reports
+    nothing: the build cannot start, so there is no database for the gate to
+    protect, and naming one would only let the job take a tier lock to fail on a
+    precondition it could have read before acquiring it.
+    """
+    # Imported here for the same reason `main` does it: `src.db.engine` builds
+    # the operational engine at import time, and this module is imported by the
+    # scheduler on every job tick purely to answer "which databases would a build
+    # touch".
+    from src.db.engine import DATABASE_URL
+
+    resolved = _resolve_target_databases(DATABASE_URL)
+    if not resolved.vector_db:
+        # No dense target at all: neither Oracle, nor a sparse store to inherit
+        # the dense column from, nor a vector URL. The build stops on this
+        # precondition inside ``main``, so there is nothing for a scheduler to
+        # open. Naming the operational database instead would let the job take a
+        # tier lock only to fail on a check it could have read beforehand.
+        return frozenset()
+
+    try:
+        targets = _resolve_build_targets(
+            os.getenv(SOURCE_URL_ENV_VARS[0]) or DATABASE_URL,
+            target_db_url=DATABASE_URL,
+            embedding_mode=embedding_mode,
+            dry_run=True,
+        )
+    except (ValueError, TypeError):
+        # A configuration the build will reject anyway. Reporting the
+        # operational database keeps the gate honest -- the job still has to
+        # read before its own guard rejects the write -- and reporting nothing
+        # would let a broken deployment look like a reachable one.
+        return frozenset({DATABASE_URL})
+
+    # ``BuildTargets`` omits ``target_db_url`` when a separate sparse store is
+    # configured, but the build opens the operational database regardless,
+    # through the shared engine and the vector-backend checks in ``main``. The
+    # union is what the gate needs: under-reporting a database the job touches
+    # is exactly the hole this function exists to close.
+    return targets.urls() | {DATABASE_URL}
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedTargetDatabases:
+    """Where a build would read and write, before any guard runs.
+
+    Split out of :func:`_resolve_build_targets` because the scheduler has to
+    answer "does this deployment have a dense target at all?" without the
+    write guards, and asking a question of a function whose job is to enforce
+    them means either duplicating the precedence or triggering the guards.
+    """
+
+    sparse_index_db: str
+    configured_vector_url: str
+    vector_db: str
+
+
+def _resolve_target_databases(target_db_url: str) -> ResolvedTargetDatabases:
+    """Resolve the sparse and vector stores for a target database.
+
+    The precedence between the vector environment variables is defined once, here,
+    because a second implementation is a second opinion that eventually disagrees
+    with the build it claims to describe.
+    """
+    configured_sparse_url = os.getenv(RAG_INDEX_URL_ENV_VAR, "")
+    configured_vector_url = next((os.getenv(name, "") for name in VECTOR_URL_ENV_VARS if os.getenv(name)), "")
+    if configured_sparse_url:
+        vector_db = configured_sparse_url if _is_oracle_url(configured_sparse_url) else configured_vector_url
+    elif _is_oracle_url(target_db_url):
+        vector_db = target_db_url
+    else:
+        vector_db = configured_vector_url
+    return ResolvedTargetDatabases(
+        sparse_index_db=configured_sparse_url,
+        configured_vector_url=configured_vector_url,
+        vector_db=vector_db,
+    )
+
+
 def _resolve_build_targets(
     source_db_url: str,
     *,
@@ -307,14 +428,10 @@ def _resolve_build_targets(
 ) -> BuildTargets:
     """Resolve and validate explicit source, sparse, and vector build targets."""
     target_db_url = target_db_url or source_db_url
-    configured_sparse_url = os.getenv("RAG_INDEX_DB_URL", "")
-    configured_vector_url = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL") or ""
-    if configured_sparse_url:
-        vector_db = configured_sparse_url if _is_oracle_url(configured_sparse_url) else configured_vector_url
-    elif _is_oracle_url(target_db_url):
-        vector_db = target_db_url
-    else:
-        vector_db = configured_vector_url
+    resolved = _resolve_target_databases(target_db_url)
+    configured_sparse_url = resolved.sparse_index_db
+    configured_vector_url = resolved.configured_vector_url
+    vector_db = resolved.vector_db
     target_environment = os.getenv("RAG_TARGET_ENV", "").strip().lower()
     errors = _provider_target_errors(embedding_mode, target_environment, target_db_url, vector_db)
     if not dry_run:
@@ -1716,6 +1833,30 @@ def _prepare_source_chunks(
     return iter(chunks)
 
 
+class RagIndexUnavailableError(RuntimeError):
+    """A build stopped because a store it needs cannot be used.
+
+    ``RuntimeError`` rather than ``SystemExit`` on purpose. ``SystemExit`` derives
+    from ``BaseException``, so ``except SCHEDULER_JOB_EXCEPTIONS`` cannot catch
+    it and a scheduler job calling :func:`main` in-process would die holding its
+    tier lock with no traceback logged and no failure alert. The exit code is
+    carried here and translated back to a process exit by :func:`cli_main`, so
+    the CLI contract is unchanged.
+    """
+
+    def __init__(self, message: str, *, exit_code: int = 1) -> None:
+        """Keep the CLI exit code alongside the reason."""
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+#: Reasons the build cannot proceed, kept here so the raise sites stay readable.
+_VECTOR_STORE_UNREACHABLE = (
+    "vector DB에 연결할 수 없습니다. Oracle vector migration 또는 local pgvector setup을 확인하세요."
+)
+_ORACLE_VECTOR_SCHEMA_MISSING = "Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing."
+
+
 def _iter_candidate_chunks(
     source_name: str,
     source_session: Session,
@@ -1809,7 +1950,7 @@ def main(argv: list[str] | None = None) -> None:
     from src.db.vector_engine import init_vector_db, is_pgvector_available
 
     try:
-        source_db_url = os.getenv("RAG_SOURCE_DB_URL") or DATABASE_URL
+        source_db_url = os.getenv(SOURCE_URL_ENV_VARS[0]) or DATABASE_URL
         targets = _resolve_build_targets(
             source_db_url,
             target_db_url=DATABASE_URL,
@@ -1817,8 +1958,7 @@ def main(argv: list[str] | None = None) -> None:
             dry_run=args.dry_run,
         )
     except ValueError as exc:
-        logger.warning("%s", exc)
-        sys.exit(2)
+        raise RagIndexUnavailableError(str(exc), exit_code=2) from exc
 
     target_display = targets.display()
     logger.info(
@@ -1833,8 +1973,7 @@ def main(argv: list[str] | None = None) -> None:
 
     sparse_is_oracle = _is_oracle_url(targets.sparse_index_db)
     if not sparse_is_oracle and not is_pgvector_available():
-        logger.error("vector DB에 연결할 수 없습니다. Oracle vector migration 또는 local pgvector setup을 확인하세요.")
-        sys.exit(1)
+        raise RagIndexUnavailableError(_VECTOR_STORE_UNREACHABLE)
 
     if not args.dry_run and not sparse_is_oracle:
         logger.info("pgvector 테이블 초기화 확인 중...")
@@ -1875,8 +2014,7 @@ def main(argv: list[str] | None = None) -> None:
         vector_session_context as vector_session,
     ):
         if sparse_is_oracle and not _oracle_vector_schema_available(index_session):
-            logger.error("Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing.")
-            raise SystemExit(1)
+            raise RagIndexUnavailableError(_ORACLE_VECTOR_SCHEMA_MISSING)
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
             chunk_iter = _iter_candidate_chunks(
@@ -1903,5 +2041,23 @@ def main(argv: list[str] | None = None) -> None:
     )
 
 
+def cli_main(argv: list[str] | None = None) -> int:
+    """Process entrypoint: translate a store failure back into an exit code.
+
+    :func:`main` raises instead of exiting so an in-process caller -- the
+    ``sync_rag_incremental_job`` scheduler job -- can catch it inside its own
+    handler. Only this boundary converts it back to the documented exit code.
+    """
+    try:
+        main(argv)
+    except RagIndexUnavailableError as exc:
+        # Not logging.exception: the traceback adds nothing here, because every
+        # raise site is a single documented precondition check with no recovery
+        # path to inspect. The reason itself is the diagnostic.
+        logger.error("%s", exc)  # noqa: TRY400
+        return exc.exit_code
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(cli_main())

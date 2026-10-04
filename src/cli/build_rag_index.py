@@ -10,4 +10,4 @@ globals().update({key: value for key, value in _target_module.__dict__.items() i
 sys.modules[__name__] = _target_module
 
 if __name__ == "__main__":
-    _target_module.main()
+    sys.exit(_target_module.cli_main())

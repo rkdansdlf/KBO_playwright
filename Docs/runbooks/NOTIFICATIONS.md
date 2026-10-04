@@ -12,10 +12,13 @@ path for every other subsystem's alerts. When notification is down, the rest of
 the platform goes quiet — a failure that looks identical to "nothing is wrong".
 Treat "no alerts" as a symptom to verify, not as evidence of health.
 
-> **Mutation rule** — there is no guarded-write surface here. Everything in this
-> runbook is **read-only** except Section 4.2, which is a last resort and is
-> labelled as such. The normal way an incident closes is that the check which
-> opened it runs again, passes, and reports recovery itself.
+> **Mutation rule** — `kbo incidents list|show|deliveries` are read-only and need
+> no flag. `kbo incidents ack|resolve` mutate the ledger and are **default-deny**:
+> they require both `--apply` and `KBO_ALLOW_INCIDENT_MUTATION=1`, and without
+> either they print what they *would* do and change nothing. The normal way an
+> incident closes is still that the check which opened it runs again, passes, and
+> reports recovery itself; the operator commands are for a check that has stopped
+> running or whose incident is a false positive.
 
 ---
 
@@ -25,7 +28,22 @@ Treat "no alerts" as a symptom to verify, not as evidence of health.
 
 ```bash
 # Send an ad-hoc message through the configured transports.
+# This does NOT touch the ledger — there is no incident row behind it.
 python3 -m src.cli.kbo notify --channel telegram --title "Title" --body "Body"
+
+# Inspect incidents (read-only).
+python3 -m src.cli.kbo incidents list [--state {active,OPEN,ACKNOWLEDGED,RECOVERED,all}]
+                                    [--source NAME] [--severity LEVEL] [--limit N] [--json]
+python3 -m src.cli.kbo incidents show <incident_key> [--deliveries N] [--json]
+
+# Inspect the delivery audit (read-only).
+python3 -m src.cli.kbo incidents deliveries list  [--channel {telegram,slack,webhook,console}]
+                                                 [--status {DRY_RUN,FAILED,SENT,SKIPPED_UNCONFIGURED}]
+                                                 [--error-code CODE] [--incident-id N] [--batch-id ID]
+                                                 [--days N] [--limit N] [--json]
+python3 -m src.cli.kbo incidents deliveries stats [--channel ...] [--status ...]
+                                                 [--error-code CODE] [--incident-id N] [--batch-id ID]
+                                                 [--days N] [--json]
 
 # Inspect the alert rules and prove they still parse and still fire.
 promtool check rules monitoring/prometheus/alert_rules_notifications.yml
@@ -36,20 +54,43 @@ python3 scripts/lint_alert_transport_bypass.py
 python3 scripts/lint_notification_layering.py
 ```
 
+`--days` bounds the audit window and defaults to **7**; `--days 0` is unbounded.
+The default exists because the audit is append-only and retained for 90 days, so
+an all-time mix describes history rather than the current transport.
+
 The metrics exporter is started by `start_metrics_server(port)`
 (`src/utils/metrics.py`) and scraped by Prometheus from `scheduler:8000`
 (`monitoring/prometheus/prometheus.yml`).
 
-### 1.2 What does **not** exist (important)
+### 1.2 Mutating commands
 
-There is **no CLI to list, acknowledge, or close incidents**, and no CLI to read
-the delivery audit. That is a genuine operational gap, not an oversight in this
-document. Consequences:
+| Command | Flag | Environment | Denied ⇒ |
+| --- | --- | --- | --- |
+| `kbo incidents ack <incident_key>` | `--apply` | `KBO_ALLOW_INCIDENT_MUTATION=1` | exit 3, no change |
+| `kbo incidents resolve <incident_key>` | `--apply` | `KBO_ALLOW_INCIDENT_MUTATION=1` | exit 3, no change |
 
-- Triage is done with SQL (Sections 3–4) and with the metrics in Section 5.
-- An incident closes when its originating check recovers
-  (`bridge.apply_incidents`, Section 4.1). There is no "close button".
-- `kbo notify` sends a message; it does not touch the ledger.
+Both validate existence and state *before* the guard, so a dry run still tells
+you whether the action is legal. `resolve` honours `ALERT_DRY_RUN`, which
+suppresses the recovery notice without skipping the state change.
+
+### 1.3 Exit codes
+
+| Command | Codes |
+| --- | --- |
+| `kbo incidents list\|show\|deliveries` | `0` ok (incl. preview) · `1` not found (`show` only) |
+| `kbo incidents ack\|resolve` | `0` ok/preview · `1` not found · `2` invalid state or lost race · `3` guard denied |
+
+### 1.4 What is still missing
+
+- An incident still closes on its own when its check recovers
+  (`bridge.apply_incidents`, Section 4.1). The operator commands are a
+  correction path, not the normal lifecycle.
+- The `SUPPRESSED` decision is **not** persisted as a delivery row, so a
+  cooldown-suppressed notification is invisible in `deliveries list` even though
+  the ledger's `notification_count` did not move.
+- No CLI surfaces `kbo_notification_delivery_audit_failures_total` — that
+  counter is the only way to tell "delivery failed" from "the audit row could
+  not be written" (Section 3.4), and it is metric-only by design.
 
 Do not assume a missing incident means a healthy one — check
 `occurrence_count` and `notification_count` (Section 3.2).
@@ -118,14 +159,14 @@ series. Prefer the ratio when reasoning about health.
 
 ### 3.2 Step 2 — is the ledger accumulating?
 
-```sql
--- Everything not yet recovered, worst first.
-SELECT severity, state, source, component, incident_key,
-       occurrence_count, notification_count,
-       first_opened_at, last_seen_at, last_notified_at
-FROM notification_incidents
-WHERE state <> 'RECOVERED'
-ORDER BY severity DESC, last_seen_at DESC;
+```bash
+# Everything not yet recovered (OPEN + ACKNOWLEDGED), most recently seen first.
+python3 -m src.cli.kbo incidents list
+
+# Narrow it: one source, or one severity, or a recovered-history audit.
+python3 -m src.cli.kbo incidents list --source integrity
+python3 -m src.cli.kbo incidents list --severity CRITICAL
+python3 -m src.cli.kbo incidents list --state all --limit 200
 ```
 
 ```promql
@@ -147,28 +188,26 @@ Read it as follows:
 
 ### 3.3 Step 3 — what did delivery actually do?
 
-```sql
--- Outcome mix, last 7 days.
-SELECT channel, status, count(*)
-FROM notification_deliveries
-WHERE dispatched_at > now() - interval '7 days'
-GROUP BY channel, status
-ORDER BY channel, status;
+```bash
+# Outcome mix by channel, last 7 days.
+python3 -m src.cli.kbo incidents deliveries stats
 
--- Recent failures with the transport's own reason.
-SELECT channel, destination, error_code, left(error_message, 160) AS reason,
-       dispatched_at, latency_ms
-FROM notification_deliveries
-WHERE status = 'FAILED' AND dispatched_at > now() - interval '7 days'
-ORDER BY dispatched_at DESC
-LIMIT 50;
+# Recent failures with the transport's own reason.
+python3 -m src.cli.kbo incidents deliveries list --status FAILED --limit 50
 
--- One incident's delivery history (fan-out shares a batch_id).
-SELECT batch_id, channel, status, attempt_count, dispatched_at, error_code
-FROM notification_deliveries
-WHERE incident_id = <incident_id>
-ORDER BY dispatched_at DESC;
+# One incident's delivery history (fan-out shares a batch_id).
+python3 -m src.cli.kbo incidents show <incident_key> --deliveries 20
+python3 -m src.cli.kbo incidents deliveries list --incident-id <id>
+
+# One fan-out batch, whichever channels it reached.
+python3 -m src.cli.kbo incidents deliveries list --batch-id <batch_id>
+
+# Is one channel's transport broken, or the whole pipeline?
+python3 -m src.cli.kbo incidents deliveries stats --channel telegram
 ```
+
+Rows the audit records for a *severity-suppressed* notification are absent by
+design: `SUPPRESSED` never becomes a delivery row (Section 1.4).
 
 `kbo_notification_delivery_audit_failures_total` is the only signal that
 distinguishes "delivery failed" from **"we could not even write the audit row"**.
@@ -221,22 +260,32 @@ If an incident will not close:
 grep -rn "<incident_key>" src/ | head
 ```
 
-### 4.2 Last resort: closing an incident by hand
+### 4.2 Last resort: correcting an incident by hand
 
-There is no CLI for this. Do it only after the root cause is fixed, otherwise the
-next run reopens it and the incident history becomes noise.
+Use these only after the root cause is fixed, otherwise the next run reopens the
+incident and the history becomes noise. Both are default-deny (Section 1.2): drop
+`--apply` or `KBO_ALLOW_INCIDENT_MUTATION=1` to see the preview without writing.
 
-```sql
--- DANGEROUS: writes to the ledger. Fix the cause first.
-UPDATE notification_incidents
-SET state = 'RECOVERED', resolved_at = now()
-WHERE incident_key = '<key>' AND state <> 'RECOVERED';
+```bash
+# Silence one incident without closing it: it keeps the row, stops re-notifying,
+# and re-alerts anyway if the severity escalates. Right for "known, being worked".
+export KBO_ALLOW_INCIDENT_MUTATION=1
+python3 -m src.cli.kbo incidents ack <incident_key> --reason "tracked in TICKET-123"
 ```
 
-`ACKNOWLEDGED` exists and stops re-notification until the severity escalates, but
-it is only reachable in code (`IncidentManager.acknowledge`). If you need it from
-the operator side, that is a feature request against Section 1.2, not a SQL
-recipe to improvise.
+```bash
+# Close a false positive or an incident whose check no longer runs. Sends the
+# recovery notice unless ALERT_DRY_RUN is set.
+python3 -m src.cli.kbo incidents resolve <incident_key> --reason "page retired"
+```
+
+`ack` and `resolve` go through `AlertPublisher`, so a recovery notice is sent at
+most once and the write stays inside the ledger's conditional-UPDATE guard. A
+concurrent resolve by the owning check makes the command exit `2` rather than
+double-notify.
+
+Prefer fixing the check over correcting the ledger. Mass-closing by hand is the
+one action that erases real signal.
 
 ### 4.3 Too much noise
 
@@ -315,15 +364,11 @@ Verify a run:
 grep "Notification Retention Completed" logs/scheduler.launchd.err.log | tail -3
 ```
 
-```sql
--- Growth check: a healthy ledger should not grow without bound.
-SELECT count(*) FILTER (WHERE state <> 'RECOVERED') AS active,
-       count(*) FILTER (WHERE state =  'RECOVERED') AS recovered,
-       min(first_opened_at) AS oldest
-FROM notification_incidents;
-
-SELECT count(*) AS deliveries, min(dispatched_at) AS oldest
-FROM notification_deliveries;
+```bash
+# Growth check: a healthy ledger should not grow without bound.
+# Recovered rows are pruned at 30 days, active ones never are.
+python3 -m src.cli.kbo incidents list --state all --limit 1 --json   # count field
+python3 -m src.cli.kbo incidents deliveries stats --days 0
 ```
 
 Scheduler process control (launchd, label `com.kbo-playwright.scheduler`):
@@ -371,6 +416,12 @@ The transport bypass lint has a shrinking `GRANDFATHERED` set. It must empty by
 safe to delete once the repository has zero actual bypasses, which
 `lint_alert_transport_bypass.py` itself reports.
 
+`kbo incidents` lives in `src/cli/` and is outside both lints' scope, which is
+why it is allowed to import `AlertPublisher` for `ack`/`resolve` — it is an
+operator surface, not an application call site. Reads go straight to the models
+rather than through `IncidentManager`, so `--state recovered` and a severity
+filter are expressible at all.
+
 ---
 
 ## 8. During a database outage
@@ -392,7 +443,9 @@ degrades it in a specific and dangerous way.
 4. **Wait for the database, then reconcile.** Re-run the owning checks so they
    report recovery through `apply_incidents` (Section 4.1). Do not mass-close
    incidents by hand — the ones whose checks still fail would immediately reopen
-   and the history would be lost.
+   and the history would be lost. Note that `kbo incidents` itself needs the
+   database for the same reason, so it is unavailable during the outage; the
+   metrics in Section 5 are the only thing that still answers.
 
 For crawl-ledger and DLQ behaviour during the same outage, see
 `Docs/runbooks/DATA_RELIABILITY.md` §6.
