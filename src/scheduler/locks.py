@@ -8,6 +8,7 @@ import functools
 import logging
 import os
 import sys
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+from src.db.engine import Engine, database_reachable
 from src.scheduler.config import (
     ALERT_EXCEPTIONS,
     LOCK_SKIP_ALERT_THRESHOLD,
@@ -41,6 +43,11 @@ _LAST_LOCK_SKIP: dict[tuple[str, str], float] = {}
 
 #: Namespace for lock-contention incidents, used to reconcile on recovery.
 LOCK_SKIP_KEY_PREFIX = "scheduler:lock_skip:"
+
+#: How long a failed reachability probe is trusted before the next job re-checks.
+#: Long enough that a dead database is discovered once per window rather than
+#: once per job tick, short enough that recovery is not noticeably delayed.
+DB_GATE_FAILURE_COOLDOWN_SECONDS = float(os.getenv("DB_GATE_FAILURE_COOLDOWN_SECONDS", "30"))
 
 
 def _scheduler_pid_alive(pid: int) -> bool:
@@ -168,8 +175,78 @@ def _sqlite_writer_lock(
         sqlite_lock.release()
 
 
+class _DbGate:
+    """Memoises the reachability probe so an outage costs one query per window.
+
+    The memo is keyed on the *set of URLs* asked about, not on a single result.
+    A RAG build may need the operational database plus a vector store, and a
+    memo shared between a one-database job and a two-database job would let the
+    first job's answer stand in for the second's -- which is the blind spot the
+    keyed entry exists to close.
+
+    Mutable module state rather than a ``global`` pair: the value is read and
+    written from two places, and threading them through call sites would only
+    move the bug to whoever forgot to pass them.
+    """
+
+    def __init__(self, *, cooldown_seconds: float) -> None:
+        """Initialize empty, so the first call for any URL set always probes."""
+        self.cooldown_seconds = cooldown_seconds
+        self._entries: dict[tuple[str, ...], tuple[float, bool]] = {}
+        self.probe_count = 0
+
+    def check(self, urls: tuple[str, ...]) -> bool:
+        """Return whether every URL answers, probing at most once per window."""
+        now = time.monotonic()
+        cached = self._entries.get(urls)
+        if cached is not None and now < cached[0]:
+            return cached[1]
+        self.probe_count += 1
+        reachable = database_reachable(urls=urls)
+        self._entries[urls] = (now if reachable else now + self.cooldown_seconds, reachable)
+        return reachable
+
+    def reset(self) -> None:
+        """Forget every memoised result, so the next call probes again."""
+        self._entries.clear()
+        self.probe_count = 0
+
+
+#: Shared gate. The cooldown is the only knob: an outage is discovered once per
+#: window rather than once per job tick, and a recovery is picked up on the next
+#: window because a successful result is never cached past it.
+_DB_GATE = _DbGate(cooldown_seconds=DB_GATE_FAILURE_COOLDOWN_SECONDS)
+
+
+#: Causes carried by ``_LockSkipped``. Named rather than free text so the two
+#: raise sites, the guard's message and the tests cannot drift apart.
+LOCK_SKIP_TIER = "tier lock"
+LOCK_SKIP_SQLITE_WRITER = "sqlite_writer lock"
+LOCK_SKIP_UNSPECIFIED = "lock"
+
+
 class _LockSkipped(Exception):  # noqa: N818
-    """Internal control-flow signal: a scheduler job was skipped due to a lock timeout."""
+    """Internal control-flow signal: a scheduler job was skipped on a lock timeout.
+
+    Carries *which* lock timed out. ``_scheduler_job_lock`` raises it for two
+    different reasons -- the tier lock, and on SQLite deployments only the writer
+    lock -- and a guard that reported the sqlite writer unconditionally sent
+    operators looking at ``SQLITE_WRITE_LOCK`` during a ``MAINTENANCE_LOCK``
+    contention. The production PostgreSQL deployment does not take that lock at
+    all, so the old message named a lock that was never involved.
+
+    The default keeps bare ``raise _LockSkipped`` working; callers that know the
+    cause should pass one.
+
+    The message must never contain the string ``_LockSkipped``: it is a forbidden
+    signature in ``scripts/check_p1p2_lock_health.py``, where it means an
+    *escaped* skip. Naming the class here would turn every handled skip into a
+    false alarm.
+    """
+
+    def __init__(self, cause: str = LOCK_SKIP_UNSPECIFIED) -> None:
+        super().__init__(cause)
+        self.cause = cause
 
 
 def _with_lock_skip_guard(func: Callable[..., object]) -> Callable[..., object]:
@@ -179,11 +256,90 @@ def _with_lock_skip_guard(func: Callable[..., object]) -> Callable[..., object]:
     def wrapper(*args: object, **kwargs: object) -> object:
         try:
             return func(*args, **kwargs)
-        except _LockSkipped:
-            logger.warning("Job %s skipped: sqlite_writer lock timed out", getattr(func, "__name__", "unknown"))
+        except _LockSkipped as exc:
+            logger.warning("Job %s skipped: %s timed out", getattr(func, "__name__", "unknown"), exc.cause)
             return None
 
     return wrapper
+
+
+def _db_gate(urls: tuple[str, ...] | None = None) -> bool:
+    """Return whether the named databases are worth starting a job for.
+
+    A dead database must not be discovered while a tier lock is held. During the
+    2026-10-03 outage the dead-letter jobs spent ~150s each on connect retries
+    under ``MAINTENANCE_LOCK``, and every other maintenance job queued behind them
+    hit the 60s lock timeout and skipped -- so one unreachable database turned
+    into a fully missed maintenance window, including the jobs that were not
+    waiting on the database at all.
+
+    The probe therefore runs *before* the lock, and returning ``False`` is a
+    quiet skip: it raises nothing, so tenacity does not retry and no failure
+    alert fires. Alerting belongs to the Prometheus ``kbo_db_available`` gauge,
+    because the incident ledger this repo would otherwise write to is itself in
+    the database that is down.
+    """
+    return _DB_GATE.check(urls if urls is not None else _operational_urls())
+
+
+def _reset_db_gate() -> None:
+    """Forget every memoised probe result. For tests that assert both outcomes."""
+    _DB_GATE.reset()
+
+
+def _with_db_fail_fast_guard(
+    func: Callable[..., object] | None = None,
+    *,
+    urls: Callable[[], tuple[str, ...]] | None = None,
+) -> Callable[..., object]:
+    """Skip a DB-bound job before it takes a tier lock, while the database is down.
+
+    Placement is the whole contract: this decorator goes *outside*
+    ``_with_lock_skip_guard`` and ``retry``, so the probe runs before either.
+    Inside, a job would already be holding the lock it was meant to protect, and
+    tenacity would turn one outage into hours of retries against a socket that is
+    not going to answer.
+
+    Usable bare (``@_with_db_fail_fast_guard``) or with arguments
+    (``@_with_db_fail_fast_guard(urls=...)``). Both spellings exist because most
+    jobs need only the operational database and spelling that out on twenty-three
+    of them would bury the two that do not.
+
+    Args:
+        func: The job to guard, when used bare.
+        urls: Supplies the databases this job needs, as an ordered tuple so the
+            memo can key on it. A callable rather than a value because a
+            deployment's target set is resolved from the environment at call
+            time, and resolving it at import would freeze whatever the importing
+            process happened to see. Defaults to the operational database.
+
+    Returns:
+        The wrapped job, or the decorator when called with arguments.
+
+    """
+
+    def decorate(target: Callable[..., object]) -> Callable[..., object]:
+        resolve = urls if urls is not None else _operational_urls
+
+        @functools.wraps(target)
+        def wrapper(*args: object, **kwargs: object) -> object:
+            if not _db_gate(resolve()):
+                logger.warning("Job %s skipped: database unreachable", getattr(target, "__name__", "unknown"))
+                return None
+            return target(*args, **kwargs)
+
+        return wrapper
+
+    return decorate if func is None else decorate(func)
+
+
+def _operational_urls() -> tuple[str, ...]:
+    """Return the operational database URL, read at call time.
+
+    ``Engine.url`` rather than the ``DATABASE_URL`` constant so the gate asks the
+    engine it is about to use, not the string it was built from.
+    """
+    return (Engine.url.render_as_string(hide_password=False),)
 
 
 @contextmanager
@@ -199,10 +355,11 @@ def _scheduler_job_lock(
     maintenance) also acquire ``SQLITE_WRITE_LOCK`` to serialize with other
     writers and prevent SQLITE_BUSY deadlocks.
 
-    If the SQLite writer lock cannot be acquired within
-    ``SQLITE_WRITE_LOCK_TIMEOUT_SECONDS``, the job raises ``_LockSkipped`` so
-    it can release the tier lock, log the skip, and let the scheduler retry on
-    the next cycle.
+    If the tier lock, or on SQLite additionally the writer lock, cannot be
+    acquired within ``SQLITE_WRITE_LOCK_TIMEOUT_SECONDS``, the job raises
+    ``_LockSkipped`` carrying which one it was so it can release the tier lock,
+    log the skip with the real cause, and let the scheduler retry on the next
+    cycle.
     """
     timeout = lock_timeout if lock_timeout is not None else SQLITE_WRITE_LOCK_TIMEOUT_SECONDS
     sq_timeout = sqlite_timeout if sqlite_timeout is not None else SQLITE_WRITE_LOCK_TIMEOUT_SECONDS
@@ -216,7 +373,7 @@ def _scheduler_job_lock(
             getattr(tier_lock, "name", "tier"),
             timeout,
         )
-        raise _LockSkipped
+        raise _LockSkipped(LOCK_SKIP_TIER)
     try:
         if not _scheduler_uses_sqlite_database():
             yield
@@ -229,7 +386,7 @@ def _scheduler_job_lock(
                     getattr(tier_lock, "name", "tier"),
                     sq_timeout,
                 )
-                raise _LockSkipped
+                raise _LockSkipped(LOCK_SKIP_SQLITE_WRITER)
             yield
     finally:
         tier_lock.release()
