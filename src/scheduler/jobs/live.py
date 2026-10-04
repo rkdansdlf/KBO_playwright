@@ -263,6 +263,17 @@ def crawl_pregame_refresh() -> None:
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     live_lock = getattr(mod, "LIVE_LOCK", LIVE_LOCK) if mod else LIVE_LOCK
 
+    # This job queries the database once per target date through
+    # _pregame_refresh_summary, and _process_pregame_date swallows the resulting
+    # error rather than propagating it, so the tenacity retry on that helper does
+    # not fire either. Probe before taking LIVE_LOCK: while the database is
+    # unreachable each of those calls burns the connect timeout, and LIVE_LOCK is
+    # the same lock the 10s crawl_live_refresh tick needs.
+    probe_fn = getattr(mod, "database_reachable", None) or database_reachable
+    if not probe_fn():
+        logger.info("Skipping pregame refresh because the database is unreachable")
+        return
+
     if not live_lock.acquire(blocking=False):
         logger.info("Skipping pregame refresh because LIVE_LOCK is already held")
         return
