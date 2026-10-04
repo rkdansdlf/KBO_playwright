@@ -278,3 +278,116 @@ class TestPersistFailures:
         run = _only_run(session_factory)
         assert run.status == "failed"
         assert _letters(session_factory) == []
+
+
+class TestAnUnreadablePageReachesTheQueue:
+    """A page whose selectors stopped matching used to be a silent success.
+
+    ``crawl`` returns a list, so an unreadable table and a genuinely blank one
+    arrived as the same ``[]`` -- recorded as success, with nothing queued. The
+    run then said the table was current while the data in it had not moved. These
+    tests put the two apart by driving the read verdict the parser now produces.
+    """
+
+    @staticmethod
+    def _crawler_returning(read):
+        async def _crawl(crawler: TeamHistoryCrawler) -> list[dict]:
+            crawler._last_read = read
+            return []
+
+        return _crawl
+
+    @pytest.mark.asyncio
+    async def test_a_page_with_no_table_is_a_failed_run(self, session_factory, monkeypatch) -> None:
+        from src.crawlers.team_history_outcome import read_team_history
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=0, years_parsed=0))
+        )
+
+        data = await TeamHistoryCrawler().run(save=False)
+
+        assert data == []
+        run = _only_run(session_factory)
+        assert run.status == "failed"
+        assert run.error_code == FailureCode.PARSE_SELECTOR_MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_it_is_queued_as_that_page(self, session_factory, monkeypatch) -> None:
+        """One page covers every season, so the queue names the page."""
+        from src.crawlers.team_history_outcome import read_team_history
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=0, years_parsed=0))
+        )
+
+        await TeamHistoryCrawler().run(save=False)
+
+        letters = _letters(session_factory)
+        assert len(letters) == 1
+        assert letters[0].target_id == TEAM_HISTORY_TARGET_ID
+        assert letters[0].error_code == FailureCode.PARSE_SELECTOR_MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_the_message_says_what_was_found_and_what_was_read(self, session_factory, monkeypatch) -> None:
+        """``rows_found=0`` and ``rows_found=43`` need different responses."""
+        from src.crawlers.team_history_outcome import read_team_history
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=43, years_parsed=0))
+        )
+
+        await TeamHistoryCrawler().run(save=False)
+
+        message = _only_run(session_factory).error_message or ""
+        assert "rows_found=43" in message
+        assert "years_parsed=0" in message
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_stored_when_the_page_cannot_be_read(self, session_factory, monkeypatch) -> None:
+        """Storing zero rows over a table nobody could read is the failure."""
+        from src.crawlers.team_history_outcome import read_team_history
+
+        saved: list[list[dict]] = []
+
+        async def _save(crawler: TeamHistoryCrawler, data, *, raise_on_error: bool = False):
+            saved.append(data)
+            return 0, 0
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=0, years_parsed=0))
+        )
+        monkeypatch.setattr(TeamHistoryCrawler, "save", _save)
+
+        await TeamHistoryCrawler().run(save=True)
+
+        assert saved == []
+
+    @pytest.mark.asyncio
+    async def test_the_recording_switch_covers_drift(self, session_factory, monkeypatch) -> None:
+        from src.crawlers.team_history_outcome import read_team_history
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=0, years_parsed=0))
+        )
+
+        await TeamHistoryCrawler().run(save=False, record_dead_letters=False)
+
+        assert _letters(session_factory) == []
+        assert _only_run(session_factory).status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_a_readable_page_still_succeeds(self, session_factory, monkeypatch) -> None:
+        """Sparse seasons are not drift; a page that parsed is a success."""
+        from src.crawlers.team_history_outcome import read_team_history
+
+        monkeypatch.setattr(
+            TeamHistoryCrawler, "crawl", self._crawler_returning(read_team_history(rows_found=43, years_parsed=43))
+        )
+        monkeypatch.setattr(TeamHistoryCrawler, "save", _save_returning(3))
+
+        await TeamHistoryCrawler().run(save=True)
+
+        run = _only_run(session_factory)
+        assert run.status == "success"
+        assert _letters(session_factory) == []

@@ -17,6 +17,12 @@ from src.crawlers.failure_taxonomy import (
     classify_persist_failure,
     stage_for_code,
 )
+from src.crawlers.team_history_outcome import (
+    TeamHistoryRead,
+    TeamHistoryStatus,
+    classify_history_failure,
+    read_team_history,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED
 from src.models.team import Team
@@ -61,10 +67,19 @@ class TeamHistoryCrawler:
         self.context: BrowserContext | None = None
         self._raw_pages: list[dict] = []
         self._last_failure_reason: str | None = None
+        self._last_read: TeamHistoryRead | None = None
 
     def get_last_failure_reason(self) -> str | None:
         """Return the latest crawl failure reason, if any."""
         return self._last_failure_reason
+
+    def get_last_read(self) -> TeamHistoryRead | None:
+        """Return what the last page read meant, before any ledger ran.
+
+        ``crawl`` returns a list, and a list cannot say whether an empty result
+        was a blank page or an unreadable one. This is where that answer lives.
+        """
+        return self._last_read
 
     async def start(self) -> None:
         """Handle the start operation."""
@@ -112,6 +127,7 @@ class TeamHistoryCrawler:
         logger.info("Found %s year entries.", len(rows))
 
         history_data = []
+        years_parsed = 0
 
         # State tracking: 12 slots for teams (KBO has max 10 active + history slots?)
         # Subagent said 12 columns.
@@ -121,7 +137,11 @@ class TeamHistoryCrawler:
         for row in rows:
             year = await self._parse_history_year(row)
             if year is None:
+                # A row the parser could not use. Counted rather than logged so
+                # that a page whose every row fails can be told apart from one
+                # that is genuinely blank -- both used to return [].
                 continue
+            years_parsed += 1
             cells = await row.locator("td").all()
             for i, cell in enumerate(cells):
                 if i >= TEAM_HISTORY_SLOT_COUNT:
@@ -132,6 +152,11 @@ class TeamHistoryCrawler:
 
             logger.info("Processed %s: %s teams.", year, len([h for h in history_data if h["season"] == year]))
 
+        self._last_read = read_team_history(
+            rows_found=len(rows),
+            years_parsed=years_parsed,
+            entries=history_data,
+        )
         return history_data
 
     async def run(
@@ -191,6 +216,21 @@ class TeamHistoryCrawler:
                 }
                 logger.info("[TEAM_HISTORY] skipped: %s", self._last_failure_reason)
                 return data
+
+            read = self._last_read
+            if read is not None and read.status is not TeamHistoryStatus.SUCCESS:
+                # An unreadable page returned [] and the run used to record that
+                # as a successful read of a page that carried nothing. The rows
+                # found and parsed are carried in the message because "no rows"
+                # and "rows but none readable" call for different responses.
+                code, _terminal = classify_history_failure(read.reason or "")
+                run.status = RUN_STATUS_FAILED
+                run.error_code = code
+                run.error_message = f"{read.reason}: rows_found={read.rows_found} years_parsed={read.years_parsed}"
+                logger.warning("[TEAM_HISTORY] %s", run.error_message)
+                if record_dead_letters:
+                    self._enqueue_dead_letter(run.run_id, code, run.error_message)
+                return []
 
             if save:
                 try:
