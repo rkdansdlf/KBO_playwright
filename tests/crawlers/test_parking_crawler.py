@@ -101,24 +101,39 @@ class TestParkingCrawlerOperations:
         assert records == []
         assert crawler._crawl_team_parking.await_count == len(TEAM_PARKING_SOURCES)
 
-    def test_save_to_db_persists_lot_and_fee_rules(self):
+    def test_save_to_db_persists_lots_and_leaves_the_fee_text_to_the_snapshot(self):
+        """Lots are written; the parsed fee rules deliberately are not.
+
+        The pages state fees by kind (기본/추가/일일/행사) while
+        ``parking_fee_rules`` is keyed by vehicle class (compact/sedan/van/bus)
+        and requires a non-null base duration. Neither column can be filled from
+        what the page says, so filling them would mean inventing them -- and
+        writing the kinds into ``vehicle_type`` would leave a fabricated vehicle
+        class in a column a real one later keys on. The text survives in the raw
+        snapshot, which is committed before these rows and can be re-parsed by
+        ``kbo snapshot replay`` when a schema that fits it exists.
+        """
         session = MagicMock()
         lot_repo = MagicMock()
         lot_repo.save.return_value = MagicMock(id=11)
-        fee_repo = MagicMock()
         crawler = ParkingCrawler()
         crawler._raw_pages = [{"source_key": "jamsil_parking_official"}]
-        entry = {"lot": {"name": "잠실 주차장"}, "fee_rules": [{"label": "기본", "amount": 5000}]}
+        entry = {
+            "team_code": "OB",
+            "lot": {"name": "잠실 주차장"},
+            "fee_rules": [{"label": "기본", "amount": 5000}],
+        }
 
         with (
             patch("src.crawlers.parking_crawler.SessionLocal") as session_local,
             patch("src.crawlers.parking_crawler.save_raw_snapshots", return_value=1),
             patch("src.crawlers.parking_crawler.ParkingLotRepository", return_value=lot_repo),
-            patch("src.crawlers.parking_crawler.ParkingFeeRuleRepository", return_value=fee_repo),
         ):
             session_local.return_value.__enter__.return_value = session
             crawler._save_to_db([entry])
 
-        fee_repo.save.assert_called_once_with({"parking_lot_id": 11, "label": "기본", "amount": 5000})
-        session.commit.assert_called_once()
+        lot_repo.save.assert_called_once_with({"name": "잠실 주차장"})
+        # Two commits: snapshots first, so a failed lot write still leaves the
+        # page a replay can re-parse.
+        assert session.commit.call_count == 2
         assert crawler._raw_pages == []

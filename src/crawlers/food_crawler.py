@@ -12,7 +12,13 @@ from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BaseHttpCrawler
-from src.crawlers.failure_taxonomy import FailureCode, classify_failure, stage_for_code
+from src.crawlers.failure_taxonomy import (
+    CrawlPersistError,
+    FailureCode,
+    classify_failure,
+    classify_persist_failure,
+    stage_for_code,
+)
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome
 from src.db.engine import SessionLocal
@@ -77,6 +83,10 @@ class FoodCrawler(BaseHttpCrawler):
         self._raw_pages: list[dict] = []
         #: 읽지 못한 팀의 페이지. 원장과 DLQ가 볼 수 있도록 보관한다.
         self._team_failures: list[tuple[str, str, str]] = []
+        #: 쓰지 못한 팀. 읽기 실패와 분리해 세어야 "소스가 말을 안 한 것"과
+        #: "소스는 답했는데 쓰기가 죽은 것"을 구분할 수 있다. 둘 다 결과적으로
+        #: 빈 테이블을 남기므로, 이 구분이 없으면 동일하게 보인다.
+        self._persist_failures: list[tuple[str, str, str]] = []
         self._http = CrawlerHttpClient(
             name=type(self).__name__,
             policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
@@ -90,6 +100,7 @@ class FoodCrawler(BaseHttpCrawler):
         team_filter: str | None = None,
         run_spec: CrawlRunSpec | None = None,
         record_dead_letters: bool = True,
+        raise_on_persist_error: bool = False,
     ) -> list[dict[str, Any]]:
         """Crawl stadium food pages under one tracked run.
 
@@ -98,11 +109,20 @@ class FoodCrawler(BaseHttpCrawler):
         ledger, reflected as a ``partial`` run, and enqueued as its own dead
         letter so the team can be replayed without re-crawling the rest.
 
+        A team whose rows cannot be written is the same unit of work and is
+        recorded the same way. That failure used to be logged and then absorbed:
+        a single flush error poisoned the session, the commit rolled the whole
+        sweep back, and the run reported ``success`` with zero rows written.
+
         Args:
             save: Whether to persist the results.
             team_filter: Restrict the sweep to one team code.
             run_spec: Optional pre-built ledger spec (replay supplies one).
             record_dead_letters: Whether failures enqueue DLQ entries.
+            raise_on_persist_error: Re-raise a write failure as
+                :class:`CrawlPersistError` so the caller learns the replay stored
+                nothing. The ledger and the dead letter queue already recorded it
+                either way.
 
         Returns:
             The parsed food vendors.
@@ -118,6 +138,7 @@ class FoodCrawler(BaseHttpCrawler):
 
         with track_crawl_run(spec) as run:
             self._team_failures = []
+            self._persist_failures = []
             all_vendors: list[dict[str, Any]] = []
             for team_code, info in selected.items():
                 try:
@@ -127,6 +148,11 @@ class FoodCrawler(BaseHttpCrawler):
                     _, code = classify_failure(exc)
                     self._team_failures.append((team_code, code.value, str(exc)))
                     continue
+                for entry in vendors:
+                    # 팀이 트랜잭션 단위이자 DLQ 단위이자 쓰기 실패를 귀속시킬
+                    # 유일한 기준이므로, 행과 함께 이동시키고 나중에 구장에서
+                    # 역산하지 않는다.
+                    entry["team_code"] = team_code
                 all_vendors.extend(vendors)
                 logger.info("[FOOD] %s: %s vendors found", team_code, len(vendors))
 
@@ -134,12 +160,15 @@ class FoodCrawler(BaseHttpCrawler):
             run.records_read = len(all_vendors)
 
             if save:
-                run.records_written = await asyncio.to_thread(self._save_to_db, all_vendors)
+                written, failed = await asyncio.to_thread(self._save_to_db, all_vendors)
+                run.records_written = written
+                run.records_failed = failed
             else:
                 for vendor in all_vendors[:5]:
                     logger.info(vendor)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            self._raise_persist_error(raise_on_persist_error=raise_on_persist_error)
             return all_vendors
 
     def _record_team_failures(
@@ -149,24 +178,47 @@ class FoodCrawler(BaseHttpCrawler):
         *,
         record_dead_letters: bool,
     ) -> None:
-        """Reflect unreadable teams in the run status and the dead letter queue."""
-        if not self._team_failures:
+        """Reflect unreadable and unwritten teams in the run and the dead letter queue.
+
+        A run that read rows but wrote none is ``failed``, not ``partial``. Both
+        leave the table in the same state, so calling that a partial success
+        would report a total write loss as a short sweep -- and the dead letter
+        would then be the only trace that anything went wrong.
+        """
+        failures = [*self._team_failures, *self._persist_failures]
+        if not failures:
             return
 
-        failed_teams = [team_code for team_code, _, _ in self._team_failures]
-        run.error_message = f"teams failed: {failed_teams}"
-        if run.records_read:
+        failed_teams = [team_code for team_code, _, _ in failures]
+        wrote_nothing = bool(self._persist_failures) and not run.records_written
+        run.error_message = f"teams failed: {sorted(set(failed_teams))}" + (
+            " (nothing was written)" if wrote_nothing else ""
+        )
+        if run.records_read and not wrote_nothing:
             run.status = RUN_STATUS_PARTIAL
         else:
             run.status = RUN_STATUS_FAILED
-            run.error_code = self._team_failures[0][1]
+            run.error_code = failures[0][1]
         logger.warning("[FOOD] teams failed: %s", failed_teams)
 
         if not record_dead_letters:
             return
-        for team_code, error_code, message in self._team_failures:
+        for team_code, error_code, message in failures:
             info = selected.get(team_code, {})
             self._enqueue_dead_letter(run.run_id, team_code, error_code, message, source_url=info.get("url"))
+
+    def _raise_persist_error(self, *, raise_on_persist_error: bool) -> None:
+        """Re-raise the first write failure when the caller asked to hear about it.
+
+        A replay is judged on the stored run, so the ledger is enough on its own;
+        this exists so a caller that wants the exception -- rather than a status
+        it has to remember to check -- cannot miss a write that stored nothing.
+        """
+        if not raise_on_persist_error or not self._persist_failures:
+            return
+        team_code, error_code, message = self._persist_failures[0]
+        detail = f"food save failed for {team_code}: {message}"
+        raise CrawlPersistError(detail, error_code=FailureCode(error_code))
 
     def _enqueue_dead_letter(
         self,
@@ -260,30 +312,92 @@ class FoodCrawler(BaseHttpCrawler):
 
         return vendors
 
-    def _save_to_db(self, data: list[dict]) -> int:
-        with SessionLocal() as session:
-            try:
-                saved_snaps = save_raw_snapshots(session, self._raw_pages)
+    def _save_to_db(self, data: list[dict]) -> tuple[int, int]:
+        """Persist the sweep, one transaction per team.
+
+        The vendor repository flushes on insert, so a constraint violation used
+        to leave the session needing a rollback: every later save in the same
+        sweep then failed with ``PendingRollbackError``, the batch commit rolled
+        the whole sweep back, and the caller logged ``0`` and reported success.
+        One team cannot undo another team's rows, and the team that failed can be
+        replayed on its own.
+
+        Args:
+            data: Parsed vendor entries, each carrying the ``team_code`` it came from.
+
+        Returns:
+            ``(saved, failed)`` vendor counts. A team either wrote all of its
+            vendors or wrote none, so a failed team contributes every entry it
+            contributed.
+
+        """
+        saved_snaps = self._save_snapshots()
+        saved = failed = 0
+        try:
+            for team_code, entries in self._group_by_team(data).items():
+                if self._save_team(team_code, entries):
+                    saved += len(entries)
+                else:
+                    failed += len(entries)
+        finally:
+            self._raw_pages.clear()
+        logger.info("[FOOD] Saved %s of %s vendors, %s snapshots.", saved, saved + failed, saved_snaps)
+        return saved, failed
+
+    def _save_snapshots(self) -> int:
+        """Commit the raw pages on their own, before the domain rows.
+
+        The snapshots are the evidence a replay re-parses, so a domain write that
+        fails must not discard them: a page stored without its rows is something
+        ``kbo snapshot replay`` can finish later, while a page lost with a failed
+        transaction is gone until the next sweep happens to re-fetch it.
+        """
+        try:
+            with SessionLocal() as session:
+                count = save_raw_snapshots(session, self._raw_pages)
+                session.commit()
+        except FOOD_DB_EXCEPTIONS:
+            logger.exception("[FOOD] Snapshot save failed; continuing with the domain rows")
+            return 0
+        return count
+
+    def _group_by_team(self, data: list[dict]) -> dict[str, list[dict]]:
+        """Group parsed entries by the team that produced them.
+
+        A missing ``team_code`` raises out of here rather than being bucketed:
+        the caller attaches it, so its absence is a bug in the parse path, and
+        hiding it under a sentinel would enqueue a dead letter nobody could
+        replay.
+        """
+        grouped: dict[str, list[dict]] = {}
+        for entry in data:
+            grouped.setdefault(entry["team_code"], []).append(entry)
+        return grouped
+
+    def _save_team(self, team_code: str, entries: list[dict]) -> bool:
+        """Write one team's vendors and menus, returning whether they committed."""
+        try:
+            with SessionLocal() as session:
                 vendor_repo = StadiumFoodVendorRepository(session)
                 menu_repo = StadiumFoodMenuItemRepository(session)
-                vendor_count = 0
-                menu_count = 0
-                for entry in data:
-                    try:
-                        vendor = vendor_repo.save(entry["vendor"])
-                        vendor_count += 1
-                        for menu in entry.get("menus", []):
-                            menu_repo.save({"vendor_id": vendor.id, **menu})
-                            menu_count += 1
-                    except FOOD_DB_EXCEPTIONS:
-                        logger.exception("Food save failed: %s", entry.get("vendor", {}).get("vendor_name", ""))
+                for entry in entries:
+                    vendor = vendor_repo.save(entry["vendor"])
+                    for menu in entry.get("menus", []):
+                        menu_repo.save({"vendor_id": vendor.id, **menu})
                 session.commit()
-                logger.info("[FOOD] Saved %s vendors, %s menus, %s snapshots.", vendor_count, menu_count, saved_snaps)
-            except SQLAlchemyError:
-                session.rollback()
-                logger.exception("[FOOD] Database error")
-                return 0
-            else:
-                return vendor_count
-            finally:
-                self._raw_pages.clear()
+        except FOOD_DB_EXCEPTIONS as exc:
+            self._record_persist_failure(team_code, exc)
+            return False
+        return True
+
+    def _record_persist_failure(self, team_code: str, exc: BaseException) -> None:
+        """Record a write failure against the team whose transaction died."""
+        stage, code = classify_persist_failure(exc)
+        logger.error(
+            "[FOOD] save failed for %s (%s/%s)",
+            team_code,
+            stage.value,
+            code.value,
+            exc_info=exc,
+        )
+        self._persist_failures.append((team_code, code.value, str(exc)))

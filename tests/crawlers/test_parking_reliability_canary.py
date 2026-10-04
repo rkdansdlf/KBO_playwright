@@ -17,14 +17,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
+from src.crawlers.failure_taxonomy import CrawlPersistError, FailureCode, stage_for_code
 from src.crawlers.parking_crawler import (
     PARKING_CRAWLER_NAME,
     PARKING_TARGET_TYPE,
@@ -34,7 +35,11 @@ from src.crawlers.parking_crawler import (
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
+from src.models.parking_fee_rule import ParkingFeeRule
+from src.models.parking_lot import ParkingLot
+from src.models.source_registry import DataSource, RawSourceSnapshot
 from src.monitoring import crawler_metrics as cm
+from src.repositories.parking_lot_repository import ParkingLotRepository
 
 SK_URL = TEAM_PARKING_SOURCES["SK"]["url"]
 HTML = "<html><body>기본 요금: 5,000원</body></html>"
@@ -160,3 +165,215 @@ class TestHealthyAndFilteredRuns:
         run = _only_run(session_factory)
         assert run.target_id == "LG"
         assert run.source_url == TEAM_PARKING_SOURCES["LG"]["url"]
+
+
+# ── the write side ──────────────────────────────────────────────────────────
+#
+# The lot repository flushes on insert, so one constraint violation used to leave
+# the session needing a rollback: every later save in the sweep failed with
+# PendingRollbackError, the batch commit rolled all three teams back, and the
+# run reported `success` with zero rows written. `crawl_p1p2_data_job` then wrote
+# its "ok" run marker and the lock-health check reported a healthy lock.
+
+
+@pytest.fixture
+def write_db(monkeypatch: pytest.MonkeyPatch, session_factory: sessionmaker) -> sessionmaker:
+    """Add the tables the save path writes to, on the same database as the ledger.
+
+    One engine rather than two: a run recorded in one database and rows written
+    to another would let every assertion below pass while describing two
+    databases that never coexisted.
+    """
+    engine = session_factory.kw["bind"]
+    for table in (DataSource.__table__, RawSourceSnapshot.__table__, ParkingLot.__table__, ParkingFeeRule.__table__):
+        table.create(engine)
+    monkeypatch.setattr("src.crawlers.parking_crawler.SessionLocal", session_factory)
+    with session_factory() as session:
+        for info in TEAM_PARKING_SOURCES.values():
+            session.add(
+                DataSource(
+                    source_key=info["source_key"],
+                    source_type="web",
+                    target_domain="parking",
+                    is_active=True,
+                ),
+            )
+        session.commit()
+    return session_factory
+
+
+def _break_writes(monkeypatch: pytest.MonkeyPatch, *stadium_ids: str) -> None:
+    """Make the lot write raise a real IntegrityError for the named stadiums."""
+    broken = set(stadium_ids)
+    real_save = ParkingLotRepository.save
+
+    def _save(self, data: dict) -> ParkingLot:
+        if data.get("stadium_id") in broken:
+            raise IntegrityError("INSERT INTO parking_lots ...", {}, Exception("UNIQUE constraint failed"))
+        return real_save(self, data)
+
+    monkeypatch.setattr(ParkingLotRepository, "save", _save)
+
+
+def _stored_stadiums(factory: sessionmaker) -> set[str]:
+    with factory() as check:
+        return {row.stadium_id for row in check.query(ParkingLot).all()}
+
+
+def _snapshot_count(factory: sessionmaker) -> int:
+    with factory() as check:
+        return check.query(RawSourceSnapshot).count()
+
+
+class TestPersistenceFailures:
+    @pytest.mark.asyncio
+    async def test_one_team_failing_to_write_does_not_roll_back_the_others(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _break_writes(monkeypatch, TEAM_PARKING_SOURCES["SK"]["stadium_id"])
+
+        lots = await _crawler().run(save=True)
+
+        assert len(lots) == 3
+        # The other two teams kept their rows: the transaction unit is the team.
+        assert _stored_stadiums(write_db) == {
+            TEAM_PARKING_SOURCES["LG"]["stadium_id"],
+            TEAM_PARKING_SOURCES["SS"]["stadium_id"],
+        }
+        run = _only_run(write_db)
+        assert run.status == "partial"
+        assert run.records_written == 2
+        assert run.records_failed == 1
+        assert run.records_read == 3
+
+    @pytest.mark.asyncio
+    async def test_only_the_unwritten_team_is_enqueued(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The letter has to name a team, because a team is what a replay re-runs."""
+        _break_writes(monkeypatch, TEAM_PARKING_SOURCES["SK"]["stadium_id"])
+
+        await _crawler().run(save=True)
+
+        letters = _letters(write_db)
+        assert [letter.target_id for letter in letters] == ["SK"]
+        assert letters[0].error_code == FailureCode.PERSIST_CONSTRAINT.value
+        assert letters[0].failure_stage == stage_for_code(letters[0].error_code).value
+        assert letters[0].source_url == TEAM_PARKING_SOURCES["SK"]["url"]
+
+    @pytest.mark.asyncio
+    async def test_a_sweep_that_writes_nothing_is_failed_not_partial(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Nothing in the table looks the same either way; only the status tells them apart."""
+        _break_writes(monkeypatch, *(info["stadium_id"] for info in TEAM_PARKING_SOURCES.values()))
+
+        await _crawler().run(save=True)
+
+        run = _only_run(write_db)
+        assert run.status == "failed"
+        assert run.records_written == 0
+        assert run.records_failed == 3
+        assert run.error_code == FailureCode.PERSIST_CONSTRAINT.value
+        assert _stored_stadiums(write_db) == set()
+
+    @pytest.mark.asyncio
+    async def test_a_write_failure_does_not_change_what_was_read(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _break_writes(monkeypatch, TEAM_PARKING_SOURCES["LG"]["stadium_id"])
+
+        await _crawler().run(save=True)
+
+        # The source answered; only the write died. Reporting a short read here
+        # would send an operator looking at the page instead of at the database.
+        assert _only_run(write_db).records_read == 3
+
+    @pytest.mark.asyncio
+    async def test_the_raw_page_survives_a_failed_write(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The snapshot is the evidence a replay re-parses, so the write must not discard it."""
+        _break_writes(monkeypatch, *(info["stadium_id"] for info in TEAM_PARKING_SOURCES.values()))
+
+        await _crawler().run(save=True)
+
+        assert _snapshot_count(write_db) == len(TEAM_PARKING_SOURCES)
+
+    @pytest.mark.asyncio
+    async def test_a_failed_snapshot_does_not_block_the_domain_rows(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Evidence is worth keeping, but the rows a live sweep read are worth more."""
+        monkeypatch.setattr(
+            "src.crawlers.parking_crawler.save_raw_snapshots",
+            MagicMock(side_effect=SQLAlchemyError("snapshot table is gone")),
+        )
+
+        await _crawler().run(save=True)
+
+        assert _stored_stadiums(write_db) == {info["stadium_id"] for info in TEAM_PARKING_SOURCES.values()}
+        assert _only_run(write_db).status == "success"
+
+    @pytest.mark.asyncio
+    async def test_the_replay_flag_hands_the_caller_the_classification(
+        self,
+        write_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _break_writes(monkeypatch, TEAM_PARKING_SOURCES["LG"]["stadium_id"])
+
+        with pytest.raises(CrawlPersistError) as raised:
+            await _crawler().run(save=True, raise_on_persist_error=True)
+
+        assert raised.value.error_code == FailureCode.PERSIST_CONSTRAINT.value
+        # The run is judged from the stored row, so it has to be terminal already.
+        assert _only_run(write_db).status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_a_healthy_save_writes_every_team(
+        self,
+        write_db: sessionmaker,
+    ) -> None:
+        await _crawler().run(save=True)
+
+        run = _only_run(write_db)
+        assert run.status == "success"
+        assert run.records_written == 3
+        assert run.records_failed == 0
+        assert _letters(write_db) == []
+        assert _stored_stadiums(write_db) == {info["stadium_id"] for info in TEAM_PARKING_SOURCES.values()}
+
+    @pytest.mark.asyncio
+    async def test_parsed_fees_reach_the_snapshot_and_not_the_fee_table(
+        self,
+        write_db: sessionmaker,
+    ) -> None:
+        """The fee text is real evidence; a vehicle class for it would not be.
+
+        The parser produces a kind (기본/추가/일일/행사) and `parking_fee_rules`
+        is keyed by vehicle class with a non-null base duration, so writing the
+        kind there raised `KeyError: 'vehicle_type'` and took the lot's own row
+        down with it. The kinds belong to the snapshot; asserting that here keeps
+        a later schema change from silently reintroducing the mismatch.
+        """
+        await _crawler().run(save=True)
+
+        with write_db() as check:
+            assert check.query(ParkingFeeRule).count() == 0
+        snapshots = _snapshot_count(write_db)
+        assert snapshots == len(TEAM_PARKING_SOURCES)
+        # The page text that produced the fees is still on disk to re-parse.
+        assert _crawler()._parse_parking_page(HTML, TEAM_PARKING_SOURCES["LG"])
