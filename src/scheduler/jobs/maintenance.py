@@ -494,11 +494,13 @@ def trim_scheduler_logs_job() -> None:
     try:
         from pathlib import Path
 
-        from scripts.maintenance.trim_scheduler_log import trim_log
+        from scripts.maintenance.trim_scheduler_log import DEFAULT_ARCHIVE_DIR, trim_log
 
         log_path = Path("logs/scheduler.launchd.err.log")
         if log_path.exists():
-            result = trim_log(log_path, keep_bytes=16 * 1024 * 1024)
+            # The archive is the only record of what a trim discarded -- losing it
+            # made the 2026-09 reliability investigation unreconstructable.
+            result = trim_log(log_path, keep_bytes=16 * 1024 * 1024, archive_dir=DEFAULT_ARCHIVE_DIR)
             logger.info("=== Scheduler Log Trim Completed: %s ===", result)
         else:
             logger.info("=== No scheduler log file to trim ===")

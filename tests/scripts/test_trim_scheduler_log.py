@@ -7,10 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from scripts.maintenance.trim_scheduler_log import _parse_size, main, trim_log
+from scripts.maintenance.trim_scheduler_log import DEFAULT_ARCHIVE_DIR, _parse_size, main, trim_log
 
 HEAD_MARKER = b"A" * 4096
 TAIL_MARKER = b"B" * 2048
+
+
+class TestDefaultArchiveDir:
+    def test_public_default_points_at_the_archive_tree(self) -> None:
+        assert Path("data") / "archive" / "logs" == DEFAULT_ARCHIVE_DIR
 
 
 @pytest.fixture()
