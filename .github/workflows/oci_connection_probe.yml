@@ -92,3 +92,12 @@ jobs:
           else
             echo "접속 성공, 마이그레이션 최신 상태"
           fi
+
+      # Dispatch-only and previously silent, so a probe run that found the
+      # database unreachable produced a red run nobody was told about.
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: 'Oracle ADB Connection Probe'
+          channels: telegram

@@ -49,3 +49,14 @@ jobs:
 
       - name: Run Live Oracle E2E Verification
         run: python3 scripts/verification/verify_oci_live_sync.py --json
+
+      # This workflow had no notify step, so it has failed every Sunday since
+      # 2026-08-23 without anyone being told. The database being down is
+      # exactly the condition this job exists to detect, and the silence is
+      # what let it go unnoticed for six weeks.
+      - uses: ./.github/actions/notify
+        if: always()
+        with:
+          status: ${{ job.status }}
+          workflow: 'Oracle ADB Live Verification'
+          channels: telegram
