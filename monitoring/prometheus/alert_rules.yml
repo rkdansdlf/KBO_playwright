@@ -18,3 +18,26 @@ groups:
         annotations:
           summary: "KBO 스케줄러 작업 실패"
           description: "스케줄러 작업 {{ $labels.job_id }} 이(가) 실패했습니다."
+
+  - name: kbo_database_alerts
+    rules:
+      # DB availability is owned here (infrastructure path), not by the
+      # in-process incident manager: the incident ledger lives in the DB itself,
+      # so DB-down state cannot be persisted there.
+      - alert: KBODatabaseUnavailable
+        expr: kbo_db_available == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "KBO 데이터베이스 연결 불가"
+          description: "SELECT 1 프로브가 1분 이상 실패했습니다. DB 연결/인증/네트워크를 확인하세요."
+
+      - alert: KBODatabaseLatencyHigh
+        expr: kbo_db_ping_latency_seconds > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KBO 데이터베이스 응답 지연"
+          description: "DB ping 지연이 5분 이상 {{ $value | humanizeDuration }} 수준입니다."
