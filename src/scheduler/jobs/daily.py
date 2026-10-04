@@ -16,14 +16,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.cli.pipelines.run_daily_update import format_stability_alert_summary
 from src.cli.pipelines.run_daily_update import main as run_daily_update_main
 from src.db.engine import SessionLocal
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
-from src.scheduler.alerting import alert_failure, alert_success, alert_warning
+from src.scheduler.alerting import alert_success, alert_warning
 from src.scheduler.config import (
     KST,
     PROJECT_ROOT,
@@ -33,7 +31,13 @@ from src.scheduler.config import (
     _env_int,
 )
 from src.scheduler.jobs.live import _previous_day_kst
-from src.scheduler.locks import DAILY_LOCK, MAINTENANCE_LOCK, _scheduler_job_lock, _with_lock_skip_guard
+from src.scheduler.locks import (
+    DAILY_LOCK,
+    MAINTENANCE_LOCK,
+    _scheduler_job_lock,
+    _with_db_fail_fast_guard,
+    _with_lock_skip_guard,
+)
 
 logger = logging.getLogger("src.scheduler.jobs.daily")
 
@@ -216,7 +220,10 @@ def crawl_daily_games() -> None:
     """Daily job: Run unified daily update entrypoint with dependency tracking.
 
     Runs at 03:00 KST daily to collect previous KST day's schedule+details.
-    Uses exponential backoff retry on failures (3 attempts max).
+    No retry wrapper: the body catches ``SCHEDULER_JOB_EXCEPTIONS`` to record a
+    run marker and a terminal ``JobStatus`` per attempt, so an exception never
+    escapes to tenacity and the declared backoff would be unreachable. The next
+    cron tick is the retry.
     """
     _register_job("crawl_daily_games", dependencies=[])
 
@@ -568,6 +575,7 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
     return backfilled
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_phase1_extra_job() -> None:
     """Phase 1: Supplementary crawlers (broadcast, MVP, injury, foreign players, manager changes)."""
@@ -605,11 +613,6 @@ def _write_p1p2_run_marker(status: str) -> None:
 
 
 @_with_lock_skip_guard
-@retry(
-    stop=stop_after_attempt(4),
-    wait=wait_exponential(multiplier=1, min=300, max=1800),
-    retry_error_callback=alert_failure,
-)
 def crawl_p1p2_data_job() -> None:
     """P1/P2 Crawlers: seat sections, parking, stadium food."""
     _register_job("crawl_p1p2_data_job", dependencies=["crawl_daily_games"])
@@ -680,6 +683,7 @@ def lock_health_check_job() -> None:
         _update_job_status("lock_health_check_job", JobStatus.SUCCESS, "Passed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_p0_non_game_job() -> None:
     """P0 non-game job: crawl team events, roster transactions, and ticket info."""
@@ -762,6 +766,7 @@ def crawl_futures_schedule_job() -> None:
             _update_job_status("crawl_futures_schedule_job", JobStatus.FAILURE, "Exception")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def daily_gap_report_job() -> None:
     """Daily Gap Report Summary: run gap report and send summary notification at 07:00 KST."""

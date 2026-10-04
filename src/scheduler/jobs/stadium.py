@@ -6,20 +6,12 @@ import asyncio
 import logging
 import sys
 
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-from src.scheduler.alerting import alert_failure
 from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
 from src.scheduler.locks import DAILY_LOCK, LIVE_LOCK, _scheduler_job_lock, _sqlite_writer_lock, _with_lock_skip_guard
 
 logger = logging.getLogger("src.scheduler.jobs.stadium")
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=10, max=60),
-    retry_error_callback=alert_failure,
-)
 def crawl_transit_time_job() -> None:
     """Collect transit time to stadiums (Jamsil etc.) via Kakao Mobility."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")

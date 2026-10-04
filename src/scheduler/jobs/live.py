@@ -13,13 +13,12 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.live.live_crawler import run_live_crawler_cycle
 from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.db.engine import DATABASE_URL, SessionLocal, database_reachable
 from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_error
-from src.scheduler.alerting import alert_failure, alert_success
+from src.scheduler.alerting import alert_success
 from src.scheduler.config import (
     FALSE_ENV_VALUES,
     KST,
@@ -222,11 +221,6 @@ def _resolve_pregame_incident(target_date: str) -> None:
     apply_incidents([], resolve_keys=[_pregame_incident_key(target_date)])
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=30, max=120),
-    retry_error_callback=alert_failure,
-)
 def _process_pregame_date(
     target_date: str,
     *,
@@ -264,9 +258,8 @@ def crawl_pregame_refresh() -> None:
     live_lock = getattr(mod, "LIVE_LOCK", LIVE_LOCK) if mod else LIVE_LOCK
 
     # This job queries the database once per target date through
-    # _pregame_refresh_summary, and _process_pregame_date swallows the resulting
-    # error rather than propagating it, so the tenacity retry on that helper does
-    # not fire either. Probe before taking LIVE_LOCK: while the database is
+    # _pregame_refresh_summary, which swallows the resulting error instead of
+    # propagating it. Probe before taking LIVE_LOCK: while the database is
     # unreachable each of those calls burns the connect timeout, and LIVE_LOCK is
     # the same lock the 10s crawl_live_refresh tick needs.
     probe_fn = getattr(mod, "database_reachable", None) or database_reachable

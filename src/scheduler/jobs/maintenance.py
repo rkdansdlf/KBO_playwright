@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.cli.collection.crawl_retire import main as crawl_retire_main
-from src.db.engine import SessionLocal, database_reachable, get_db_session
+from src.db.engine import SessionLocal, get_db_session
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_failure, alert_success, alert_warning
 from src.scheduler.config import (
@@ -23,6 +23,7 @@ from src.scheduler.jobs.live import _previous_day_kst
 from src.scheduler.locks import (
     MAINTENANCE_LOCK,
     _scheduler_job_lock,
+    _with_db_fail_fast_guard,
     _with_lock_skip_guard,
 )
 
@@ -46,9 +47,28 @@ _INTEGRITY_RECHECK_LOOKBACK_MAX = 7
 
 
 def _rag_vector_backend_configured() -> bool:
-    """Return whether the scheduled RAG job has a supported dense target."""
-    database_url = os.getenv("DATABASE_URL", "")
-    return database_url.startswith("oracle") or bool(os.getenv("PGVECTOR_URL") or os.getenv("PGVECTOR_TEST_URL"))
+    """Return whether the scheduled RAG job has a supported dense target.
+
+    Reads the target resolution the build itself performs, rather than its own
+    reading of the environment. The previous version asked two questions --
+    "is ``DATABASE_URL`` Oracle?" and "is a vector URL set?" -- and a deployment
+    that points a *separate sparse store* at ``RAG_INDEX_DB_URL`` satisfied
+    neither while still being a legitimate configuration. That gap failed
+    closed: the job skipped silently, and the operator saw a healthy scheduler
+    and an index that stopped updating.
+
+    Falling back to the operational database keeps a broken configuration visible.
+    Failing closed would skip the job and replace its guard's own message with
+    silence.
+    """
+    from src.cli.rag.build_rag_index import planned_rag_target_urls
+
+    targets = planned_rag_target_urls()
+    if not targets:
+        return False
+    from src.db.engine import DATABASE_URL
+
+    return DATABASE_URL in targets
 
 
 @_with_lock_skip_guard
@@ -57,6 +77,7 @@ def _rag_vector_backend_configured() -> bool:
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
+@_with_db_fail_fast_guard
 def crawl_retired_players_job(limit: int | None = None) -> None:
     """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 02:00 KST."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -93,11 +114,7 @@ def crawl_retired_players_job(limit: int | None = None) -> None:
 
 
 @_with_lock_skip_guard
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=60, max=300),
-    retry_error_callback=alert_failure,
-)
+@_with_db_fail_fast_guard
 def _crawl_team_info_history() -> None:
     """Weekly job: Refresh team info and team history data."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -117,6 +134,7 @@ def _crawl_team_info_history() -> None:
             logger.exception("Team info/history refresh failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def weekly_sla_report_job() -> None:
     """Weekly SLA report job: computes past 7 days SLA and alerts. Runs Monday 06:00 KST."""
@@ -130,6 +148,7 @@ def weekly_sla_report_job() -> None:
         logger.info("=== Weekly SLA Report Generation Completed ===")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def compute_standings_job() -> None:
     """Compute daily standings with home/away splits, recent 10, weekly trends."""
@@ -146,6 +165,7 @@ def compute_standings_job() -> None:
             logger.exception("Standings computation failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def aggregate_team_defense_job() -> None:
     """Aggregate daily team defense statistics. Runs daily at 03:45 KST.
@@ -172,6 +192,7 @@ def aggregate_team_defense_job() -> None:
             logger.exception("Team defense aggregation failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def compute_rankings_job() -> None:
     """Compute daily player rankings across all categories. Runs daily at 04:00 KST."""
@@ -187,6 +208,7 @@ def compute_rankings_job() -> None:
             logger.exception("Rankings computation failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def auto_heal_games_job() -> None:
     """Auto-Healer: scan for stuck SCHEDULED/UNRESOLVED games and score sum mismatches."""
@@ -204,6 +226,7 @@ def auto_heal_games_job() -> None:
             logger.exception("Auto-Healer job failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def heal_unverified_pbp_job() -> None:
     """PBP Healer: scan for unverified PBP games and re-crawl from KBO official site."""
@@ -258,6 +281,7 @@ def _integrity_target_dates() -> list[str]:
     return [(newest - timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookback + 1)]
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def data_integrity_check_job() -> None:
     """Run post-crawl data integrity validation (daily at 04:45 KST)."""
@@ -319,6 +343,22 @@ def _integrity_alert_event(result: object, target_date: str, key: str) -> AlertE
     )
 
 
+def _rag_target_urls() -> tuple[str, ...]:
+    """Return every database a scheduled RAG build would open, in a stable order.
+
+    Resolved per call rather than at import: the target set comes from the
+    environment, and an import-time snapshot would describe whatever the
+    importing process saw rather than what the job would actually open. Sorted so
+    the gate's memo key is stable across ticks -- a set built in
+    environment-variable order would miss the memo whenever the ordering shifted,
+    and re-probing on every tick is what the cooldown exists to prevent.
+    """
+    from src.cli.rag.build_rag_index import planned_rag_target_urls
+
+    return tuple(sorted(planned_rag_target_urls()))
+
+
+@_with_db_fail_fast_guard(urls=_rag_target_urls)
 @_with_lock_skip_guard
 def sync_rag_incremental_job() -> None:
     """RAG Vector DB Incremental Sync Job: sync latest season data into the Oracle RAG index."""
@@ -354,6 +394,7 @@ def sync_rag_incremental_job() -> None:
             logger.exception("RAG Vector DB Incremental Sync job failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def sparse_terms_catchup_job() -> None:
     """Sparse postings catch-up for chunks published after the last build (daily 05:40 KST)."""
@@ -397,6 +438,7 @@ def backup_db_job() -> None:
             logger.exception("Weekly SQLite Backup job failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def compute_park_factor_job() -> None:
     """Compute park factor for all stadiums (Sunday 05:30 KST)."""
@@ -414,6 +456,7 @@ def compute_park_factor_job() -> None:
             logger.exception("Park Factor computation failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def recalc_milestones_and_rag_job() -> None:
     """Recalculate player milestones and index RAG knowledge chunks."""
@@ -430,6 +473,7 @@ def recalc_milestones_and_rag_job() -> None:
             logger.exception("Milestone recalculation and RAG indexing failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_fan_culture_job() -> None:
     """Fan culture data job: crawl cheer songs, chants, and rivalries from Namuwiki."""
@@ -459,6 +503,7 @@ def cleanup_stale_data_job() -> None:
             logger.exception("Stale data cleanup job failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def notification_retention_job() -> None:
     """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:00 KST)."""
@@ -508,6 +553,7 @@ def trim_scheduler_logs_job() -> None:
         logger.exception("Scheduler log trim job failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def rag_identity_drift_job() -> None:
     """Daily RAG identity drift detection: census legacy vs natural keys, alert on unsafe drift."""
@@ -576,6 +622,7 @@ def rag_identity_drift_job() -> None:
             logger.exception("RAG identity drift detection failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def schema_drift_check_job() -> None:
     """Daily schema drift detection: alert when ORM metadata and the live DB diverge."""
@@ -639,6 +686,7 @@ def _drift_alert_severity(drifts: Sequence[object]) -> AlertSeverity:
     return AlertSeverity.INFO
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def relay_state_cleanup_job() -> None:
     """Weekly relay source state audit job.
@@ -704,11 +752,9 @@ def _refresh_dlq_metrics() -> None:
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
+@_with_db_fail_fast_guard
 def crawl_dead_letter_recovery_job() -> None:
     """Recover dead letters stranded in ``retrying`` after a crash."""
-    if not database_reachable():
-        logger.warning("Database unreachable; skipping dead letter recovery")
-        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Recovery ===")
         try:
@@ -740,11 +786,9 @@ def crawl_dead_letter_recovery_job() -> None:
     wait=wait_exponential(multiplier=1, min=120, max=600),
     retry_error_callback=alert_failure,
 )
+@_with_db_fail_fast_guard
 def crawl_dead_letter_retry_job() -> None:
     """Retry due ``pending`` dead letters through their replay handlers."""
-    if not database_reachable():
-        logger.warning("Database unreachable; skipping dead letter retry")
-        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Retry ===")
         try:
@@ -768,12 +812,10 @@ def crawl_dead_letter_retry_job() -> None:
 SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def snapshot_drift_check_job() -> None:
     """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
-    if not database_reachable():
-        logger.warning("Database unreachable; skipping snapshot drift check")
-        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Snapshot Drift Check ===")
         try:
