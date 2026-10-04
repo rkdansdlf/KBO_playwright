@@ -14,6 +14,11 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.failure_taxonomy import classify_failure, classify_persist_failure, stage_for_code
+from src.crawlers.kbo_event_outcome import (
+    KboEventPageRead,
+    KboEventStatus,
+    classify_page_failure,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
@@ -44,9 +49,19 @@ KBO_EVENT_DEFAULT_URLS = (
     "https://www.koreabaseball.com/Kbo/BusinessAndEvent/OnSiteViewingSupport.aspx",
 )
 KBO_EVENT_KEYWORDS = ("이벤트", "event", "프로모션", "행사")
+#: The site chrome every page in the BusinessAndEvent section carries. Verified
+#: present on the standing pages (`SafeGuide`, `PurchaseGuide`) as well as the
+#: announcement ones, so its absence means the response is no longer the document
+#: the sweep asked for -- not that the site had nothing to announce.
+KBO_EVENT_FRAME_SELECTORS = ("header", "nav", "footer")
 KBO_EVENT_CRAWL_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
 KBO_EVENT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 GENERIC_PAGE_TITLES = {"메인", "신청하기", "신청확인"}
+#: The reason keys understood by ``classify_page_failure``. Spelled here so a
+#: typo in either module fails at import rather than as an UNKNOWN code in
+#: the ledger.
+FRAME_MISSING_REASON = "site_frame_missing"
+FETCH_FAILED_REASON = "page_fetch_failed"
 GENERIC_LINK_TITLES = {"신청하기", "신청 확인", "신청확인", "행사 개요"}
 
 
@@ -89,6 +104,47 @@ def extract_kbo_event_links(html: str, base_url: str = KBO_EVENT_BASE_URL) -> li
             },
         )
     return events
+
+
+def has_kbo_event_frame(html: str) -> bool:
+    """Return whether the document still carries the site's own frame.
+
+    Every page in the BusinessAndEvent section shares one header, one
+    navigation and one footer. When they are gone the response is a maintenance
+    page, an error page, or a redesign -- whatever else it contains, it is no
+    longer the document the sweep asked for. That has to be decided from the
+    frame rather than from the candidate count: most of these seven pages are
+    standing guides with nothing to announce, so "no candidates" is the correct
+    reading of most of a healthy sweep and cannot carry the verdict alone.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    return any(soup.select(selector) for selector in KBO_EVENT_FRAME_SELECTORS)
+
+
+def read_kbo_event_page(html: str, base_url: str = KBO_EVENT_BASE_URL) -> KboEventPageRead:
+    """Read one official-events page and say what it meant.
+
+    Three outcomes the sweep used to collapse into an empty list:
+
+    * the frame is there and candidates were found -> ``SUCCESS``
+    * the frame is there and none were -> ``EMPTY`` (a standing guide page)
+    * the frame is gone -> ``SCHEMA_CHANGED`` (not the page we asked for)
+
+    The first two are "the source answered". The third is a document we can no
+    longer read, and reporting it as empty would tell an operator the site has
+    no events when it was never actually asked.
+    """
+    if not has_kbo_event_frame(html):
+        return KboEventPageRead(status=KboEventStatus.SCHEMA_CHANGED, reason=FRAME_MISSING_REASON)
+
+    events = list(extract_kbo_event_links(html, base_url))
+    page_event = extract_kbo_event_page(html, base_url)
+    if page_event is not None:
+        events.insert(0, page_event)
+    return KboEventPageRead(
+        status=KboEventStatus.SUCCESS if events else KboEventStatus.EMPTY,
+        events=events,
+    )
 
 
 def extract_kbo_event_page(html: str, source_url: str) -> dict[str, object] | None:
@@ -159,7 +215,13 @@ class KboEventCrawler:
         self._last_failure_reason: str | None = None
         #: Pages that failed inside :meth:`run`, kept so the ledger and the dead
         #: letter queue can see them instead of one bad page ending the sweep.
-        self._page_failures: list[tuple[str, BaseException]] = []
+        self._page_failures: list[tuple[str, str, str]] = []
+        """Pages that could not be read, as (url, error_code, message).
+
+        A code rather than an exception because a page can fail without raising:
+        a document that lost the site frame is exactly as unreadable as a
+        connection error, and the run has to be able to say so.
+        """
 
     async def run(
         self,
@@ -228,14 +290,36 @@ class KboEventCrawler:
     async def _collect_page(self, url: str, events: list[dict[str, object]], seen_urls: set[str]) -> None:
         """Fetch one page and extend ``events`` with its candidates.
 
-        A failing page is captured for the ledger instead of ending the sweep.
+        A page that fails -- by raising, or by answering with something that is
+        no longer a KBO page -- is captured for the ledger instead of ending the
+        sweep. The second case used to arrive as an empty candidate list and be
+        reported as a successful read of a page that had nothing on it.
         """
         try:
             html, final_url = await self._fetch_html(url)
         except KBO_EVENT_CRAWL_EXCEPTIONS as exc:
             logger.exception("[KBO_EVENT] Failed to fetch %s", url)
-            self._page_failures.append((url, exc))
+            _stage, code = classify_failure(exc)
+            self._page_failures.append((url, code.value, str(exc)))
             return
+
+        read = read_kbo_event_page(html, final_url)
+        if read.status is KboEventStatus.SCHEMA_CHANGED:
+            # Keep the raw document: it is the evidence for what the page turned
+            # into, and `kbo snapshot replay` re-parses from it.
+            self._raw_pages.append(
+                {
+                    "source_key": KBO_EVENT_SOURCE_KEY,
+                    "url": final_url,
+                    "html": html,
+                    "status_code": 200,
+                },
+            )
+            code, _terminal = classify_page_failure(read.reason or "")
+            logger.warning("[KBO_EVENT] %s is no longer a KBO page: %s", final_url, read.reason)
+            self._page_failures.append((final_url, code, "site frame missing"))
+            return
+
         self._raw_pages.append(
             {
                 "source_key": KBO_EVENT_SOURCE_KEY,
@@ -244,16 +328,16 @@ class KboEventCrawler:
                 "status_code": 200,
             },
         )
-        page_event = extract_kbo_event_page(html, final_url)
-        if page_event and final_url not in seen_urls:
-            events.append(page_event)
-            seen_urls.add(final_url)
-        for event in extract_kbo_event_links(html, final_url):
+        for event in read.events:
             source_url = str(event["source_url"])
             if source_url in seen_urls:
                 continue
             events.append(event)
             seen_urls.add(source_url)
+        if read.status is KboEventStatus.EMPTY:
+            # Worth one line, because this is the case that must not page anyone
+            # and the one that looks identical to a broken page from outside.
+            logger.info("[KBO_EVENT] %s carried no event candidates", final_url)
 
     async def _persist(
         self,
@@ -280,25 +364,29 @@ class KboEventCrawler:
         run.records_written = written
 
     def _record_page_failures(self, run: CrawlExecutionRun, *, record_dead_letters: bool) -> None:
-        """Reflect failed pages in the run status and the dead letter queue."""
+        """Reflect unreadable pages in the run status and the dead letter queue.
+
+        A page that lost the site frame is as unreadable as one that timed out,
+        and both end up here with a code already attached. The queue is the only
+        durable trace either way, so a drift must not be allowed to slip past it
+        as a page that happened to carry nothing.
+        """
         if not self._page_failures:
             return
 
-        failed_keys = [_page_key(url) for url, _ in self._page_failures]
+        failed_keys = [_page_key(url) for url, _, _ in self._page_failures]
         run.error_message = f"pages failed: {failed_keys}"
         if run.records_read:
             run.status = RUN_STATUS_PARTIAL
         else:
             run.status = RUN_STATUS_FAILED
-            _, code = classify_failure(self._page_failures[0][1])
-            run.error_code = code.value
+            run.error_code = self._page_failures[0][1]
         logger.warning("[KBO_EVENT] pages failed: %s", failed_keys)
 
         if not record_dead_letters:
             return
-        for url, exc in self._page_failures:
-            _, code = classify_failure(exc)
-            self._enqueue_dead_letter(run.run_id, _page_key(url), code.value, str(exc), source_url=url)
+        for url, code, message in self._page_failures:
+            self._enqueue_dead_letter(run.run_id, _page_key(url), code, message, source_url=url)
 
     def _enqueue_dead_letter(
         self,
