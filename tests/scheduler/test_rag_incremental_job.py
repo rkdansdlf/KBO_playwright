@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from src.constants import KST
+from src.scheduler import locks
 from src.scheduler.jobs.maintenance import sync_rag_incremental_job
 
 WRITE_ENV_KEYS = (
@@ -89,6 +90,21 @@ def test_sync_rag_incremental_restores_env_after_failure() -> None:
     _run_job_with_fake_build(captured, build_error=RuntimeError("embedding provider down"))
 
     assert all(os.environ.get(key) is None for key in WRITE_ENV_KEYS)
+
+
+@pytest.fixture(autouse=True)
+def _reachable_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the DB fail-fast gate out of these tests.
+
+    The job now gates on every database a build would open, which in these
+    fixtures is a ``127.0.0.1`` PostgreSQL URL that is not listening. Without
+    this the job skips on the probe and every assertion about the build itself
+    becomes vacuously true.
+    """
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: True)
+    locks._reset_db_gate()
+    yield
+    locks._reset_db_gate()
 
 
 @pytest.fixture
