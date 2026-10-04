@@ -121,18 +121,15 @@ def test_live_lock_is_force_process_lock():
     assert isinstance(scheduler.LIVE_LOCK, ForceProcessLock)
 
 
-def test_crawl_p1p2_data_job_retry_policy():
-    """crawl_p1p2_data_job must retry on lock contention with a longer backoff
-    than the original stop_after_attempt(2)/min=60 policy.
+def test_crawl_p1p2_data_job_declares_no_unreachable_retry():
+    """Phase 64's tenacity policy was unreachable and has been removed.
+
+    ``stop_after_attempt(4)``/``wait_exponential(min=300)`` were added for lock
+    contention, but the body catches ``SCHEDULER_JOB_EXCEPTIONS`` to write a run
+    marker and a terminal ``JobStatus``, so no exception ever escaped to
+    tenacity. Contention protection is the bounded wait in ``_scheduler_job_lock``
+    plus ``_with_lock_skip_guard``, which the tests above already cover. The
+    replacement contract lives in
+    ``tests/scheduler/test_retry_reachability_contract.py``.
     """
-    retry = scheduler.crawl_p1p2_data_job.retry
-    assert retry is not None
-
-    stop = retry.stop
-    assert isinstance(stop, type(stop))  # introspect stop_after_attempt
-    assert stop.max_attempt_number == 4
-
-    wait = retry.wait
-    # wait_exponential(min=300, max=1800)
-    assert wait.min == 300
-    assert wait.max == 1800
+    assert not hasattr(scheduler.crawl_p1p2_data_job, "retry")
