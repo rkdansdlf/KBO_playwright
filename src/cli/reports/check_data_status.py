@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -542,7 +543,10 @@ def _run_p0_readiness_check(args: argparse.Namespace) -> None:
             ),
         )
     if args.json_output:
-        logger.info(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str))
+        # stdout, not the logger: `--json` promises a parseable document, and a
+        # log handler is free to prefix it with a timestamp and level. Every other
+        # report in this package writes JSON this way.
+        sys.stdout.write(json.dumps({"p0_readiness": readiness}, ensure_ascii=False, indent=2, default=str) + "\n")
         return
     _log_p0_readiness(target_date, readiness)
 
