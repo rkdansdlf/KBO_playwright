@@ -13,7 +13,16 @@ data/
 pw-browsers/
 local_metadata/
 reports/
-Docs/
+# Docs/ is mostly prose and certification evidence, but Dockerfile.playwright
+# copies it and three of its files are runtime inputs: the RAG golden queries,
+# the source contract, and the crawler selector gate config, all of which are
+# resolved by relative path from src/. Excluding the whole tree made
+# `COPY Docs/` fail with `"/Docs": not found`, which broke the text relay
+# pipeline daily. Exclude the heavy subtrees and keep what is read at runtime.
+Docs/*
+!Docs/references/
+Docs/certification/
+Docs/incident-evidence/
 .claude/
 .antigravitycli/
 .gemini/
