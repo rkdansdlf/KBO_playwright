@@ -92,7 +92,7 @@ def crawl_operation_notices_naver_job() -> None:
         try:
             from src.cli.collection.crawl_operation_notices import main as notices_main
 
-            notices_main(["--naver", "--save"])
+            notices_main(["--source", "naver", "--save"])
             logger.info("=== Operation Notices Naver Crawl Completed Successfully ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Operation notices Naver crawl failed")
