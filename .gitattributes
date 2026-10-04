@@ -4,3 +4,9 @@
 *.sql text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# Captured pages. `* text=auto` classifies these as text but leaves the line
+# endings to whatever the server sent, so a CRLF response lands in the index
+# as CRLF and the working copy then differs from what was committed. That is
+# what the trailing-whitespace and end-of-file hooks were fixing, twice, on two
+# different fixtures.
+*.html text eol=lf

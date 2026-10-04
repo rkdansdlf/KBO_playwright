@@ -31,11 +31,14 @@ from src.crawlers.adoption_matrix import (
     Transport,
     advise_row,
     build_matrix,
+    _imports_page_outcome_vocabulary,
+    _looks_like_outcome_value,
     _reaches_httpx_itself,
     discover_modules,
     render_markdown,
     scan_module,
     transports_of,
+    verify_priority_order,
     verify_row,
 )
 
@@ -261,21 +264,85 @@ class TestDetectionFollowsCallsNotWords:
         assert Transport.RAW_HTTPX not in facts.transports
         assert row.fully_adopted is True
 
-    def test_the_two_adoption_axes_have_not_separated_yet(self) -> None:
-        """Shared client and typed results currently agree on every row.
+    def test_the_typed_outcome_axis_turns_away_a_crawler_that_only_logs(self) -> None:
+        """No real row depends on it today, so it is tested on a row that would.
 
-        This is asserted because the coincidence is easy to misread. Dropping
-        either condition would change nothing today, so someone who removed one
-        would see no movement and conclude it was already dead weight. When this
-        fails, a crawler has adopted one and not the other, and the question the
-        gate is really asking has changed: a browser-first crawler with typed
-        results is protected differently from an HTTP one, and the condition that
-        used to stand in for both needs to be said out loud.
+        Every crawler that closes the rest of the chain also classifies its
+        outcome, so dropping the condition would change nobody's verdict *now*.
+        It is kept because it is what keeps the ledger honest for the next crawler
+        to adopt everything else: without it, one whose failures exist only as
+        log lines would count as fully adopted.
+
+        This asserts the coincidence and says why, rather than pretending the
+        axis is load-bearing today. An earlier version asserted the opposite --
+        that dropping it *would* change the verdict -- which was true while the
+        browser crawlers still owed a vocabulary and went false the moment all
+        three adopted one.
         """
-        for row in build_matrix().rows:
-            assert row.facts.shared_http == row.facts.uses_crawl_result, (
-                f"{row.facts.module} has adopted one of the two axes but not the other"
-            )
+        matrix = build_matrix()
+        without_typed_outcome = {
+            row.module
+            for row in matrix.rows
+            if row.facts.owns_transport and row.facts.ledger and row.facts.dead_letter and row.facts.replay
+        }
+        assert without_typed_outcome == {row.module for row in matrix.adopted()}, (
+            "a crawler closes the chain without classifying outcomes: "
+            f"{sorted(without_typed_outcome - {row.module for row in matrix.adopted()})}"
+        )
+
+        untyped = CrawlerRow(
+            facts=_facts(
+                transports=frozenset({Transport.PLAYWRIGHT}),
+                ledger=True,
+                dead_letter=True,
+            ),
+            design=DesignFacts(granularity=Granularity.SEASON, empty=EmptySemantics.TYPED),
+        )
+        assert untyped.facts.owns_transport is True
+        assert untyped.fully_adopted is False
+
+    def test_the_transport_axis_turns_away_a_second_request_path(self) -> None:
+        """No real row depends on it yet, so it is tested on a row that would.
+
+        Every crawler that closes the rest of the chain happens to have a single
+        governed request path, so dropping the transport condition would change
+        nobody's verdict today -- which is exactly why it needs a test that does
+        not depend on the current fleet. The condition protects the next crawler
+        to adopt the chain with an ungoverned client alongside, and this asserts
+        that it does, rather than leaving it to look like dead weight.
+        """
+        ungoverned = CrawlerRow(
+            facts=_facts(
+                transports=frozenset({Transport.PLAYWRIGHT, Transport.RAW_HTTPX}),
+                uses_crawl_result=True,
+                ledger=True,
+                dead_letter=True,
+            ),
+            design=DesignFacts(granularity=Granularity.SOURCE, empty=EmptySemantics.TYPED),
+        )
+
+        assert ungoverned.facts.owns_transport is False
+        assert ungoverned.fully_adopted is False
+
+    def test_no_real_crawler_carries_an_ungoverned_second_path(self) -> None:
+        """So the axis above guards a real invariant rather than a hypothetical.
+
+        ``preview_crawler`` drives a browser *and* opens a raw ``httpx`` client,
+        so "no crawler has both" would be false -- and correctly so: it is a
+        roadmap item precisely because of that second path. The claim the axis
+        actually makes is narrower, and this pins it: nothing that calls itself
+        adopted may carry an ungoverned second path.
+        """
+        both_paths = {
+            row.module
+            for row in build_matrix().rows
+            if {Transport.PLAYWRIGHT, Transport.RAW_HTTPX} <= row.facts.transports
+        }
+        adopted = {row.module for row in build_matrix().adopted()}
+
+        assert adopted & both_paths == set(), (
+            f"an adopted crawler drives a browser and a raw client at once: {sorted(adopted & both_paths)}"
+        )
 
 
 class TestDriftDetection:
@@ -324,6 +391,36 @@ class TestDriftDetection:
         assert verify_row(row) == []
 
 
+class TestTheDeclaredPriorityPointsAtLiveWork:
+    """A priority naming an adopted crawler misdirects while looking deliberate."""
+
+    def test_the_current_priority_is_not_drift(self, matrix: AdoptionMatrix) -> None:
+        assert matrix.drift == () or not any("declared migration priority" in message for message in matrix.drift)
+
+    def test_an_adopted_name_is_reported(self) -> None:
+        rows = [_row(module) for module in ("award_crawler", *PRIORITY_ORDER)]
+
+        problems = verify_priority_order(rows, ("award_crawler",))
+
+        assert any("already adopted" in message and "award_crawler" in message for message in problems), problems
+
+    def test_a_name_that_is_not_a_crawler_is_reported(self) -> None:
+        problems = verify_priority_order([_row("baserunning_stats_crawler")], ("ghost_crawler",))
+
+        assert any("no such crawler" in message for message in problems), problems
+
+    def test_a_live_name_is_not_reported(self) -> None:
+        rows = [_row(module) for module in PRIORITY_ORDER]
+
+        assert verify_priority_order(rows, PRIORITY_ORDER) == []
+
+    def test_the_declared_order_leads_the_computed_one(self, matrix: AdoptionMatrix) -> None:
+        """A declared order that the computed order contradicts is a preference, not a plan."""
+        order = [row.module for row in matrix.roadmap()]
+
+        assert order[: len(PRIORITY_ORDER)] == list(PRIORITY_ORDER)
+
+
 class TestAdvisories:
     def test_two_http_paths_are_advised(self) -> None:
         row = CrawlerRow(facts=_facts(transports=frozenset({Transport.CRAWLER_HTTP_CLIENT, Transport.RAW_HTTPX})))
@@ -369,11 +466,192 @@ FULLY_ADOPTED = (
     "award_crawler",
     "food_crawler",
     "game_detail_crawler",
+    "kbo_event_crawler",
     "parking_crawler",
+    "player_movement_crawler",
     "relay_crawler",
     "roster_transaction_crawler",
     "schedule_crawler",
+    "team_history_crawler",
 )
+
+#: Crawlers that close the ledger/dead-letter/replay chain without any HTTP
+#: client. Kept as a list because the transport criterion is the claim under test.
+BROWSER_FIRST_CHAINED = (
+    "kbo_event_crawler",
+    "player_movement_crawler",
+    "team_history_crawler",
+)
+
+
+class TestOwnsTransportIsNotSharedHttp:
+    """A browser-first crawler has no HTTP client to share.
+
+    ``shared_http`` was the adoption criterion, which scored the three crawlers
+    that close the whole reliability chain on Playwright as half-converted --
+    inheriting ``BaseHttpCrawler`` would not have helped them, since they never
+    make an HTTP request. What matters is the absence of a second, ungoverned
+    request path, so that is the question asked.
+    """
+
+    @pytest.mark.parametrize("module", BROWSER_FIRST_CHAINED)
+    def test_a_playwright_crawler_with_one_path_governs_its_transport(self, module: str) -> None:
+        facts = scan_module(module)
+
+        assert facts.shared_http is False
+        assert facts.owns_transport is True
+
+    @pytest.mark.parametrize("module", BROWSER_FIRST_CHAINED)
+    def test_each_browser_crawler_now_closes_the_chain(self, module: str) -> None:
+        """All three drove a browser and all three carry their own vocabulary.
+
+        ``CrawlResult`` models an HTTP fetch, so none of them could produce one;
+        each states what its page said and whether retrying could still change
+        it. That is the axis the migration report used to name as missing on
+        work that was already finished.
+        """
+        row = _row(module)
+
+        assert row.remaining_axes == ()
+        assert row.fully_adopted is True
+
+
+class TestAPageOutcomeCountsAsATypedOutcome:
+    """A browser crawler's own vocabulary is the typed outcome, not a gap.
+
+    ``kbo_event_crawler`` states that a page read cannot be described by an HTTP
+    result type and carries ``KboEventPageRead`` instead. Reading only
+    ``CrawlResult`` left a finished crawler at the top of the migration list
+    with the gap named -- which is worse than not ranking it, because an
+    operator following the report is sent to redo work someone already did.
+    """
+
+    def test_the_browser_crawler_that_adopted_one_is_typed(self) -> None:
+        facts = scan_module("kbo_event_crawler")
+
+        assert facts.uses_crawl_result is True
+        assert "CrawlResult" not in _module_source("kbo_event_crawler")
+
+    def test_and_therefore_closes_the_whole_chain(self) -> None:
+        row = _row("kbo_event_crawler")
+
+        assert row.remaining_axes == ()
+        assert row.fully_adopted is True
+
+    def test_a_status_field_alone_is_not_enough(self) -> None:
+        """Either member can be hit by accident; together they mean something.
+
+        A ``status`` field is a common name and an ``is_terminal`` property
+        could describe anything, so a vocabulary carrying only one of them has
+        not stated what happened *and* whether retrying could still change it.
+        """
+        source = "from dataclasses import dataclass\n@dataclass\nclass OnlyStatus:\n    status: str\n"
+        assert not _looks_like_outcome_value(ast.parse(source).body[1])
+
+    def test_a_terminal_flag_alone_is_not_enough(self) -> None:
+        source = (
+            "from dataclasses import dataclass\n"
+            "@dataclass\nclass OnlyTerminal:\n"
+            "    events: list\n"
+            "    @property\n    def is_terminal(self) -> bool:\n        return True\n"
+        )
+        assert not _looks_like_outcome_value(ast.parse(source).body[1])
+
+    def test_both_members_are_accepted(self) -> None:
+        source = (
+            "from dataclasses import dataclass\n"
+            "@dataclass\nclass Both:\n"
+            "    status: str\n"
+            "    @property\n    def is_terminal(self) -> bool:\n        return True\n"
+        )
+        assert _looks_like_outcome_value(ast.parse(source).body[1])
+
+    def test_a_class_the_crawler_does_not_import_does_not_count(self) -> None:
+        """The vocabulary has to be reachable from the crawler, not merely present.
+
+        Otherwise a helper module carrying one outcome class would mark every
+        crawler that imports anything at all from its package as typed.
+        """
+        assert scan_module("text_relay_crawler").uses_crawl_result is False
+
+    def test_an_import_from_outside_the_crawler_package_does_not_count(self) -> None:
+        """The vocabulary has to be the repository's own contract.
+
+        Any installed library could expose a dataclass with these two members;
+        accepting one would make the gate a guess about somebody else's code.
+        """
+        source = "from requests.models import Response\n"
+        assert not _imports_page_outcome_vocabulary(ast.parse(source))
+
+    def test_a_crawler_carrying_raw_httpx_is_not_governed(self) -> None:
+        """The second path is what the gate exists to catch, whatever else is true."""
+        facts = _facts(transports=frozenset({Transport.PLAYWRIGHT, Transport.RAW_HTTPX}))
+
+        assert facts.owns_transport is False
+
+    def test_the_shared_client_alone_also_governs_the_transport(self) -> None:
+        facts = _facts(transports=frozenset({Transport.CRAWLER_HTTP_CLIENT}))
+
+        assert facts.owns_transport is True
+
+    def test_a_crawler_with_no_recognized_path_governs_nothing(self) -> None:
+        facts = _facts(transports=frozenset())
+
+        assert facts.owns_transport is False
+
+
+class TestRemainingAxesNameTheGap:
+    def test_an_adopted_crawler_has_none(self, matrix: AdoptionMatrix) -> None:
+        for row in matrix.adopted():
+            assert row.remaining_axes == ()
+
+    def test_an_untouched_crawler_names_every_missing_axis(self) -> None:
+        """``seat_crawler`` drives nothing governed and records nothing.
+
+        A crawler that reaches its source through a raw client it built itself
+        has the widest gap, so it exercises every axis at once.
+        """
+        row = _row("seat_crawler")
+
+        assert "run ledger" in row.remaining_axes
+        assert "dead letter queue" in row.remaining_axes
+        assert "replay handler" in row.remaining_axes
+
+    def test_the_transport_axis_is_named_before_the_reliability_chain(self) -> None:
+        """Order carries meaning: the transport is what blocks the rest."""
+        row = _row("seat_crawler")
+
+        assert row.remaining_axes[0].startswith("transport:")
+
+    def test_a_browser_crawler_is_not_asked_for_a_transport_migration(self) -> None:
+        """It drives a browser, which is already governed -- nothing to do there."""
+        row = _row("broadcast_crawler")
+
+        assert not any(axis.startswith("transport:") for axis in row.remaining_axes)
+
+    def test_the_json_artifact_carries_the_gap(self, matrix: AdoptionMatrix) -> None:
+        payload = {entry["module"]: entry for entry in matrix.to_dict()["rows"]}
+
+        assert payload["broadcast_crawler"]["owns_transport"] is True
+        assert "typed outcome: no CrawlResult/CrawlOutcome import" in payload["broadcast_crawler"]["remaining_axes"]
+
+    def test_a_browser_crawler_with_its_own_vocabulary_has_no_gap_left(self, matrix: AdoptionMatrix) -> None:
+        """The three browser-first crawlers carry page-outcome vocabularies.
+
+        Each names what a *page read* meant rather than what an HTTP fetch
+        returned, because a browser has no request to describe. Once that
+        vocabulary exists the axis is closed, and reporting it open would send
+        an operator to redo work that is finished.
+        """
+        payload = {entry["module"]: entry for entry in matrix.to_dict()["rows"]}
+
+        for module in BROWSER_FIRST_CHAINED:
+            assert payload[module]["remaining_axes"] == [], module
+
+    def test_the_markdown_roadmap_says_why_not_just_who(self, matrix: AdoptionMatrix) -> None:
+        rendered = render_markdown(matrix)
+
+        assert "`baserunning_stats_crawler` -- typed outcome" in rendered
 
 
 class TestRoadmap:
