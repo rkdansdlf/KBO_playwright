@@ -6,6 +6,9 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
 from src.config.dto import (
     AlertingConfig,
     ConfigValidationReport,
@@ -15,6 +18,31 @@ from src.config.dto import (
     ExternalApiConfig,
     PlatformSettings,
 )
+
+
+def _database_dialect(db_url: str) -> str:
+    """Return the backend name the URL selects.
+
+    This used to be ``"oracle" in db_url``, which labelled every other backend
+    "sqlite". That made ``kbo config`` describe this deployment's PostgreSQL
+    production database as a local SQLite file. The check has to come from the
+    URL itself: ``src.db.engine.get_database_type`` reads a module constant, and
+    importing ``src.db.engine`` here would build the engine at import time.
+
+    Args:
+        db_url: A SQLAlchemy connection URL.
+
+    Returns:
+        The backend name, or the raw scheme when the URL cannot be parsed --
+        ``kbo config`` has to stay able to describe a broken environment.
+
+    """
+    if not db_url:
+        return "sqlite"
+    try:
+        return make_url(db_url).get_backend_name()
+    except ArgumentError:
+        return db_url.split(":", 1)[0] or "unknown"
 
 
 class ConfigManager:
@@ -43,7 +71,7 @@ class ConfigManager:
 
         # Database
         db_url = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
-        dialect = "oracle" if "oracle" in db_url else "sqlite"
+        dialect = _database_dialect(db_url)
         tns_admin = os.getenv("TNS_ADMIN")
         db_config = DatabaseConfig(
             url=db_url,
