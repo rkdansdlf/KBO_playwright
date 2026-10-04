@@ -184,6 +184,7 @@ def _add_incident_subparser(
     p_incidents.add_argument("--state", type=str, default=None, help="Filter list by state.")
     p_incidents.add_argument("--source", type=str, default=None, help="Filter list by alert source.")
     p_incidents.add_argument("--severity", type=str, default=None, help="Filter list by severity.")
+    p_incidents.add_argument("--notice", type=str, default=None, help="Filter list to never-announced incidents.")
     p_incidents.add_argument("--deliveries", type=int, default=None, help="Delivery rows rendered by show.")
     p_incidents.add_argument("--limit", type=int, default=None, help="List limit.")
     p_incidents.add_argument("--reason", type=str, default=None, help="Reason recorded for an operator action.")

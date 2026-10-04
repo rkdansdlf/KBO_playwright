@@ -59,6 +59,10 @@ STATE_ACTIVE = "active"
 STATE_ALL = "all"
 _STATE_CHOICES = (STATE_ACTIVE, INCIDENT_STATE_OPEN, INCIDENT_STATE_ACKNOWLEDGED, INCIDENT_STATE_RECOVERED, STATE_ALL)
 
+#: ``--notice`` selection: incidents whose occurrences were never announced.
+NOTICE_SILENT = "silent"
+_NOTICE_CHOICES = (NOTICE_SILENT,)
+
 DEFAULT_LIMIT = 50
 #: Cap on deliveries rendered by ``show``; the ledger is append-only and unbounded.
 DEFAULT_DELIVERY_LIMIT = 10
@@ -72,12 +76,13 @@ _CHANNEL_CHOICES = [channel.value for channel in NotificationChannel]
 
 _TABLE_SEP = "  "
 
-_COLUMNS = "STATE", "SEVERITY", "OCC", "NOTIF", "LAST_SEEN", "SOURCE", "COMPONENT", "KEY"
+_COLUMNS = "STATE", "SEVERITY", "OCC", "NOTIF", "NOTICE", "LAST_SEEN", "SOURCE", "COMPONENT", "KEY"
 _INCIDENT_CELL_KEYS = (
     "state",
     "severity",
     "occurrence_count",
     "notification_count",
+    "notice_state",
     "last_seen_at",
     "source",
     "component",
@@ -119,11 +124,42 @@ def _incident_row(incident: NotificationIncident) -> dict[str, object]:
         "title": incident.title,
         "occurrence_count": incident.occurrence_count,
         "notification_count": incident.notification_count,
+        "notice_state": _delivery_notice_state(incident),
         "first_opened_at": incident.first_opened_at.isoformat(sep=" ", timespec="seconds"),
         "last_seen_at": incident.last_seen_at.isoformat(sep=" ", timespec="seconds"),
         "last_notified_at": _stamp(incident.last_notified_at),
         "resolved_at": _stamp(incident.resolved_at),
     }
+
+
+def _delivery_notice_state(incident: NotificationIncident) -> str:
+    """Classify how much of an incident's history actually reached a human.
+
+    The ledger stores no decision column: ``AlertDecision.SUPPRESSED`` is computed
+    on every :meth:`IncidentManager.process` call and discarded, so a suppressed
+    notification leaves no row of its own. What does survive is the pair of
+    counters, and the gap between them is the count of occurrences that were not
+    announced.
+
+    "Not announced" is deliberately not the same as "suppressed". A failed
+    delivery also leaves ``notification_count`` unmoved, so a growing gap can
+    mean a working cooldown policy, an ``ALERT_MIN_SEVERITY`` floor, an
+    acknowledged incident, or a transport that refused every send. Section 3.2 of
+    the runbook is what separates them; this column only says which incidents are
+    worth that look.
+
+    Read as:
+
+    * ``notified`` — every occurrence so far was announced.
+    * ``partly`` — some were, some were not.
+    * ``silent`` — nothing has ever been announced.
+    """
+    gap = incident.occurrence_count - incident.notification_count
+    if gap <= 0:
+        return "notified"
+    if incident.notification_count == 0:
+        return "silent"
+    return "partly"
 
 
 def _delivery_row(row: NotificationDelivery) -> dict[str, object]:
@@ -208,8 +244,9 @@ def _apply_filters(
     state: str | None,
     source: str | None,
     severity: str | None,
+    notice: str | None = None,
 ) -> object:
-    """Narrow the incident query by state/source/severity.
+    """Narrow the incident query by state/source/severity/notice.
 
     ``None`` for ``state`` means "no filter", which is why the caller maps the
     ``all`` choice to it rather than comparing against a literal.
@@ -223,6 +260,11 @@ def _apply_filters(
         stmt = stmt.where(NotificationIncident.source == source)
     if severity is not None:
         stmt = stmt.where(NotificationIncident.severity == severity)
+    if notice == NOTICE_SILENT:
+        # Expressed against the counters rather than the derived value so the
+        # database does the filtering: this is the one question an operator
+        # cannot answer by paging a rendered table.
+        stmt = stmt.where(NotificationIncident.notification_count == 0)
     return stmt
 
 
@@ -249,18 +291,45 @@ def _apply_delivery_filters(stmt: object, flt: DeliveryFilter, now: datetime) ->
     return stmt
 
 
-def _query_incidents(
-    session: Session,
-    *,
-    state: str | None,
-    source: str | None,
-    severity: str | None,
-    limit: int,
-) -> list[NotificationIncident]:
+@dataclass(frozen=True)
+class IncidentFilter:
+    """Narrowing conditions for an incident query.
+
+    Bundled for the same reason as :class:`DeliveryFilter`: the filter set stays
+    one value that the query, the renderer and the argparse wiring agree on,
+    instead of a keyword argument list that grows a line every time a column
+    becomes filterable.
+    """
+
+    state: str | None = None
+    source: str | None = None
+    severity: str | None = None
+    notice: str | None = None
+    limit: int = DEFAULT_LIMIT
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> IncidentFilter:
+        """Build a filter from parsed ``list`` arguments."""
+        return cls(
+            state=None if args.state == STATE_ALL else args.state,
+            source=args.source,
+            severity=args.severity,
+            notice=args.notice,
+            limit=args.limit,
+        )
+
+
+def _query_incidents(session: Session, flt: IncidentFilter) -> list[NotificationIncident]:
     """Return incidents most-recently-seen first."""
     stmt = select(NotificationIncident)
-    stmt = _apply_filters(stmt, state=state, source=source, severity=severity)
-    stmt = stmt.order_by(desc(NotificationIncident.last_seen_at)).limit(limit)
+    stmt = _apply_filters(
+        stmt,
+        state=flt.state,
+        source=flt.source,
+        severity=flt.severity,
+        notice=flt.notice,
+    )
+    stmt = stmt.order_by(desc(NotificationIncident.last_seen_at)).limit(flt.limit)
     return list(session.execute(stmt).scalars().all())
 
 
@@ -337,16 +406,10 @@ def _render_deliveries(deliveries: list[NotificationDelivery]) -> None:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    """List incidents, optionally narrowed by state/source/severity."""
-    state = None if args.state == STATE_ALL else args.state
+    """List incidents, optionally narrowed by state/source/severity/notice."""
+    flt = IncidentFilter.from_args(args)
     with get_db_session() as session:
-        incidents = _query_incidents(
-            session,
-            state=state,
-            source=args.source,
-            severity=args.severity,
-            limit=args.limit,
-        )
+        incidents = _query_incidents(session, flt)
         rows = [_incident_row(incident) for incident in incidents]
 
     if args.json:
@@ -450,6 +513,12 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--state", choices=_STATE_CHOICES, default=STATE_ACTIVE)
     list_parser.add_argument("--source", default=None, help="Filter by alert source.")
     list_parser.add_argument("--severity", default=None, help="Filter by severity.")
+    list_parser.add_argument(
+        "--notice",
+        choices=_NOTICE_CHOICES,
+        default=None,
+        help="Filter to incidents whose occurrences were never announced.",
+    )
     list_parser.add_argument("--limit", type=non_negative_int, default=DEFAULT_LIMIT)
     list_parser.add_argument("--json", action="store_true", help="Emit JSON.")
 
