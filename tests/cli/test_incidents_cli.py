@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.cli.incidents import _delivery_notice_state
 from src.cli.incidents import main as incidents_main
 from src.cli.kbo import main as kbo_main
 from src.models.base import Base
@@ -63,7 +64,16 @@ def session() -> Iterator[Session]:
         sess.close()
 
 
-def _incident(key: str, state: str, severity: str, source: str, seen: object) -> NotificationIncident:
+def _incident(
+    key: str,
+    state: str,
+    severity: str,
+    source: str,
+    seen: object,
+    *,
+    occurrences: int = 3,
+    notifications: int = 1,
+) -> NotificationIncident:
     return NotificationIncident(
         incident_key=key,
         source=source,
@@ -73,8 +83,8 @@ def _incident(key: str, state: str, severity: str, source: str, seen: object) ->
         title=f"{source} alert",
         message=f"{key} is failing",
         details_hash="h",
-        occurrence_count=3,
-        notification_count=1,
+        occurrence_count=occurrences,
+        notification_count=notifications,
         first_opened_at=seen,
         last_seen_at=seen,
         metadata_json={"probe": key},
@@ -83,16 +93,32 @@ def _incident(key: str, state: str, severity: str, source: str, seen: object) ->
 
 @pytest.fixture
 def seeded(session: Session) -> Session:
-    """Two active incidents, one recovered, and five deliveries across windows."""
+    """Two active incidents, one recovered, and five deliveries across windows.
+
+    The three incidents carry one of each notice state so the derived column is
+    exercised by ordinary fixture data rather than only by its own test:
+    ``notified`` on the open one, ``silent`` on the acknowledged one, ``partly``
+    on the recovered one.
+    """
     session.add_all(
         [
-            _incident(OPEN_KEY, INCIDENT_STATE_OPEN, "ERROR", "integrity", NOW - timedelta(hours=1)),
+            _incident(
+                OPEN_KEY,
+                INCIDENT_STATE_OPEN,
+                "ERROR",
+                "integrity",
+                NOW - timedelta(hours=1),
+                occurrences=3,
+                notifications=3,
+            ),
             _incident(
                 ACKED_KEY,
                 INCIDENT_STATE_ACKNOWLEDGED,
                 "WARNING",
                 "freshness",
                 NOW - timedelta(hours=2),
+                occurrences=4,
+                notifications=0,
             ),
             _incident(
                 RECOVERED_KEY,
@@ -100,6 +126,8 @@ def seeded(session: Session) -> Session:
                 "CRITICAL",
                 "drift",
                 NOW - timedelta(hours=3),
+                occurrences=6,
+                notifications=2,
             ),
         ],
     )
@@ -215,11 +243,122 @@ class TestIncidentList:
     def test_renders_column_header(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
         assert incidents_main(["list"]) == 0
         header = capsys.readouterr().out.splitlines()[0]
-        assert header.split() == ["STATE", "SEVERITY", "OCC", "NOTIF", "LAST_SEEN", "SOURCE", "COMPONENT", "KEY"]
+        assert header.split() == [
+            "STATE",
+            "SEVERITY",
+            "OCC",
+            "NOTIF",
+            "NOTICE",
+            "LAST_SEEN",
+            "SOURCE",
+            "COMPONENT",
+            "KEY",
+        ]
 
     def test_limit_is_honoured(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
         assert incidents_main(["list", "--limit", "1", "--json"]) == 0
         assert _payload(capsys)["count"] == 1
+
+
+class TestNoticeState:
+    """``notice_state`` is derived, because the ledger stores no decision column.
+
+    ``AlertDecision.SUPPRESSED`` is computed per ``process`` call and discarded,
+    so a suppressed notification leaves no row anywhere. What survives is the
+    counter pair, and the gap between them is how many occurrences were never
+    announced. These tests pin that derivation, including the case where the gap
+    cannot be read as a suppression at all.
+    """
+
+    @staticmethod
+    def _notice_of(session: Session, key: str) -> str:
+        row = session.get(NotificationIncident, _incident_id(session, key))
+        return str(_delivery_notice_state(row))
+
+    @pytest.mark.parametrize(
+        ("occurrences", "notifications", "expected"),
+        [
+            (3, 3, "notified"),
+            (5, 5, "notified"),
+            # More sends than occurrences must not read as "partly": a fan-out or
+            # a replayed batch can push notification_count past occurrence_count.
+            (2, 5, "notified"),
+            (0, 0, "notified"),
+            (5, 2, "partly"),
+            (4, 0, "silent"),
+            (1, 0, "silent"),
+        ],
+    )
+    def test_the_gap_selects_the_state(
+        self,
+        session: Session,
+        occurrences: int,
+        notifications: int,
+        expected: str,
+    ) -> None:
+        incident = _incident(
+            "probe:key",
+            INCIDENT_STATE_OPEN,
+            "WARNING",
+            "probe",
+            NOW,
+            occurrences=occurrences,
+            notifications=notifications,
+        )
+        session.add(incident)
+        session.commit()
+
+        assert self._notice_of(session, "probe:key") == expected
+
+    def test_fixture_covers_all_three_states(self, use_session: Session) -> None:
+        assert self._notice_of(use_session, OPEN_KEY) == "notified"
+        assert self._notice_of(use_session, ACKED_KEY) == "silent"
+        assert self._notice_of(use_session, RECOVERED_KEY) == "partly"
+
+    def test_the_column_is_in_the_json_payload(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
+        assert incidents_main(["list", "--state", "all", "--json"]) == 0
+        rows = {row["incident_key"]: row["notice_state"] for row in _payload(capsys)["incidents"]}
+        assert rows == {OPEN_KEY: "notified", ACKED_KEY: "silent", RECOVERED_KEY: "partly"}
+
+    def test_the_column_is_in_show_output(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
+        assert incidents_main(["show", ACKED_KEY]) == 0
+        assert "notice_state: silent" in capsys.readouterr().out
+
+
+class TestSilentFilter:
+    def test_selects_only_never_announced_incidents(
+        self,
+        use_session: Session,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        assert incidents_main(["list", "--notice", "silent", "--state", "all", "--json"]) == 0
+        assert [row["incident_key"] for row in _payload(capsys)["incidents"]] == [ACKED_KEY]
+
+    def test_combines_with_the_default_active_scope(
+        self,
+        use_session: Session,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The default ``--state active`` still applies.
+
+        The recovered incident has a gap too, so without the scope it would leak
+        in beside the acknowledged one.
+        """
+        assert incidents_main(["list", "--notice", "silent", "--json"]) == 0
+        assert _payload(capsys)["count"] == 1
+
+    def test_returns_nothing_when_every_incident_notified(
+        self,
+        use_session: Session,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        assert incidents_main(["list", "--state", "all", "--json"]) == 0
+        _payload(capsys)  # drain the previous read
+        use_session.get(NotificationIncident, _incident_id(use_session, ACKED_KEY)).notification_count = 2
+        use_session.commit()
+
+        assert incidents_main(["list", "--notice", "silent", "--json"]) == 0
+        assert _payload(capsys)["count"] == 0
 
 
 class TestIncidentShow:

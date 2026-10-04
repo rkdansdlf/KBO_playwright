@@ -33,7 +33,8 @@ python3 -m src.cli.kbo notify --channel telegram --title "Title" --body "Body"
 
 # Inspect incidents (read-only).
 python3 -m src.cli.kbo incidents list [--state {active,OPEN,ACKNOWLEDGED,RECOVERED,all}]
-                                    [--source NAME] [--severity LEVEL] [--limit N] [--json]
+                                    [--source NAME] [--severity LEVEL] [--notice silent]
+                                    [--limit N] [--json]
 python3 -m src.cli.kbo incidents show <incident_key> [--deliveries N] [--json]
 
 # Inspect the delivery audit (read-only).
@@ -85,9 +86,17 @@ suppresses the recovery notice without skipping the state change.
 - An incident still closes on its own when its check recovers
   (`bridge.apply_incidents`, Section 4.1). The operator commands are a
   correction path, not the normal lifecycle.
-- The `SUPPRESSED` decision is **not** persisted as a delivery row, so a
-  cooldown-suppressed notification is invisible in `deliveries list` even though
-  the ledger's `notification_count` did not move.
+- The `SUPPRESSED` decision is **not stored anywhere**. `IncidentManager` computes
+  it per `process()` call and discards it, so a suppressed notification leaves no
+  delivery row *and* no column in the ledger. What survives is the counter pair,
+  which the `NOTICE` column in `incidents list` reads: `notified` (every
+  occurrence was announced), `partly` (some were), `silent` (none ever were).
+  `incidents list --notice silent` filters on it.
+  **A gap in the counters is not proof of suppression.** `notification_count` only
+  advances on a *successful* delivery, so the same gap can mean a working
+  cooldown, an `ALERT_MIN_SEVERITY` floor, an acknowledged incident, or a
+  transport that refused every send. The column tells you which incidents are
+  worth Section 3.1 through 3.3; it does not tell you why.
 - No CLI surfaces `kbo_notification_delivery_audit_failures_total` — that
   counter is the only way to tell "delivery failed" from "the audit row could
   not be written" (Section 3.4), and it is metric-only by design.
@@ -167,6 +176,9 @@ python3 -m src.cli.kbo incidents list
 python3 -m src.cli.kbo incidents list --source integrity
 python3 -m src.cli.kbo incidents list --severity CRITICAL
 python3 -m src.cli.kbo incidents list --state all --limit 200
+
+# Which incidents have never reached a human? Start here when the page is empty.
+python3 -m src.cli.kbo incidents list --notice silent
 ```
 
 ```promql
@@ -176,11 +188,15 @@ sum by (severity) (kbo_notification_open_incidents)
 
 Read it as follows:
 
-- `occurrence_count` climbing with a low `notification_count` means the event is
-  being seen but **suppressed** — cooldown or `ALERT_MIN_SEVERITY`. This is by
-  design, not a delivery failure.
-- `notification_count` climbing means the pipeline is working and your problem
-  is downstream (transport or chat routing).
+- `NOTICE = silent` means nothing was ever announced for that incident. The cause
+  is *not* in the ledger: a suppressed decision leaves no row (Section 1.4).
+- `NOTICE = partly` with `OCC` climbing and `NOTIF` flat is the common healthy
+  case — a cooldown or an `ALERT_MIN_SEVERITY` floor is doing its job.
+- `NOTIF` flat where you expect it to move is **not** automatically suppression.
+  `notification_count` only advances on a successful delivery, so a transport
+  that refused every send looks identical from here. Step 3 tells them apart.
+- `NOTIF` climbing means the pipeline is working and your problem is downstream
+  (transport or chat routing).
 - **No rows at all** while you expect alerts means the call site never published
   an event. Check the call site, not the notification stack. Since the pipeline
   converged, a call site that still imports `src.utils.alerting` directly
@@ -206,8 +222,11 @@ python3 -m src.cli.kbo incidents deliveries list --batch-id <batch_id>
 python3 -m src.cli.kbo incidents deliveries stats --channel telegram
 ```
 
-Rows the audit records for a *severity-suppressed* notification are absent by
-design: `SUPPRESSED` never becomes a delivery row (Section 1.4).
+Rows the audit records for a *suppressed* notification are absent by design, and
+so is any record of the suppression itself: `SUPPRESSED` is computed per
+`process()` call and discarded. So an empty `deliveries list` for an incident that
+`incidents show` reports as `silent` is the expected shape, not a gap in the
+audit (Section 1.4).
 
 `kbo_notification_delivery_audit_failures_total` is the only signal that
 distinguishes "delivery failed" from **"we could not even write the audit row"**.
