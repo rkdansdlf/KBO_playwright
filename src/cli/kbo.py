@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 _DLQ_OPERATOR_COMMANDS = frozenset({"retry", "requeue", "ignore"})
+_INCIDENT_OPERATOR_COMMANDS = frozenset({"ack", "resolve"})
 
 
 def _add_core_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -156,6 +157,46 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_dlq.add_argument("--reason", type=str, default=None, help="Reason for the ignore command.")
     p_dlq.add_argument("--apply", action="store_true", help="Apply an operator mutation (retry/requeue/ignore).")
     p_dlq.add_argument("--json", action="store_true", help="Output as JSON.")
+
+    _add_incident_subparser(subparsers)
+
+
+def _add_incident_subparser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Add the notification incident subparser.
+
+    Split out of the data/ops group so that group stays inside the statement
+    budget. The incident surface is also the only one here whose mutations are
+    guarded by ``KBO_ALLOW_INCIDENT_MUTATION`` rather than by a DLQ-specific
+    variable.
+    """
+    p_incidents = subparsers.add_parser(
+        "incidents",
+        help="Inspect and operate on notification incidents.",
+    )
+    p_incidents.add_argument(
+        "subcommand",
+        nargs="?",
+        help="list | show | deliveries | ack | resolve",
+    )
+    p_incidents.add_argument("incident_key", nargs="?", help="Incident key for show/ack/resolve.")
+    p_incidents.add_argument("--state", type=str, default=None, help="Filter list by state.")
+    p_incidents.add_argument("--source", type=str, default=None, help="Filter list by alert source.")
+    p_incidents.add_argument("--severity", type=str, default=None, help="Filter list by severity.")
+    p_incidents.add_argument("--deliveries", type=int, default=None, help="Delivery rows rendered by show.")
+    p_incidents.add_argument("--limit", type=int, default=None, help="List limit.")
+    p_incidents.add_argument("--reason", type=str, default=None, help="Reason recorded for an operator action.")
+    p_incidents.add_argument("--apply", action="store_true", help="Apply an operator mutation (ack/resolve).")
+    p_incidents.add_argument("--json", action="store_true", help="Output as JSON.")
+    p_incidents.add_argument("--channel", type=str, default=None, help="Filter deliveries by channel.")
+    p_incidents.add_argument(
+        "--batch-id", dest="batch_id", type=str, default=None, help="Filter deliveries by batch id."
+    )
+    p_incidents.add_argument(
+        "--incident-id", dest="incident_id", type=int, default=None, help="Filter deliveries by incident id."
+    )
+    p_incidents.add_argument("--days", type=int, default=None, help="Delivery window in days; 0 means unbounded.")
 
 
 def _add_crawl_and_snapshot_subparsers(
@@ -473,6 +514,19 @@ def _lazy_dlq(args: list[str]) -> int:
     return module.main(args)
 
 
+def _lazy_incidents(args: list[str]) -> int:
+    """Import and dispatch the incident CLI (read-only or guarded operator) on demand."""
+    module_name = (
+        "src.cli.incidents_operator" if args and args[0] in _INCIDENT_OPERATOR_COMMANDS else "src.cli.incidents"
+    )
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        print("incidents command not available", file=sys.stderr)
+        return 1
+    return module.main(args)
+
+
 def _lazy_crawl(args: list[str]) -> int:
     """Import and dispatch the crawl-run CLI on demand."""
     if args and args[0] == "replay":
@@ -548,6 +602,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "certify": _lazy_certify,
         "lineage": _lazy_lineage,
         "dlq": _lazy_dlq,
+        "incidents": _lazy_incidents,
         "crawl": _lazy_crawl,
         "snapshot": _lazy_snapshot,
         "formula": form_main,
