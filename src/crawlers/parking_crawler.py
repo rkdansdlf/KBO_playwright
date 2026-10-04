@@ -12,14 +12,20 @@ from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BaseHttpCrawler
-from src.crawlers.failure_taxonomy import FailureCode, classify_failure, stage_for_code
+from src.crawlers.failure_taxonomy import (
+    CrawlPersistError,
+    FailureCode,
+    classify_failure,
+    classify_persist_failure,
+    stage_for_code,
+)
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.crawl_execution_repository import CrawlRunSpec
-from src.repositories.parking_lot_repository import ParkingFeeRuleRepository, ParkingLotRepository
+from src.repositories.parking_lot_repository import ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.crawl_run_service import track_crawl_run
@@ -80,6 +86,11 @@ class ParkingCrawler(BaseHttpCrawler):
         #: Teams whose page could not be read, kept so the ledger and DLQ can see
         #: them instead of a silent empty list.
         self._team_failures: list[tuple[str, str, str]] = []
+        #: Teams whose rows could not be written, kept apart from
+        #: ``_team_failures``. Both end with the same table contents, so the run
+        #: status cannot distinguish "the source said nothing" from "the source
+        #: answered and the write died" unless the two are counted separately.
+        self._persist_failures: list[tuple[str, str, str]] = []
         self._http = CrawlerHttpClient(
             name=type(self).__name__,
             policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
@@ -93,6 +104,7 @@ class ParkingCrawler(BaseHttpCrawler):
         team_filter: str | None = None,
         run_spec: CrawlRunSpec | None = None,
         record_dead_letters: bool = True,
+        raise_on_persist_error: bool = False,
     ) -> list[dict[str, Any]]:
         """Crawl stadium parking pages under one tracked run.
 
@@ -101,11 +113,20 @@ class ParkingCrawler(BaseHttpCrawler):
         ledger, reflected as a ``partial`` run, and enqueued as its own dead
         letter so the team can be replayed without re-crawling the rest.
 
+        A team whose rows cannot be written is the same unit of work and is
+        recorded the same way. That failure used to be logged and then absorbed:
+        a single flush error poisoned the session, the commit rolled the whole
+        sweep back, and the run reported ``success`` with zero rows written.
+
         Args:
             save: Whether to persist the results.
             team_filter: Restrict the sweep to one team code.
             run_spec: Optional pre-built ledger spec (replay supplies one).
             record_dead_letters: Whether failures enqueue DLQ entries.
+            raise_on_persist_error: Re-raise a write failure as
+                :class:`CrawlPersistError` so the caller learns the replay stored
+                nothing. The ledger and the dead letter queue already recorded it
+                either way.
 
         Returns:
             The parsed parking lots.
@@ -121,6 +142,7 @@ class ParkingCrawler(BaseHttpCrawler):
 
         with track_crawl_run(spec) as run:
             self._team_failures = []
+            self._persist_failures = []
             all_lots: list[dict[str, Any]] = []
             for team_code, info in selected.items():
                 try:
@@ -130,6 +152,12 @@ class ParkingCrawler(BaseHttpCrawler):
                     _, code = classify_failure(exc)
                     self._team_failures.append((team_code, code.value, str(exc)))
                     continue
+                for entry in lots:
+                    # The team is the transaction unit, the dead letter unit and
+                    # therefore the only thing that can attribute a write
+                    # failure, so it travels with the row rather than being
+                    # recovered from a stadium id later.
+                    entry["team_code"] = team_code
                 all_lots.extend(lots)
                 logger.info("[PARKING] %s: %s lots found", team_code, len(lots))
 
@@ -137,12 +165,15 @@ class ParkingCrawler(BaseHttpCrawler):
             run.records_read = len(all_lots)
 
             if save:
-                run.records_written = await asyncio.to_thread(self._save_to_db, all_lots)
+                written, failed = await asyncio.to_thread(self._save_to_db, all_lots)
+                run.records_written = written
+                run.records_failed = failed
             else:
                 for lot in all_lots[:5]:
                     logger.info(lot)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            self._raise_persist_error(raise_on_persist_error=raise_on_persist_error)
             return all_lots
 
     def _record_team_failures(
@@ -152,24 +183,47 @@ class ParkingCrawler(BaseHttpCrawler):
         *,
         record_dead_letters: bool,
     ) -> None:
-        """Reflect unreadable teams in the run status and the dead letter queue."""
-        if not self._team_failures:
+        """Reflect unreadable and unwritten teams in the run and the dead letter queue.
+
+        A run that read rows but wrote none is ``failed``, not ``partial``. Both
+        leave the table in the same state, so calling that a partial success
+        would report a total write loss as a short sweep -- and the dead letter
+        would then be the only trace that anything went wrong.
+        """
+        failures = [*self._team_failures, *self._persist_failures]
+        if not failures:
             return
 
-        failed_teams = [team_code for team_code, _, _ in self._team_failures]
-        run.error_message = f"teams failed: {failed_teams}"
-        if run.records_read:
+        failed_teams = [team_code for team_code, _, _ in failures]
+        wrote_nothing = bool(self._persist_failures) and not run.records_written
+        run.error_message = f"teams failed: {sorted(set(failed_teams))}" + (
+            " (nothing was written)" if wrote_nothing else ""
+        )
+        if run.records_read and not wrote_nothing:
             run.status = RUN_STATUS_PARTIAL
         else:
             run.status = RUN_STATUS_FAILED
-            run.error_code = self._team_failures[0][1]
+            run.error_code = failures[0][1]
         logger.warning("[PARKING] teams failed: %s", failed_teams)
 
         if not record_dead_letters:
             return
-        for team_code, error_code, message in self._team_failures:
+        for team_code, error_code, message in failures:
             info = selected.get(team_code, {})
             self._enqueue_dead_letter(run.run_id, team_code, error_code, message, source_url=info.get("url"))
+
+    def _raise_persist_error(self, *, raise_on_persist_error: bool) -> None:
+        """Re-raise the first write failure when the caller asked to hear about it.
+
+        A replay is judged on the stored run, so the ledger is enough on its own;
+        this exists so a caller that wants the exception -- rather than a status
+        it has to remember to check -- cannot miss a write that stored nothing.
+        """
+        if not raise_on_persist_error or not self._persist_failures:
+            return
+        team_code, error_code, message = self._persist_failures[0]
+        detail = f"parking save failed for {team_code}: {message}"
+        raise CrawlPersistError(detail, error_code=FailureCode(error_code))
 
     def _enqueue_dead_letter(
         self,
@@ -254,30 +308,99 @@ class ParkingCrawler(BaseHttpCrawler):
 
         return lots
 
-    def _save_to_db(self, data: list[dict]) -> int:
-        with SessionLocal() as session:
-            try:
-                saved_snaps = save_raw_snapshots(session, self._raw_pages)
-                lot_repo = ParkingLotRepository(session)
-                fee_repo = ParkingFeeRuleRepository(session)
-                lot_count = 0
-                fee_count = 0
-                for entry in data:
-                    try:
-                        lot = lot_repo.save(entry["lot"])
-                        lot_count += 1
-                        for fee in entry.get("fee_rules", []):
-                            fee_repo.save({"parking_lot_id": lot.id, **fee})
-                            fee_count += 1
-                    except PARKING_SAVE_EXCEPTIONS:
-                        logger.exception("Parking save failed: %s", entry.get("lot", {}).get("name", ""))
+    def _save_to_db(self, data: list[dict]) -> tuple[int, int]:
+        """Persist the sweep, one transaction per team.
+
+        The lot repository flushes on insert, so a constraint violation used to
+        leave the session needing a rollback: every later save in the same sweep
+        then failed with ``PendingRollbackError``, the batch commit rolled the
+        whole sweep back, and the caller logged ``0`` and reported success. One
+        team cannot undo another team's rows, and the team that failed can be
+        replayed on its own.
+
+        Args:
+            data: Parsed lot entries, each carrying the ``team_code`` it came from.
+
+        Returns:
+            ``(saved, failed)`` lot counts. A team either wrote all of its lots or
+            wrote none, so a failed team contributes every entry it contributed.
+
+        """
+        saved_snaps = self._save_snapshots()
+        saved = failed = 0
+        try:
+            for team_code, entries in self._group_by_team(data).items():
+                if self._save_team(team_code, entries):
+                    saved += len(entries)
+                else:
+                    failed += len(entries)
+        finally:
+            self._raw_pages.clear()
+        logger.info("[PARKING] Saved %s of %s lots, %s snapshots.", saved, saved + failed, saved_snaps)
+        return saved, failed
+
+    def _save_snapshots(self) -> int:
+        """Commit the raw pages on their own, before the domain rows.
+
+        The snapshots are the evidence a replay re-parses, so a domain write that
+        fails must not discard them: a page stored without its rows is something
+        ``kbo snapshot replay`` can finish later, while a page lost with a failed
+        transaction is gone until the next sweep happens to re-fetch it.
+        """
+        try:
+            with SessionLocal() as session:
+                count = save_raw_snapshots(session, self._raw_pages)
                 session.commit()
-                logger.info("[PARKING] Saved %s lots, %s fee rules, %s snapshots.", lot_count, fee_count, saved_snaps)
-            except PARKING_SAVE_EXCEPTIONS:
-                session.rollback()
-                logger.exception("Parking batch save error")
-                return 0
-            else:
-                return lot_count
-            finally:
-                self._raw_pages.clear()
+        except PARKING_SAVE_EXCEPTIONS:
+            logger.exception("[PARKING] Snapshot save failed; continuing with the domain rows")
+            return 0
+        return count
+
+    def _group_by_team(self, data: list[dict]) -> dict[str, list[dict]]:
+        """Group parsed entries by the team that produced them.
+
+        A missing ``team_code`` raises out of here rather than being bucketed:
+        the caller attaches it, so its absence is a bug in the parse path, and
+        hiding it under a sentinel would enqueue a dead letter nobody could
+        replay.
+        """
+        grouped: dict[str, list[dict]] = {}
+        for entry in data:
+            grouped.setdefault(entry["team_code"], []).append(entry)
+        return grouped
+
+    def _save_team(self, team_code: str, entries: list[dict]) -> bool:
+        """Write one team's lots, returning whether they committed.
+
+        The parsed fee rules are deliberately not written. They are keyed by fee
+        kind -- 기본/추가/일일/행사 -- while ``parking_fee_rules`` is keyed by
+        vehicle class (``compact``/``sedan``/``van``/``bus``) and requires a
+        non-null base duration. The stadium pages state neither, so filling those
+        columns would mean inventing them, and writing the kinds into
+        ``vehicle_type`` would put a fabricated vehicle class in a column a real
+        one later keys on. The fee text stays in the raw snapshot, which is
+        committed ahead of these rows and can be re-parsed by
+        ``kbo snapshot replay`` whenever the schema grows a kind that fits.
+        """
+        try:
+            with SessionLocal() as session:
+                lot_repo = ParkingLotRepository(session)
+                for entry in entries:
+                    lot_repo.save(entry["lot"])
+                session.commit()
+        except PARKING_SAVE_EXCEPTIONS as exc:
+            self._record_persist_failure(team_code, exc)
+            return False
+        return True
+
+    def _record_persist_failure(self, team_code: str, exc: BaseException) -> None:
+        """Record a write failure against the team whose transaction died."""
+        stage, code = classify_persist_failure(exc)
+        logger.error(
+            "[PARKING] save failed for %s (%s/%s)",
+            team_code,
+            stage.value,
+            code.value,
+            exc_info=exc,
+        )
+        self._persist_failures.append((team_code, code.value, str(exc)))

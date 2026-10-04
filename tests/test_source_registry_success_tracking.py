@@ -176,10 +176,11 @@ def test_parking_save_marks_duplicate_raw_page_success(monkeypatch, source_regis
     )
     monkeypatch.setattr(parking_module, "SessionLocal", source_registry_session_factory)
     monkeypatch.setattr(parking_module, "ParkingLotRepository", _NoopRepository)
-    monkeypatch.setattr(parking_module, "ParkingFeeRuleRepository", _NoopRepository)
+    # Fee rules are no longer written (the page states kinds, the table is keyed
+    # by vehicle class), so there is no fee repository left to stub.
 
     crawler = parking_module.ParkingCrawler()
-    data = [{"lot": {}, "fee_rules": [{}]}]
+    data = [{"team_code": "OB", "lot": {}, "fee_rules": [{}]}]
     _set_duplicate_raw_page_and_save(crawler, source_key, html, lambda: crawler._save_to_db(data))
 
     _assert_source_marked_success(source_registry_session_factory, source_key=source_key, expected_hash=expected_hash)
@@ -199,7 +200,7 @@ def test_food_save_marks_duplicate_raw_page_success(monkeypatch, source_registry
     monkeypatch.setattr(food_module, "StadiumFoodMenuItemRepository", _NoopRepository)
 
     crawler = food_module.FoodCrawler()
-    data = [{"vendor": {}, "menus": [{}]}]
+    data = [{"team_code": "OB", "vendor": {}, "menus": [{}]}]
     _set_duplicate_raw_page_and_save(crawler, source_key, html, lambda: crawler._save_to_db(data))
 
     _assert_source_marked_success(source_registry_session_factory, source_key=source_key, expected_hash=expected_hash)

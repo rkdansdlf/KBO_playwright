@@ -16,14 +16,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
+from src.crawlers.failure_taxonomy import CrawlPersistError, FailureCode, stage_for_code
 from src.crawlers.food_crawler import (
     FOOD_CRAWLER_NAME,
     FOOD_TARGET_TYPE,
@@ -33,7 +34,11 @@ from src.crawlers.food_crawler import (
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
+from src.models.source_registry import DataSource, RawSourceSnapshot
+from src.models.stadium_food_menu_item import StadiumFoodMenuItem
+from src.models.stadium_food_vendor import StadiumFoodVendor
 from src.monitoring import crawler_metrics as cm
+from src.repositories.stadium_food_repository import StadiumFoodVendorRepository
 
 LT_URL = TEAM_FOOD_SOURCES["LT"]["url"]
 HTML = "<html><body>기본 요금: 5,000원</body></html>"

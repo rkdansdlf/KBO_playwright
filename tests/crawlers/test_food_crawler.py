@@ -112,7 +112,7 @@ class TestFoodCrawlerOperations:
     async def test_run_saves_filtered_team_results(self):
         crawler = FoodCrawler()
         crawler._crawl_team_food = AsyncMock(return_value=[{"vendor": {"vendor_name": "매점"}}])
-        crawler._save_to_db = MagicMock(return_value=1)
+        crawler._save_to_db = MagicMock(return_value=(1, 0))
 
         records = await crawler.run(save=True, team_filter="NC")
 
@@ -127,7 +127,11 @@ class TestFoodCrawlerOperations:
         menu_repo = MagicMock()
         crawler = FoodCrawler()
         crawler._raw_pages = [{"source_key": "lotte_giants_fnb"}]
-        entry = {"vendor": {"vendor_name": "매점"}, "menus": [{"menu_name": "떡볶이", "price": 3000}]}
+        entry = {
+            "team_code": "OB",
+            "vendor": {"vendor_name": "매점"},
+            "menus": [{"menu_name": "떡볶이", "price": 3000}],
+        }
 
         with (
             patch("src.crawlers.food_crawler.SessionLocal") as session_local,
@@ -139,5 +143,8 @@ class TestFoodCrawlerOperations:
             crawler._save_to_db([entry])
 
         menu_repo.save.assert_called_once_with({"vendor_id": 7, "menu_name": "떡볶이", "price": 3000})
-        session.commit.assert_called_once()
+        # Two commits, not one: the snapshots are committed before the domain rows, so a
+        # domain write that dies still leaves the raw page a replay can re-parse.
+        # Committing both together would discard the evidence along with the rows.
+        assert session.commit.call_count == 2
         assert crawler._raw_pages == []
