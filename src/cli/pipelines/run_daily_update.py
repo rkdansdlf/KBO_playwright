@@ -248,7 +248,12 @@ def _build_stability_summary(
     )
     return {
         "summary_path": str(summary_path),
+        "schedule": {
+            "game_count": len(ctx.daily_games),
+        },
         "detail": {
+            "target_count": len(ctx.detail_games_by_id),
+            "success_count": len(ctx.processed_game_ids),
             "failure_counts": dict(sorted(ctx.detail_failure_counts.items())),
             "failure_game_ids": {
                 reason: sorted(set(game_ids)) for reason, game_ids in sorted(ctx.detail_failure_game_ids.items())
@@ -323,6 +328,8 @@ def format_stability_alert_summary(result: object) -> str | None:
     relay = stability.get("relay") if isinstance(stability.get("relay"), dict) else {}
     detail_recovery = stability.get("detail_recovery") if isinstance(stability.get("detail_recovery"), dict) else {}
     detail_counts = detail.get("failure_counts") if isinstance(detail, dict) else {}
+    detail_targets = detail.get("target_count", 0) if isinstance(detail, dict) else 0
+    detail_success = detail.get("success_count", 0) if isinstance(detail, dict) else 0
     relay_targets = relay.get("target_count", 0) if isinstance(relay, dict) else 0
     recovery_passes = detail_recovery.get("passes", 0) if isinstance(detail_recovery, dict) else 0
     recovered_after_retry = detail_recovery.get("recovered_after_retry", 0) if isinstance(detail_recovery, dict) else 0
@@ -330,6 +337,8 @@ def format_stability_alert_summary(result: object) -> str | None:
 
     return (
         f"target_date={result.get('target_date', 'unknown')} "
+        f"detail_targets={detail_targets} "
+        f"detail_success={detail_success} "
         f"detail_failures={_format_counts(detail_counts if isinstance(detail_counts, dict) else {})} "
         f"detail_recovery_passes={recovery_passes} "
         f"detail_recovered_after_retry={recovered_after_retry} "
@@ -1185,6 +1194,27 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
         logger.exception("   \u26a0\ufe0f  Deep statistical audit/heal process failed")
 
 
+async def _step_12_content_history(ctx: _RunContext) -> None:
+    """Refresh milestone, split and draft history from the official source.
+
+    These three crawls only ever ran in the manually dispatched ``daily-extras`` job,
+    so the scheduled pipeline never ran them at all. They are season-cumulative, so a
+    daily refresh is enough and their midnight placement is not load-bearing.
+    """
+    logger.info("\n\U0001f4c5 Step 12: Refreshing milestone / split / draft history...")
+    for label, module in (
+        ("milestones", "src.cli.crawl_milestones"),
+        ("player splits", "src.cli.crawl_player_splits"),
+        ("draft history", "src.cli.crawl_player_drafts"),
+    ):
+        try:
+            ctx.runner(["-m", module, "--season", str(ctx.year), "--save"])
+        except RUNNER_EXCEPTIONS:
+            logger.exception("   \u274c Error refreshing %s", label)
+        else:
+            logger.info("   \u2705 %s refreshed", label)
+
+
 async def _step_14_tomorrow_preview(ctx: _RunContext) -> None:
     if ctx.seed_tomorrow_preview:
         tomorrow_date = (parse_datetime_str(ctx.target_date) + timedelta(days=1)).strftime("%Y%m%d")
@@ -1515,9 +1545,15 @@ def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
         allow_failure=True,
     )
     dag.add_task(
+        "step_12_content_history",
+        lambda _c: _step_12_content_history(ctx),
+        dependencies={"step_10_7_enrichment"},
+        allow_failure=True,
+    )
+    dag.add_task(
         "step_14_tomorrow_preview",
         lambda _c: _step_14_tomorrow_preview(ctx),
-        dependencies={"step_10_7_enrichment"},
+        dependencies={"step_12_content_history"},
         allow_failure=True,
     )
     return dag
