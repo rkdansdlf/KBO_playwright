@@ -12,6 +12,11 @@ from src.constants import KST
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_DIR = PROJECT_ROOT / "data" / "refresh_manifests"
 
+#: Manifests are the audit trail of a daily run. Keep a window wide enough to
+#: investigate a multi-week degradation; the 2026-09 incident spanned 16 days and
+#: the previous 7-day policy had already deleted most of its evidence.
+MANIFEST_RETENTION_DAYS = 30
+
 
 def infer_topics(
     datasets: Sequence[str] | None = None,
@@ -106,7 +111,7 @@ def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: ob
 
 def prune_expired_manifests(
     manifest_dir: Path | None = None,
-    max_age_days: int = 7,
+    max_age_days: int = MANIFEST_RETENTION_DAYS,
     *,
     dry_run: bool = False,
 ) -> list[Path]:

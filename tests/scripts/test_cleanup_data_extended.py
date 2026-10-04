@@ -64,6 +64,40 @@ def test_prune_expired_manifests(tmp_path: Path) -> None:
     assert new_manifest.exists()
 
 
+def test_manifest_retention_covers_a_reliability_investigation_window() -> None:
+    """The 7-day policy deleted the evidence of the 2026-09 degradation mid-investigation."""
+    from scripts.maintenance.cleanup_data import MANIFEST_RETENTION_DAYS
+
+    assert MANIFEST_RETENTION_DAYS >= 30
+
+
+def test_cleanup_manifests_keeps_a_two_week_old_manifest(tmp_path: Path) -> None:
+    manifest_dir = tmp_path / "refresh_manifests"
+    manifest_dir.mkdir(parents=True)
+    recent = manifest_dir / "20260920_000000_live.json"
+    recent.write_text("{}")
+    import os
+
+    age = time.time() - (16 * 86400)
+    os.utime(recent, (age, age))
+
+    results: dict[str, list[Path]] = {"manifests_cleaned": []}
+    _cleanup_manifests(tmp_path, dry_run=False, results=results)
+
+    assert results["manifests_cleaned"] == []
+    assert recent.exists()
+
+
+def test_prune_default_matches_the_cleanup_policy() -> None:
+    import inspect
+
+    from src.utils.refresh_manifest import MANIFEST_RETENTION_DAYS, prune_expired_manifests
+
+    signature = inspect.signature(prune_expired_manifests)
+    assert signature.parameters["max_age_days"].default == MANIFEST_RETENTION_DAYS
+    assert MANIFEST_RETENTION_DAYS >= 30
+
+
 def test_cleanup_empty_logs(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     data_dir.mkdir()

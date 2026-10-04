@@ -8,10 +8,11 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from src.utils.refresh_manifest import MANIFEST_RETENTION_DAYS
+
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_ARCHIVE_DIR = DEFAULT_DATA_DIR / "archive"
 RETENTION_DAYS = 90
-MANIFEST_RETENTION_DAYS = 7
 INTERMEDIATE_CSV_RETENTION_DAYS = 14
 
 CSV_PATTERNS = [

@@ -36,6 +36,7 @@
   python3 -m scripts.maintenance.trim_scheduler_log --file logs/scheduler.launchd.err.log --keep 16M
   ```
   launchd가 fd를 유지하므로 파일 교체 없이 in-place 절단한다. 아카이브 위치: `data/archive/logs/`.
+- 주간 `trim_scheduler_logs_job`도 같은 아카이브를 남긴다. 트림이 버린 구간은 장애 조사 증거이므로 **아카이브 없이 자르지 않는다** — 2026-09-27·10-04 트림이 아카이브를 남기지 않아 09-18~09-27 로그가 조사 도중 소실됐다.
 - 세대가 끝난 마이그레이션/실험 로그(예: Oracle 동기화 시대)는 `data/archive/`로 이관.
 
 ## 월간 점검 체크리스트

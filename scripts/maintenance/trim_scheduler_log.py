@@ -16,7 +16,9 @@ if TYPE_CHECKING:
 
 _DEFAULT_LOG = Path("logs") / "scheduler.launchd.err.log"
 _DEFAULT_KEEP_BYTES = 16 * 1024 * 1024
-_DEFAULT_ARCHIVE_DIR = Path("data") / "archive" / "logs"
+#: Public so the scheduler job can pass it explicitly. The 2026-09 incident lost
+#: its own audit trail because the weekly job trimmed without an archive dir.
+DEFAULT_ARCHIVE_DIR = Path("data") / "archive" / "logs"
 
 
 def _parse_size(raw: str) -> int:
@@ -44,10 +46,13 @@ def trim_log(
     keep_bytes: int = _DEFAULT_KEEP_BYTES,
     archive_dir: Path | None = None,
 ) -> dict[str, object]:
-    """Keep the trailing ``keep_bytes`` of ``path``, gzip-archiving the head in place.
+    """Keep the trailing ``keep_bytes`` of ``path``.
 
-    The file is never renamed so a running process holding the descriptor keeps
-    appending safely; concurrent writes between read and rewrite are best-effort.
+    The discarded head is gzip-archived when ``archive_dir`` is given; passing
+    ``None`` discards it outright, so callers that need the evidence must pass a
+    directory. The file is never renamed so a running process holding the
+    descriptor keeps appending safely; concurrent writes between read and rewrite
+    are best-effort.
     """
     size = path.stat().st_size
     if size <= keep_bytes:
@@ -80,7 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--archive-dir",
         type=Path,
-        default=_DEFAULT_ARCHIVE_DIR,
+        default=DEFAULT_ARCHIVE_DIR,
         help="Directory for gzipped head archives (pass empty string to discard)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Report sizes without writing")
