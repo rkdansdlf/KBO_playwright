@@ -17,6 +17,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.crawlers.failure_taxonomy import classify_failure, stage_for_code
+from src.crawlers.player_movement_outcome import (
+    CONTROLS_MISSING_REASON,
+    PlayerMovementPageRead,
+    PlayerMovementStatus,
+    classify_page_failure,
+)
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
@@ -69,6 +75,10 @@ class PlayerMovementCrawler:
         #: Years that failed inside :meth:`crawl_years`, kept so the run ledger and
         #: dead letter queue can see them instead of only the log.
         self._year_failures: list[tuple[int, BaseException]] = []
+        #: Years whose page answered but was no longer the document the crawl asks
+        #: for. Kept apart from ``_year_failures`` because nothing was raised, and
+        #: a drifted year is terminal rather than retryable.
+        self._year_reads: dict[int, PlayerMovementPageRead] = {}
 
     def get_last_failure_reason(self) -> str | None:
         """Return the latest crawl failure reason, if any."""
@@ -96,6 +106,7 @@ class PlayerMovementCrawler:
             return []
         self._last_failure_reason = None
         self._year_failures = []
+        self._year_reads = {}
 
         pool = self.pool or AsyncPlaywrightPool(max_pages=1)
         owns_pool = self.pool is None
@@ -183,8 +194,11 @@ class PlayerMovementCrawler:
                 logger.info("[PLAYER_MOVEMENT] skipped: %s", self._last_failure_reason)
                 return data
 
-            if self._year_failures:
-                failed_years = [year for year, _ in self._year_failures]
+            drifted_years = {
+                year for year, read in self._year_reads.items() if read.status is PlayerMovementStatus.SCHEMA_CHANGED
+            }
+            if self._year_failures or drifted_years:
+                failed_years = sorted({year for year, _ in self._year_failures} | drifted_years)
                 run.status = RUN_STATUS_PARTIAL
                 run.error_message = f"years failed: {failed_years}"
                 logger.warning("[PLAYER_MOVEMENT] partial run, failed years: %s", failed_years)
@@ -192,6 +206,18 @@ class PlayerMovementCrawler:
                     for year, exc in self._year_failures:
                         _, code = classify_failure(exc)
                         self._enqueue_dead_letter(run.run_id, str(year), code.value, str(exc), season=year)
+                    # A drifted year is classified by the page read rather than by
+                    # an exception, because nothing was raised: the page answered
+                    # and what it answered was no longer the document.
+                    for year in drifted_years:
+                        code_value, _terminal = classify_page_failure(CONTROLS_MISSING_REASON)
+                        self._enqueue_dead_letter(
+                            run.run_id,
+                            str(year),
+                            code_value,
+                            "the results table is gone; the page is not the document the crawl asks for",
+                            season=year,
+                        )
             return data
 
     def _enqueue_dead_letter(
@@ -251,18 +277,24 @@ class PlayerMovementCrawler:
                 logger.info("   PAGE %s: Extracting...", page_num)
 
                 # Extract current page rows
-                data = await self._extract_table(page)
-                if not data:
+                read = await self._extract_table(page)
+                if read.status is PlayerMovementStatus.SCHEMA_CHANGED:
+                    # The table is gone: paging on would walk the same wrong
+                    # document, and the year is recorded as drift rather than as
+                    # a year that happened to record nothing.
+                    self._year_reads[year] = read
+                    break
+                if not read.rows:
                     logger.warning("   ⚠️ No data found on this page.")
 
                 # Check for duplicates (Stop infinite loop)
-                current_data_str = str(data)
+                current_data_str = str(read.rows)
                 if current_data_str == prev_page_data_str:
                     logger.info("   🛑 Duplicate data detected (Same as Page %s). Stopping.", page_num - 1)
                     break
                 prev_page_data_str = current_data_str
 
-                results.extend(data)
+                results.extend(read.rows)
 
                 # --- Pagination Logic ---
                 # Check for Current Page + 1 link
@@ -334,11 +366,22 @@ class PlayerMovementCrawler:
             finally:
                 self._raw_pages.clear()
 
-    async def _extract_table(self, page: Page) -> list[dict[str, Any]]:
+    async def _extract_table(self, page: Page) -> PlayerMovementPageRead:
+        """Read one page of the results table into a typed outcome.
+
+        The table's *absence* is returned rather than raised, because a year that
+        recorded no transfers and a page that stopped being the document the
+        crawl asks for both arrive as "no rows". Only the second one should cost
+        a dead letter, and only the first one is routine.
+        """
         script = """
         () => {
+            const table = document.querySelector('.tbl-type02');
+            if (!table) {
+                return { 'table_present': false, 'rows': [] };
+            }
             const results = [];
-            const rows = document.querySelectorAll('.tbl-type02 tbody tr');
+            const rows = table.querySelectorAll('tbody tr');
 
             rows.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
@@ -362,13 +405,19 @@ class PlayerMovementCrawler:
                 });
             });
 
-            return results;
+            return { 'table_present': true, 'rows': results };
         }
         """
-        data = await page.evaluate(script)
+        payload = await page.evaluate(script)
+
+        if not payload.get("table_present"):
+            return PlayerMovementPageRead(status=PlayerMovementStatus.SCHEMA_CHANGED, reason=CONTROLS_MISSING_REASON)
 
         # Post-process (Validate Key fields)
-        return [item for item in data if item["date"] and item["section"]]
+        rows = [item for item in payload["rows"] if item["date"] and item["section"]]
+        if not rows:
+            return PlayerMovementPageRead(status=PlayerMovementStatus.EMPTY)
+        return PlayerMovementPageRead(status=PlayerMovementStatus.SUCCESS, rows=rows)
 
 
 async def main() -> None:

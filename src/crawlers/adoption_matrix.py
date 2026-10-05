@@ -146,6 +146,27 @@ class ModuleFacts:
         return Transport.CRAWLER_HTTP_CLIENT in self.transports
 
     @property
+    def owns_transport(self) -> bool:
+        """Return whether the crawler has one governed way of reaching a source.
+
+        ``shared_http`` answers a narrower question -- does it use
+        ``CrawlerHttpClient`` -- and reading that as the adoption criterion
+        scored a browser-first crawler as half-converted. The three crawlers that
+        close the whole reliability chain on Playwright have no HTTP client to
+        share, and inheriting ``BaseHttpCrawler`` would not change that.
+
+        What actually matters is the second request path. A crawler is governed
+        when it either composes the shared client or drives a browser, and does
+        *not* carry a raw ``httpx`` client alongside either. That is the same
+        condition :func:`advise_row` already flags as an unused second path, so
+        this asks the question once instead of inferring the answer from a
+        transport the crawler does not have.
+        """
+        if self.shared_http:
+            return True
+        return Transport.PLAYWRIGHT in self.transports and Transport.RAW_HTTPX not in self.transports
+
+    @property
     def replay(self) -> bool:
         """Return whether a replay handler is registered for this crawler."""
         """Return whether a replay handler is registered for this crawler."""
@@ -169,17 +190,47 @@ class CrawlerRow:
     def fully_adopted(self) -> bool:
         """Return whether the crawler closes the whole chain.
 
-        A full chain means the transport is shared, the outcome is typed, and the
-        work is recorded, queued, and replayable. A crawler can be perfectly
+        A full chain means the transport is governed, the outcome is typed, and
+        the work is recorded, queued, and replayable. A crawler can be perfectly
         useful without it; this only answers "would a replay find its way back".
+
+        ``uses_crawl_result`` is the axis a browser-first crawler has not closed,
+        and it is a real gap rather than a structural impossibility: ``CrawlResult``
+        models an HTTP fetch outcome, so a crawler driving a browser has no place
+        to produce one and needs a browser-side vocabulary of its own. Scoring
+        that as "adopted" would retire a gap the matrix cannot otherwise see, so
+        it stays required and :attr:`remaining_axes` names it.
         """
         return (
-            self.facts.shared_http
+            self.facts.owns_transport
             and self.facts.uses_crawl_result
             and self.facts.ledger
             and self.facts.dead_letter
             and self.facts.replay
         )
+
+    @property
+    def remaining_axes(self) -> tuple[str, ...]:
+        """Return the required axes this crawler has not closed, in reading order.
+
+        The roadmap ranks crawlers by how close they are, but a bare name gives
+        no reason for the ordering, so a browser crawler that appears in it looks
+        like a crawler nobody has started on. Naming the axis is what turns the
+        list into work someone can pick up.
+        """
+        facts = self.facts
+        gaps: list[tuple[int, str]] = []
+        if not facts.owns_transport:
+            gaps.append((0, "transport: no governed request path"))
+        if not facts.uses_crawl_result:
+            gaps.append((1, "typed outcome: no CrawlResult/CrawlOutcome import"))
+        if not facts.ledger:
+            gaps.append((2, "run ledger"))
+        if not facts.dead_letter:
+            gaps.append((3, "dead letter queue"))
+        if not facts.replay:
+            gaps.append((4, "replay handler"))
+        return tuple(message for _, message in sorted(gaps))
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the row for JSON artifacts."""
@@ -197,7 +248,9 @@ class CrawlerRow:
             "dead_letter": self.facts.dead_letter,
             "replay": self.facts.replay,
             "uses_crawl_result": self.facts.uses_crawl_result,
+            "owns_transport": self.facts.owns_transport,
             "fully_adopted": self.fully_adopted,
+            "remaining_axes": list(self.remaining_axes),
             "note": (self.design.note if self.design else ""),
         }
 
@@ -234,7 +287,7 @@ class AdoptionMatrix:
             facts = row.facts
             satisfied = sum(
                 (
-                    facts.shared_http,
+                    facts.owns_transport,
                     facts.uses_crawl_result,
                     facts.ledger,
                     facts.dead_letter,
@@ -309,6 +362,32 @@ DECLARED: dict[str, DesignFacts] = {
         fallback=Fallback.NONE,
         note="Deferred: large surface with validation and partial-recovery logic to preserve.",
     ),
+    "team_history_crawler": DesignFacts(
+        granularity=Granularity.SEASON,
+        empty=EmptySemantics.TYPED,
+        note="One page carries every season, so the replay unit is the page rather than a year. The "
+        "page reads once per sweep and its empty case is not routine the way a per-year empty is, so "
+        "the read is typed against the document the crawl expects and reports drift separately from "
+        "absence.",
+    ),
+    "kbo_event_crawler": DesignFacts(
+        granularity=Granularity.DOCUMENT,
+        empty=EmptySemantics.TYPED,
+        note="Seven standing pages, most of which are guides and are not supposed to link to an "
+        "event, so an empty page is the normal state rather than a failure. It is also what a page "
+        "that has stopped being the document the sweep asked for looks like from outside, so the "
+        "read is typed against the site's own frame and carries whether retrying could still change "
+        "it. `CrawlResult` models an HTTP fetch and this crawl has none; the vocabulary is its own.",
+    ),
+    "player_movement_crawler": DesignFacts(
+        granularity=Granularity.SEASON,
+        empty=EmptySemantics.TYPED,
+        note="Most years record no transfers, so an empty result is the expected state and must not "
+        "be alerted on. It is also what a page that lost its year selector looks like from outside, "
+        "so the read is typed against the controls the crawl operates and the year is recorded as "
+        "drift -- terminal, not retryable -- rather than as a quiet year. No exception is involved, "
+        "which is why the year read is held separately from the failure list.",
+    ),
     "food_crawler": DesignFacts(
         granularity=Granularity.TEAM,
         empty=EmptySemantics.TYPED,
@@ -341,20 +420,22 @@ DECLARED: dict[str, DesignFacts] = {
 #: Migration order decided by upstream impact rather than by how little work is
 #: left. The large surfaces are done -- schedule, game detail and relay all feed
 #: something downstream, and a silent failure in any of them poisons whatever
-#: reads it. Food and parking closed the last unthrottled request path.
+#: reads it. Food and parking closed the last unthrottled request path, and the
+#: three browser crawlers closed the last page-outcome vocabulary: a browser crawl
+#: cannot produce a ``CrawlResult`` because it makes no HTTP request, so each one
+#: states what its page said and whether retrying could still change it.
 #:
-#: What remains on top already records a ledger, queues dead letters and can be
-#: replayed; what it has not adopted is the shared client's request policy and
-#: the typed result vocabulary, so that is what the next pass is for. Note that
-#: `shared_http` and `uses_crawl_result` currently agree on every row -- a
-#: crawler with the shared client always has the typed results and vice versa --
-#: so dropping either one today would not change which crawlers count as adopted.
-#: Both are kept because they answer different questions: one is "is the request
-#: path rate-limited and circuit-broken like everything else", the other is "can
-#: this crawler tell a quiet source from a broken one".
+#: What is named here is what comes next, and it must name live work. A priority
+#: entry pointing at an already-adopted crawler is worse than no entry at all: the
+#: report looks deliberate while directing an operator at finished work, so
+#: `verify_priority_order` treats that as drift rather than letting it stand.
+#:
+#: The names below lead the computed order as well as the declared one. They have
+#: none of the reliability chain yet, so this batch is the whole contract rather
+#: than its last axis.
 PRIORITY_ORDER: tuple[str, ...] = (
-    "kbo_event_crawler",
-    "player_movement_crawler",
+    "baserunning_stats_crawler",
+    "broadcast_crawler",
 )
 
 #: Base classes whose subclasses inherit their HTTP transport.
@@ -502,6 +583,64 @@ def _imports_result_vocabulary(tree: ast.Module) -> bool:
     return False
 
 
+def _looks_like_outcome_value(node: ast.ClassDef) -> bool:
+    """Return whether a class carries an outcome and whether it can still change.
+
+    Two members together, because either alone is too easy to hit by accident:
+    a ``status`` field is a common name, and an ``is_terminal`` property could
+    be about anything. Together they describe what this repository means by a
+    typed outcome -- what happened, and whether retrying could still change it --
+    which is exactly the distinction a crawler has to make before it decides
+    between queueing a dead letter and calling a quiet source quiet.
+    """
+    names = {child.name for child in node.body if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)}
+    annotated = {
+        target.id
+        for child in node.body
+        if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+        for target in (child.target,)
+    }
+    return "status" in annotated and "is_terminal" in names
+
+
+def _imports_page_outcome_vocabulary(tree: ast.Module) -> bool:
+    """Return whether the module classifies a *page read* into a typed outcome.
+
+    ``CrawlResult`` models an HTTP fetch. A crawler that drives a browser has no
+    HTTP request to describe, so it cannot produce one -- ``kbo_event_crawler``
+    states this explicitly and carries its own vocabulary instead. Reading only
+    ``CrawlResult`` therefore reported a finished crawler as untyped and parked
+    it at the top of the roadmap with the gap named, which is worse than not
+    ranking it at all: an operator following the report is sent to redo work
+    someone already finished.
+
+    Detection is structural rather than a declared list. The crawler is followed
+    into the vocabulary module it imports, and the class is accepted only if it
+    carries both members that make an outcome worth having -- see
+    :func:`_looks_like_outcome_value`. That keeps the gate honest without adding
+    a registry that goes stale the moment a second browser crawler adopts one.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.startswith("src.crawlers."):
+            continue
+        vocabulary = _read_source(f"{node.module.replace('.', '/')}.py")
+        if not vocabulary:
+            continue
+        try:
+            vocabulary_tree = ast.parse(vocabulary)
+        except SyntaxError:
+            continue
+        imported = {alias.name for alias in node.names}
+        for candidate in vocabulary_tree.body:
+            if not isinstance(candidate, ast.ClassDef) or candidate.name not in imported:
+                continue
+            if _looks_like_outcome_value(candidate):
+                return True
+    return False
+
+
 def _resolve_transports(tree: ast.Module, base_class: str, *, reaches_httpx: bool) -> frozenset[Transport]:
     """Return every transport a module reaches a source through.
 
@@ -584,7 +723,7 @@ def scan_module(module: str) -> ModuleFacts:
         persistence="SessionLocal" in source,
         ledger=_owns(module, source, ("track_crawl_run",), 1),
         dead_letter=_owns(module, source, ("DeadLetterSpec", "enqueue_failure"), 0),
-        uses_crawl_result=_imports_result_vocabulary(tree),
+        uses_crawl_result=_imports_result_vocabulary(tree) or _imports_page_outcome_vocabulary(tree),
         has_entrypoint=_has_entrypoint(tree),
     )
 
@@ -670,8 +809,32 @@ def build_matrix() -> AdoptionMatrix:
     drift.extend(
         f"{module}: declared design for a module that does not exist" for module in DECLARED if module not in present
     )
+    drift.extend(verify_priority_order(rows))
 
     return AdoptionMatrix(rows=tuple(rows), drift=tuple(drift), advisories=tuple(advisories))
+
+
+def verify_priority_order(rows: list[CrawlerRow], order: tuple[str, ...] = PRIORITY_ORDER) -> list[str]:
+    """Return the ways the declared migration order no longer points at work.
+
+    A priority entry naming an adopted crawler is worse than an empty tuple: the
+    report still looks deliberate while sending an operator at finished work, and
+    nothing else in the matrix would say so. Both halves are checked -- an adopted
+    name and a name that is not a crawler at all.
+
+    The order is a parameter rather than read from the module so the check can be
+    exercised against orders nobody would declare, which is the only way to prove
+    it fires at all.
+    """
+    by_module = {row.module: row for row in rows}
+    problems: list[str] = []
+    for module in order:
+        row = by_module.get(module)
+        if row is None:
+            problems.append(f"{module}: declared migration priority but no such crawler")
+        elif row.fully_adopted:
+            problems.append(f"{module}: declared migration priority but is already adopted")
+    return problems
 
 
 def render_markdown(matrix: AdoptionMatrix) -> str:
@@ -709,9 +872,11 @@ def render_markdown(matrix: AdoptionMatrix) -> str:
     adopted = module_names(matrix.adopted())
     lines.append(f"**Fully adopted ({len(adopted)})**: " + ", ".join(f"`{name}`" for name in adopted))
     lines.append("")
-    lines.append("**Migration order** (fewest satisfied axes first):")
+    lines.append("**Migration order** (fewest satisfied axes first; the gap is named, not implied):")
     for position, row in enumerate(matrix.roadmap(), start=1):
-        lines.append(f"{position}. `{module_name(row)}`")
+        gaps = ", ".join(row.remaining_axes)
+        suffix = f" -- {gaps}" if gaps else ""
+        lines.append(f"{position}. `{module_name(row)}`{suffix}")
     if matrix.advisories:
         lines.append("")
         lines.append("**Advisories**")
@@ -754,5 +919,6 @@ __all__ = [
     "discover_modules",
     "render_markdown",
     "scan_module",
+    "verify_priority_order",
     "verify_row",
 ]
