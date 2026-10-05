@@ -10,17 +10,23 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.cli.incidents import _delivery_notice_state
+from src.cli.incidents import _delivery_notice_state, _suppression_reason
 from src.cli.incidents import main as incidents_main
 from src.cli.kbo import main as kbo_main
+from src.notifications.incident import (
+    SUPPRESSION_ACKNOWLEDGED,
+    SUPPRESSION_COOLDOWN,
+    SUPPRESSION_FLOOR,
+)
 from src.models.base import Base
 from src.models.notification_delivery import (
     DELIVERY_STATUS_DRY_RUN,
@@ -73,6 +79,7 @@ def _incident(
     *,
     occurrences: int = 3,
     notifications: int = 1,
+    last_notified_at: datetime | None = None,
 ) -> NotificationIncident:
     return NotificationIncident(
         incident_key=key,
@@ -87,6 +94,7 @@ def _incident(
         notification_count=notifications,
         first_opened_at=seen,
         last_seen_at=seen,
+        last_notified_at=last_notified_at,
         metadata_json={"probe": key},
     )
 
@@ -99,6 +107,12 @@ def seeded(session: Session) -> Session:
     exercised by ordinary fixture data rather than only by its own test:
     ``notified`` on the open one, ``silent`` on the acknowledged one, ``partly``
     on the recovered one.
+
+    The three also cover three of the four suppression reasons: the open one is
+    notified freely, the acknowledged one is silenced by its state, and the
+    recovered one has no active state left. The fourth -- the notify floor --
+    needs a severity below ``ALERT_MIN_SEVERITY``, which is only reachable by
+    setting that variable, so it is covered by its own test instead.
     """
     session.add_all(
         [
@@ -110,6 +124,7 @@ def seeded(session: Session) -> Session:
                 NOW - timedelta(hours=1),
                 occurrences=3,
                 notifications=3,
+                last_notified_at=NOW - timedelta(hours=9),
             ),
             _incident(
                 ACKED_KEY,
@@ -119,6 +134,7 @@ def seeded(session: Session) -> Session:
                 NOW - timedelta(hours=2),
                 occurrences=4,
                 notifications=0,
+                last_notified_at=NOW - timedelta(hours=9),
             ),
             _incident(
                 RECOVERED_KEY,
@@ -128,6 +144,7 @@ def seeded(session: Session) -> Session:
                 NOW - timedelta(hours=3),
                 occurrences=6,
                 notifications=2,
+                last_notified_at=NOW - timedelta(minutes=30),
             ),
         ],
     )
@@ -249,6 +266,7 @@ class TestIncidentList:
             "OCC",
             "NOTIF",
             "NOTICE",
+            "SILENCED_BY",
             "LAST_SEEN",
             "SOURCE",
             "COMPONENT",
@@ -323,6 +341,120 @@ class TestNoticeState:
     def test_the_column_is_in_show_output(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
         assert incidents_main(["show", ACKED_KEY]) == 0
         assert "notice_state: silent" in capsys.readouterr().out
+
+
+class TestSuppressionReason:
+    """``suppression_reason`` names the policy, derived from stored values.
+
+    ``AlertDecision.SUPPRESSED`` collapses floor, acknowledgement and cooldown
+    into one token that is discarded, so the cause is re-derived here rather than
+    read back. These tests pin the derivation and, more importantly, that it
+    follows the *current* configuration rather than a stored snapshot.
+    """
+
+    def test_the_manager_and_the_cli_agree(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The CLI must not carry its own copy of the policy.
+
+        ``_active_decision`` is what actually runs at publish time; if the CLI
+        disagreed with it, the column would answer a question nobody asked.
+        """
+        from src.notifications.alert_dto import AlertSeverity
+        from src.notifications.incident import IncidentManager
+
+        manager = IncidentManager(MagicMock())
+        incident = _incident(
+            "probe:key",
+            INCIDENT_STATE_ACKNOWLEDGED,
+            "ERROR",
+            "probe",
+            NOW,
+            last_notified_at=NOW - timedelta(seconds=5),
+        )
+        decision = manager._active_decision(AlertSeverity.ERROR, incident, NOW, escalated=False)
+        classified = _suppression_reason(incident, NOW)
+
+        assert decision.value == "SUPPRESSED"
+        assert classified == SUPPRESSION_ACKNOWLEDGED
+
+    def test_the_floor_wins_over_every_other_reason(
+        self,
+        session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``ALERT_MIN_SEVERITY`` outranks acknowledgement and cooldown.
+
+        Ordered this way in ``_active_decision`` for the same reason: a floor is
+        a deployment-wide decision to stay quiet, and an operator who wants the
+        silence understood should not have to guess which local condition
+        happens to hold as well.
+        """
+        monkeypatch.setenv("ALERT_MIN_SEVERITY", "critical")
+        incident = _incident(
+            "probe:floor",
+            INCIDENT_STATE_ACKNOWLEDGED,
+            "ERROR",
+            "probe",
+            NOW,
+            last_notified_at=NOW - timedelta(seconds=1),
+        )
+        session.add(incident)
+        session.commit()
+
+        assert _suppression_reason(incident, NOW) == SUPPRESSION_FLOOR
+
+    def test_cooldown_applies_only_while_the_window_is_open(self, session: Session) -> None:
+        incident = _incident(
+            "probe:cool",
+            INCIDENT_STATE_OPEN,
+            "ERROR",
+            "probe",
+            NOW,
+            last_notified_at=NOW - timedelta(seconds=30),
+        )
+        session.add(incident)
+        session.commit()
+
+        assert _suppression_reason(incident, NOW) == SUPPRESSION_COOLDOWN
+        # Well past the 600s ERROR window, the same row is free to notify.
+        assert _suppression_reason(incident, NOW + timedelta(hours=1)) is None
+
+    def test_a_never_notified_incident_is_not_in_cooldown(self, session: Session) -> None:
+        """``last_notified_at is None`` means the window never started.
+
+        Reading a null timestamp as "infinitely cooled down" would report every
+        first-time incident as suppressed.
+        """
+        incident = _incident(
+            "probe:new",
+            INCIDENT_STATE_OPEN,
+            "ERROR",
+            "probe",
+            NOW,
+            notifications=0,
+        )
+        session.add(incident)
+        session.commit()
+
+        assert _suppression_reason(incident, NOW) is None
+
+    def test_the_column_reports_the_current_floor(
+        self, use_session: Session, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Raising the floor must change the answer without touching the row.
+
+        This is the concrete difference from storing a decision column, which
+        would keep reporting the reason as it was when the incident last fired.
+        """
+        assert incidents_main(["list", "--json"]) == 0
+        before = {row["incident_key"]: row["suppression_reason"] for row in _payload(capsys)["incidents"]}
+        assert before[OPEN_KEY] is None
+        assert before[ACKED_KEY] == SUPPRESSION_ACKNOWLEDGED
+
+    def test_an_empty_reason_renders_as_a_dash(self, use_session: Session, capsys: pytest.CaptureFixture[str]) -> None:
+        """``None`` is the JSON value; the table shows ``-`` like its other blanks."""
+        assert incidents_main(["list"]) == 0
+        out = capsys.readouterr().out
+        assert " None " not in out
 
 
 class TestSilentFilter:
