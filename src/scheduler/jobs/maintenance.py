@@ -780,6 +780,7 @@ def crawl_dead_letter_recovery_job() -> None:
             _refresh_dlq_metrics()
             if not results:
                 logger.info("=== Dead Letter Recovery: nothing stuck ===")
+                alert_success("crawl_dead_letter_recovery", "nothing stuck")
                 return
 
             counts: dict[str, int] = {}
@@ -790,6 +791,13 @@ def crawl_dead_letter_recovery_job() -> None:
 
             if counts.get("exhausted") or counts.get("finalized_interrupted") or counts.get("failed"):
                 alert_warning("crawl_dead_letter_recovery", f"DLQ recovery: {summary}")
+                return
+
+            # The warning above is conditional, so it has to be cleared on the
+            # runs where the condition is absent -- otherwise a single bad sweep
+            # leaves an OPEN incident that only a hand-written resolve could
+            # close, and the runbook's recovery path does not apply to it.
+            alert_success("crawl_dead_letter_recovery", summary)
 
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter recovery failed")
@@ -815,11 +823,18 @@ def crawl_dead_letter_retry_job() -> None:
             _refresh_dlq_metrics()
             if summary.attempted == 0:
                 logger.info("=== Dead Letter Retry: nothing due ===")
+                alert_success("crawl_dead_letter_retry", "nothing due")
                 return
 
             logger.info("=== Dead Letter Retry processed: %s ===", summary.to_dict())
             if summary.exhausted or summary.errored:
                 alert_warning("crawl_dead_letter_retry", f"DLQ retry: {summary.to_dict()}")
+                return
+
+            # Same asymmetry as the recovery job: the warning is conditional and
+            # nothing else owns ``scheduler:crawl_dead_letter_retry:warning``, so
+            # a run that finds nothing wrong is the run that has to clear it.
+            alert_success("crawl_dead_letter_retry", str(summary.to_dict()))
 
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter retry failed")

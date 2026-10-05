@@ -21,36 +21,89 @@ class _NullLock:
         return False
 
 
+def _patch_alerts():
+    """Patch both alert channels; the real ``alert_success`` opens a session."""
+    return (
+        patch("src.scheduler.jobs.maintenance.alert_warning"),
+        patch("src.scheduler.jobs.maintenance.alert_success"),
+    )
+
+
 def test_nothing_due_returns_without_alert(monkeypatch) -> None:
     monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    warn_patch, success_patch = _patch_alerts()
     with (
         patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=DlqWorkerSummary()),
-        patch("src.scheduler.jobs.maintenance.alert_warning") as mock_warn,
+        warn_patch as mock_warn,
+        success_patch as mock_success,
     ):
         maintenance.crawl_dead_letter_retry_job()
     mock_warn.assert_not_called()
+    mock_success.assert_called_once()
 
 
 def test_exhausted_triggers_alert(monkeypatch) -> None:
     monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
     summary = DlqWorkerSummary(attempted=2, resolved=1, exhausted=1)
+    warn_patch, success_patch = _patch_alerts()
     with (
         patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary),
-        patch("src.scheduler.jobs.maintenance.alert_warning") as mock_warn,
+        warn_patch as mock_warn,
+        success_patch as mock_success,
     ):
         maintenance.crawl_dead_letter_retry_job()
     mock_warn.assert_called_once()
+    # A failing sweep must not also report recovery.
+    mock_success.assert_not_called()
 
 
 def test_resolved_only_does_not_alert(monkeypatch) -> None:
     monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
     summary = DlqWorkerSummary(attempted=1, resolved=1)
+    warn_patch, success_patch = _patch_alerts()
     with (
         patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary),
-        patch("src.scheduler.jobs.maintenance.alert_warning") as mock_warn,
+        warn_patch as mock_warn,
+        success_patch as mock_success,
     ):
         maintenance.crawl_dead_letter_retry_job()
     mock_warn.assert_not_called()
+    mock_success.assert_called_once()
+
+
+class TestAHealthySweepClearsTheStaleWarning:
+    """``alert_warning`` opens ``scheduler:crawl_dead_letter_retry:warning``.
+
+    Nothing else owns that key, so the run that finds nothing wrong is the only
+    thing that can close it.
+    """
+
+    @staticmethod
+    def _run(monkeypatch, summary: DlqWorkerSummary):
+        monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+        warn_patch, success_patch = _patch_alerts()
+        with (
+            patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary),
+            warn_patch as mock_warn,
+            success_patch as mock_success,
+        ):
+            maintenance.crawl_dead_letter_retry_job()
+        return mock_warn, mock_success
+
+    def test_nothing_due_reports_recovery(self, monkeypatch) -> None:
+        _warn, success = self._run(monkeypatch, DlqWorkerSummary())
+
+        assert success.call_args.args[0] == "crawl_dead_letter_retry"
+
+    def test_a_clean_batch_reports_recovery(self, monkeypatch) -> None:
+        _warn, success = self._run(monkeypatch, DlqWorkerSummary(attempted=3, resolved=3))
+
+        assert success.call_args.args[0] == "crawl_dead_letter_retry"
+
+    def test_an_errored_batch_leaves_the_warning_open(self, monkeypatch) -> None:
+        _warn, success = self._run(monkeypatch, DlqWorkerSummary(attempted=1, errored=1))
+
+        success.assert_not_called()
 
 
 def test_retry_job_is_registered_in_scheduler() -> None:
