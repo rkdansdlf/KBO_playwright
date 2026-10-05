@@ -14,9 +14,13 @@ import subprocess
 import sys
 from datetime import datetime
 
-from src.db.engine import database_reachable
 from src.scheduler.config import KST
-from src.scheduler.locks import MAINTENANCE_LOCK, _scheduler_job_lock, _with_lock_skip_guard
+from src.scheduler.locks import (
+    MAINTENANCE_LOCK,
+    _scheduler_job_lock,
+    _with_db_fail_fast_guard,
+    _with_lock_skip_guard,
+)
 
 logger = logging.getLogger("src.scheduler.jobs.alerts")
 
@@ -38,12 +42,10 @@ def _dispatch_args() -> list[str]:
     return ["--season", str(datetime.now(KST).year), "--channels", "telegram"]
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def send_pregame_alerts_job() -> None:
     """Send the day's pregame alerts. Runs daily at 16:00 KST."""
-    if not database_reachable():
-        logger.warning("Skipping pregame alert dispatch: database unreachable")
-        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Pregame Alert Dispatch ===")
         try:
@@ -53,12 +55,10 @@ def send_pregame_alerts_job() -> None:
             logger.exception("Pregame alert dispatch failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def send_milestone_summary_job() -> None:
     """Send the daily milestone summary. Runs daily at 08:30 KST."""
-    if not database_reachable():
-        logger.warning("Skipping milestone summary dispatch: database unreachable")
-        return
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Milestone Summary Dispatch ===")
         try:
