@@ -6,10 +6,17 @@ A test that stubs an attribute the code never calls is silently hermetic-looking
 but still reaches the real internet, so it passes on a developer machine and
 fails, or worse passes for the wrong reason, in CI.
 
-`tests/test_metrics.py::test_start_metrics_server` and both
-`TestWikiFetchSnapshot` cases in `tests/crawlers/test_award_crawler.py` were
-doing exactly that. Rather than rely on reviewing each mock by hand, this
-plugin denies outbound connections so the leak becomes a local failure.
+Both `TestWikiFetchSnapshot` cases in `tests/crawlers/test_award_crawler.py`
+were doing exactly that: they stubbed `crawler._fetch`, an attribute
+`AwardCrawler` never had, so the live Wikipedia and yagoonara APIs were still
+reached. Rather than rely on reviewing each mock by hand, this plugin denies
+outbound connections so the leak becomes a local failure.
+
+Only the connecting calls are blocked, not `getaddrinfo`. DNS resolution is not
+a data transfer, and `src/utils/url_validator.py` calls it deliberately: its
+SSRF guard resolves a hostname and checks the address is public, so blocking
+name resolution would break the security check instead of the leak. Set
+`KBO_BLOCK_DNS=1` to also block resolution when hunting a resolver-level leak.
 
 Usage:
 
@@ -22,6 +29,7 @@ local file through the socket layer.
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 
 _original_connect = socket.socket.connect
@@ -88,7 +96,8 @@ def pytest_configure(config: object) -> None:
     socket.socket.connect = _connect
     socket.socket.connect_ex = _connect_ex
     socket.create_connection = _create_connection
-    socket.getaddrinfo = _getaddrinfo
+    if os.environ.get("KBO_BLOCK_DNS") == "1":
+        socket.getaddrinfo = _getaddrinfo
 
 
 def pytest_unconfigure(config: object) -> None:

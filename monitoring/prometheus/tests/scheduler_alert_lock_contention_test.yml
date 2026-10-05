@@ -1,0 +1,148 @@
+# Rule-level tests for the scheduler alerts in
+# monitoring/prometheus/alert_rules.yml (group kbo_scheduler_alerts).
+#
+#   promtool test rules monitoring/prometheus/tests/scheduler_alert_lock_contention_test.yml
+#
+# Why this file exists: both rules here watch the *pipeline's own silence*.
+# A job that cannot take its tier lock returns quietly and logs a warning, and a
+# job skipped because the database is unreachable logs nothing at all -- both by
+# design, because the alternative is a job holding a lock while it burns connect
+# retries. So a scheduler whose every job skips looks identical to a scheduler
+# with nothing scheduled. These two rules are the only thing that distinguishes
+# the two, which makes "they fire" a contract rather than a hopeful default.
+#
+# `promtool check rules` proves the expressions parse; this proves they fire when
+# they should and stay quiet when they should not. Severity is pinned too,
+# because the mismatch that costs is the quiet one: a failed job demoted to
+# warning arrives when nobody is watching, and lock contention promoted to
+# critical wakes someone for a skip the next tick resolves on its own.
+#
+# Both rules threshold an `increase()` over a window, so what a sample carries
+# matters less than what the window carries. Two consequences the cases below
+# pin deliberately:
+#
+#   * a burst that clears the threshold fires on its first evaluation -- `for`
+#     delays it, it does not average it away;
+#   * an increment older than the window stops counting, so an old failure
+#     *resolves*. That is correct (the job is no longer failing) but it means a
+#     fixture that only ever looks at the firing edge cannot tell a rule that
+#     resolves from one that has been silently rewritten.
+#
+# promtool does not accept a per-test `evaluation_interval`, so the sample
+# interval must match the global interval.
+
+rule_files:
+  - ../alert_rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── KBOLockSkipSpike ────────────────────────────────────────────────────
+  # Skips climbing at 2/min: over the 5-minute window that is 10, well past the
+  # threshold, and `for: 1m` has elapsed by 8m.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_lock_skip_total{job_id="crawl_p1p2_data_job", lock="daily"}'
+        values: '0+2x15'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: KBOLockSkipSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "KBO 스케줄러 락 스킵(경합) 급증 발생"
+              description: "최근 5분 동안 락 스킵 횟수가 10회 발생했습니다."
+
+  # One skip every two minutes puts the 5-minute window at 2.5, under the
+  # threshold. Without this case a slow steady rate would look like the spike
+  # above and the rule would be indistinguishable from a bare "any skip".
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_lock_skip_total{job_id="crawl_p1p2_data_job", lock="daily"}'
+        values: '0+0.5x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: KBOLockSkipSpike
+        exp_alerts: []
+
+  # `for: 1m` is not yet satisfied one minute in, and is one minute later. This
+  # is the whole meaning of `for`: the condition already holds at 1m, so a rule
+  # that dropped it would page a minute earlier and there would be nothing left
+  # for this case to prove.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_lock_skip_total{job_id="crawl_p1p2_data_job", lock="daily"}'
+        values: '0 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: KBOLockSkipSpike
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: KBOLockSkipSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "KBO 스케줄러 락 스킵(경합) 급증 발생"
+              description: "최근 5분 동안 락 스킵 횟수가 6회 발생했습니다."
+
+  # ── KBOSchedulerJobFailed ───────────────────────────────────────────────
+  # One recorded failure is enough. A job that failed is not a job that will
+  # recover on its own next tick, and the rule exists so a single failure is not
+  # something an operator has to find in a log file.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_job_total{job_id="crawl_dead_letter_retry_job", status="failure"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'kbo_scheduler_job_total{job_id="crawl_dead_letter_retry_job", status="success"}'
+        values: '0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KBOSchedulerJobFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job_id: crawl_dead_letter_retry_job
+              status: failure
+            exp_annotations:
+              summary: "KBO 스케줄러 작업 실패"
+              description: "스케줄러 작업 crawl_dead_letter_retry_job 이(가) 실패했습니다."
+
+  # The same job succeeding is not a failure. A healthy job emits `success` for
+  # ever and the selector must ignore it -- otherwise the rule fires on every
+  # scheduler run and carries no information at all.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_job_total{job_id="crawl_dead_letter_retry_job", status="success"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KBOSchedulerJobFailed
+        exp_alerts: []
+
+  # The failure is 20 minutes old and the window is 15, so `increase` no longer
+  # sees it and the alert resolves. The job is not failing any more -- but the
+  # signal is gone from the rule's point of view, which is why the incident
+  # ledger is what an operator reads, not this counter.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_scheduler_job_total{job_id="crawl_dead_letter_retry_job", status="failure"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: KBOSchedulerJobFailed
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: KBOSchedulerJobFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job_id: crawl_dead_letter_retry_job
+              status: failure
+            exp_annotations:
+              summary: "KBO 스케줄러 작업 실패"
+              description: "스케줄러 작업 crawl_dead_letter_retry_job 이(가) 실패했습니다."
+      - eval_time: 25m
+        alertname: KBOSchedulerJobFailed
+        exp_alerts: []

@@ -68,6 +68,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      # Pinned so the firing fixtures are verified by the same promtool that was
+      # used to write them. `test_promtool_is_available_where_it_matters` fails if
+      # this stops being installed, which is the only thing that stops the skip
+      # below from quietly returning.
+      PROMTOOL_VERSION: "3.15.0"
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -115,6 +121,24 @@ jobs:
         # itself cannot do: a stale selector list would otherwise pass here
         # forever while guarding nothing.
         run: python -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json
+      - name: Install promtool for alert-rule firing tests
+        # Every alert rule in this repository has a promtool fixture proving it
+        # fires on the data it should fire on and stays quiet on the data it
+        # should not. Those tests skip when promtool is absent, and a skipped
+        # test is a green test -- so without this step the runner verified
+        # nothing about them while reporting success. The rules are wired to
+        # metrics that are only emitted on paths that fail silently, which is
+        # exactly the case where a broken rule looks identical to a healthy
+        # pipeline.
+        run: |
+          set -euo pipefail
+          url="https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}/prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz"
+          curl -sSfL --retry 3 -o promtool.tar.gz "$url"
+          mkdir -p "$RUNNER_TEMP/promtool"
+          tar -xzf promtool.tar.gz -C "$RUNNER_TEMP/promtool" --strip-components=1 \
+            "prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool"
+          echo "$RUNNER_TEMP/promtool" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/promtool/promtool" --version
       - name: Run tests
         run: |
           set -o pipefail
