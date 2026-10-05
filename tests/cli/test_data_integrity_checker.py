@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -12,8 +13,10 @@ from sqlalchemy.dialects import oracle
 
 from src.cli import data_integrity_checker as checker_module
 from src.cli.data_integrity_checker import (
+    EXPECT_GAMES_ENV,
     CheckResult,
     IntegrityReport,
+    _games_expectation_override,
     _primary_game_predicate,
     _target_date_predicate,
     check_all_terminal_status,
@@ -26,6 +29,7 @@ from src.cli.data_integrity_checker import (
     check_pa_formula_integrity,
     check_scores_populated,
     check_season_stat_team_code,
+    games_are_expected,
     main,
     run_integrity_checks,
 )
@@ -92,13 +96,38 @@ def test_oracle_target_date_predicate_uses_trunc_for_timestamps() -> None:
 
 
 class TestCheckGamesExist:
-    def test_no_games_fails(self) -> None:
+    def test_no_games_passes_as_rest_day_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Rest days and the off-season must not raise a permanent false alarm."""
+        monkeypatch.delenv(EXPECT_GAMES_ENV, raising=False)
+        session = MagicMock()
+        session.query.return_value.filter.return_value.count.return_value = 0
+
+        result = check_games_exist(session, _date(2026, 6, 24))
+        assert result.passed is True
+        assert result.details["count"] == 0
+        assert result.details["enforced"] is False
+        assert result.details["games_expected"] is False
+        assert EXPECT_GAMES_ENV in result.message
+
+    def test_no_games_fails_when_games_are_expected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(EXPECT_GAMES_ENV, "1")
         session = MagicMock()
         session.query.return_value.filter.return_value.count.return_value = 0
 
         result = check_games_exist(session, _date(2026, 6, 24))
         assert result.passed is False
         assert "No game rows found" in result.message
+        assert result.details["enforced"] is True
+
+    @pytest.mark.parametrize("raw", ["1", "true", "TRUE", "yes", "on", " 1 "])
+    def test_truthy_env_values_enforce(self, monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+        monkeypatch.setenv(EXPECT_GAMES_ENV, raw)
+        assert games_are_expected() is True
+
+    @pytest.mark.parametrize("raw", ["0", "false", "no", "off", "", "bogus"])
+    def test_falsy_env_values_do_not_enforce(self, monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+        monkeypatch.setenv(EXPECT_GAMES_ENV, raw)
+        assert games_are_expected() is False
 
     def test_games_exist_passes(self) -> None:
         session = MagicMock()
@@ -107,6 +136,184 @@ class TestCheckGamesExist:
         result = check_games_exist(session, _date(2026, 6, 24))
         assert result.passed is True
         assert "Found 5 game(s)" in result.message
+        assert result.details["games_expected"] is True
+
+
+class TestGamesExpectationOverride:
+    @pytest.mark.parametrize(
+        ("initial", "expect"),
+        [(None, True), ("1", False), ("0", True), ("bogus", True)],
+    )
+    def test_environment_is_restored(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        initial: str | None,
+        expect: bool,
+    ) -> None:
+        if initial is None:
+            monkeypatch.delenv(EXPECT_GAMES_ENV, raising=False)
+        else:
+            monkeypatch.setenv(EXPECT_GAMES_ENV, initial)
+
+        with _games_expectation_override(expect_games=expect):
+            assert games_are_expected() is expect
+
+        assert os.environ.get(EXPECT_GAMES_ENV) == initial
+
+    def test_environment_is_restored_when_the_body_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(EXPECT_GAMES_ENV, raising=False)
+
+        with pytest.raises(RuntimeError, match="boom"), _games_expectation_override(expect_games=True):
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        assert EXPECT_GAMES_ENV not in os.environ
+
+
+class TestExpectGamesFlags:
+    def test_no_flag_leaves_the_operator_decision_alone(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Passing no flag must mean "unspecified", never "do not expect games".
+
+        The override used to be computed as ``args.expect_games and not
+        args.allow_no_games``, which is ``False`` when neither flag is given. That
+        collapsed "the operator said nothing" into "the operator said no games",
+        so an environment of ``INTEGRITY_EXPECT_GAMES=1`` was silently
+        overwritten and the documented escalation path stopped working from the
+        command line.
+        """
+        monkeypatch.setenv(EXPECT_GAMES_ENV, "1")
+        seen: list[bool] = []
+        _run_and_record_expectation(seen, checker_module, monkeypatch, ["--date", "20260925"])
+
+        assert seen == [True]
+
+    def test_environment_is_untouched_when_no_flag_is_given(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(EXPECT_GAMES_ENV, "1")
+        seen: list[bool] = []
+        _run_and_record_expectation(seen, checker_module, monkeypatch, ["--date", "20260925"])
+
+        assert os.environ[EXPECT_GAMES_ENV] == "1"
+
+    def test_conflicting_flags_are_rejected(self) -> None:
+        """Silently ignoring one of two opposite flags hides a typo'd invocation.
+
+        Both flags name the same decision, so asking for the strict gate and the
+        permissive one in a single command has no answer. Picking one by
+        precedence means an operator who misspelled the other never learns their
+        check ran under the opposite rule.
+        """
+        args = checker_module.build_arg_parser().parse_args(["--date", "20260925", "--expect-games"])
+
+        with pytest.raises(SystemExit) as exc:
+            checker_module.main(["--date", "20260925", "--expect-games", "--allow-no-games"])
+
+        assert exc.value.code == 2
+        assert args.expect_games is True
+
+    def test_expect_games_flag_reaches_the_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The CLI flag must actually tighten the gate, not just parse."""
+        monkeypatch.delenv(EXPECT_GAMES_ENV, raising=False)
+        seen: list[bool] = []
+
+        def _fake_run(target_date: str) -> IntegrityReport:
+            seen.append(games_are_expected())
+            return IntegrityReport(
+                target_date=target_date,
+                timestamp_kst="2026-09-26T00:00:00+09:00",
+                total_checks=1,
+                passed_checks=1,
+                failed_checks=0,
+                results=[CheckResult(name="games_exist", passed=True, message="ok")],
+                overall_passed=True,
+            )
+
+        with (
+            patch.object(checker_module, "run_integrity_checks", side_effect=_fake_run),
+            pytest.raises(SystemExit) as exc,
+        ):
+            checker_module.main(["--date", "20260925", "--expect-games"])
+
+        assert exc.value.code == 0
+        assert seen == [True]
+        # The override must not leak into the process environment.
+        assert EXPECT_GAMES_ENV not in os.environ
+
+    def test_allow_no_games_flag_overrides_a_strict_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(EXPECT_GAMES_ENV, "1")
+        seen: list[bool] = []
+        _run_and_record_expectation(seen, checker_module, monkeypatch, ["--date", "20260925", "--allow-no-games"])
+
+        assert seen == [False]
+        assert os.environ[EXPECT_GAMES_ENV] == "1"
+
+
+def _run_and_record_expectation(
+    seen: list[bool],
+    module: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    argv: list[str],
+) -> None:
+    """Run ``main`` over a stubbed report and record the expectation it saw."""
+    del monkeypatch  # the caller already arranged the environment
+
+    def _fake_run(target_date: str) -> IntegrityReport:
+        seen.append(games_are_expected())
+        return IntegrityReport(
+            target_date=target_date,
+            timestamp_kst="2026-09-26T00:00:00+09:00",
+            total_checks=1,
+            passed_checks=1,
+            failed_checks=0,
+            results=[CheckResult(name="games_exist", passed=True, message="ok")],
+            overall_passed=True,
+        )
+
+    with (
+        patch.object(module, "run_integrity_checks", side_effect=_fake_run),
+        pytest.raises(SystemExit) as exc,
+    ):
+        module.main(argv)
+
+    assert exc.value.code == 0
+
+
+class TestGamesExistDetailsContract:
+    def test_rest_day_records_that_nothing_was_expected(self) -> None:
+        session = MagicMock()
+        session.query.return_value.filter.return_value.count.return_value = 0
+
+        with patch.object(checker_module, "games_are_expected", return_value=False):
+            result = check_games_exist(session, _date(2026, 6, 24))
+
+        assert result.details == {"count": 0, "enforced": False, "games_expected": False}
+
+    def test_present_games_report_the_rows_not_the_environment(self) -> None:
+        """``enforced`` describes this run's decision, not a second environment read.
+
+        The passing path re-read the environment to fill ``enforced``, so the key
+        meant "were games required" on one path and "was this run strict" on the
+        other. A consumer reading the key cannot tell which, and the value could
+        disagree with the verdict already returned if the environment shifted
+        mid-check.
+        """
+        session = MagicMock()
+        session.query.return_value.filter.return_value.count.return_value = 5
+
+        with patch.object(checker_module, "games_are_expected", return_value=False):
+            result = check_games_exist(session, _date(2026, 6, 24))
+
+        assert result.passed is True
+        assert result.details == {"count": 5, "enforced": False, "games_expected": True}
+
+    def test_expectation_is_read_once_per_check(self) -> None:
+        """One read per check, so the reported decision is the decided one."""
+        session = MagicMock()
+        session.query.return_value.filter.return_value.count.return_value = 5
+
+        with patch.object(checker_module, "games_are_expected", return_value=True) as read:
+            check_games_exist(session, _date(2026, 6, 24))
+
+        assert read.call_count == 1
 
 
 class TestCheckGameStatusPopulated:

@@ -17,6 +17,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -27,7 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.aggregators.sabermetrics_calculator import SabermetricsCalculator
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from sqlalchemy.orm import InstrumentedAttribute
 
@@ -46,6 +47,26 @@ from src.validators.season_team_code import audit_season_team_codes
 FUTURES_BATTING_TOLERANCE = 0.005
 FUTURES_PITCHING_TOLERANCE = 0.01
 FUTURES_FIP_TOLERANCE = 0.02
+
+#: Environment switch deciding whether a date with zero game rows is a failure.
+#:
+#: The KBO calendar has no games on a large share of days -- weekly rest days,
+#: the All-Star break, holiday suspensions and the whole Nov-Feb off-season.
+#: Measured against 1982-2026 game data, 34-84% of in-season (Mar-Nov) dates carry
+#: no game at all, so treating "no rows" as a hard failure produces a permanent
+#: false alarm and trains operators to ignore this check. The default therefore
+#: mirrors the sibling checks (``check_all_terminal_status``,
+#: ``check_child_stats_exist``), which all pass vacuously when there is nothing to
+#: inspect. Operators holding an authoritative schedule can restore strict
+#: behaviour with ``INTEGRITY_EXPECT_GAMES=1`` or ``--expect-games``.
+EXPECT_GAMES_ENV = "INTEGRITY_EXPECT_GAMES"
+
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def games_are_expected() -> bool:
+    """Return whether a date with no game rows should be treated as a failure."""
+    return os.getenv(EXPECT_GAMES_ENV, "0").strip().lower() in _TRUTHY_ENV_VALUES
 
 
 if TYPE_CHECKING:
@@ -128,6 +149,10 @@ def _parse_target_date(date_str: str) -> date:
 def check_games_exist(session: Session, target: date) -> CheckResult:
     """Verify that game rows exist for the target date.
 
+    Days without games are legitimate, so an empty result only fails when the
+    operator declares games were expected (see ``EXPECT_GAMES_ENV``). Otherwise the
+    check passes vacuously like its siblings, while still recording the observation.
+
     Args:
         session: Session.
         target: Target.
@@ -138,18 +163,34 @@ def check_games_exist(session: Session, target: date) -> CheckResult:
     count = (
         session.query(Game).filter(Game.game_date == target, _primary_game_predicate(session, Game.is_primary)).count()
     )
+    # Read once and reuse. The environment is process-wide state, and a second
+    # read could disagree with the verdict this function already returned.
+    enforced = games_are_expected()
     if count == 0:
+        if not enforced:
+            return CheckResult(
+                name="games_exist",
+                passed=True,
+                message=(
+                    f"No game rows for {target.isoformat()}; treated as a scheduled rest day "
+                    f"(set {EXPECT_GAMES_ENV}=1 to require games)"
+                ),
+                details={"count": 0, "enforced": False, "games_expected": False},
+            )
         return CheckResult(
             name="games_exist",
             passed=False,
             message=f"No game rows found for {target.isoformat()}",
-            details={"count": 0},
+            details={"count": 0, "enforced": True, "games_expected": False},
         )
+    # ``enforced`` is this run's decision about an *empty* date; ``games_expected``
+    # reports what the query found. They are not the same question, which is why
+    # the keys are not mirrors of each other.
     return CheckResult(
         name="games_exist",
         passed=True,
         message=f"Found {count} game(s) for {target.isoformat()}",
-        details={"count": count},
+        details={"count": count, "enforced": enforced, "games_expected": True},
     )
 
 
@@ -870,7 +911,82 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Output report as JSON",
     )
+    parser.add_argument(
+        "--expect-games",
+        action="store_true",
+        help=(
+            f"Fail when the date has no game rows, even on a rest day. Overrides {EXPECT_GAMES_ENV}=0 "
+            "for this invocation only."
+        ),
+    )
+    parser.add_argument(
+        "--allow-no-games",
+        action="store_true",
+        help=(
+            "Treat a date with no game rows as a scheduled rest day even when "
+            f"{EXPECT_GAMES_ENV}=1. Overrides the environment for this invocation only."
+        ),
+    )
     return parser
+
+
+@contextlib.contextmanager
+def _games_expectation_override(*, expect_games: bool | None) -> Iterator[None]:
+    """Apply a CLI expectation override for the duration of a run.
+
+    ``None`` means the caller expressed no opinion, and the environment is left
+    exactly as it was found. That third state is the point: folding it into
+    ``False`` would overwrite an operator who set ``INTEGRITY_EXPECT_GAMES=1``
+    with a run that never asked for the strict gate, which is how the documented
+    escalation path quietly stopped working from the command line.
+
+    Args:
+        expect_games: Whether the run should require game rows, or ``None`` to
+            defer to the environment unchanged.
+
+    Yields:
+        None.
+
+    """
+    if expect_games is None:
+        yield
+        return
+    previous = os.environ.get(EXPECT_GAMES_ENV)
+    os.environ[EXPECT_GAMES_ENV] = "1" if expect_games else "0"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(EXPECT_GAMES_ENV, None)
+        else:
+            os.environ[EXPECT_GAMES_ENV] = previous
+
+
+def _expectation_from_args(args: argparse.Namespace) -> bool | None:
+    """Resolve the ``--expect-games`` / ``--allow-no-games`` pair to one decision.
+
+    Returns ``None`` when neither flag was given so the environment decides, and
+    rejects the contradictory pair instead of picking a winner by precedence: an
+    operator who spelled both has made a mistake, and silently honouring one of
+    them runs the check under a rule they did not ask for.
+
+    Args:
+        args: Parsed CLI arguments.
+
+    Returns:
+        ``True`` to require games, ``False`` to treat an empty date as a rest
+        day, or ``None`` when neither flag was supplied.
+
+    """
+    if args.expect_games and args.allow_no_games:
+        msg = "--expect-games and --allow-no-games ask for opposite behaviour; pass at most one"
+        logger.error("%s", msg)
+        raise SystemExit(2)
+    if args.expect_games:
+        return True
+    if args.allow_no_games:
+        return False
+    return None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -889,7 +1005,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         logger.error("Invalid date format: %s. Expected YYYYMMDD.", target_date)
         sys.exit(1)
 
-    report = run_integrity_checks(target_date)
+    with _games_expectation_override(expect_games=_expectation_from_args(args)):
+        report = run_integrity_checks(target_date)
 
     if args.json:
         output = {

@@ -8,6 +8,7 @@ permanently open incident.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -90,6 +91,78 @@ class TestRecheckWindow:
         lookback = _integrity_recheck_lookback_days()
         assert 0 <= lookback <= module._INTEGRITY_RECHECK_LOOKBACK_MAX
         assert len(_integrity_target_dates()) == lookback + 1
+
+
+class TestGamesExpectation:
+    """Pin how the job reaches the checker's game-expectation gate.
+
+    The job calls ``run_integrity_checks`` directly and never enters the CLI's
+    override context, so ``games_are_expected`` reads the environment at the
+    moment the check runs. That is the correct arrangement -- the documented
+    escalation path is the environment variable, and it works on this path.
+
+    These cases exist to keep it that way. The job is the only caller that does
+    not go through ``main``, so it is the one place where a future change to
+    ``games_are_expected`` -- reading it once at import, or gaining a default
+    that overrides the environment -- would silently stop the strict gate from
+    being honoured during a 04:45 KST run with nobody watching.
+    """
+
+    def test_strict_environment_reaches_the_check(self, no_lock, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("INTEGRITY_EXPECT_GAMES", "1")
+        seen: list[bool] = []
+
+        def _fake_run(target_date: str):
+            from src.cli.reports.data_integrity_checker import games_are_expected
+
+            seen.append(games_are_expected())
+            return _report(failed=[])
+
+        with (
+            patch("src.cli.reports.data_integrity_checker.run_integrity_checks", side_effect=_fake_run),
+            patch("src.notifications.bridge.apply_incidents", side_effect=lambda *a, **k: None),
+        ):
+            data_integrity_check_job()
+
+        assert seen and all(seen), "the strict gate did not reach the check"
+
+    def test_rest_day_does_not_fail_the_job_by_default(self, no_lock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The permissive default is preserved: a rest day is not an incident."""
+        monkeypatch.delenv("INTEGRITY_EXPECT_GAMES", raising=False)
+        captured: dict[str, object] = {}
+
+        def _rest_day_report(target_date: str):
+            return SimpleNamespace(
+                failed_checks=0,
+                total_checks=10,
+                results=[SimpleNamespace(name="games_exist", passed=True, message="rest day")],
+            )
+
+        with (
+            patch("src.cli.reports.data_integrity_checker.run_integrity_checks", side_effect=_rest_day_report),
+            patch(
+                "src.notifications.bridge.apply_incidents",
+                side_effect=lambda events, *, resolve_keys=(), **kw: captured.update(events=list(events)),
+            ),
+        ):
+            data_integrity_check_job()
+
+        assert captured["events"] == []
+
+    def test_environment_is_not_mutated_by_the_job(self, no_lock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The job must leave the process environment as it found it."""
+        monkeypatch.setenv("INTEGRITY_EXPECT_GAMES", "1")
+
+        with (
+            patch(
+                "src.cli.reports.data_integrity_checker.run_integrity_checks",
+                side_effect=lambda d: _report(failed=[]),
+            ),
+            patch("src.notifications.bridge.apply_incidents", side_effect=lambda *a, **k: None),
+        ):
+            data_integrity_check_job()
+
+        assert os.environ["INTEGRITY_EXPECT_GAMES"] == "1"
 
 
 class TestIncidentBookkeeping:
