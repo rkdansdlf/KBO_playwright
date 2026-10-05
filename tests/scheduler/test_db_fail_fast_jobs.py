@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -523,3 +525,125 @@ class TestEveryDatabaseBoundJobIsGated:
         for module in JOB_MODULES:
             source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
             assert "database_reachable" not in source, f"{module.__name__} calls the probe directly"
+
+
+class TestTheGateDoesNotEraseTheJobSignature:
+    """``_with_db_fail_fast_guard``는 잡의 시그니처를 지우지 않는다.
+
+    스케줄러 레지스트리는 잡들을 리스트에 모아 ``add_job``에 넘긴다. 그 리스트의
+    원소 타입이 하나라도 ``object``로 무너지면 같은 리스트의 모든 잡이 scoped mypy
+    게이트를 함께 실패한다. 실제로 두 가지 철자가 서로 다르게 무너진다:
+
+    * ``@_with_db_fail_fast_guard`` (위치 인자) — 데코레이터가 잡을 받아 그대로 돌려준다.
+    * ``@_with_db_fail_fast_guard(urls=...)`` (인자형) — 잡이 없는 상태로 호출돼
+      데코레이터를 반환해야 하며, 여기서 반환 타입이 무너지면 잡이 ``object``가 된다.
+
+    런타임 동작은 두 철자가 동일하므로(pytest로는 구분되지 않는다) 정적 계약을
+    mypy로 확인한다. 그래야 "게이트가 조용히 타입을 망가뜨리는" 회귀가 게이트에서
+    잡힌다.
+    """
+
+    #: 스코프 mypy 게이트가 실제로 검사하는 목록과 같은 파일만 대상으로 한다.
+    SCOPED_FILE = "src/scheduler/locks.py"
+    REGISTRY_FILE = "src/scheduler/registry.py"
+
+    def _mypy(self, source: str) -> list[str]:
+        """Type-check a snippet and return only the errors in the snippet itself."""
+        target = pathlib.Path("src/scheduler/_type_contract_probe.py")
+        previous = target.read_text(encoding="utf-8") if target.exists() else None
+        target.write_text(source, encoding="utf-8")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "mypy", str(target)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            if previous is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_text(previous, encoding="utf-8")
+        return [line for line in result.stdout.splitlines() if line.startswith(str(target)) and "error:" in line]
+
+    def test_both_spellings_keep_the_job_typed(self) -> None:
+        """위치형과 인자형 모두 잡을 호출 가능한 함수로 유지한다.
+
+        리스트를 ``Callable``이 아니라 ``object``로 선언하면 잡이 무너지는 것이
+        조용히 통과한다. 그래서 여기서는 스케줄러 레지스트리가 실제로 쓰는 타입
+        (``Callable[..., object]``)을 요구한다 — 잡 하나라도 ``object``가 되면
+        리스트에 넣을 수 없다는 오류가 난다.
+        """
+        errors = self._mypy(
+            "from collections.abc import Callable\n"
+            "\n"
+            "from src.scheduler.locks import _with_db_fail_fast_guard\n"
+            "\n"
+            "@_with_db_fail_fast_guard\n"
+            "def bare() -> None:\n"
+            '    """A job guarded with the bare spelling."""\n'
+            "\n"
+            "\n"
+            "@_with_db_fail_fast_guard(urls=lambda: ('postgresql://probe',))\n"
+            "def with_urls() -> None:\n"
+            '    """A job guarded with the argument spelling."""\n'
+            "\n"
+            "\n"
+            "registry: list[tuple[Callable[..., object], str, int]] = [\n"
+            '    (bare, "bare", 1),\n'
+            '    (with_urls, "urls", 2),\n'
+            "]\n"
+        )
+        assert not errors, "the DB gate collapsed a job signature:\n" + "\n".join(errors)
+
+    def test_a_signature_is_carried_through_not_replaced(self) -> None:
+        """데코레이터는 매개변수와 반환 타입을 그대로 보존한다.
+
+        ``functools.wraps``가 남기는 ``__wrapped__`` 때문에 런타임에는 이미 성립하지만,
+        타입 수준에서 지켜지지 않으면 인자 이름 실수(예: ``limit=``)가 잡힌다.
+        """
+        errors = self._mypy(
+            "from src.scheduler.locks import _with_db_fail_fast_guard\n"
+            "\n"
+            "@_with_db_fail_fast_guard\n"
+            "def takes_arguments(limit: int) -> str:\n"
+            '    """A job that takes an argument and returns a value."""\n'
+            "    return str(limit)\n"
+            "\n"
+            "\n"
+            "typed: str = takes_arguments(1)\n"
+        )
+        assert not errors, "the DB gate replaced the job signature:\n" + "\n".join(errors)
+
+    def test_the_argument_spelling_does_not_accept_a_bare_decoration(self) -> None:
+        """인자형 오버로드는 ``urls`` 없이 호출할 수 없다.
+
+        ``urls``를 지정한 스펙과 지정하지 않은 스펙을 분리하지 않으면, 데코레이터가
+        인자를 받는지 조용히 삼키는 회귀가 타입 검사에 잡히지 않는다.
+        """
+        errors = self._mypy(
+            "from src.scheduler.locks import _with_db_fail_fast_guard\n"
+            "\n"
+            "@_with_db_fail_fast_guard\n"
+            "def missing_urls() -> None:\n"
+            '    """The argument spelling without a urls callable."""\n'
+        )
+        assert not errors, "the argument overload accepted a bare decoration:\n" + "\n".join(errors)
+
+    def test_the_gate_declares_an_overload_for_each_spelling(self) -> None:
+        """두 철자가 코드에 실제로 존재하는지 확인한다(오버로드가 사라지는 회귀 방지)."""
+        source = pathlib.Path(self.SCOPED_FILE).read_text(encoding="utf-8")
+        assert source.count("@overload") >= 2, "the DB gate lost one of its overloads"
+        assert "def _with_db_fail_fast_guard[**P, R]" in source, "the overloads must preserve the job signature"
+
+    def test_the_registry_collects_the_jobs_into_one_annotated_list(self) -> None:
+        """레지스트리는 잡 목록에 타입을 붙인다.
+
+        타입 없는 리스트는 mypy가 첫 항목의 타입을 그대로 전파하므로, 인자형 게이트
+        하나가 ``object``로 무너지면 같은 리스트의 나머지 잡이 함께 실패한다.
+        """
+        registry = pathlib.Path(self.REGISTRY_FILE).read_text(encoding="utf-8")
+        assert "tier2_jobs" in registry, "the tier-2 job list is gone"
+        assert "_with_db_fail_fast_guard(urls=" in pathlib.Path(maintenance.__file__).read_text(encoding="utf-8"), (
+            "no job uses the argument spelling, so the overload has no production caller to protect"
+        )
