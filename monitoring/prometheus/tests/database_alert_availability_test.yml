@@ -1,0 +1,110 @@
+# Rule-level tests for the database alerts in
+# monitoring/prometheus/alert_rules.yml (group kbo_database_alerts).
+#
+#   promtool test rules monitoring/prometheus/tests/database_alert_availability_test.yml
+#
+# Why this file exists when the crawler and notification groups already have
+# fixtures: every database-bound scheduler job skips itself, silently, while the
+# database is unreachable. That skip is deliberate -- the job would otherwise sit
+# on a tier lock burning connect retries -- which means these two rules are the
+# *only* thing that tells an operator the maintenance window was lost. A rule
+# that never fires looks exactly like a healthy pipeline, so the firing
+# behaviour is pinned here rather than assumed.
+#
+# `promtool check rules` proves the expressions parse; this proves they fire when
+# they should and stay quiet when they should not. promtool compares annotations
+# exactly (`exp_annotations` omitted means "must be empty"), so the operator
+# wording is pinned on purpose: if it changes, this fixture is what notices.
+#
+# promtool does not accept a per-test `evaluation_interval`, so the sample
+# interval must match the global interval.
+
+rule_files:
+  - ../alert_rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── KBODatabaseUnavailable ──────────────────────────────────────────────
+  # The probe answered `SELECT 1` with 0 for longer than `for: 1m`. This is the
+  # alert that replaces the 24 scheduler jobs' own reporting.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: KBODatabaseUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: kbo-scheduler:8000
+            exp_annotations:
+              summary: "KBO 데이터베이스 연결 불가"
+              description: "SELECT 1 프로브가 1분 이상 실패했습니다. DB 연결/인증/네트워크를 확인하세요."
+
+  # A responding database must not page, even though every scheduler job is
+  # quiet on its own during the same window.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KBODatabaseUnavailable
+        exp_alerts: []
+
+  # `for: 1m` means a single failed sample must NOT page. Without this case a
+  # one-sample blip would look identical to an outage in the other direction.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x5 0 1x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KBODatabaseUnavailable
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: KBODatabaseUnavailable
+        exp_alerts: []
+
+  # ── KBODatabaseLatencyHigh ──────────────────────────────────────────────
+  # The database answers, but slower than 2s for 5 minutes: warning, not critical.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_ping_latency_seconds{instance="kbo-scheduler:8000"}'
+        values: '3x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: KBODatabaseLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: kbo-scheduler:8000
+            exp_annotations:
+              summary: "KBO 데이터베이스 응답 지연"
+              description: "DB ping 지연이 5분 이상 3s 수준입니다."
+
+  # Under the threshold stays quiet, so a remote host over Tailscale does not
+  # page on every scrape.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_ping_latency_seconds{instance="kbo-scheduler:8000"}'
+        values: '0.05x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KBODatabaseLatencyHigh
+        exp_alerts: []
+
+  # Slow but answering must not raise the *critical* rule: the two describe
+  # different failures and an operator needs to tell them apart.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+      - series: 'kbo_db_ping_latency_seconds{instance="kbo-scheduler:8000"}'
+        values: '3x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KBODatabaseUnavailable
+        exp_alerts: []

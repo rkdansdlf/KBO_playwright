@@ -507,6 +507,35 @@ def test_security_audit_allowlist_is_documented():
         assert any(ch.isdigit() for ch in line), f"allowlist entry without a review date: {line}"
 
 
+def test_ci_installs_promtool_for_the_alert_rule_fixtures():
+    """Every alert rule has a promtool fixture; none of them ran in CI.
+
+    The firing fixtures are the only thing that distinguishes a rule which pages
+    from one which parses, and the rule contracts skip themselves when promtool
+    is absent. A skipped test is a green test, so the runner was reporting
+    success while verifying nothing about any of the eleven rules -- and those
+    rules are wired to metrics emitted only on paths that fail silently.
+
+    Asserted as text because the alternative, waiting for the runtime guard in
+    `test_promtool_is_available_where_it_matters`, turns a missing tool into a
+    confusing failure instead of naming the missing step.
+    """
+    workflow = _read(WORKFLOW_DIR / "test_suite.yml")
+
+    assert "Install promtool for alert-rule firing tests" in workflow
+    # Pinned rather than floating: the fixtures were written against one
+    # promtool, and `promtool test rules` output is what they assert on.
+    assert "PROMTOOL_VERSION:" in workflow
+    assert "prometheus/prometheus/releases/download/v${PROMTOOL_VERSION}" in workflow
+    # The install has to land on PATH for the *pytest* run, which is what
+    # collects the fixtures. Appending to GITHUB_PATH only affects later steps,
+    # so a step that verified the binary but never published it would leave the
+    # skip in place while looking installed.
+    assert 'echo "$RUNNER_TEMP/promtool" >> "$GITHUB_PATH"' in workflow
+    # And it has to run before pytest, or the tests that need it still skip.
+    assert workflow.index("Install promtool for alert-rule firing tests") < workflow.index("- name: Run tests")
+
+
 def test_test_suite_runs_lint_and_test_matrix():
     workflow = _read(WORKFLOW_DIR / "test_suite.yml")
 
