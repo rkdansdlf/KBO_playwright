@@ -7,11 +7,19 @@ import logging
 import sys
 
 from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
-from src.scheduler.locks import DAILY_LOCK, LIVE_LOCK, _scheduler_job_lock, _sqlite_writer_lock, _with_lock_skip_guard
+from src.scheduler.locks import (
+    DAILY_LOCK,
+    LIVE_LOCK,
+    _scheduler_job_lock,
+    _sqlite_writer_lock,
+    _with_db_fail_fast_guard,
+    _with_lock_skip_guard,
+)
 
 logger = logging.getLogger("src.scheduler.jobs.stadium")
 
 
+@_with_db_fail_fast_guard
 def crawl_transit_time_job() -> None:
     """Collect transit time to stadiums (Jamsil etc.) via Kakao Mobility."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
@@ -37,6 +45,7 @@ def crawl_transit_time_job() -> None:
         live_lock.release()
 
 
+@_with_db_fail_fast_guard
 def crawl_congestion_job() -> None:
     """Collect real-time stadium area congestion via Seoul Open Data."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
@@ -62,6 +71,7 @@ def crawl_congestion_job() -> None:
         live_lock.release()
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_operation_notices_job() -> None:
     """Operation Notices: stadium gate opening times, event guidelines, rain checks."""
@@ -80,6 +90,7 @@ def crawl_operation_notices_job() -> None:
             logger.exception("Operation notices crawl failed")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_operation_notices_naver_job() -> None:
     """Operation Notices: Naver News/Blog search for last-minute stadium operational updates."""

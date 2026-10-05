@@ -123,6 +123,27 @@ def _clean_test_db(request):
 
 
 @pytest.fixture(autouse=True)
+def _reset_db_fail_fast_gate():
+    """Forget the DB gate's memoised probe between tests.
+
+    ``_DB_GATE`` caches a failed probe for its cooldown window, which is exactly
+    what makes an outage cost one query per window instead of one per tick. That
+    same memo is process-global state, so a test that made the database look
+    unreachable answers for the next test that calls a gated job -- and a gated job
+    returns ``None`` silently by design. The assertion after it then passes without
+    the job ever running.
+
+    Applied to every test rather than only the scheduler ones: a gated job is
+    reachable from anywhere, ``tests/cli/test_run_daily_update.py`` among them.
+    """
+    from src.scheduler.locks import _reset_db_gate
+
+    _reset_db_gate()
+    yield
+    _reset_db_gate()
+
+
+@pytest.fixture(autouse=True)
 def _clean_locks():
     """Remove stale ProcessLock files between scheduler tests to prevent flaky lock contention."""
     import fnmatch
