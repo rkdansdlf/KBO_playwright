@@ -433,8 +433,22 @@ async def _execute_team_page_replay(
     spec: CrawlRunSpec,
     team_code: str,
 ) -> None:
-    """Re-crawl one team's stadium page, writing the results this time."""
-    await crawler.run(save=True, team_filter=team_code, run_spec=spec, record_dead_letters=False)
+    """Re-crawl one team's stadium page, writing the results this time.
+
+    ``raise_on_persist_error`` matches the other Phase I handlers. Without it a
+    write that stored nothing is still visible -- the run lands as ``failed``
+    and ``_outcome_from_persisted_run`` refuses to call it resolved -- but the
+    exception carries the taxonomy code straight to ``retry_dead_letter``, which
+    is where the attempt is decided. One team means ``partial`` and ``failed``
+    describe the same outcome anyway.
+    """
+    await crawler.run(
+        save=True,
+        team_filter=team_code,
+        run_spec=spec,
+        record_dead_letters=False,
+        raise_on_persist_error=True,
+    )
 
 
 def _replay_food(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
