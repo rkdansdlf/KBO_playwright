@@ -12,12 +12,29 @@ from unittest.mock import MagicMock
 
 import pytest
 import scripts.scheduler as scheduler
+from src.scheduler import locks
 
 
 @pytest.fixture(autouse=True)
 def _reset_live_state() -> None:
     scheduler.LAST_LIVE_RUN_TIME = None
     scheduler.LAST_LIVE_POLL_INTERVAL = None
+
+
+@pytest.fixture(autouse=True)
+def _free_db_gate() -> None:
+    """Let every test reach the database unless it says otherwise.
+
+    The gate is the shared ``_DB_GATE`` memo, so without this a single test that
+    made it fail would answer for the next one as well -- and an assertion about
+    the crawl cycle would pass because the job returned early.
+    """
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: True)
+    locks._reset_db_gate()
+    yield
+    monkeypatch.undo()
+    locks._reset_db_gate()
 
 
 def _cycle_recorder() -> tuple[list[dict], object]:
@@ -36,8 +53,9 @@ def test_unreachable_database_returns_before_taking_the_lock(monkeypatch: pytest
     live_lock = MagicMock()
     live_lock.acquire.return_value = True
 
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: False)
+    locks._reset_db_gate()
     monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
-    monkeypatch.setattr(scheduler, "database_reachable", lambda: False, raising=False)
     monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
     monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 0)
     monkeypatch.setattr(scheduler, "run_live_crawler_cycle", fake_cycle)
@@ -56,7 +74,6 @@ def test_reachable_database_still_runs_the_cycle(monkeypatch: pytest.MonkeyPatch
     live_lock.acquire.return_value = True
 
     monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
-    monkeypatch.setattr(scheduler, "database_reachable", lambda: True, raising=False)
     monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
     monkeypatch.setattr(scheduler, "_get_live_poll_interval_seconds", lambda: 0)
     monkeypatch.setattr(scheduler, "run_live_crawler_cycle", fake_cycle)
@@ -66,3 +83,30 @@ def test_reachable_database_still_runs_the_cycle(monkeypatch: pytest.MonkeyPatch
 
     assert len(calls) == 1
     live_lock.acquire.assert_called_once()
+
+
+def test_the_gate_is_consulted_at_most_once_per_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The 10s tick is why this job has a gate; the memo is why it is cheap.
+
+    Moving the probe into the shared decorator is only an improvement if the
+    cooldown actually applies. An inline probe re-queried on every tick, which is
+    one connect attempt every 10 seconds for as long as the database stays down.
+    """
+    probes: list[tuple[str, ...]] = []
+
+    def counting_probe(**kwargs: object) -> bool:
+        probes.append(tuple(kwargs.get("urls") or ()))
+        return False
+
+    monkeypatch.setattr(locks, "database_reachable", counting_probe)
+    locks._reset_db_gate()
+
+    live_lock = MagicMock()
+    live_lock.acquire.return_value = True
+    monkeypatch.setattr(scheduler, "LIVE_LOCK", live_lock)
+    monkeypatch.setattr(scheduler, "_should_skip_live_for_pregame", lambda: False)
+
+    for _ in range(5):
+        scheduler.crawl_live_refresh()
+
+    assert len(probes) == 1, f"the cooldown did not hold: {probes}"

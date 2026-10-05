@@ -8,6 +8,13 @@ reaches the database once per target date through ``_pregame_refresh_summary``.
 The retry on ``_process_pregame_date`` does not cover this: ``_pregame_refresh_summary``
 catches ``SCHEDULER_JOB_EXCEPTIONS`` and ``Exception``, so a database error is
 swallowed inside the callee and never reaches tenacity.
+
+Both jobs once probed inline, in a job body, before taking the lock. They now
+declare ``@_with_db_fail_fast_guard`` like the other 23, which is what puts them
+under the shared cooldown memo and under the single-location contract in
+``test_db_fail_fast_jobs.py``. These tests therefore patch ``locks.database_reachable``
+rather than an attribute of the bootstrap module: the probe the job reaches is the
+decorator's, not the job's.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from unittest.mock import MagicMock
 import pytest
 import scripts.scheduler as scheduler
 import src.scheduler.jobs.live as live
+from src.scheduler import locks
 
 ORDER: list[str] = []
 
@@ -24,6 +32,20 @@ ORDER: list[str] = []
 @pytest.fixture(autouse=True)
 def _reset_order() -> None:
     ORDER.clear()
+
+
+@pytest.fixture(autouse=True)
+def _free_db_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start from a reachable gate; a test that wants otherwise says so.
+
+    ``_DB_GATE`` memoises per URL set, so one test that made it fail would answer
+    for the next, and the assertions below would pass because the job returned
+    early rather than because it behaved.
+    """
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: True)
+    locks._reset_db_gate()
+    yield
+    locks._reset_db_gate()
 
 
 def _lock_recorder() -> MagicMock:
@@ -41,19 +63,20 @@ def _lock_recorder() -> MagicMock:
 def _patch(monkeypatch: pytest.MonkeyPatch, *, reachable: bool, dates: list[str]) -> MagicMock:
     """Patch both namespaces the function actually resolves against.
 
-    LIVE_LOCK and database_reachable come from the bootstrap module (the function
-    reads them with getattr(mod, ...), mirroring crawl_live_refresh), but the
-    helpers are plain globals of the defining module, so patching scheduler.X
-    would silently do nothing.
+    ``LIVE_LOCK`` comes from the bootstrap module (the function reads it with
+    ``getattr(mod, ...)``, mirroring ``crawl_live_refresh``), the probe comes from
+    the shared gate in ``locks``, and the helpers are plain globals of the defining
+    module -- so patching ``scheduler.X`` would silently do nothing.
     """
     lock = _lock_recorder()
     monkeypatch.setattr(scheduler, "LIVE_LOCK", lock, raising=False)
 
-    def _probe() -> bool:
+    def _probe(**_kwargs: object) -> bool:
         ORDER.append("probe")
         return reachable
 
-    monkeypatch.setattr(scheduler, "database_reachable", _probe, raising=False)
+    monkeypatch.setattr(locks, "database_reachable", _probe)
+    locks._reset_db_gate()
     monkeypatch.setattr(live, "_pregame_target_dates", lambda: dates)
     monkeypatch.setattr(live, "_process_pregame_date", lambda *_a, **_k: ORDER.append("process"))
     monkeypatch.setattr(live, "alert_success", lambda *_a, **_k: None)

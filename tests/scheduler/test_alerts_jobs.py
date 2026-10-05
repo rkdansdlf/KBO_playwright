@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.scheduler import locks
 from src.scheduler.jobs import alerts
 
 
@@ -28,8 +29,15 @@ def _freeze_year(monkeypatch: pytest.MonkeyPatch, year: int) -> None:
 
 @pytest.fixture(autouse=True)
 def _assume_database_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The jobs probe the operational database; keep that probe out of these tests."""
-    monkeypatch.setattr(alerts, "database_reachable", lambda: True)
+    """The jobs gate on the operational database; keep that gate out of these tests.
+
+    The probe reaches the shared ``_DB_GATE`` memo in ``locks``, not an attribute of
+    this module, and the memo survives between tests -- so both are handled here.
+    """
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: True)
+    locks._reset_db_gate()
+    yield
+    locks._reset_db_gate()
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +77,8 @@ def test_dispatch_is_skipped_before_taking_the_lock_when_db_is_unreachable(
     """An unreachable database must cost a fast return, not a held lock and a timeout."""
     dispatched: list[str] = []
     lock = MagicMock()
-    monkeypatch.setattr(alerts, "database_reachable", lambda: False)
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: False)
+    locks._reset_db_gate()
     monkeypatch.setattr(alerts, "_dispatch", lambda module, *args: dispatched.append(module))
     monkeypatch.setattr(alerts, "_scheduler_job_lock", lock)
 

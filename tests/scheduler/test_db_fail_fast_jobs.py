@@ -26,7 +26,7 @@ from tenacity import retry, stop_after_attempt, wait_none
 
 from src.scheduler import locks
 from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
-from src.scheduler.jobs import daily, maintenance
+from src.scheduler.jobs import alerts, daily, live, maintenance, sentinel, stadium
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -64,7 +64,15 @@ DELIBERATELY_UNGATED = {
     "cleanup_stale_data_job": "file-only cleanup; the database is irrelevant to it",
 }
 
-JOB_MODULES = (maintenance, daily)
+#: 게이트를 검증하는 잡 모듈 전량.
+#:
+#: 이 목록을 손으로 유지하면 뒤에 추가된 모듈이 조용히 빠진다. 실제로 그렇게
+#: 됐었다: ``JOB_MODULES``가 ``(maintenance, daily)``뿐인 동안 ``alerts``와
+#: ``live``는 인라인 ``database_reachable()`` 프로브를 쓰고도 게이트가 데코레이터
+#: 하나에만 존재한다는 계약을 통과했다. 그 결과 네 개의 DB-바인드 잡이 쿨다운
+#: 메모를 받지 못했고, 네 계약(단일 위치·최외곽·완결성·서명)이 두 잡에 대해
+#: 공허하게 참이었다. 새 잡 모듈은 여기 자동으로 들어온다.
+JOB_MODULES = (alerts, daily, live, maintenance, sentinel, stadium)
 
 
 class _NullLock:

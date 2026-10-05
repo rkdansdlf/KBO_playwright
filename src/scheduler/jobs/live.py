@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 from src.cli.live.live_crawler import run_live_crawler_cycle
 from src.cli.pipelines.daily_preview_batch import run_preview_batch
-from src.db.engine import DATABASE_URL, SessionLocal, database_reachable
+from src.db.engine import DATABASE_URL, SessionLocal
 from src.db.sqlite_integrity import check_sqlite_database, is_sqlite_corruption_error
 from src.scheduler.alerting import alert_success
 from src.scheduler.config import (
@@ -25,7 +25,7 @@ from src.scheduler.config import (
     SCHEDULER_JOB_EXCEPTIONS,
     _env_enabled,
 )
-from src.scheduler.locks import LIVE_LOCK, _sqlite_writer_lock
+from src.scheduler.locks import LIVE_LOCK, _sqlite_writer_lock, _with_db_fail_fast_guard
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -252,20 +252,11 @@ def _process_pregame_date(
     return len(saved_ids or [])
 
 
+@_with_db_fail_fast_guard
 def crawl_pregame_refresh() -> None:
     """Run pregame lineup and preview refresh across target dates."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     live_lock = getattr(mod, "LIVE_LOCK", LIVE_LOCK) if mod else LIVE_LOCK
-
-    # This job queries the database once per target date through
-    # _pregame_refresh_summary, which swallows the resulting error instead of
-    # propagating it. Probe before taking LIVE_LOCK: while the database is
-    # unreachable each of those calls burns the connect timeout, and LIVE_LOCK is
-    # the same lock the 10s crawl_live_refresh tick needs.
-    probe_fn = getattr(mod, "database_reachable", None) or database_reachable
-    if not probe_fn():
-        logger.info("Skipping pregame refresh because the database is unreachable")
-        return
 
     if not live_lock.acquire(blocking=False):
         logger.info("Skipping pregame refresh because LIVE_LOCK is already held")
@@ -460,6 +451,7 @@ def _sync_live_poll_interval(mod: object | None, interval: int) -> None:
             setattr(mod, "LAST_LIVE_POLL_INTERVAL", interval)  # noqa: B010
 
 
+@_with_db_fail_fast_guard
 def crawl_live_refresh() -> None:  # noqa: C901
     """Execute live polling crawler cycle if due."""
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
@@ -479,13 +471,6 @@ def crawl_live_refresh() -> None:  # noqa: C901
         elapsed = (now - last_live_run).total_seconds()
         if elapsed < cached_interval:
             return
-
-    # The interval query hits the database. Probe first and return before taking
-    # LIVE_LOCK: an unreachable database must not stall this 10s job -- and, through
-    # its max_instances=1 slot, every following tick -- for the connect timeout.
-    probe_fn = getattr(mod, "database_reachable", None) or database_reachable
-    if not probe_fn():
-        return
 
     # Interval expired or first run — query DB for fresh interval
     interval_fn = getattr(mod, "_get_live_poll_interval_seconds", None) or _get_live_poll_interval_seconds
