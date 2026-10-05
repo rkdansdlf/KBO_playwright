@@ -216,6 +216,7 @@ def _publish_quality_incident(report: object) -> None:
     )
 
 
+@_with_db_fail_fast_guard
 def crawl_daily_games() -> None:
     """Daily job: Run unified daily update entrypoint with dependency tracking.
 
@@ -612,6 +613,7 @@ def _write_p1p2_run_marker(status: str) -> None:
         logger.exception("Failed to write P1/P2 run marker")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_p1p2_data_job() -> None:
     """P1/P2 Crawlers: seat sections, parking, stadium food."""
@@ -680,6 +682,9 @@ def lock_health_check_job() -> None:
         _update_job_status("lock_health_check_job", JobStatus.FAILURE, "Health check failed")
     else:
         logger.info("=== Scheduler Lock Health Check Passed ===")
+        # Clears ``scheduler:lock_health_check:warning`` from an earlier run.
+        # Without it the contention incident outlives the contention.
+        alert_success("lock_health_check", "lock health check passed")
         _update_job_status("lock_health_check_job", JobStatus.SUCCESS, "Passed")
 
 
@@ -718,6 +723,7 @@ def crawl_p0_non_game_job() -> None:
             _update_job_status("crawl_p0_non_game_job", JobStatus.FAILURE, "Exception")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_kbo_press_releases_job() -> None:
     """Crawl KBO official press releases and notices. Runs daily at 06:10 KST."""
@@ -742,6 +748,7 @@ def crawl_kbo_press_releases_job() -> None:
             _update_job_status("crawl_kbo_press_releases_job", JobStatus.FAILURE, "Exception")
 
 
+@_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_futures_schedule_job() -> None:
     """Crawl Futures League game schedule and standings. Runs daily at 06:30 KST."""

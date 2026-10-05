@@ -50,14 +50,14 @@ GATED_PROBES = (
     (maintenance.snapshot_drift_check_job, "src.services.snapshot_replay.validate_recent_snapshots"),
 )
 
-#: 유지보수 락 잡 전수 검사에서 게이트가 없어야 하는 잡과 그 사유.
+#: 티어 락 잡 전수 검사에서 게이트가 없어야 하는 잡과 그 사유.
 #:
-#: 유지보수 락 잡 전부에 게이트를 붙이되 이 둘은 제외한다. ``backup_db_job``는
+#: 티어 락 잡 전부에 게이트를 붙이되 이 둘은 제외한다. ``backup_db_job``는
 #: ORM 세션이 아니라 ``sqlite3``로 로컬 파일을 백업하고, ``cleanup_stale_data_job``는
 #: 파일만 정리한다. 둘 다 운영 DB가 죽었다고 해서 할 일이 사라지지 않으며, 반대로
 #: 운영 DB 프로브로 게이트하면 백업 대상 파일과 무관한 신호에 동작이 좌우된다.
 #:
-#: ``trim_scheduler_logs_job``는 유지보수 락 잡도 아니므로 여기 들어오지 않는다.
+#: ``trim_scheduler_logs_job``는 티어 락 잡도 아니므로 여기 들어오지 않는다.
 #: 게이트가 필요 없다는 판단과 게이트 대상이 아니라는 판단은 서로 다르다.
 DELIBERATELY_UNGATED = {
     "backup_db_job": "sqlite3 file backup; not a SessionLocal reader",
@@ -73,6 +73,11 @@ DELIBERATELY_UNGATED = {
 #: 메모를 받지 못했고, 네 계약(단일 위치·최외곽·완결성·서명)이 두 잡에 대해
 #: 공허하게 참이었다. 새 잡 모듈은 여기 자동으로 들어온다.
 JOB_MODULES = (alerts, daily, live, maintenance, sentinel, stadium)
+
+#: The tier locks a job can hold while doing database work. All three gate the
+#: same way, because the failure they share is a job blocking on connect while
+#: holding a lock the other jobs on that tier also need.
+TIER_LOCKS = ("MAINTENANCE_LOCK", "DAILY_LOCK", "LIVE_LOCK")
 
 
 class _NullLock:
@@ -141,6 +146,33 @@ def test_the_drift_job_proceeds_when_the_database_answers(monkeypatch: pytest.Mo
 
     validate.assert_called_once()
     apply_incidents.assert_called_once()
+
+
+def test_a_memoised_failure_answers_for_later_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed probe is cached for the cooldown -- which is why tests reset it.
+
+    This is the property the cooldown buys: an outage costs one query per window
+    rather than one per job tick. It is also a process-global cache keyed on the
+    URL set, so a test that leaves the database looking unreachable keeps answering
+    for later tests, and a gated job returns ``None`` without running. The next
+    assertion then passes on a job that never executed.
+
+    Pinned here so the caching is a stated contract and the per-test reset in
+    ``tests/conftest.py`` reads as necessary rather than as tidiness. Recovery once
+    the window expires is covered by ``TestTheGateProbesOncePerWindow``; the expiry
+    is stamped at failure time, so changing the cooldown afterwards cannot re-open it.
+    """
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: False)
+    locks._reset_db_gate()
+    maintenance.snapshot_drift_check_job()  # first call: the memo records a failure
+
+    # The database comes back. A gate that re-probed would let this job run.
+    monkeypatch.setattr(locks, "database_reachable", lambda **_kwargs: True)
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    with patch("src.services.snapshot_replay.validate_recent_snapshots", return_value=[]) as validate:
+        maintenance.snapshot_drift_check_job()
+
+    validate.assert_not_called()
 
 
 def test_the_gate_is_outer_to_the_lock_and_the_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -430,28 +462,34 @@ class TestAnUnusableStoreIsReportedRatherThanEscaped:
 class TestEveryDatabaseBoundJobIsGated:
     """완결성의 증명은 게이트 목록이 아니라 전수 검사다.
 
-    새로운 유지보수 잡이 데코레이터 없이 들어오면 이 테스트가 실패해야 한다.
+    새로운 티어 락 잡이 데코레이터 없이 들어오면 이 테스트가 실패해야 한다.
     그렇지 않으면 그 잡은 DB가 죽은 창 동안 조용히 아무 일도 하지 않고, 그것을
     알아낼 방법이 없다 — 게이트가 조용한 것이 의도된 설계이기 때문이다.
     """
 
     @staticmethod
-    def _maintenance_jobs(module_path: str) -> dict[str, str]:
-        """Return each maintenance-lock job mapped to whether it declares the gate.
+    def _tier_lock_jobs(module_path: str) -> dict[str, str]:
+        """Return each tier-lock job mapped to whether it declares the gate.
 
         Read from the AST rather than imported: ``functools.wraps`` collapses the
         decorator stack, so a wrapped function is indistinguishable from a bare
         one, and the source is what actually answers "is the gate written here".
+
+        Every tier lock counts, not just the maintenance one, and a job is
+        recognised by taking a lock rather than by its name. ``crawl_daily_games``,
+        ``crawl_live_refresh`` and ``crawl_pregame_refresh`` are registered jobs
+        without the ``_job`` suffix, so a name-based filter skipped all three --
+        and ``crawl_daily_games`` is the 03:00 job the rest of the day hangs off.
         """
         source = pathlib.Path(module_path).read_text(encoding="utf-8")
         jobs: dict[str, str] = {}
         for node in ast.parse(source).body:
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
-            if not node.name.endswith("_job") or node.name.startswith("_"):
+            if node.name.startswith("_"):
                 continue
             body = ast.get_source_segment(source, node) or ""
-            if "MAINTENANCE_LOCK" not in body:
+            if not any(lock in body for lock in TIER_LOCKS):
                 continue
             gated = any(
                 ast.unparse(d.func if isinstance(d, ast.Call) else d) == "_with_db_fail_fast_guard"
@@ -460,22 +498,74 @@ class TestEveryDatabaseBoundJobIsGated:
             jobs[node.name] = "gated" if gated else "ungated"
         return jobs
 
-    def test_no_maintenance_job_is_left_ungated_without_a_stated_reason(self) -> None:
-        """모든 ``MAINTENANCE_LOCK`` 잡은 게이트를 갖고, 예외는 사유와 함께 든다."""
+    def test_no_tier_lock_job_is_left_ungated_without_a_stated_reason(self) -> None:
+        """모든 티어 락 잡은 게이트를 갖고, 예외는 사유와 함께 든다.
+
+        The gate exists because a job that blocks on connect *while holding a tier
+        lock* starves every other job sharing it -- the 2026-10-03 outage, where
+        dead-letter jobs spent ~150s each under ``MAINTENANCE_LOCK``. That is a
+        property of the lock rather than of the maintenance tier, so the check
+        names all three. It previously named one and matched on the ``_job``
+        suffix, which together skipped the daily and live tiers entirely.
+        """
         ungated: set[str] = set()
         for module in JOB_MODULES:
-            ungated |= {name for name, state in self._maintenance_jobs(module.__file__).items() if state == "ungated"}
+            ungated |= {name for name, state in self._tier_lock_jobs(module.__file__).items() if state == "ungated"}
 
         assert ungated == set(DELIBERATELY_UNGATED), (
-            f"maintenance jobs without a DB gate: {sorted(ungated)}; "
+            f"tier-lock jobs without a DB gate: {sorted(ungated)}; "
             "add a gate or state the reason in DELIBERATELY_UNGATED"
         )
+
+    def test_the_census_still_finds_the_jobs_without_a_job_suffix(self) -> None:
+        """The census must not be able to shrink into passing.
+
+        This whole gap existed because the filter read like a reasonable rule and
+        quietly matched less than it appeared to. A suffix filter drops three
+        registered jobs -- and every assertion above still passes, because a job
+        the census cannot see is indistinguishable from a job that does not exist.
+        Pin the awkward cases by name so that failure is loud.
+        """
+        seen: set[str] = set()
+        for module in JOB_MODULES:
+            seen |= set(self._tier_lock_jobs(module.__file__))
+
+        for name in ("crawl_daily_games", "crawl_live_refresh", "crawl_pregame_refresh"):
+            assert name in seen, f"{name} takes a tier lock but no longer matches the census"
+
+    def test_every_tier_lock_is_watched_by_some_job(self) -> None:
+        """One unwatched tier is the whole failure this file exists to prevent.
+
+        Counting is deliberately not the assertion -- a count goes stale and invites
+        a rubber-stamp update. What has to hold is that each lock in ``TIER_LOCKS``
+        is carried by at least one job, and that every such job reaches the census.
+        Dropping a lock from ``TIER_LOCKS`` then fails here instead of quietly
+        narrowing the completeness check.
+        """
+        census: set[str] = set()
+        holders: dict[str, set[str]] = {lock: set() for lock in TIER_LOCKS}
+
+        for module in JOB_MODULES:
+            census |= set(self._tier_lock_jobs(module.__file__))
+            source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
+            for node in ast.parse(source).body:
+                if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) or node.name.startswith("_"):
+                    continue
+                body = ast.get_source_segment(source, node) or ""
+                for lock in TIER_LOCKS:
+                    if lock in body:
+                        holders[lock].add(node.name)
+
+        for lock, names in holders.items():
+            assert names, f"{lock} is declared in TIER_LOCKS but no job takes it"
+            missing = names - census
+            assert not missing, f"{lock} holders missing from the census: {sorted(missing)}"
 
     def test_every_stated_exception_is_actually_an_exception(self) -> None:
         """화이트리스트는 예외 목록이 아니라 근거다. 근거 없는 항목은 곧 드리프트다."""
         gated: set[str] = set()
         for module in JOB_MODULES:
-            gated |= {name for name, state in self._maintenance_jobs(module.__file__).items() if state == "gated"}
+            gated |= {name for name, state in self._tier_lock_jobs(module.__file__).items() if state == "gated"}
 
         for name in DELIBERATELY_UNGATED:
             assert name not in gated, f"{name} is listed as ungated but now carries the gate"
