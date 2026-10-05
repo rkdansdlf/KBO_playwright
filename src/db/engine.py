@@ -11,6 +11,9 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus, unquote, urlsplit
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 from sqlalchemy import Engine as SQLAlchemyEngine
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import make_url
@@ -335,8 +338,18 @@ Engine = create_engine_for_url(
 #: the probe runs *before* the job takes a tier lock.
 DB_PROBE_CONNECT_TIMEOUT_SECONDS = 3
 
+#: How many probe engines to keep. A probe is per *URL*, not per database, and a
+#: job may name several: one RAG build can open ``DATABASE_URL``, ``RAG_SOURCE_DB_URL``,
+#: ``RAG_INDEX_DB_URL`` and ``PGVECTOR_URL`` between them, and each URL is also a
+#: separate key by timeout. Four was enough while the probe asked about one
+#: database; with more it silently evicts, so every probe builds a fresh engine
+#: and its connection pool, which is the cost the cache exists to avoid. The
+#: bound is generous rather than exact -- an undersized cache fails quietly, and a
+#: slightly oversized one costs a few idle objects.
+DB_PROBE_ENGINE_CACHE_SIZE = 16
 
-@lru_cache(maxsize=4)
+
+@lru_cache(maxsize=DB_PROBE_ENGINE_CACHE_SIZE)
 def _probe_engine(url: str, timeout_seconds: int) -> SQLAlchemyEngine:
     """Build and cache a one-connection engine with a short connect timeout."""
     if _is_sqlite(url):
@@ -347,8 +360,12 @@ def _probe_engine(url: str, timeout_seconds: int) -> SQLAlchemyEngine:
     return create_engine(parsed.set(query=query), pool_pre_ping=True, pool_size=1, max_overflow=0)
 
 
-def database_reachable(*, timeout_seconds: int = DB_PROBE_CONNECT_TIMEOUT_SECONDS) -> bool:
-    """Return whether the operational database answers ``SELECT 1`` quickly.
+def database_reachable(
+    *,
+    urls: Sequence[str] | None = None,
+    timeout_seconds: int = DB_PROBE_CONNECT_TIMEOUT_SECONDS,
+) -> bool:
+    """Return whether the named databases answer ``SELECT 1`` quickly.
 
     Scheduler jobs run on fixed cron ticks, and a job that blocks on connect
     while holding a tier lock starves every other job sharing that lock. During
@@ -357,12 +374,28 @@ def database_reachable(*, timeout_seconds: int = DB_PROBE_CONNECT_TIMEOUT_SECOND
     DB-bound jobs gate on this probe **before** acquiring a lock and return early
     when it is false. Alerting is owned by the Prometheus ``kbo_db_available``
     gauge, so this gate stays silent apart from a warning from its caller.
+
+    Args:
+        urls: Databases the job needs, all of which must answer. ``None`` means
+            the operational database, which is what most jobs need. A job that
+            reaches a second store -- a RAG build opening ``PGVECTOR_URL``, say --
+            must name it here: a gate that only knows ``DATABASE_URL`` lets that
+            job discover the dead store by timing out on it *while holding the
+            lock*, which is the failure this probe was added to prevent.
+        timeout_seconds: Connect timeout per database.
+
+    Returns:
+        Whether every named database answered.
+
     """
     from src.monitoring.db_availability import probe_engine
 
-    engine = _probe_engine(Engine.url.render_as_string(hide_password=False), timeout_seconds)
-    available, _latency = probe_engine(engine)
-    return available
+    targets = tuple(urls) if urls else (Engine.url.render_as_string(hide_password=False),)
+    for url in targets:
+        available, _latency = probe_engine(_probe_engine(url, timeout_seconds))
+        if not available:
+            return False
+    return True
 
 
 SessionLocal = sessionmaker(bind=Engine, autoflush=False, autocommit=False, expire_on_commit=False)
