@@ -33,15 +33,36 @@ sqlite3.register_adapter(datetime, lambda value: value.isoformat())
 # Use a separate SQLite test database by default, while preserving an explicit
 # non-SQLite URL for PostgreSQL integration jobs.
 configured_database_url = os.environ.get("DATABASE_URL", "")
+
+
+def _test_db_path(worker_id: str, pid: int, parent_pid: int) -> Path:
+    """Return a per-invocation path for the SQLite test database.
+
+    Every branch carries a process discriminator. The xdist branch always did;
+    the plain branch did not, so two concurrent ``pytest`` runs handed out the
+    same ``data/test_runtime.db``. That is safe by accident rather than by
+    design: the session fixture unlinks the file at startup, so the second run
+    orphans the first run's database rather than contending with it, and the
+    isolation you rely on is a side effect of the cleanup.
+
+    Args:
+        worker_id: ``PYTEST_XDIST_WORKER`` for an xdist worker, else empty.
+        pid: This process id, which distinguishes plain invocations.
+        parent_pid: The parent process id, which is the xdist controller.
+
+    Returns:
+        A path unique to this invocation and worker.
+
+    """
+    if worker_id:
+        return ROOT / "data" / f"test_runtime_{parent_pid}_{worker_id}.db"
+    return ROOT / "data" / f"test_runtime_{pid}.db"
+
+
 if configured_database_url and not configured_database_url.startswith("sqlite:"):
     TEST_DB_PATH: Path | None = None
 else:
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
-    if worker_id:
-        # Include the controller PID so concurrent xdist invocations cannot share a DB.
-        TEST_DB_PATH = ROOT / "data" / f"test_runtime_{os.getppid()}_{worker_id}.db"
-    else:
-        TEST_DB_PATH = ROOT / "data" / "test_runtime.db"
+    TEST_DB_PATH = _test_db_path(os.environ.get("PYTEST_XDIST_WORKER", ""), os.getpid(), os.getppid())
     os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 import logging
 
