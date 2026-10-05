@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -285,6 +285,22 @@ def _db_gate(urls: tuple[str, ...] | None = None) -> bool:
 def _reset_db_gate() -> None:
     """Forget every memoised probe result. For tests that assert both outcomes."""
     _DB_GATE.reset()
+
+
+@overload
+def _with_db_fail_fast_guard[**P, R](
+    func: Callable[P, R],
+    *,
+    urls: Callable[[], tuple[str, ...]] | None = None,
+) -> Callable[P, R]: ...
+
+
+@overload
+def _with_db_fail_fast_guard[**P, R](
+    func: None = None,
+    *,
+    urls: Callable[[], tuple[str, ...]],
+) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
 def _with_db_fail_fast_guard(
