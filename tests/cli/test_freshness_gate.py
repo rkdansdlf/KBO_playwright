@@ -1,16 +1,21 @@
 import json
 import logging
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from src.cli.freshness_gate import (
+    _apply_freshness_date_filter,
     _check_past_scheduled_games,
     _check_scores,
     evaluate_freshness_gate,
     main,
 )
+from src.models.game import Game
 
 
 class TestFreshnessGate:
@@ -131,3 +136,25 @@ class TestEvaluateIssues:
             mock_collect.return_value = {"past_scheduled_games": ["G1"]}
             result = evaluate_freshness_gate(mock_session)
             assert len(result) > 0
+
+
+class TestDateFilterFormats:
+    """The gate is called with both YYYYMMDD and YYYY-MM-DD by different callers."""
+
+    @pytest.mark.parametrize("raw", ["20260925", "2026-09-25"])
+    def test_accepts_compact_and_iso_dates(self, raw: str) -> None:
+        session = Session(create_engine("sqlite:///:memory:"))
+        try:
+            query = _apply_freshness_date_filter(session.query(Game), raw, None)
+        finally:
+            session.close()
+
+        assert date(2026, 9, 25) in query.statement.compile().params.values()
+
+    def test_rejects_unsupported_format(self) -> None:
+        session = Session(create_engine("sqlite:///:memory:"))
+        try:
+            with pytest.raises(ValueError):
+                _apply_freshness_date_filter(session.query(Game), "25/09/2026", None)
+        finally:
+            session.close()
