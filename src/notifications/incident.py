@@ -76,6 +76,46 @@ def _notify_floor_allows(severity: AlertSeverity) -> bool:
     return should_notify_severity(severity)
 
 
+#: Why an occurrence did not become a notification.
+SUPPRESSION_FLOOR = "floor"
+SUPPRESSION_ACKNOWLEDGED = "acknowledged"
+SUPPRESSION_COOLDOWN = "cooldown"
+
+
+def classify_suppression(
+    incident: NotificationIncident,
+    now: datetime,
+) -> str | None:
+    """Return why ``incident`` would suppress its next occurrence, or ``None``.
+
+    The ledger stores no decision column: ``AlertDecision.SUPPRESSED`` is computed
+    per :meth:`IncidentManager.process` call and thrown away, so all three
+    suppression reasons collapse into one token and the cause is lost. This
+    re-derives the reason from values the row already carries -- ``severity``
+    against the notify floor, ``state`` for acknowledgement, and
+    ``last_notified_at`` against the cooldown window.
+
+    Deriving beats storing here for a concrete reason: the inputs are already
+    durable, and a stored decision would be a snapshot of ``ALERT_MIN_SEVERITY``
+    and the cooldown policy at the moment of the call rather than a fact about
+    the incident. Raise the floor and this reports the reason as it is *now*,
+    which is the question an operator is actually asking. A stored column would
+    also need a migration on three dialects and could not be backfilled -- those
+    decisions were never written down.
+
+    The order mirrors :meth:`IncidentManager._active_decision` so the two cannot
+    disagree about which reason applies.
+    """
+    severity = AlertSeverity(incident.severity)
+    if not _notify_floor_allows(severity):
+        return SUPPRESSION_FLOOR
+    if incident.state == INCIDENT_STATE_ACKNOWLEDGED:
+        return SUPPRESSION_ACKNOWLEDGED
+    if not _cooldown_elapsed(incident, severity, now):
+        return SUPPRESSION_COOLDOWN
+    return None
+
+
 class IncidentManager:
     """Own the durable lifecycle of alerts, deduping and cooling them down."""
 

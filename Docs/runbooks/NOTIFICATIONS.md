@@ -88,15 +88,25 @@ suppresses the recovery notice without skipping the state change.
   correction path, not the normal lifecycle.
 - The `SUPPRESSED` decision is **not stored anywhere**. `IncidentManager` computes
   it per `process()` call and discards it, so a suppressed notification leaves no
-  delivery row *and* no column in the ledger. What survives is the counter pair,
-  which the `NOTICE` column in `incidents list` reads: `notified` (every
-  occurrence was announced), `partly` (some were), `silent` (none ever were).
-  `incidents list --notice silent` filters on it.
-  **A gap in the counters is not proof of suppression.** `notification_count` only
-  advances on a *successful* delivery, so the same gap can mean a working
-  cooldown, an `ALERT_MIN_SEVERITY` floor, an acknowledged incident, or a
-  transport that refused every send. The column tells you which incidents are
-  worth Section 3.1 through 3.3; it does not tell you why.
+  delivery row *and* no column in the ledger. Two CLI columns answer the question
+  from what *is* stored:
+
+  | Column | Question | Answer |
+  | --- | --- | --- |
+  | `NOTICE` | what already happened | `notified` (every occurrence announced), `partly`, `silent` |
+  | `SILENCED_BY` | what would silence the next one | `floor`, `acknowledged`, `cooldown`, or `-` |
+
+  `incidents list --notice silent` filters on the first. `NOTICE` summarises
+  history and `SILENCED_BY` is forward-looking: an incident can read
+  `NOTICE=silent SILENCED_BY=-` (never notified, nothing blocking the next one).
+  `SILENCED_BY` is **derived, not recorded** — it recomputes from `severity`,
+  `state` and `last_notified_at` under the policy in force *now*, so raising
+  `ALERT_MIN_SEVERITY` changes the answer without touching a row. That is why it
+  is a column and not a schema migration, and why it could not have been
+  backfilled: those decisions were never written.
+- `SILENCED_BY` names the **policy**, not the transport. A send that fails also
+  leaves `notification_count` unmoved, so a gap in the counters has one cause the
+  column cannot report: use Section 3.3 for that.
 - No CLI surfaces `kbo_notification_delivery_audit_failures_total` — that
   counter is the only way to tell "delivery failed" from "the audit row could
   not be written" (Section 3.4), and it is metric-only by design.
@@ -188,8 +198,10 @@ sum by (severity) (kbo_notification_open_incidents)
 
 Read it as follows:
 
-- `NOTICE = silent` means nothing was ever announced for that incident. The cause
-  is *not* in the ledger: a suppressed decision leaves no row (Section 1.4).
+- `NOTICE = silent` means nothing was ever announced for that incident. Read
+  `SILENCED_BY` next: it names the policy that would keep it quiet
+  (`floor`, `acknowledged`, `cooldown`) or `-` when nothing is blocking the next
+  occurrence.
 - `NOTICE = partly` with `OCC` climbing and `NOTIF` flat is the common healthy
   case — a cooldown or an `ALERT_MIN_SEVERITY` floor is doing its job.
 - `NOTIF` flat where you expect it to move is **not** automatically suppression.

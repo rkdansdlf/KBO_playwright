@@ -44,6 +44,7 @@ from src.models.notification_incident import (
 )
 from src.notifications.alert_dto import utcnow
 from src.notifications.dto import NotificationChannel
+from src.notifications.incident import classify_suppression
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -76,13 +77,14 @@ _CHANNEL_CHOICES = [channel.value for channel in NotificationChannel]
 
 _TABLE_SEP = "  "
 
-_COLUMNS = "STATE", "SEVERITY", "OCC", "NOTIF", "NOTICE", "LAST_SEEN", "SOURCE", "COMPONENT", "KEY"
+_COLUMNS = "STATE", "SEVERITY", "OCC", "NOTIF", "NOTICE", "SILENCED_BY", "LAST_SEEN", "SOURCE", "COMPONENT", "KEY"
 _INCIDENT_CELL_KEYS = (
     "state",
     "severity",
     "occurrence_count",
     "notification_count",
     "notice_state",
+    "suppression_reason",
     "last_seen_at",
     "source",
     "component",
@@ -113,8 +115,14 @@ def _stamp(value: datetime | None) -> str:
     return value.isoformat(sep=" ", timespec="seconds") if value is not None else "-"
 
 
-def _incident_row(incident: NotificationIncident) -> dict[str, object]:
-    """Flatten one incident into the JSON/table shape."""
+def _incident_row(incident: NotificationIncident, now: datetime) -> dict[str, object]:
+    """Flatten one incident into the JSON/table shape.
+
+    ``now`` is passed in rather than read from the clock here so every row in one
+    command is judged against a single instant; a cooldown window can elapse while
+    a list renders, and a per-row clock would let two rows of the same output
+    disagree about whether the window had passed.
+    """
     return {
         "incident_key": incident.incident_key,
         "state": incident.state,
@@ -125,6 +133,7 @@ def _incident_row(incident: NotificationIncident) -> dict[str, object]:
         "occurrence_count": incident.occurrence_count,
         "notification_count": incident.notification_count,
         "notice_state": _delivery_notice_state(incident),
+        "suppression_reason": _suppression_reason(incident, now),
         "first_opened_at": incident.first_opened_at.isoformat(sep=" ", timespec="seconds"),
         "last_seen_at": incident.last_seen_at.isoformat(sep=" ", timespec="seconds"),
         "last_notified_at": _stamp(incident.last_notified_at),
@@ -160,6 +169,17 @@ def _delivery_notice_state(incident: NotificationIncident) -> str:
     if incident.notification_count == 0:
         return "silent"
     return "partly"
+
+
+def _suppression_reason(incident: NotificationIncident, now: datetime) -> str | None:
+    """Name the policy that would silence this incident's next occurrence.
+
+    A forward-looking question, unlike :func:`_delivery_notice_state`, which
+    only summarises what already happened. Delegates to
+    :func:`src.notifications.incident.classify_suppression` so the CLI and the
+    manager cannot disagree about the answer.
+    """
+    return classify_suppression(incident, now)
 
 
 def _delivery_row(row: NotificationDelivery) -> dict[str, object]:
@@ -383,8 +403,12 @@ def _render_table(
 
 
 def _incident_cells(row: dict[str, object]) -> list[str]:
-    """Project an incident payload onto the rendered column order."""
-    return [str(row[key]) for key in _INCIDENT_CELL_KEYS]
+    """Project an incident payload onto the rendered column order.
+
+    A missing value renders as ``-``, matching the other empty fields in this
+    table, rather than as the ``None`` a bare ``str()`` would produce.
+    """
+    return ["-" if row[key] is None else str(row[key]) for key in _INCIDENT_CELL_KEYS]
 
 
 def _delivery_cells(row: dict[str, object]) -> list[str]:
@@ -408,9 +432,10 @@ def _render_deliveries(deliveries: list[NotificationDelivery]) -> None:
 def _cmd_list(args: argparse.Namespace) -> int:
     """List incidents, optionally narrowed by state/source/severity/notice."""
     flt = IncidentFilter.from_args(args)
+    now = utcnow()
     with get_db_session() as session:
         incidents = _query_incidents(session, flt)
-        rows = [_incident_row(incident) for incident in incidents]
+        rows = [_incident_row(incident, now) for incident in incidents]
 
     if args.json:
         _write(json.dumps({"count": len(rows), "incidents": rows}, ensure_ascii=False, default=str))
@@ -424,6 +449,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 def _cmd_show(args: argparse.Namespace) -> int:
     """Show one incident with the tail of its delivery audit."""
+    now = utcnow()
     with get_db_session() as session:
         stmt = select(NotificationIncident).where(NotificationIncident.incident_key == args.incident_key)
         incident = session.execute(stmt).scalar_one_or_none()
@@ -432,8 +458,8 @@ def _cmd_show(args: argparse.Namespace) -> int:
             return EXIT_NOT_FOUND
         # ``show`` is explicitly one incident's own history, so the window is off.
         tail = DeliveryFilter(incident_id=incident.id, days=0)
-        deliveries = _query_deliveries(session, tail, args.deliveries, utcnow())
-        payload = _incident_row(incident)
+        deliveries = _query_deliveries(session, tail, args.deliveries, now)
+        payload = _incident_row(incident, now)
         payload["metadata"] = incident.metadata_json
         delivery_rows = [_delivery_row(row) for row in deliveries]
 
