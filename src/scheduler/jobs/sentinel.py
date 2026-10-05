@@ -8,14 +8,22 @@ import requests
 from requests import RequestException
 
 from src.notifications.bridge import apply_incidents
-from src.scheduler.alerting import alert_warning
+from src.scheduler.alerting import alert_success, alert_warning
 from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
+from src.scheduler.locks import _with_db_fail_fast_guard
 
 logger = logging.getLogger("src.scheduler.jobs.sentinel")
 
 HTTP_STATUS_OK = 200
 
 SELECTOR_DRIFT_KEY = "drift:selector:schedule"
+
+#: The audit's "no vector backend answered" code, restated rather than imported.
+#: Importing it would pull `src.cli.rag.audit_rag_index` -- and through it
+#: `src.db.engine`, which builds the operational engine at import time -- into
+#: every scheduler start. A test asserts this stays equal to the audit's own
+#: ``EXIT_STORE_UNREACHABLE``, so the two cannot drift apart quietly.
+AUDIT_EXIT_STORE_UNREACHABLE = 2
 
 
 def selector_drift_sentinel_job() -> None:
@@ -82,8 +90,15 @@ def _publish_selector_drift(report: object) -> None:
     )
 
 
+@_with_db_fail_fast_guard
 def rag_audit_sentinel_job() -> None:
-    """Daily RAG index consistency gate after the sparse catch-up window."""
+    """Daily RAG index consistency gate after the sparse catch-up window.
+
+    Gated on the operational database because this job is meaningless without it
+    and the audit would otherwise report an unreachable store as an inconsistent
+    index. A full outage is ``kbo_db_available``'s story to tell; this job stays
+    quiet so it does not tell it wrongly.
+    """
     try:
         from src.cli.rag.audit_rag_index import main as audit_main
 
@@ -95,10 +110,32 @@ def rag_audit_sentinel_job() -> None:
 
     if exit_code == 0:
         logger.info("[Sentinel] RAG index audit passed (sparse postings and vectors consistent).")
+        # Resolve the warning an earlier run may have opened. Nothing else owns
+        # the `scheduler:rag_audit_sentinel:warning` key -- the lifecycle listener
+        # only clears `:failed` -- so without this the incident stays OPEN
+        # forever and the runbook's "an incident closes when its check recovers"
+        # would be false for this check alone.
+        alert_success("rag_audit_sentinel", "RAG index audit passed")
         return
 
-    alert_warning(
-        "rag_audit_sentinel",
+    alert_warning("rag_audit_sentinel", _audit_failure_message(exit_code))
+
+
+def _audit_failure_message(exit_code: int) -> str:
+    """Describe an audit failure without blaming the index for a dead store.
+
+    The audit returns two different non-zero codes, and collapsing them told the
+    operator their chunks were missing embeddings -- then suggested a catch-up
+    that writes to the store -- in the one case where the store itself could not
+    be reached. Same words, wrong half of the system.
+    """
+    if exit_code == AUDIT_EXIT_STORE_UNREACHABLE:
+        return (
+            "RAG audit could not reach a vector backend (exit 2); the index was NOT examined. "
+            "Check DATABASE_URL / PGVECTOR_URL reachability before suspecting the index -- "
+            "build_oracle_sparse_index --catch-up would fail too while the store is down."
+        )
+    return (
         f"RAG index audit failed (exit {exit_code}); retrievable chunks are missing "
-        "embeddings or sparse postings. Run build_oracle_sparse_index --catch-up if needed.",
+        "embeddings or sparse postings. Run build_oracle_sparse_index --catch-up if needed."
     )
