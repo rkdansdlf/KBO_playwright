@@ -11,6 +11,15 @@ from src.db.engine import get_rag_index_session
 from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
 from src.services.rag_index_consistency import audit_index_sessions, audit_single_store_session
 
+#: Exit codes, named because the scheduler job that runs this must tell them
+#: apart. ``EXIT_STORE_UNREACHABLE`` means no vector backend answered and the
+#: index was never examined; ``EXIT_INCONSISTENT`` means it was reachable and the
+#: contents are wrong. Reporting the first as the second sends an operator to
+#: rebuild an index on a database that is simply down.
+EXIT_OK = 0
+EXIT_INCONSISTENT = 1
+EXIT_STORE_UNREACHABLE = 2
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -61,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = {"consistent": False, "error": "pgvector is unavailable; Oracle VECTOR backend is also unavailable"}
         rendered = json.dumps(payload, ensure_ascii=False) if args.as_json else str(payload["error"])
         sys.stdout.write(rendered + "\n")
-        return 2
+        return EXIT_STORE_UNREACHABLE
 
     postings_missing = None
     if is_oracle_vector_backend():
@@ -91,7 +100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         for finding in report.findings:
             sys.stdout.write(f"{finding.issue}: {finding.source_key}\n")
-    return 1 if not consistent else 0
+    return EXIT_INCONSISTENT if not consistent else EXIT_OK
 
 
 if __name__ == "__main__":
