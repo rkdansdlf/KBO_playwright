@@ -110,9 +110,22 @@ def test_quality_gate_plus_other_failure_stays_failure(
     mock_execute.return_value = _partial_report(["quality_gate", "ingestion"])
     monkeypatch.setattr("src.scheduler.jobs.daily._publish_quality_incident", MagicMock())
 
+    # The PARTIAL_FAILURE branch calls alert_warning. Left real, that dispatches
+    # for real and DeliveryRecorder commits a notification_deliveries row -- a
+    # unit test writing to the ledger, and a write that waits out SQLite's
+    # busy_timeout (120s, src/db/engine.py) whenever anything else holds the file.
+    mock_alert = MagicMock()
+    monkeypatch.setattr("src.scheduler.jobs.daily.alert_warning", mock_alert)
+    monkeypatch.setattr("src.scheduler.alerting.alert_warning", mock_alert)
+    if "src.scheduler" in sys.modules:
+        monkeypatch.setattr(sys.modules["src.scheduler"], "alert_warning", mock_alert, raising=False)
+    if "scripts.scheduler" in sys.modules:
+        monkeypatch.setattr(sys.modules["scripts.scheduler"], "alert_warning", mock_alert, raising=False)
+
     clear_job_registry()
     try:
         crawl_daily_games()
         assert _JOB_REGISTRY["crawl_daily_games"].status is JobStatus.FAILURE
+        mock_alert.assert_called_once()
     finally:
         clear_job_registry()
