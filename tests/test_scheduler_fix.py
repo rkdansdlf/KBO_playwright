@@ -23,6 +23,14 @@ def _make_patches(extra_patches=None):
         patch("scripts.scheduler._previous_day_kst", return_value="20250401"),
         patch("scripts.scheduler.alert_success"),
         patch("scripts.scheduler.alert_failure"),
+        # The PARTIAL_FAILURE branch warns. Left real, alert_warning dispatches for
+        # real and DeliveryRecorder commits a notification_deliveries row, so a unit
+        # test writes to the ledger -- and waits out SQLite's busy_timeout when
+        # anything else holds the file.
+        patch("scripts.scheduler.alert_warning"),
+        # Same story one frame earlier: the DAG path calls _publish_quality_incident
+        # directly, which reaches apply_incidents and commits a delivery row.
+        patch("src.scheduler.jobs.daily._publish_quality_incident"),
         patch("scripts.scheduler.format_stability_alert_summary", return_value="ok"),
     ]
     if extra_patches:
