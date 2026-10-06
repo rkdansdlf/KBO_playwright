@@ -51,3 +51,28 @@ groups:
         annotations:
           summary: "CRITICAL incident가 열려 있는데 알림 전달이 실패 중"
           description: "열린 CRITICAL incident가 있는 상태에서 최근 15분간 전달 실패가 발생했습니다. 전달 채널이 실제로 도달 가능한지 확인하세요."
+
+      # `apply_incidents` contains and logs its persistence errors so a check
+      # result is never lost because alerting broke, which means a failed ledger
+      # write is invisible to the check: it logs, returns normally, and reports
+      # the same verdict next run. Nothing inside the process can watch for this,
+      # because the ledger that would carry the incident is the thing that failed.
+      #
+      # The `min(kbo_db_available) == 1` guard is what keeps this from
+      # double-paging, and the aggregation is the load-bearing part of it. Any
+      # instance answering `0` makes the minimum `0`, so the rule stays quiet
+      # and `KBODatabaseUnavailable` in alert_rules.yml owns the story -- which
+      # covers partial outages too, not just a full one. What is left is the case
+      # that matters: every instance answers SELECT 1 and the write still fails,
+      # so the cause is not connectivity.
+      - alert: IncidentLedgerWriteFailed
+        expr: |
+          sum(increase(kbo_notification_incident_apply_failures_total[15m])) > 0
+          and
+          min(kbo_db_available) == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "인시던트 원장 기록이 실패 중 (DB 연결은 정상)"
+          description: "최근 15분간 {{ $value | humanize }} 건의 인시던트 기록이 실패했습니다. DB 연결은 살아 있으므로 권한·스키마·트랜잭션 충돌을 확인하세요. 실패한 구간은 인시던트로 남지 않아 원래 검사를 재실행해야 합니다."

@@ -1,0 +1,128 @@
+# Rule-level tests for IncidentLedgerWriteFailed in
+# monitoring/prometheus/alert_rules_notifications.yml.
+#
+#   promtool test rules monitoring/prometheus/tests/notification_alert_ledger_test.yml
+#
+# The rule's whole design is its `kbo_db_available == 1` guard, so the firing
+# behaviour that matters most is the *quiet* one: while the database is down
+# `KBODatabaseUnavailable` already owns the story and paging here as well would
+# report the same outage twice through two different diagnoses. `promtool check
+# rules` parses the expression; only these cases prove which side of the guard it
+# lands on.
+#
+# promtool compares annotations exactly (`exp_annotations` omitted means "must be
+# empty"), so the templated strings are pinned on purpose: if the wording or the
+# templating changes, this fixture is what notices.
+#
+# promtool does not accept a per-test `evaluation_interval`, so the sample
+# interval must match the global interval.
+
+rule_files:
+  - ../alert_rules_notifications.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The database answers SELECT 1 and the ledger write still fails: the case the
+  # rule exists for. `0+3x30` is 3 write failures per minute, and by 3m the 15m
+  # window has accumulated 9 of them -- which is the number the annotation
+  # reports, so it is written out rather than templated away.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0+3x30'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "인시던트 원장 기록이 실패 중 (DB 연결은 정상)"
+              description: "최근 15분간 9 건의 인시던트 기록이 실패했습니다. DB 연결은 살아 있으므로 권한·스키마·트랜잭션 충돌을 확인하세요. 실패한 구간은 인시던트로 남지 않아 원래 검사를 재실행해야 합니다."
+
+  # THE GUARD: the same write failures while the database is unreachable. This
+  # must stay quiet -- `KBODatabaseUnavailable` in alert_rules.yml already fires
+  # for this window, and an operator reading two pages would diagnose a
+  # connectivity outage as a permissions problem.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0+3x30'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts: []
+
+  # A healthy ledger with the database answering: the rule must be silent, or it
+  # would page on every run of every check.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0x30'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts: []
+
+  # `for: 2m` means a single failed write must not page on its own. A blip that
+  # self-healed is not the same event as a sustained inability to record, and
+  # this case is what tells the two apart in the other direction.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0x5 1 0x20'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts: []
+
+  # A DB that answers at one instance and not another must not open the gate. This
+# is the case that decides `min` over `max`: under `max` the answering instance
+# alone would report "available" and this rule would page for an outage that
+# KBODatabaseUnavailable is already covering on the other instance -- two pages,
+# two diagnoses, one cause. `min` reads "reachable everywhere" instead, which is
+# the only reading under which a surviving write failure is informative.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0+3x30'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+      - series: 'kbo_db_available{instance="kbo-api:8000"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts: []
+
+  # Both instances answering does not silence it -- the inverse of the case above,
+  # so the aggregation cannot pass by being stuck at zero.
+  - interval: 1m
+    input_series:
+      - series: 'kbo_notification_incident_apply_failures_total'
+        values: '0+3x30'
+      - series: 'kbo_db_available{instance="kbo-scheduler:8000"}'
+        values: '1x30'
+      - series: 'kbo_db_available{instance="kbo-api:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: IncidentLedgerWriteFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "인시던트 원장 기록이 실패 중 (DB 연결은 정상)"
+              description: "최근 15분간 9 건의 인시던트 기록이 실패했습니다. DB 연결은 살아 있으므로 권한·스키마·트랜잭션 충돌을 확인하세요. 실패한 구간은 인시던트로 남지 않아 원래 검사를 재실행해야 합니다."

@@ -91,6 +91,11 @@ KBO_NOTIFICATION_DELIVERY_AUDIT_FAILURES_TOTAL = Counter(
     "Total count of delivery audit writes that failed (transport result is unaffected)",
 )
 
+KBO_NOTIFICATION_INCIDENT_APPLY_FAILURES_TOTAL = Counter(
+    "kbo_notification_incident_apply_failures_total",
+    "Total count of incident ledger writes that failed (the check result is unaffected)",
+)
+
 KBO_NOTIFICATION_DELIVERY_RETRIES_TOTAL = Counter(
     "kbo_notification_delivery_retries_total",
     "Total count of deliveries that required more than one transport attempt",
@@ -165,6 +170,16 @@ def record_notification_delivery_persisted(channel: str, *, attempt_count: int) 
 def record_notification_delivery_audit_failure() -> None:
     """Record a failed delivery audit write (the transport outcome is preserved)."""
     KBO_NOTIFICATION_DELIVERY_AUDIT_FAILURES_TOTAL.inc()
+
+
+def record_incident_apply_failure() -> None:
+    """Record a failed incident-ledger write (the check result is preserved).
+
+    Counted per ``apply_incidents`` call rather than per event: the call owns one
+    transaction, so a batch that fails partway is one lost batch and its length
+    says nothing useful about how much was lost.
+    """
+    KBO_NOTIFICATION_INCIDENT_APPLY_FAILURES_TOTAL.inc()
 
 
 def record_open_incidents(counts: Mapping[tuple[str, str], int]) -> None:
