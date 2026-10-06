@@ -121,6 +121,7 @@ class TestNotificationRulesContent:
         assert names == {
             "NotificationDeliveryFailureRateHigh",
             "CriticalIncidentDeliveryFailed",
+            "IncidentLedgerWriteFailed",
         }
 
     def test_every_rule_declares_severity_and_annotations(self) -> None:
@@ -151,6 +152,29 @@ class TestNotificationRulesContent:
 
         assert 'severity="CRITICAL"' in normalized
         assert "increase(" in normalized
+
+    def test_the_ledger_rule_requires_a_reachable_database(self) -> None:
+        """A ledger write failure during an outage is `KBODatabaseUnavailable`'s job.
+
+        Without this guard the same outage pages twice under two different
+        diagnoses, which sends an operator to permissions when the cause is
+        connectivity.
+        """
+        ledger = next(expr for expr in _expressions() if "kbo_notification_incident_apply_failures_total" in expr)
+        normalized = " ".join(ledger.split())
+
+        assert "min(kbo_db_available) == 1" in normalized, "max() would pass a partially-unavailable database"
+
+    def test_the_ledger_rule_needs_the_availability_series_not_just_the_counter(self) -> None:
+        """No series means no gate, and ``and`` then yields nothing.
+
+        A host that is not scraped by Prometheus reports neither the failure
+        counter nor availability, so there is nothing to page on and the rule
+        must stay silent rather than fire on the counter alone.
+        """
+        ledger = next(expr for expr in _expressions() if "kbo_notification_incident_apply_failures_total" in expr)
+
+        assert "kbo_db_available" in ledger, "the guard is what keeps the two rules from overlapping"
 
 
 class TestRulesAreWired:

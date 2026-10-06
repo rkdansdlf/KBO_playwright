@@ -110,6 +110,10 @@ suppresses the recovery notice without skipping the state change.
 - No CLI surfaces `kbo_notification_delivery_audit_failures_total` — that
   counter is the only way to tell "delivery failed" from "the audit row could
   not be written" (Section 3.4), and it is metric-only by design.
+  `kbo_notification_incident_apply_failures_total` is the same: it tells you
+  writes were lost but not *which* keys, and the ledger cannot — that is what
+  `apply_incidents` counts when it swallows the error, and Section 8.5 covers the
+  re-run.
 
 Do not assume a missing incident means a healthy one — check
 `occurrence_count` and `notification_count` (Section 3.2).
@@ -260,6 +264,31 @@ The insert path therefore uses dialect-native insert-if-absent and the
 (`tests/notifications/test_incident_manager.py` is the regression that catches a
 reintroduction).
 
+### 3.5 Step 5 — incident ledger unwritable?
+
+```promql
+increase(kbo_notification_incident_apply_failures_total[15m])
+```
+
+The same containment exists one layer up: `apply_incidents` logs and swallows
+persistence errors so a check result is never lost because alerting broke. The
+cost is that a failure to open *or recover* an incident is invisible to the
+caller — the check returns normally and repeats the same verdict next run.
+
+Read this together with the availability gauge, which is what makes the two
+diagnoses separable:
+
+```promql
+# Rising while the database answers: permissions, schema, or transaction conflict.
+min(kbo_db_available) == 1 and sum(increase(kbo_notification_incident_apply_failures_total[15m])) > 0
+# Rising while it does not: an outage, already covered by KBODatabaseUnavailable.
+min(kbo_db_available) == 0
+```
+
+The counter is per `apply_incidents` call, not per event, so it tells you writes
+were lost without telling you which keys — re-run the owning checks
+(Section 8.5) rather than trying to reconstruct the batch.
+
 ---
 
 ## 4. Triage: "an incident stays open"
@@ -285,6 +314,12 @@ If an incident will not close:
 2. Confirm it is passing. A check that no longer runs cannot report recovery, and
    its incident will sit `OPEN` forever.
 3. Confirm the key matches exactly. A renamed key orphans the old incident.
+4. Confirm the recovery actually reached the ledger. Steps 1–3 all describe the
+   check; this step describes `apply_incidents`, which fails silently by design
+   (Section 3.5). A check that passes every run while its incident stays `OPEN`
+   has most likely been reporting recovery into a failed write — check
+   `kbo_notification_incident_apply_failures_total` before concluding anything
+   about the check itself.
 
 ```bash
 # Which check owns this key?
@@ -346,10 +381,21 @@ mounted in both compose files. A rule file that is not mounted never loads.
 | --- | --- | --- | --- |
 | `NotificationDeliveryFailureRateHigh` | warning | A channel fails > 20 % of its dispatches over 15 min **and** has ≥ 5 attempts in that window | Section 3.3 — read `error_code`, check credentials/network for that channel |
 | `CriticalIncidentDeliveryFailed` | critical | A `CRITICAL` incident is open **and** any dispatch failed in the last 15 min | The page never arrived. Check the transport first, then Section 4 |
+| `IncidentLedgerWriteFailed` | critical | Incident-ledger writes failed in the last 15 min **and** every database instance answered `SELECT 1` | Detections are being dropped. Check permissions/schema, then re-run the owning checks |
 
 The volume guard on the first rule is deliberate: a ratio alone pages on one
 failed send against one attempt on a quiet channel. The second rule requires the
 open `CRITICAL` incident because delivery failure alone is too noisy to page on.
+
+The third rule guards on `min(kbo_db_available) == 1`, and the aggregation is
+load-bearing. A ledger write failure during an outage already pages as
+`KBODatabaseUnavailable` (Section 5), so this rule requires the database to be
+reachable *everywhere* before it speaks: what it reports is a write failing on a
+database that answers `SELECT 1`, which is a permission, schema or transaction
+problem rather than a connectivity one. `max()` would let a single surviving
+instance open the gate and page the same outage twice under two different
+diagnoses. The cost of the guard is that a host without the availability gauge
+scraped stays silent — the failure counter alone never fires it.
 
 Alertmanager routes `severity: critical` to `kbo-alerts-critical` and everything
 else to `kbo-alerts-default` (`monitoring/alertmanager/alertmanager.yml`). Both
@@ -361,6 +407,7 @@ Changes to a rule must survive both gates:
 ```bash
 promtool check rules monitoring/prometheus/alert_rules_notifications.yml
 promtool test  rules monitoring/prometheus/tests/notification_alert_delivery_test.yml
+promtool test  rules monitoring/prometheus/tests/notification_alert_ledger_test.yml
 python3 -m pytest tests/monitoring/test_notification_alert_rules_contract.py -q
 ```
 
@@ -468,6 +515,15 @@ degrades it in a specific and dangerous way.
    opened. Whether the alert still reaches a human depends on the call site's
    failure handling, which is why the transport bypass lint matters during an
    outage specifically.
+   - `apply_incidents` contains and logs its persistence errors, so the caller is
+     told nothing: the check logs, returns normally and reports the same verdict
+     next run while the incident never existed. `kbo_notification_incident_apply_failures_total`
+     counts those calls, and `IncidentLedgerWriteFailed` pages on it — but only
+     while the database answers, since during an outage `KBODatabaseUnavailable`
+     owns the story (Section 5).
+   - Note what this does **not** mean: a delivery may still have gone out before
+     the ledger write failed. An empty `kbo incidents list` with a rising counter
+     is "nothing was recorded", not "nothing was detected".
 3. **The retention job blocks while holding `MAINTENANCE_LOCK`.** During an
    outage, run a single scheduler host: PostgreSQL advisory locks fall back to
    local file locks, so two hosts are not mutually excluded.
@@ -477,6 +533,13 @@ degrades it in a specific and dangerous way.
    and the history would be lost. Note that `kbo incidents` itself needs the
    database for the same reason, so it is unavailable during the outage; the
    metrics in Section 5 are the only thing that still answers.
+5. **Re-run the checks whose writes were lost.** A write that failed during the
+   outage left no trace, so a check that failed while the ledger was unavailable
+   never opened its incident and cannot re-announce one — it stays silent until it
+   *passes*. Re-run those owning checks explicitly. The ledger has nothing to show
+   you for the outage window: the counter counts whole `apply_incidents` calls, not
+   the events inside them, so it cannot tell you which keys were lost — the
+   scheduler log's `Incident wiring failed` lines are the record of that.
 
 For crawl-ledger and DLQ behaviour during the same outage, see
 `Docs/runbooks/DATA_RELIABILITY.md` §6.

@@ -2,7 +2,9 @@
 
 Lives in :mod:`src.notifications` (not the scheduler) so both scheduled jobs and
 CLI reporting commands can use it without an inverted dependency. Alert wiring
-must never break the caller, so failures are contained and logged.
+must never break the caller, so failures are contained, counted and logged --
+counting them is what makes a swallowed failure visible instead of silent, since
+the caller is told nothing and will retry the same write next run.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.db.engine import SessionLocal
 from src.notifications.publisher import AlertPublisher
 from src.notifications.recorder import DeliveryRecorder
+from src.utils.metrics import record_incident_apply_failure
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -97,4 +100,8 @@ def apply_incidents(  # noqa: PLR0913 - keyword-only options; callers rely on na
             publisher.refresh_metrics()
             session.commit()
     except ALERT_WIRING_EXCEPTIONS:
-        logger.exception("Incident wiring failed; caller result is unaffected")
+        record_incident_apply_failure()
+        logger.exception(
+            "Incident wiring failed; caller result is unaffected but no incident "
+            "was opened or recovered, so the check will retry silently next run",
+        )
