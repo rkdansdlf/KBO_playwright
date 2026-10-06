@@ -26,8 +26,18 @@ SELECTOR_DRIFT_KEY = "drift:selector:schedule"
 AUDIT_EXIT_STORE_UNREACHABLE = 2
 
 
+@_with_db_fail_fast_guard
 def selector_drift_sentinel_job() -> None:
-    """Daily canary check for KBO website selector drift."""
+    """Daily canary check for KBO website selector drift.
+
+    Gated on the operational database because the check's only output is an
+    incident. ``apply_incidents`` contains its own persistence errors and returns
+    normally, so during an outage the job would fetch the page, reach a verdict,
+    and fail to record either outcome -- drift would be detected and then dropped
+    on the floor, which is worse than not looking. A full outage is
+    ``kbo_db_available``'s story to tell; this job stays quiet so it does not tell
+    it wrongly.
+    """
     try:
         from src.monitoring.selector_drift_sentinel import (
             PageContract,
