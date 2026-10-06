@@ -42,12 +42,14 @@ def _job_source(module_path: str, name: str) -> str:
     raise AssertionError(msg)
 
 
-#: 게이트를 검증하는 세 잡. 하나는 tenacity가 겹친DLQ retry, 하나는
-#: ``MAINTENANCE_LOCK`` 잡, 하나는 인시던트를 여는 drift 체크다.
+#: 게이트를 검증하는 네 잡. 하나는 tenacity가 겹친 DLQ retry, 하나는
+#: ``MAINTENANCE_LOCK`` 잡, 하나는 인시던트를 여는 drift 체크, 하나는
+#: 인시던트 외에는 출력이 없는 HTTP canary다.
 GATED_PROBES = (
     (maintenance.crawl_dead_letter_retry_job, "src.services.crawl_dead_letter_worker.retry_due_dead_letters"),
     (maintenance.crawl_dead_letter_recovery_job, "src.services.crawl_dead_letter_recovery.recover_stuck_retrying"),
     (maintenance.snapshot_drift_check_job, "src.services.snapshot_replay.validate_recent_snapshots"),
+    (sentinel.selector_drift_sentinel_job, "src.scheduler.jobs.sentinel.requests.get"),
 )
 
 #: 티어 락 잡 전수 검사에서 게이트가 없어야 하는 잡과 그 사유.
