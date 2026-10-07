@@ -12,11 +12,14 @@ import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.preview_crawler import PreviewCrawler
 from src.db.engine import SessionLocal
+from src.models.game import Game
+from src.models.team import Team
 from src.repositories.game_repository import save_pregame_lineups
 from src.services.context_aggregator import ContextAggregator
 from src.utils.date_helpers import parse_date_str
@@ -122,6 +125,8 @@ async def run_preview_batch(target_date: str) -> list[str]:
     crawler = PreviewCrawler(request_delay=1.0)
     previews = await crawler.crawl_preview_for_date(target_date)
     if not previews:
+        previews = _fallback_previews_from_schedule(target_date)
+    if not previews:
         manifest_path = _write_pregame_manifest(target_date, [])
         logger.info("[info] No preview data found. manifest=%s", manifest_path)
         return []
@@ -131,6 +136,58 @@ async def run_preview_batch(target_date: str) -> list[str]:
     manifest_path = _write_pregame_manifest(target_date, saved_ids)
     logger.info("✅ Pregame batch finished. saved=%s manifest=%s", len(saved_ids), manifest_path)
     return saved_ids
+
+
+def _fallback_previews_from_schedule(target_date: str) -> list[dict[str, object]]:
+    """Build minimal preview payloads from locally scheduled games.
+
+    The KBO official preview endpoint is robots-blocked and Naver exposes no
+    pre-game data, so synthesize payloads from our own schedule. Team context
+    (H2H/L10/metrics) is computed from local aggregates; announced starters
+    and lineups fill in once a later crawl provides them.
+
+    Args:
+        target_date: Target date for the operation.
+
+    Returns:
+        List of minimal preview payloads.
+
+    """
+    try:
+        target_day = parse_date_str(target_date)
+    except ValueError:
+        return []
+    payloads: list[dict[str, object]] = []
+    try:
+        with SessionLocal() as session:
+            games = list(
+                session.execute(
+                    select(Game).where(
+                        Game.game_date == target_day,
+                        Game.game_status == "SCHEDULED",
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not games:
+                return []
+            team_names = {row.team_id: row.team_name for row in session.execute(select(Team)).scalars().all()}
+            payloads = [
+                {
+                    "game_id": game.game_id,
+                    "game_date": target_date,
+                    "away_team_name": team_names.get(game.away_team, game.away_team),
+                    "home_team_name": team_names.get(game.home_team, game.home_team),
+                    "start_pitcher_announced": False,
+                }
+                for game in games
+            ]
+    except SQLAlchemyError:
+        logger.exception("⚠️ Schedule fallback query failed for %s", target_date)
+        return []
+    logger.info("🔁 Built %d schedule-fallback previews for %s.", len(payloads), target_date)
+    return payloads
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -1,0 +1,29 @@
+# Local-only override for `docker-compose.dev.yml` (Windows/Docker Desktop host).
+#
+# 127.0.0.1 inside a container is the container itself, so services reach
+# the host databases via explicit host IPs. Credentials come from `.env`
+# (`BEGA_PROD_PASSWORD`) — this file contains no secrets and is safe to share.
+#
+# Start with:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up -d api-server
+#
+services:
+  scheduler:
+    environment:
+      DATABASE_URL: postgresql://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+  api-server:
+    environment:
+      DATABASE_URL: postgresql://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+  # Pinned digests in docker-compose.dev.yml drifted from locally cached
+  # images and the registry is unreachable from here — use local images.
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+  prometheus:
+    image: prom/prometheus:latest
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+  grafana:
+    image: grafana/grafana:latest
