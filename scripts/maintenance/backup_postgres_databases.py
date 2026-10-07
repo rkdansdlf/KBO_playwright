@@ -1,19 +1,16 @@
 r"""Nightly PostgreSQL backup to D:\kbo_backup with retention.
 
-Dumps the local kbo (+kbo_rag) databases and the Tailscale bega_prod
-database through the kbo_pg_local container (which has pg_dump and
-reaches both servers), then copies the artifacts to D:\\kbo_backup.
-Keeps the newest ``--keep`` dumps per database (default 3).
+Dumps bega_prod (primary), bega_dev, and kbo_rag through the kbo_postgres
+container (which has pg_dump and reaches both servers), then copies the
+artifacts to D:\\kbo_backup. Keeps the newest ``--keep`` dumps per database
+(default 3).
 
-Credentials come from ``.env`` (LOCAL_PG_URL, DATABASE_URL) and are
-passed to pg_dump via a transient PGPASSWORD environment variable.
+Credentials come from ``.env`` (DATABASE_URL, LOCAL_PG_URL, PGVECTOR_URL) and
+are passed to pg_dump via a transient PGPASSWORD environment variable.
 
 Usage:
     python scripts/maintenance/backup_postgres_databases.py
     python scripts/maintenance/backup_postgres_databases.py --keep 5 --dry-run
-
-Register on Windows Task Scheduler (daily 04:00):
-    schtasks /create /tn KBO_PG_Backup /tr "C:\\Project\\KBO_playwright\\.venv\\Scripts\\python.exe C:\\Project\\KBO_playwright\\scripts\\maintenance\\backup_postgres_databases.py" /sc DAILY /st 04:00
 """
 
 from __future__ import annotations
@@ -42,10 +39,11 @@ def _load_env() -> dict[str, str]:
     from dotenv import load_dotenv
 
     load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+    # Container-perspective URLs: the dump runner is itself a container.
     return {
-        "local_kbo": os.environ["LOCAL_PG_URL"],
-        "local_rag": os.environ["PGVECTOR_URL"],
-        "tailscale": os.environ["DATABASE_URL"],
+        "bega_prod": os.environ["DATABASE_URL"],
+        "bega_dev": os.environ["LOCAL_PG_URL_DOCKER"],
+        "kbo_rag": os.environ["PGVECTOR_URL_DOCKER"],
     }
 
 
@@ -74,7 +72,7 @@ def _dump(label: str, url: str, stamp: str, *, dry_run: bool) -> Path | None:
         "exec",
         "-e",
         f"PGPASSWORD={password}",
-        "kbo_pg_local",
+        "kbo_postgres",
         "pg_dump",
         "-h",
         host,
@@ -88,8 +86,8 @@ def _dump(label: str, url: str, stamp: str, *, dry_run: bool) -> Path | None:
         "-f",
         container_path,
     ]
-    cp_cmd = ["docker", "cp", f"kbo_pg_local:{container_path}", str(artifact)]
-    rm_cmd = ["docker", "exec", "kbo_pg_local", "rm", container_path]
+    cp_cmd = ["docker", "cp", f"kbo_postgres:{container_path}", str(artifact)]
+    rm_cmd = ["docker", "exec", "kbo_postgres", "rm", container_path]
     if dry_run:
         logger.info("DRY-RUN %s -> %s", label, artifact)
         return None
@@ -133,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
 
     stamp = datetime.now().strftime("%Y%m%d")
     failed = 0
-    for label, url in (("kbo", urls["local_kbo"]), ("kbo_rag", urls["local_rag"]), ("bega_prod", urls["tailscale"])):
+    for label, url in (("bega_prod", urls["bega_prod"]), ("bega_dev", urls["bega_dev"]), ("kbo_rag", urls["kbo_rag"])):
         try:
             _dump(label, url, stamp, dry_run=args.dry_run)
             _enforce_retention(label, args.keep, dry_run=args.dry_run)
