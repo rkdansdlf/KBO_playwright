@@ -149,6 +149,22 @@ class TestFinalizeRetry:
         assert letter.replay_run_id == "run-b"
         assert letter.resolved_at is not None
 
+    def test_schema_error_does_not_reschedule(self, session: Session) -> None:
+        service = CrawlDeadLetterService(session)
+        letter = self._retrying(session, retry_count=1)
+        decision = service.finalize_retry(
+            letter.dlq_id,
+            _Outcome(
+                success=False,
+                replay_run_id="run-b",
+                status="unaddressable",
+                error_message="dead letter carries a malformed target",
+                error_code="VALIDATION_SCHEMA",
+            ),
+        )
+        assert decision.status is DlqStatus.EXHAUSTED
+        assert letter.status == DlqStatus.EXHAUSTED.value
+
     def test_failure_schedules_backoff(self, session: Session) -> None:
         service = CrawlDeadLetterService(session)
         letter = self._retrying(session, retry_count=1)
