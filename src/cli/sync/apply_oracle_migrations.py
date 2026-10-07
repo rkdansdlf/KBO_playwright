@@ -138,9 +138,23 @@ def _execute_migration(connection: Connection, path: Path) -> None:
 
 
 def _is_plsql_block(statement: str) -> bool:
-    """Return whether a migration statement is an anonymous PL/SQL block."""
-    without_leading_comments = re.sub(r"(?m)^\s*--[^\n]*(?:\n|$)", "", statement).lstrip()
-    return bool(re.match(r"(?i)^(?:DECLARE|BEGIN)\b", without_leading_comments))
+    """Return whether a migration statement is an anonymous PL/SQL block.
+
+    Leading line *and* block comments are stripped before the keyword is looked
+    for. Stripping only ``--`` lines meant a file that opened with a ``/* */``
+    banner -- which several in this chain do -- was never recognised as PL/SQL,
+    so its terminating ``;`` was stripped and the server rejected the body as a
+    bare ``BEGIN`` block missing its ``END``. A block comment is not always at
+    the very start either, so comments are removed repeatedly rather than once.
+    """
+    without_leading_comments = statement
+    while True:
+        stripped = re.sub(r"(?m)^\s*--[^\n]*(?:\n|$)", "", without_leading_comments)
+        stripped = re.sub(r"^\s*/\*.*?\*/", "", stripped, flags=re.DOTALL)
+        if stripped == without_leading_comments:
+            break
+        without_leading_comments = stripped
+    return bool(re.match(r"(?i)^(?:DECLARE|BEGIN)\b", without_leading_comments.lstrip()))
 
 
 def apply_migrations(

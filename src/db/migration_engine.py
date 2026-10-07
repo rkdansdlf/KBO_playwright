@@ -18,6 +18,7 @@ from src.db.dto import (
     MigrationFileMeta,
     MigrationStatusReport,
 )
+from src.db.sql_statements import split_sql_statements
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection, Engine
@@ -40,29 +41,10 @@ SAFETY_GATED_MIGRATIONS = frozenset(
 )
 
 
-def _split_sql_statements(sql_text: str) -> list[str]:
-    """Split SQL migration text into individual executable statements."""
-    # Check explicit statement separator first
-    if "-- Statement Separator" in sql_text:
-        raw_parts = sql_text.split("-- Statement Separator")
-    elif "\n/\n" in sql_text:
-        raw_parts = sql_text.split("\n/\n")
-    else:
-        raw_parts = sql_text.split(";")
-
-    statements: list[str] = []
-    for part in raw_parts:
-        cleaned = part.strip()
-        if not cleaned:
-            continue
-        # Remove trailing slash if present
-        if cleaned.endswith("/"):
-            cleaned = cleaned[:-1].strip()
-        # Filter out comments-only blocks
-        lines = [line for line in cleaned.split("\n") if not line.strip().startswith("--")]
-        if "".join(lines).strip():
-            statements.append(cleaned)
-    return statements
+#: Kept as a module-level name because callers import it and because the
+#: re-export is what makes "every runner uses the one scanner" checkable by
+#: identity rather than by reading two files side by side.
+_split_sql_statements = split_sql_statements
 
 
 class MigrationEngine:
