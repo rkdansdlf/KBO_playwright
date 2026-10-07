@@ -152,11 +152,12 @@ class TestAnUntracedCallerDoesNotDemoteAMeasuredCrawler:
     #: directions of the rule can be checked against the same rows.
     #:
     #: Both were rewitnessed when the save-flag rule resolved the schedule
-    #: crawler's callers, leaving ``relay_crawler`` and ``roster_transaction_crawler``
-    #: as the pairs that still carry an untraced caller next to a real reader
-    #: count. The set is expected to shrink as callers resolve; a witness that
-    #: silently went quiet would stop testing the rule at all.
-    MEASURED_BUT_PARTLY_UNTRACED = ("relay_crawler", "roster_transaction_crawler")
+    #: crawler's callers, and again when the roster transaction's callers resolved,
+    #: leaving ``relay_crawler`` and ``game_detail_crawler`` as the pairs that still
+    #: carry an untraced caller next to a real reader count. The set is expected
+    #: to shrink as callers resolve; a witness that silently went quiet would stop
+    #: testing the rule at all.
+    MEASURED_BUT_PARTLY_UNTRACED = ("relay_crawler", "game_detail_crawler")
 
     def test_a_measured_crawler_is_not_demoted_for_an_untraced_caller(self) -> None:
         for module in self.MEASURED_BUT_PARTLY_UNTRACED:
