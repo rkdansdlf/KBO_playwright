@@ -92,6 +92,30 @@ def test_postgres_migrations_require_baseline(tmp_path):
         apply_migrations(create_engine("sqlite:///:memory:"), directory=tmp_path)
 
 
+def test_the_migration_runner_uses_psycopg2() -> None:
+    """Which driver runs these migrations decides why a comment-only chunk fails.
+
+    The two installed drivers disagree, so a measurement taken with the wrong one
+    describes a program this repository does not run. Measured on PostgreSQL 15:
+
+    * ``psycopg2`` -- what a bare ``postgresql://`` URL resolves to, and the only
+      driver ``pyproject.toml`` declares -- rejects a comment-only statement
+      with ``ProgrammingError: can't execute an empty query``.
+    * ``psycopg`` (psycopg 3) accepts the same statement.
+
+    So the empty-query rejection that motivates dropping comment-only chunks is
+    the driver's, not the server's, and it is specific to the driver in use.
+    """
+    assert create_engine("postgresql://localhost/postgres").dialect.dbapi.__name__ == "psycopg2"
+
+    try:
+        import psycopg
+    except ImportError:  # pragma: no cover - psycopg 3 is not a declared dependency
+        return
+
+    assert create_engine("postgresql+psycopg://localhost/postgres").dialect.dbapi.__name__ == "psycopg"
+
+
 class TestStatementSplitting:
     """Splitting on ``;`` alone cuts migrations in the wrong place.
 
