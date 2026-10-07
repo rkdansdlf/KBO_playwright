@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from src.crawlers.award_crawler import AWARD_CRAWLER_NAME, AwardCrawler
+from src.crawlers.run_origin import CrawlRunOrigin
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_RUNNING, RUN_STATUS_SUCCESS
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
@@ -99,6 +100,7 @@ def _execute_awards(snapshot: _RunSnapshot, replay_run_id: str) -> None:
         parent_run_id=snapshot.run_id,
         replay_of_run_id=snapshot.run_id,
         run_id=replay_run_id,
+        origin=CrawlRunOrigin.REPLAY,
     )
     run_coro_blocking(_run_award_replay(spec))
 

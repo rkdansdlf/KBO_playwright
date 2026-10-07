@@ -15,6 +15,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
 
+#: Length of the ``origin`` column. Long enough for every member of
+#: :class:`~src.crawlers.run_origin.CrawlRunOrigin`, short enough that the field
+#: cannot be used to smuggle free-form caller text into a queryable column.
+ORIGIN_COLUMN_LEN = 32
+
 RUN_STATUS_RUNNING = "running"
 RUN_STATUS_SUCCESS = "success"
 RUN_STATUS_PARTIAL = "partial"
@@ -57,6 +62,7 @@ class CrawlExecutionRun(Base, TimestampMixin):
     evidence_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     parent_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     replay_of_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    origin: Mapped[str | None] = mapped_column(String(ORIGIN_COLUMN_LEN), nullable=True)
 
     __table_args__ = (
         Index("idx_crawl_execution_runs_crawler", "crawler", "started_at"),
@@ -64,4 +70,8 @@ class CrawlExecutionRun(Base, TimestampMixin):
         Index("idx_crawl_execution_runs_game", "game_id"),
         Index("idx_crawl_execution_runs_parent", "parent_run_id"),
         Index("idx_crawl_execution_runs_replay_of", "replay_of_run_id"),
+        # A run stranded in `running` is the row whose caller decides who should
+        # sweep it, and a dead process never writes the terminal columns that
+        # would otherwise narrow the search.
+        Index("idx_crawl_execution_runs_origin", "origin"),
     )
