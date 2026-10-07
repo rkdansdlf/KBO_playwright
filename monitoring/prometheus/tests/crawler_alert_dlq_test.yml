@@ -1,0 +1,61 @@
+# Rule-level tests for the DLQ alerts in monitoring/prometheus/alert_rules_crawler.yml.
+#
+# `promtool check rules` proves the expressions parse. It cannot prove a rule
+# ever fires -- and these two rules exist precisely because the DLQ gauges had
+# no reader at all, so "it parses" is the weakest possible evidence.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_dlq_test.yml
+#
+# `for: 1m` on KboDlqRecoveryStalled means the evaluation interval has to be at
+# or below 1m for the firing state to be reachable; the 30-minute backlog rule
+# gets its own, longer interval below.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 30s
+
+tests:
+  # ── KboDlqRecoveryStalled ─────────────────────────────────────────
+  - interval: 30s
+    input_series:
+      # One letter stranded in retrying past the staleness cutoff. Recovery has
+      # stopped for this letter, which is true regardless of how few there are.
+      - series: 'kbo_crawl_dlq_stale_retrying_letters'
+        values: '0 0 0 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: KboDlqRecoveryStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "크롤링 실패 복구 정체: 1건이 retrying에 묶임"
+              description: >-
+                1건의 dead letter가 DLQ_STALE_RETRYING_SECONDS(기본 1800초)를 넘겨
+                retrying 상태에 있습니다. replay 중 프로세스가 종료되었을 수 있습니다.
+                `python3 -m src.cli.kbo dlq list --status retrying` 로 확인하고,
+                `crawl_dead_letter_recovery` 잡이 실행 중인지 점검하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # The `for: 1m` window must suppress a single blip. A scheduler restart
+      # leaves the gauge stale from the previous process for one scrape, and
+      # that must not page anyone.
+      - eval_time: 30s
+        alertname: KboDlqRecoveryStalled
+        exp_alerts: []
+
+      # And it must stay quiet while the series has not been stranded yet.
+      - eval_time: 1m
+        alertname: KboDlqRecoveryStalled
+        exp_alerts: []
+
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_dlq_stale_retrying_letters'
+        values: '0x20'
+    alert_rule_test:
+      # No stranded letters at all: the common case, which must never fire.
+      - eval_time: 10m
+        alertname: KboDlqRecoveryStalled
+        exp_alerts: []

@@ -1,0 +1,77 @@
+# Rule-level tests for KboCrawlerSustainedPartial in
+# monitoring/prometheus/alert_rules_crawler.yml.
+#
+# `promtool check rules` validates syntax only; it cannot tell you that a rule
+# ever fires. This rule exists because a specific combination -- partials that
+# keep landing while no complete run does -- read as healthy for every other
+# crawler rule, so "it parses" is the weakest possible evidence.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
+#
+# `for: 30m` is reachable because the test interval is 1m: the condition holds
+# from the second sample on, so at eval_time 50m the alert has been active well
+# past its debounce, and at 10m it must still be pending.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── Firing: partials with no complete run beside them ────────────────
+  - interval: 1m
+    input_series:
+      # "stuck": partials keep landing, and the success counter is frozen --
+      # the last complete run fell out of the 24h window and never returned.
+      - series: 'kbo_crawl_runs_total{crawler="stuck",status="partial"}'
+        values: '0 1x3000'
+      - series: 'kbo_crawl_runs_total{crawler="stuck",status="success"}'
+        values: '7x3000'
+      # "brand_new": partials only; no success series has ever existed. An
+      # `== 0` comparison would find no sample here and stay silent, which is
+      # what the rule's `unless` side exists to prevent.
+      - series: 'kbo_crawl_runs_total{crawler="brand_new",status="partial"}'
+        values: '0 1x3000'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: KboCrawlerSustainedPartial
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: stuck
+            exp_annotations:
+              summary: "크롤러 지속 부분 성공: stuck"
+              description: >-
+                stuck 은(는) 24시간 동안 완전 성공 없이 partial 실행만 기록했습니다. 일부 소스만 실패하는
+                저하가 이어지고 있을 수 있으니 소스별 결과와 DLQ를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+          - exp_labels:
+              severity: warning
+              crawler: brand_new
+            exp_annotations:
+              summary: "크롤러 지속 부분 성공: brand_new"
+              description: >-
+                brand_new 은(는) 24시간 동안 완전 성공 없이 partial 실행만 기록했습니다. 일부 소스만 실패하는
+                저하가 이어지고 있을 수 있으니 소스별 결과와 DLQ를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+      # The condition is already true at 10m; `for: 30m` must hold it back.
+      - eval_time: 10m
+        alertname: KboCrawlerSustainedPartial
+        exp_alerts: []
+
+  # ── Quiet: a partial beside a complete run in the same window ────────
+  - interval: 1m
+    input_series:
+      # "mixed": one partial and complete runs in the same window -- a single
+      # source blipped once. The success increase must exclude it.
+      - series: 'kbo_crawl_runs_total{crawler="mixed",status="partial"}'
+        values: '0 1x3000'
+      - series: 'kbo_crawl_runs_total{crawler="mixed",status="success"}'
+        values: '0 3x3000'
+      # "healthy": complete runs only; the rule must not invent a partial.
+      - series: 'kbo_crawl_runs_total{crawler="healthy",status="success"}'
+        values: '0 2x3000'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: KboCrawlerSustainedPartial
+        exp_alerts: []
