@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 
 from src.crawlers.external_stats_crawler import ExternalStatsCrawler
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.sources.stats.base import ExternalStatsAccessError
 from src.sources.stats.fangraphs import FanGraphsKboAdapter
 from src.sources.stats.statiz import StatizKboAdapter
@@ -163,10 +164,17 @@ def test_build_urls_include_season_and_stat_type() -> None:
 
 @pytest.mark.asyncio
 async def test_crawler_stops_on_http_403_without_browser_fallback() -> None:
-    request = httpx.Request("GET", "https://www.fangraphs.com/test")
-    response = httpx.Response(403, request=request)
+    adapter = FanGraphsKboAdapter()
+    url = adapter.build_url(2025, "batting")
     client = AsyncMock()
-    client.get.return_value = response
+    client.fetch_text.return_value = CrawlResult.failure(
+        CrawlOutcome.PERMANENT_ERROR,
+        error="HTTP 403",
+        error_code="FETCH_BLOCKED",
+        http_status=403,
+        url=url,
+        content_type="text/html; charset=utf-8",
+    )
     policy = RequestPolicy(
         RequestPolicyConfig(
             min_delay=0,
@@ -176,7 +184,7 @@ async def test_crawler_stops_on_http_403_without_browser_fallback() -> None:
         ),
     )
     crawler = ExternalStatsCrawler(
-        adapters={"fangraphs": FanGraphsKboAdapter()},
+        adapters={"fangraphs": adapter},
         client=client,
         policy=policy,
     )
@@ -185,4 +193,44 @@ async def test_crawler_stops_on_http_403_without_browser_fallback() -> None:
 
     assert result.records == []
     assert "HTTP 403" in result.failures[0]
-    client.get.assert_awaited_once()
+    client.fetch_text.assert_awaited_once_with(url, headers=None)
+
+
+@pytest.mark.asyncio
+async def test_fetched_page_keeps_content_type_and_statiz_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = StatizKboAdapter()
+    url = adapter.build_url(2025, "batting")
+    client = AsyncMock()
+    client.fetch_text.return_value = CrawlResult.success(
+        STATIZ_BATTING_HTML,
+        http_status=200,
+        url=url,
+        content_type="text/html; charset=euc-kr",
+    )
+    monkeypatch.setenv("STATIZ_COOKIE", "session=private-value")
+    crawler = ExternalStatsCrawler(adapters={"statiz": adapter}, client=client)
+
+    page = await crawler._fetch_page(adapter, 2025, "batting")
+
+    assert page.content_type == "text/html; charset=euc-kr"
+    assert page.body == STATIZ_BATTING_HTML
+    client.fetch_text.assert_awaited_once_with(url, headers={"Cookie": "session=private-value"})
+
+
+def test_default_transport_clients_are_isolated_by_provider_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    clients = [AsyncMock(), AsyncMock()]
+    factory = MagicMock(side_effect=clients)
+    monkeypatch.setattr("src.crawlers.external_stats_crawler.CrawlerHttpClient", factory)
+    crawler = ExternalStatsCrawler()
+
+    first = crawler._client_for_host("fangraphs.com")
+    second = crawler._client_for_host("statiz.co.kr")
+
+    assert first is clients[0]
+    assert second is clients[1]
+    assert first is not second
+    assert [call.kwargs["name"] for call in factory.call_args_list] == [
+        "external_stats:fangraphs.com",
+        "external_stats:statiz.co.kr",
+    ]
+    assert [call.kwargs["policy"].max_attempts for call in factory.call_args_list] == [1, 1]

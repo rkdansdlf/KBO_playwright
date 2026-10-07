@@ -94,6 +94,17 @@ class HttpPolicy:
     """Circuit breaker tuning."""
 
 
+@dataclass(frozen=True)
+class _RequestOptions:
+    """HTTP operation fields shared by the retry loop and one attempt."""
+
+    method: str
+    params: dict[str, Any] | None
+    data: dict[str, Any] | None
+    headers: dict[str, str] | None
+    decode_json: bool
+
+
 DEFAULT_HTTP_POLICY = HttpPolicy()
 
 
@@ -193,7 +204,10 @@ class CrawlerHttpClient:
             A `CrawlResult` whose `data` is the response body on success.
 
         """
-        return await self._fetch(url, params=params, headers=headers, decode_json=False)
+        return await self._fetch(
+            url,
+            request=_RequestOptions("GET", params, None, headers, decode_json=False),
+        )
 
     async def fetch_json(
         self,
@@ -214,27 +228,41 @@ class CrawlerHttpClient:
             result, a transient fault, a schema drift, and a permanent fault.
 
         """
-        return await self._fetch(url, params=params, headers=headers, decode_json=True)
+        return await self._fetch(
+            url,
+            request=_RequestOptions("GET", params, None, headers, decode_json=True),
+        )
 
-    async def _fetch(
+    async def post_json(
         self,
         url: str,
         *,
-        params: dict[str, Any] | None,
-        headers: dict[str, str] | None,
-        decode_json: bool,
+        data: dict[str, Any],
+        headers: dict[str, str] | None = None,
     ) -> CrawlResult[Any]:
+        """POST form fields and classify the JSON response.
+
+        Args:
+            url: Target URL.
+            data: Form fields encoded by ``httpx``.
+            headers: Extra headers for this request only.
+
+        Returns:
+            A classified result containing the decoded response payload.
+
+        """
+        return await self._fetch(
+            url,
+            request=_RequestOptions("POST", None, data, headers, decode_json=True),
+        )
+
+    async def _fetch(self, url: str, *, request: _RequestOptions) -> CrawlResult[Any]:
         """Run the retry loop and return the final classified result."""
         started = time.monotonic()
         last_result: CrawlResult[Any] | None = None
 
         for attempt in range(1, self.max_attempts + 1):
-            last_result = await self._attempt(
-                url,
-                params=params,
-                headers=headers,
-                decode_json=decode_json,
-            )
+            last_result = await self._attempt(url, request=request)
             if not last_result.should_retry or attempt >= self.max_attempts:
                 break
             delay = last_result.retry_after if last_result.retry_after is not None else self._backoff(attempt)
@@ -264,31 +292,31 @@ class CrawlerHttpClient:
             # only after a retry must not report the first attempt's error_code.
             error_code=last_result.error_code,
             url=url,
+            content_type=last_result.content_type,
         )
 
     def _backoff(self, attempt: int) -> float:
         """Return the exponential backoff delay before the next attempt."""
         return min(2.0**attempt, self.policy.max_backoff_seconds)
 
-    async def _attempt(
-        self,
-        url: str,
-        *,
-        params: dict[str, Any] | None,
-        headers: dict[str, str] | None,
-        decode_json: bool,
-    ) -> CrawlResult[Any]:
+    async def _attempt(self, url: str, *, request: _RequestOptions) -> CrawlResult[Any]:
         """Perform a single request and classify its outcome."""
         blocked = self._open_circuit_result(url)
         if blocked is not None:
             return blocked
 
         await self._throttle(self._host_of(url))
-        request_headers = {**self.default_headers, **(headers or {})} if headers else None
+        request_headers = {**self.default_headers, **(request.headers or {})} if request.headers else None
 
         try:
             async with self._client() as client:
-                response = await client.get(url, params=params, headers=request_headers)
+                response = await client.request(
+                    request.method,
+                    url,
+                    params=request.params,
+                    data=request.data,
+                    headers=request_headers,
+                )
         except ValueError as exc:
             # Raised by the URL validation hook for blocked or invalid targets.
             return CrawlResult.failure(
@@ -325,7 +353,7 @@ class CrawlerHttpClient:
                 url=url,
             )
 
-        result = self._classify(response, url=url, decode_json=decode_json)
+        result = self._classify(response, url=url, decode_json=request.decode_json)
         if result.ok or result.outcome is CrawlOutcome.EMPTY:
             self.breaker.record_success()
         else:
@@ -379,6 +407,7 @@ class CrawlerHttpClient:
                 http_status=status,
                 retry_after=retry_after,
                 url=url,
+                content_type=response.headers.get("Content-Type"),
             )
 
         if status in RETRYABLE_STATUS_CODES:
@@ -388,6 +417,7 @@ class CrawlerHttpClient:
                 error_code=failure_code_for_status(status).value,
                 http_status=status,
                 url=url,
+                content_type=response.headers.get("Content-Type"),
             )
 
         if not response.is_success:
@@ -397,6 +427,7 @@ class CrawlerHttpClient:
                 error_code=failure_code_for_status(status).value,
                 http_status=status,
                 url=url,
+                content_type=response.headers.get("Content-Type"),
             )
 
         self.rate_limiter.record_success()
@@ -404,8 +435,17 @@ class CrawlerHttpClient:
             return self._parse_json_body(response, url=url, status=status)
         body = response.text
         if not body.strip():
-            return CrawlResult.empty(http_status=status, url=url)
-        return CrawlResult.success(body, http_status=status, url=url)
+            return CrawlResult.empty(
+                http_status=status,
+                url=url,
+                content_type=response.headers.get("Content-Type"),
+            )
+        return CrawlResult.success(
+            body,
+            http_status=status,
+            url=url,
+            content_type=response.headers.get("Content-Type"),
+        )
 
     def _parse_json_body(
         self,
@@ -429,6 +469,7 @@ class CrawlerHttpClient:
                 error_code=FailureCode.PARSE_INVALID_FORMAT.value,
                 http_status=status,
                 url=url,
+                content_type=response.headers.get("Content-Type"),
             )
 
         try:
@@ -440,12 +481,22 @@ class CrawlerHttpClient:
                 error_code=FailureCode.PARSE_INVALID_FORMAT.value,
                 http_status=status,
                 url=url,
+                content_type=response.headers.get("Content-Type"),
             )
 
         if data is None or (isinstance(data, (list, dict, str)) and not data):
-            return CrawlResult.empty(http_status=status, url=url)
+            return CrawlResult.empty(
+                http_status=status,
+                url=url,
+                content_type=response.headers.get("Content-Type"),
+            )
 
-        return CrawlResult.success(data, http_status=status, url=url)
+        return CrawlResult.success(
+            data,
+            http_status=status,
+            url=url,
+            content_type=response.headers.get("Content-Type"),
+        )
 
     @staticmethod
     def _extracts_json_from_html(body: str) -> bool:

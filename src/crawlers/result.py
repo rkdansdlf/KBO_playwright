@@ -64,6 +64,7 @@ class CrawlResult[T]:
     error: str | None = None
     error_code: str | None = None
     url: str = ""
+    content_type: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a classification that contradicts the outcome.
@@ -99,6 +100,7 @@ class CrawlResult[T]:
         http_status: int | None = None,
         retry_after: float | None = None,
         url: str = "",
+        content_type: str | None = None,
     ) -> CrawlResult[Any]:
         """Build a successful result."""
         return cls(
@@ -107,6 +109,7 @@ class CrawlResult[T]:
             http_status=http_status,
             retry_after=retry_after,
             url=url,
+            content_type=content_type,
         )
 
     @classmethod
@@ -115,9 +118,10 @@ class CrawlResult[T]:
         *,
         http_status: int | None = None,
         url: str = "",
+        content_type: str | None = None,
     ) -> CrawlResult[Any]:
         """Build a result for a target that answered with no records."""
-        return cls(outcome=CrawlOutcome.EMPTY, http_status=http_status, url=url)
+        return cls(outcome=CrawlOutcome.EMPTY, http_status=http_status, url=url, content_type=content_type)
 
     @classmethod
     def failure(  # noqa: PLR0913 - public builder; the keyword-only call shape is the API
@@ -129,6 +133,7 @@ class CrawlResult[T]:
         http_status: int | None = None,
         retry_after: float | None = None,
         url: str = "",
+        content_type: str | None = None,
     ) -> CrawlResult[Any]:
         """Build a failed result, rejecting outcomes that are not failures.
 
@@ -141,6 +146,8 @@ class CrawlResult[T]:
             http_status: Response status, when there was one.
             retry_after: Server-requested retry delay.
             url: Target URL.
+            content_type: Response media type, when available. Other response
+                headers are intentionally not retained.
 
         Returns:
             A failed result.
@@ -156,6 +163,7 @@ class CrawlResult[T]:
             http_status=http_status,
             retry_after=retry_after,
             url=url,
+            content_type=content_type,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -169,6 +177,7 @@ class CrawlResult[T]:
             "error": self.error,
             "error_code": self.error_code,
             "url": self.url,
+            "content_type": self.content_type,
         }
 
 

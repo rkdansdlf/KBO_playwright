@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.constants import KST
@@ -11,6 +13,9 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.operation_notice_common import classify_notice as _classify_notice, is_urgent as _is_urgent
+from src.crawlers.http_client import CrawlerHttpClient
+from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.crawlers import operation_notice_lg_crawler as lg_module
 from src.crawlers.operation_notice_lg_crawler import (
     OperationNoticeLGCrawler,
     _extract_article_id,
@@ -193,14 +198,6 @@ class TestParsePage:
 
 
 class TestOperationNoticeLGCrawlerRun:
-    @staticmethod
-    def _client(response_or_error):
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
-        client.get = AsyncMock(return_value=response_or_error)
-        return client
-
     @pytest.mark.asyncio
     async def test_run_collects_notices_records_raw_page_and_calls_save(self):
         html = """
@@ -208,16 +205,13 @@ class TestOperationNoticeLGCrawlerRun:
             <li><a href="?idx=5001">[긴급] 경기 취소</a><span class="date">2026.06.03</span></li>
         </ul>
         """
-        client = self._client(MagicMock(status_code=200, text=html))
         crawler = OperationNoticeLGCrawler(max_pages=1)
+        crawler._fetch_page = AsyncMock(return_value=CrawlResult.success(html, http_status=200))
         crawler._save_to_db = MagicMock()
 
-        with (
-            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()) as wait,
-        ):
-            notices = await crawler.run(save=True)
+        notices = await crawler.run(save=True)
 
+        crawler._fetch_page.assert_awaited_once_with("https://www.lgtwins.com/twins/feed/news?page=1")
         assert [notice["external_id"] for notice in notices] == ["5001"]
         assert crawler._raw_pages == [
             {
@@ -227,26 +221,38 @@ class TestOperationNoticeLGCrawlerRun:
                 "status_code": 200,
             },
         ]
-        wait.assert_awaited_once_with("www.lgtwins.com")
         crawler._save_to_db.assert_called_once_with(notices)
 
     @pytest.mark.asyncio
-    async def test_run_stops_on_http_error_or_non_success_response(self):
+    async def test_run_stops_on_a_failed_page(self):
+        """A 503 and a transport error both end the sweep, with a reason.
+
+        Both used to reach this test as a bare `httpx.HTTPError` or a status
+        comparison, and neither left a record of which page was actually lost.
+        """
         crawler = OperationNoticeLGCrawler(max_pages=2)
-        client = self._client(MagicMock(status_code=503, text=""))
+        crawler._fetch_page = AsyncMock(
+            return_value=CrawlResult.failure(
+                CrawlOutcome.RETRYABLE_ERROR,
+                error="service unavailable",
+                error_code="fetch_http_error",
+                http_status=503,
+                url="https://www.lgtwins.com/twins/feed/news?page=1",
+            ),
+        )
 
-        with (
-            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()),
-        ):
-            assert await crawler.run() == []
+        assert await crawler.run() == []
+        # One page, not two: a failed page is not a page with no notices.
+        assert crawler._fetch_page.await_count == 1
+        # Nothing was read, so there is nothing to replay.
+        assert crawler._raw_pages == []
 
-        client.get.side_effect = httpx.HTTPError("unavailable")
-        with (
-            patch("src.crawlers.operation_notice_lg_crawler.httpx.AsyncClient", return_value=client),
-            patch("src.crawlers.operation_notice_lg_crawler.throttle.wait", new=AsyncMock()),
-        ):
-            assert await crawler.run() == []
+    def test_the_crawler_does_not_build_its_own_client(self):
+        """The hand-rolled `httpx.AsyncClient` is what the migration removed."""
+        source = inspect.getsource(lg_module)
+
+        assert "httpx.AsyncClient(" not in source
+        assert isinstance(OperationNoticeLGCrawler()._http, CrawlerHttpClient)
 
     def test_save_to_db_commits_and_clears_raw_pages(self):
         crawler = OperationNoticeLGCrawler()

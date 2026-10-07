@@ -5,26 +5,26 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.db.engine import SessionLocal
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
+    from src.crawlers.result import CrawlResult
     from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
+SEAT_CRAWLER_NAME = "seat_crawler"
 SEAT_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
 SEAT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 MIN_SEAT_SECTION_NAME_LENGTH = 2
@@ -55,15 +55,27 @@ class SeatCrawler(BaseHttpCrawler):
         self,
         request_delay: float = 0.5,
         policy: RequestPolicy | None = None,
+        http_client: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize SeatCrawler.
 
         Args:
             request_delay: Request delay in seconds.
             policy: Optional request policy.
+            http_client: Transport to use. Defaults to a client named for this
+                crawler. Tests inject a client backed by a mock transport.
 
         """
         super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
+        # The shared client already waits on an adaptive rate limiter, retries
+        # with backoff, and validates every redirect target. The hand-rolled
+        # `httpx.AsyncClient` this replaced carried none of that, so a failing
+        # team page lost the request after one attempt.
+        self._http = http_client or CrawlerHttpClient(
+            name=SEAT_CRAWLER_NAME,
+            policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
+            headers=HEADERS,
+        )
         self._raw_pages: list[dict] = []
 
     async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
@@ -101,27 +113,43 @@ class SeatCrawler(BaseHttpCrawler):
 
         return all_sections
 
+    async def _fetch_seat_page(self, url: str) -> CrawlResult[str]:
+        """Fetch one seat page, classifying the outcome.
+
+        Split from :meth:`_crawl_team_seats` so the transport reports a typed
+        result rather than an empty list. The two are indistinguishable from the
+        outside -- a 404, a timeout and a page with no seat names on it all
+        produced `[]` -- and only one of them is a reason to look again.
+        """
+        return await self._http.fetch_text(url)
+
     async def _crawl_team_seats(self, team_code: str, info: dict) -> list[dict[str, Any]]:
         sections = []
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            try:
-                host = urlparse(info["url"]).hostname or "koreabaseball.com"
-                await throttle.wait(host)
-                resp = await client.get(info["url"])
-                if resp.status_code != HTTPStatus.OK:
-                    return []
-                html = resp.text
-                self._raw_pages.append(
-                    {
-                        "source_key": info["source_key"],
-                        "url": info["url"],
-                        "html": html,
-                        "status_code": resp.status_code,
-                    },
+        try:
+            result = await self._fetch_seat_page(info["url"])
+            if not result.ok:
+                # The taxonomy code is already attached, so a failure carries one
+                # name from here into the ledger and the metric rather than being
+                # re-derived from a message later.
+                logger.warning(
+                    "Seat page fetch failed for %s: %s (%s)",
+                    team_code,
+                    result.error_code or result.outcome.value,
+                    result.url or info["url"],
                 )
-                sections = self._parse_seat_page(html, team_code, info)
-            except httpx.HTTPError:
-                logger.exception("Failed to fetch seat page for %s", team_code)
+                return []
+            html = result.data
+            self._raw_pages.append(
+                {
+                    "source_key": info["source_key"],
+                    "url": info["url"],
+                    "html": html,
+                    "status_code": result.http_status,
+                },
+            )
+            sections = self._parse_seat_page(html, team_code, info)
+        except SEAT_CRAWL_EXCEPTIONS:
+            logger.exception("Failed to parse seat page for %s", team_code)
         return sections
 
     def _parse_seat_page(self, html: str, _team_code: str, info: dict) -> list[dict[str, Any]]:

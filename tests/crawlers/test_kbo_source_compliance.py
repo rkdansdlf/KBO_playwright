@@ -145,15 +145,16 @@ async def test_ticket_map_is_source_limited_before_http_request() -> None:
     from src.crawlers.ticket_crawler import TicketCrawler
 
     crawler = TicketCrawler()
+    fetch_page = AsyncMock()
+    crawler._fetch_page = fetch_page
     with (
         patch("src.crawlers.ticket_crawler.compliance.is_allowed", new=AsyncMock(return_value=False)),
-        patch("src.crawlers.ticket_crawler.httpx.AsyncClient") as client,
     ):
         result = await crawler._crawl_kbo_ticket_map()
 
     assert result == []
     assert crawler.get_last_failure_reason() == "kbo_robots_blocked"
-    client.assert_not_called()
+    fetch_page.assert_not_awaited()
 
 
 @pytest.mark.asyncio

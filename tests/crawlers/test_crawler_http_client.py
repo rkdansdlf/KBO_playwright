@@ -90,6 +90,30 @@ def test_successful_json_is_reported_as_success():
     assert result.ok
 
 
+def test_post_json_sends_form_data_and_decodes_response():
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"rows": ["game"]})
+
+    client = _client(handler, name="post-case")
+    result = asyncio.run(
+        client.post_json(
+            "https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList",
+            data={"leId": "1", "srId": "0"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        ),
+    )
+
+    assert result.outcome is CrawlOutcome.SUCCESS
+    assert result.data == {"rows": ["game"]}
+    assert len(seen) == 1
+    assert seen[0].method == "POST"
+    assert seen[0].content == b"leId=1&srId=0"
+    assert seen[0].headers["Content-Type"] == "application/x-www-form-urlencoded"
+
+
 def test_empty_payload_is_distinct_from_failure():
     client = _client(lambda request: httpx.Response(200, json=[]), name="empty-case")
     result = asyncio.run(client.fetch_json("https://stat.koreabaseball.com/api/x"))
@@ -185,10 +209,18 @@ def test_transport_error_is_retryable():
 
 
 def test_fetch_text_returns_the_body():
-    client = _client(lambda request: httpx.Response(200, text="<html>ok</html>"), name="text-case")
+    client = _client(
+        lambda request: httpx.Response(
+            200,
+            text="<html>ok</html>",
+            headers={"Content-Type": "text/html; charset=utf-8"},
+        ),
+        name="text-case",
+    )
     result = asyncio.run(client.fetch_text("https://www.giantsclub.com/food"))
     assert result.outcome is CrawlOutcome.SUCCESS
     assert result.data == "<html>ok</html>"
+    assert result.content_type == "text/html; charset=utf-8"
 
 
 def test_fetch_text_treats_a_blank_body_as_empty():

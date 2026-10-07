@@ -64,6 +64,17 @@ PBP_CRAWLER_EXCEPTIONS = (
 
 
 from src.crawlers.base import BasePlaywrightCrawler
+from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
+from src.crawlers.pbp_outcome import PbpGameRead, PbpStatus
+from src.models.crawl_execution import RUN_STATUS_FAILED, CrawlExecutionRun
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
+
+PBP_CRAWLER_NAME = "pbp"
+PBP_TARGET_TYPE = "pbp_game"
+PBP_PARSER_VERSION = "pbp-v1"
 
 
 class PBPCrawler(BasePlaywrightCrawler):
@@ -92,6 +103,129 @@ class PBPCrawler(BasePlaywrightCrawler):
         self._context_kwargs = self.policy.build_context_kwargs(locale="ko-KR")
         self.wpa_calc = WPACalculator()
         self.last_failure_reason: str | None = None
+        #: The typed outcome of the most recent read, set where the read is
+        #: decided. `last_failure_reason` stays as the string the relay adapter
+        #: maps to notes; this is what the ledger and the queue key on.
+        self._last_read: PbpGameRead | None = None
+
+    @property
+    def last_read(self) -> PbpGameRead | None:
+        """Return the typed outcome of the most recent read."""
+        return self._last_read
+
+    def _record_read(
+        self,
+        status: PbpStatus,
+        reason: str | None = None,
+        events: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Record one read's outcome for the ledger to pick up."""
+        self._last_read = PbpGameRead(status=status, reason=reason, events=list(events or []))
+
+    async def run(
+        self,
+        game_id: str,
+        *,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Read one game's play-by-play under a tracked run.
+
+        The unit of work is a game, and the crawl deliberately does not persist:
+        its callers own the write because they decide whether the rows are a
+        relay refresh or a repair of an unverified game. So the run records what
+        was read and the replay handler stores it, which is the same split
+        ``player_movement_crawler`` uses for the same reason.
+
+        A readable page with no plays is a success. A page that could not be read
+        is a failure recorded in the ledger and, when asked for, in the dead
+        letter queue, so an unreadable game is reprocessed instead of looking
+        like a rained-out one.
+
+        Args:
+            game_id: Game ID.
+            run_spec: Optional pre-built ledger spec (replay supplies one).
+            record_dead_letters: Whether an unresolved game enqueues a DLQ entry.
+
+        Returns:
+            The parsed events, or an empty list when the game has none or failed.
+
+        """
+        season = int(game_id[:4]) if game_id[:4].isdigit() else None
+        spec = run_spec or CrawlRunSpec(
+            crawler=PBP_CRAWLER_NAME,
+            target_type=PBP_TARGET_TYPE,
+            target_id=game_id,
+            game_id=game_id,
+            season=season,
+            source_url=self.base_url,
+            parser_version=PBP_PARSER_VERSION,
+        )
+
+        with track_crawl_run(spec) as run:
+            payload = await self.crawl_game_events(game_id)
+            events = list((payload or {}).get("events") or [])
+            read = self._last_read
+
+            run.records_read = len(events)
+            run.checkpoint = {
+                "game_id": game_id,
+                "status": str(read.status) if read else None,
+                "reason": read.reason if read else None,
+            }
+
+            if read is None:
+                # The crawl returned nothing and recorded no outcome, which means
+                # a code path returned early without saying anything. Treat that
+                # as a failure rather than a quiet game, because "nobody said"
+                # is not "the site said there were no plays".
+                read = PbpGameRead(status=PbpStatus.FETCH_FAILED, reason="crawl_error")
+
+            if read.status in {PbpStatus.SUCCESS, PbpStatus.EMPTY}:
+                return events
+
+            failure = PbpGameRead(status=read.status, reason=read.reason)
+            self._mark_failed(run, failure)
+            if record_dead_letters:
+                self._enqueue_dead_letter(run.run_id, game_id, season, failure)
+            return []
+
+    @staticmethod
+    def _mark_failed(run: CrawlExecutionRun, read: PbpGameRead) -> None:
+        """Copy a classified read failure onto its tracked run."""
+        run.status = RUN_STATUS_FAILED
+        run.error_code = read.error_code or FailureCode.UNKNOWN.value
+        run.error_message = read.explanation or read.reason
+        run.records_failed = 1
+
+    def _enqueue_dead_letter(
+        self,
+        original_run_id: str,
+        game_id: str,
+        season: int | None,
+        read: PbpGameRead,
+    ) -> None:
+        """Queue one unreadable game for operator or scheduled replay."""
+        error_code = read.error_code or FailureCode.UNKNOWN.value
+        try:
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=original_run_id,
+                    crawler=PBP_CRAWLER_NAME,
+                    target_type=PBP_TARGET_TYPE,
+                    # The game is the replay unit, so it is the target identity.
+                    target_id=game_id,
+                    game_id=game_id,
+                    season=season,
+                    source_url=self.base_url,
+                    # Derived from the code, never supplied beside it.
+                    failure_stage=stage_for_code(error_code).value,
+                    error_code=error_code,
+                    error_message=read.explanation or read.reason,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to enqueue pbp dead letter for %s", game_id)
 
     @staticmethod
     def _is_auth_redirect(page: Page) -> bool:
@@ -228,6 +362,7 @@ class PBPCrawler(BasePlaywrightCrawler):
 
         """
         self.last_failure_reason = None
+        self._last_read = None
 
         game_date = game_id[:8]
         target = resolve_kbo_relay_target(game_id, season_type="regular")
@@ -264,6 +399,7 @@ class PBPCrawler(BasePlaywrightCrawler):
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("Pool error for %s", game_id)
             self.last_failure_reason = "error"
+            self._record_read(PbpStatus.FETCH_FAILED, "pool_error")
             return None
 
     async def _crawl_game_events_page(
@@ -272,22 +408,31 @@ class PBPCrawler(BasePlaywrightCrawler):
     ) -> dict[str, Any] | None:
         try:
             if not await self._prepare_live_text_page(ctx.page, ctx.game_date, ctx.url):
+                # The only way this returns False is the compliance branch; a
+                # navigation fault raises, and the handler below catches it.
+                self._record_read(PbpStatus.FETCH_FAILED, "compliance_blocked")
                 return None
             if self._is_auth_redirect(ctx.page):
                 return await self._retry_after_auth_redirect(
                     GameEventsContext(ctx.pool, ctx.page, ctx.game_id, ctx.game_date, ctx.url, ctx.retry_count),
                 )
             if not await self._wait_for_pbp_container(ctx.page, ctx.game_id):
+                # The crawl only stops here when the page says the game has no
+                # data, which is an answer rather than a fault.
+                self._record_read(PbpStatus.EMPTY, "no_events")
                 return None
             logger.info("[INFO] Extracting Relay Data...")
             events = await self._extract_flat_events_legacy(ctx.page, game_id=ctx.game_id)
         except PBP_CRAWLER_EXCEPTIONS:
             logger.exception("PBP crawl failed for %s", ctx.game_id)
             self.last_failure_reason = "error"
+            self._record_read(PbpStatus.FETCH_FAILED, "crawl_error")
             return None
         if not events:
             self.last_failure_reason = "empty"
+            self._record_read(PbpStatus.EMPTY, "no_events")
             return None
+        self._record_read(PbpStatus.SUCCESS, None, events)
         return {"game_id": ctx.game_id, "game_date": ctx.game_date, "events": events}
 
     async def _retry_after_auth_redirect(
@@ -296,6 +441,7 @@ class PBPCrawler(BasePlaywrightCrawler):
     ) -> dict[str, Any] | None:
         logger.info("[ERROR] Redirected to %s.", ctx.page.url)
         self.last_failure_reason = "auth_required"
+        self._record_read(PbpStatus.AUTH_REQUIRED, "auth_required")
         if ctx.retry_count > 0:
             return None
         await ctx.pool.close()

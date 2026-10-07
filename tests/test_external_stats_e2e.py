@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.crawlers.external_stats_crawler import ExternalStatsCrawler
+from src.crawlers.result import CrawlResult
 from src.models.external_season_stat import ExternalSeasonStat
 from src.models.player import PlayerBasic, PlayerSeasonBatting, PlayerSeasonPitching
 from src.repositories.external_season_stats_repository import ExternalSeasonStatsRepository
@@ -50,15 +51,14 @@ def _session():
 async def test_external_stats_round_trip_is_idempotent_and_preserves_lineage() -> None:
     """Persist, resolve, project, and repeat one provider payload without duplication."""
     adapter = FanGraphsKboAdapter()
-    request = httpx.Request("GET", adapter.build_url(2025, "batting"))
-    response = httpx.Response(
-        200,
-        request=request,
-        content=FANGRAPHS_FIXTURE_JSON.encode("utf-8"),
-        headers={"content-type": "application/json"},
-    )
+    url = adapter.build_url(2025, "batting")
     client = AsyncMock()
-    client.get.return_value = response
+    client.fetch_text.return_value = CrawlResult.success(
+        FANGRAPHS_FIXTURE_JSON,
+        http_status=200,
+        url=url,
+        content_type="application/json",
+    )
     policy = RequestPolicy(
         RequestPolicyConfig(
             min_delay=0,

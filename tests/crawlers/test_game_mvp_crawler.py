@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
+from src.crawlers.http_client import CrawlerHttpClient
+from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.game_mvp_crawler import GameMvpCrawler
 
 
@@ -77,9 +78,7 @@ class TestParseMvpTeam:
 @pytest.mark.asyncio
 class TestGameMvpCrawler:
     async def test_search_mvp_for_game_parses_matching_news(self, crawler):
-        response = MagicMock()
-        response.status_code = 200
-        response.json.return_value = {
+        payload = {
             "result": {
                 "newsList": [
                     {"title": "일반 뉴스"},
@@ -87,13 +86,9 @@ class TestGameMvpCrawler:
                 ],
             },
         }
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(return_value=response)
+        crawler._fetch_news_for_date = AsyncMock(return_value=CrawlResult.success(payload, http_status=200))
 
-        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
-            result = await crawler._search_mvp_for_game("20250501LGDB0")
+        result = await crawler._search_mvp_for_game("20250501LGDB0")
 
         assert result == {
             "game_id": "20250501LGDB0",
@@ -105,33 +100,30 @@ class TestGameMvpCrawler:
         }
 
     async def test_search_mvp_for_game_returns_none_for_non_ok_response(self, crawler):
-        response = MagicMock(status_code=503)
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(return_value=response)
+        crawler._fetch_news_for_date = AsyncMock(return_value=_failure(503))
 
-        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
-            result = await crawler._search_mvp_for_game("20250501LGDB0")
+        result = await crawler._search_mvp_for_game("20250501LGDB0")
 
         assert result is None
+        crawler._fetch_news_for_date.assert_awaited_once_with("20250501")
 
     async def test_fetch_recent_mvp_news_builds_fallback_game_id(self, crawler):
-        response = MagicMock()
-        response.status_code = 200
-        response.json.return_value = {"result": {"newsList": [{"title": "두산 김철수 MVP"}]}}
-        client = MagicMock()
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=False)
-        client.get = AsyncMock(side_effect=[response, *[httpx.HTTPError("stop")] * 6])
+        payload = {"result": {"newsList": [{"title": "두산 김철수 MVP"}]}}
+        crawler._fetch_news_for_date = AsyncMock(
+            side_effect=[CrawlResult.success(payload, http_status=200), *[_failure() for _ in range(6)]],
+        )
 
-        with patch("src.crawlers.game_mvp_crawler.httpx.AsyncClient", return_value=client):
-            records = await crawler._fetch_recent_mvp_news()
+        records = await crawler._fetch_recent_mvp_news()
 
         assert len(records) == 1
         assert records[0]["player_name"] == "김철수"
         assert records[0]["team_id"] == "DB"
         assert records[0]["game_id"].endswith("0000")
+        assert crawler._fetch_news_for_date.await_count == 7
+
+    async def test_the_crawler_uses_the_governed_client(self, crawler):
+        """The previous per-method `AsyncClient` did not throttle or classify."""
+        assert isinstance(crawler._http, CrawlerHttpClient)
 
     async def test_run_with_game_ids_saves_only_found_results(self, crawler):
         crawler._search_mvp_for_game = AsyncMock(side_effect=[{"game_id": "G1"}, None])
@@ -162,3 +154,14 @@ class TestGameMvpCrawler:
         repo.save_mvp.assert_called_once_with({"game_id": "G1"})
         session.commit.assert_called_once()
         session.close.assert_called_once()
+
+
+def _failure(status: int = 503) -> CrawlResult:
+    """A failed Naver response, already classified by the transport."""
+    return CrawlResult.failure(
+        CrawlOutcome.RETRYABLE_ERROR,
+        error=f"HTTP {status}",
+        error_code="FETCH_HTTP_ERROR",
+        http_status=status,
+        url="https://api-gw.sports.naver.com/news/articles/kbaseball",
+    )

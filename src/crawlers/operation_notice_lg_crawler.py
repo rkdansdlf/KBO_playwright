@@ -14,24 +14,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from http import HTTPStatus
 from typing import TYPE_CHECKING
 
-import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.db.engine import SessionLocal
 from src.repositories.operation_notice_repository import OperationNoticeRepository
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 from src.utils.naver_helpers import parse_multi_format_date
-from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from src.crawlers.result import CrawlResult
+
 logger = logging.getLogger(__name__)
 
+OPERATION_NOTICE_LG_CRAWLER_NAME = "operation_notice_lg_crawler"
 STADIUM_CODE = "JAMSIL"
 SOURCE_NAME = "LG트윈스공식"
 BASE_URL = "https://www.lgtwins.com/twins/feed/news"
@@ -90,16 +91,35 @@ class OperationNoticeLGCrawler:
 
     """
 
-    def __init__(self, max_pages: int = 5) -> None:
+    def __init__(self, max_pages: int = 5, http_client: CrawlerHttpClient | None = None) -> None:
         """Initialize a new instance.
 
         Args:
             max_pages: Max Pages.
+            http_client: Transport to use. Defaults to a client named for this
+                crawler. Tests inject a client backed by a mock transport.
 
         """
         self.max_pages = max_pages
+        # The shared client throttles, retries with backoff, and classifies the
+        # outcome. The hand-rolled `httpx.AsyncClient` this replaced lost the
+        # request after one attempt, so a single blip cost the rest of the sweep.
+        self._http = http_client or CrawlerHttpClient(
+            name=OPERATION_NOTICE_LG_CRAWLER_NAME,
+            policy=HttpPolicy(timeout_seconds=15.0),
+            headers=HEADERS,
+        )
 
         self._raw_pages: list[dict] = []
+
+    async def _fetch_page(self, url: str) -> CrawlResult[str]:
+        """Fetch one notices page, classifying the outcome.
+
+        Separate from the sweep so the transport reports a typed result rather
+        than a bare exception. An unreachable page used to end the sweep the same
+        way an empty one did, with the reason living only in a log line.
+        """
+        return await self._http.fetch_text(url)
 
     async def run(self, *, save: bool = False, stop_at_external_id: str | None = None) -> list[dict]:
         """Crawl notices.
@@ -114,31 +134,29 @@ class OperationNoticeLGCrawler:
         """
         all_notices: list[dict] = []
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            for page in range(1, self.max_pages + 1):
-                url = f"{BASE_URL}?page={page}"
-                try:
-                    await throttle.wait(HOST)
-                    resp = await client.get(url)
-                    if resp.status_code != HTTPStatus.OK:
-                        logger.warning("[LG Notice] HTTP %s on page %d", resp.status_code, page)
-                        break
+        for page in range(1, self.max_pages + 1):
+            url = f"{BASE_URL}?page={page}"
+            result = await self._fetch_page(url)
+            if not result.ok:
+                logger.warning(
+                    "[LG Notice] page %d fetch failed: %s (%s)",
+                    page,
+                    result.error_code or result.outcome.value,
+                    url,
+                )
+                break
 
-                    html = resp.text
-                    self._raw_pages.append(
-                        {"source_key": "lg_twins_notices", "url": url, "html": html, "status_code": 200},
-                    )
+            html = result.data
+            self._raw_pages.append(
+                {"source_key": "lg_twins_notices", "url": url, "html": html, "status_code": result.http_status},
+            )
 
-                    notices, hit_stop = self._parse_page(html, stop_at_external_id)
-                    all_notices.extend(notices)
+            notices, hit_stop = self._parse_page(html, stop_at_external_id)
+            all_notices.extend(notices)
 
-                    logger.info("[LG Notice] page %s: %s notices", page, len(notices))
-                    if hit_stop or not notices:
-                        break
-
-                except httpx.HTTPError:
-                    logger.exception("[LG Notice] Failed to fetch page %d", page)
-                    break
+            logger.info("[LG Notice] page %s: %s notices", page, len(notices))
+            if hit_stop or not notices:
+                break
 
         logger.info("[LG Notice] Total: %s notices", len(all_notices))
 

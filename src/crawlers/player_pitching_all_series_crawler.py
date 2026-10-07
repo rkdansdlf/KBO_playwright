@@ -31,6 +31,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.constants import KST
+from src.crawlers.season_series_outcome import (
+    SeriesRead,
+    SeriesReadRecorder,
+    SeriesStatus,
+    run_series_crawl,
+)
 from src.db.engine import SessionLocal
 from src.models.game import Game, GamePitchingStat
 from src.models.player import PlayerBasic
@@ -63,6 +69,8 @@ from src.urls import PITCHER_BASIC1, PITCHER_BASIC2
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from src.repositories.crawl_execution_repository import CrawlRunSpec
 
 BASIC1_URL = PITCHER_BASIC1
 BASIC2_URL = PITCHER_BASIC2
@@ -1046,6 +1054,21 @@ def _pitching_compliance_fallback(
     return _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
 
 
+def _report_pitching_fallback(
+    recorder: SeriesReadRecorder | None,
+    stats_list: list[PitcherStats],
+    reason_key: str,
+) -> None:
+    """Report a fallback whose cause is only known at the call site.
+
+    The fallback helper fetches rows; why they were needed is the caller's
+    knowledge, so the classification is made where the cause is visible rather
+    than threaded through the helper as another argument.
+    """
+    if recorder is not None:
+        recorder(SeriesRead(status=SeriesStatus.FALLBACK, reason=reason_key, rows=len(stats_list)))
+
+
 def _get_pitcher_team_options(page: Page, *, by_team: bool) -> list[dict]:
     if not by_team:
         return [{"value": "", "text": "전체"}]
@@ -1189,11 +1212,16 @@ class PitchingSeriesCrawlRequest:
     preserve_team_splits: bool = False
 
 
-def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherStats]:
+def crawl_pitcher_series(
+    request: PitchingSeriesCrawlRequest,
+    *,
+    recorder: SeriesReadRecorder | None = None,
+) -> list[PitcherStats]:
     """Crawl pitcher series.
 
     Args:
         request: Selection and persistence settings.
+        recorder: Where an outcome the rows cannot express is reported.
 
     Returns:
         List of results.
@@ -1208,6 +1236,8 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
     preserve_team_splits = request.preserve_team_splits or by_team
     if series_key not in SERIES_MAPPING:
         msg = f"지원하지 않는 시리즈 키: {series_key}"
+        if recorder is not None:
+            recorder(SeriesRead(status=SeriesStatus.FAILED, reason="crawl_error", rows=0))
         raise ValueError(msg)
 
     league_name = (series_info := SERIES_MAPPING[series_key]).get("league", "REGULAR")
@@ -1216,7 +1246,14 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
     pitchers: dict[int | tuple[int, str | None], PitcherStats] = {}
     policy = RequestPolicy()
 
-    if (compliance_fallback := _pitching_compliance_fallback(year, series_key, save_to_db=save_to_db)) is not None:
+    if (
+        compliance_fallback := _pitching_compliance_fallback(
+            year,
+            series_key,
+            save_to_db=save_to_db,
+        )
+    ) is not None:
+        _report_pitching_fallback(recorder, compliance_fallback, "compliance_blocked")
         return compliance_fallback
 
     with sync_playwright() as playwright:
@@ -1232,7 +1269,9 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
             reason = "Basic1 page setup failed (possible KBO site error)"
             logger.error("❌ Basic1 페이지 설정 실패. %s. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.", reason)
             browser.close()
-            return _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
+            stats = _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
+            _report_pitching_fallback(recorder, stats, "page_setup_failed")
+            return stats
 
         # 순회 대상 설정 (팀 옵션이 있으면 팀별, 없으면 전체 1회)
         team_options = _get_pitcher_team_options(page, by_team=by_team)
@@ -1269,6 +1308,17 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
 
         browser.close()
 
+    return _finalize_pitching_series(pitchers, series_info, limit=limit, save_to_db=save_to_db)
+
+
+def _finalize_pitching_series(
+    pitchers: dict[int | tuple[int, str | None], PitcherStats],
+    series_info: dict[str, str],
+    *,
+    limit: int | None,
+    save_to_db: bool,
+) -> list[PitcherStats]:
+    """Validate the collected pitchers and store them when asked to."""
     stats_list = list(pitchers.values())
     if limit:
         stats_list = stats_list[:limit]
@@ -1290,6 +1340,56 @@ def crawl_pitcher_series(request: PitchingSeriesCrawlRequest) -> list[PitcherSta
             logger.exception("❌ 투수 데이터 저장 실패")
 
     return stats_list
+
+
+PITCHING_SERIES_CRAWLER_NAME = "player_pitching_all_series"
+PITCHING_SERIES_TARGET_TYPE = "player_season_series"
+PITCHING_SERIES_PARSER_VERSION = "pitching-all-series-v1"
+#: Faults the tracked run records instead of propagating. An unknown series key
+#: is deliberately absent: that is the caller's mistake and raising it is right.
+PITCHING_SERIES_FAILURE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
+
+
+def run_pitching_series(
+    request: PitchingSeriesCrawlRequest,
+    *,
+    run_spec: CrawlRunSpec | None = None,
+    record_dead_letters: bool = True,
+) -> list[PitcherStats]:
+    """Crawl one season and series under a tracked run.
+
+    The unit of work is the season-and-series pair, because that is what the page
+    asks for and what a replay has to name to reproduce it. The crawl drives a
+    browser synchronously, so this is a plain function rather than a coroutine:
+    ``sync_playwright`` refuses to run inside an event loop, and the callers
+    already reach it through ``asyncio.to_thread``.
+
+    Args:
+        request: Selection and persistence settings.
+        run_spec: Optional pre-built ledger spec (replay supplies one).
+        record_dead_letters: Whether an unresolved series enqueues a DLQ entry.
+
+    Returns:
+        The rows the crawl produced, from the page or from its fallback.
+
+    """
+    year = request.year
+
+    def crawl(recorder: SeriesReadRecorder) -> list[PitcherStats]:
+        return crawl_pitcher_series(request, recorder=recorder)
+
+    return run_series_crawl(
+        crawl=crawl,
+        crawler=PITCHING_SERIES_CRAWLER_NAME,
+        target_type=PITCHING_SERIES_TARGET_TYPE,
+        year=year,
+        series_key=request.series_key,
+        source_url=BASIC1_URL,
+        exceptions=PITCHING_SERIES_FAILURE_EXCEPTIONS,
+        parser_version=PITCHING_SERIES_PARSER_VERSION,
+        run_spec=run_spec,
+        record_dead_letters=record_dead_letters,
+    )
 
 
 # ---------------------------------------------------------------------------
