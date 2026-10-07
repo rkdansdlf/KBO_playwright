@@ -14,6 +14,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./scripts:/app/scripts
+      - ./docs:/app/docs
   api-server:
     environment:
       DATABASE_URL: postgresql://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
