@@ -57,6 +57,11 @@ class FailureCode(StrEnum):
 
     REPLAY_INTERRUPTED = "REPLAY_INTERRUPTED"
     REPLAY_RUN_MISSING = "REPLAY_RUN_MISSING"
+    # A general crawl run found still `running` long after it started. Distinct
+    # from the two above despite the shared `orchestrate` stage: a replay always
+    # has a dead letter and a known target to re-run, while a general run only
+    # has the fact that it never finished.
+    RUN_INTERRUPTED = "RUN_INTERRUPTED"
 
     SOURCE_PARTIAL = "SOURCE_PARTIAL"
     UNKNOWN = "UNKNOWN"
@@ -89,6 +94,7 @@ _ORCHESTRATE_CODES = frozenset(
     {
         FailureCode.REPLAY_INTERRUPTED,
         FailureCode.REPLAY_RUN_MISSING,
+        FailureCode.RUN_INTERRUPTED,
     },
 )
 
