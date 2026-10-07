@@ -204,6 +204,7 @@ TABLE_REGISTRY: list[TableMeta] = [
     TableMeta("sla_metrics", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("stadium_operation_notices", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("parking_fee_rules", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
+    TableMeta("parking_fee_kinds", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("stadium_food_menu_items", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("stadium_congestion", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("stadium_transit_times", level=2, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
