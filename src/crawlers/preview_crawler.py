@@ -13,12 +13,19 @@ import json
 import logging
 from typing import Any, ClassVar
 
-import httpx
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from src.crawlers.base import BasePlaywrightCrawler
+from src.crawlers.failure_taxonomy import FailureCode, stage_for_code
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.result import CrawlOutcome, CrawlResult
+from src.models.crawl_execution import RUN_STATUS_FAILED
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
@@ -26,13 +33,17 @@ from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import normalize_kbo_game_id
 
 logger = logging.getLogger(__name__)
-HTTP_API_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError)
+HTTP_API_EXCEPTIONS = (RuntimeError, ValueError, TypeError, OSError)
 PLAYWRIGHT_API_EXCEPTIONS = (PlaywrightError, PlaywrightTimeoutError, RuntimeError, ValueError, TypeError, OSError)
 LINEUP_PARSE_EXCEPTIONS = (json.JSONDecodeError, TypeError, ValueError, KeyError, IndexError)
 PREVIEW_CRAWL_EXCEPTIONS = (*HTTP_API_EXCEPTIONS, *PLAYWRIGHT_API_EXCEPTIONS)
 HOME_LINEUP_ROW_INDEX = 3
 AWAY_LINEUP_ROW_INDEX = 4
 MIN_LINEUP_GRID_CELLS = 3
+
+PREVIEW_CRAWLER_NAME = "preview"
+PREVIEW_TARGET_TYPE = "preview_date"
+PREVIEW_PARSER_VERSION = "preview-v1"
 
 
 class PreviewCrawler(BasePlaywrightCrawler):
@@ -55,6 +66,7 @@ class PreviewCrawler(BasePlaywrightCrawler):
         request_delay: float = 1.0,
         pool: AsyncPlaywrightPool | None = None,
         policy: RequestPolicy | None = None,
+        http_client: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize PreviewCrawler.
 
@@ -62,9 +74,20 @@ class PreviewCrawler(BasePlaywrightCrawler):
             request_delay: Request Delay.
             pool: Connection pool for async operations.
             policy: Optional request policy.
+            http_client: Governed transport used for direct API requests. Tests
+                may inject a client backed by a mock transport.
 
         """
         super().__init__(request_delay=request_delay, pool=pool, policy=policy or RequestPolicy())
+        self._http = http_client or CrawlerHttpClient(
+            name="preview_crawler",
+            policy=HttpPolicy(
+                base_delay_seconds=request_delay,
+                timeout_seconds=30.0,
+                max_attempts=max(1, self.policy.max_retries),
+            ),
+            headers=dict(self.BASE_HEADERS),
+        )
 
     @staticmethod
     def _coerce_api_payload(payload: object) -> object | None:
@@ -303,18 +326,20 @@ class PreviewCrawler(BasePlaywrightCrawler):
 
         headers["Referer"] = referer
 
-        # 1) Direct API call.
+        # 1) Direct API call through the shared transport. Its result is typed,
+        # so an empty but valid response remains distinct from a failed request.
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await self.policy.run_with_retry_async(
-                    client.post,
+            result = await self._http.post_json(url, data=form, headers=headers)
+            if result.outcome is CrawlOutcome.EMPTY:
+                return []
+            if not result.ok:
+                logger.warning(
+                    "HTTP API call failed for %s: %s",
                     url,
-                    data=form,
-                    headers=headers,
-                    follow_redirects=True,
+                    result.error_code or result.outcome.value,
                 )
-                response.raise_for_status()
-                payload = PreviewCrawler._coerce_api_payload(response.json())
+            else:
+                payload = PreviewCrawler._coerce_api_payload(result.data)
                 if isinstance(payload, (dict, list)):
                     return payload
                 logger.warning("⚠️ Unexpected response type from %s: %s", url, type(payload).__name__)
@@ -342,10 +367,128 @@ class PreviewCrawler(BasePlaywrightCrawler):
             logger.exception("⚠️ Playwright API call failed for %s", url)
         return None
 
+    async def run(
+        self,
+        game_date: str,
+        *,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Crawl one date's pregame data under a tracked run.
+
+        The unit of work is a date: the batch asks for every game on a day, so a
+        date that yields nothing is a legitimate answer and a date that could
+        not be obtained at all is what the dead letter queue is for.
+
+        Persistence stays with the caller. ``daily_preview_batch`` owns the write
+        because it also writes the manifest and decides which previews are
+        storable, so this records what was read and leaves ``records_written``
+        to the owner.
+
+        Args:
+            game_date: Target date as ``YYYYMMDD``.
+            run_spec: Optional pre-built ledger spec (replay supplies one).
+            record_dead_letters: Whether an unresolved date enqueues a DLQ entry.
+
+        Returns:
+            The pregame documents for the date, or an empty list when it failed.
+
+        """
+        spec = run_spec or CrawlRunSpec(
+            crawler=PREVIEW_CRAWLER_NAME,
+            target_type=PREVIEW_TARGET_TYPE,
+            target_id=game_date,
+            game_id=game_date,
+            source_url=self.GAME_LIST_URL,
+            parser_version=PREVIEW_PARSER_VERSION,
+        )
+
+        with track_crawl_run(spec) as run:
+            previews = await self.crawl_preview_for_date(game_date)
+            run.records_read = len(previews)
+            run.checkpoint = {"game_date": game_date, "previews": len(previews)}
+
+            if not previews and not await self._date_is_confirmed_empty(game_date):
+                failed = CrawlResult.failure(
+                    CrawlOutcome.RETRYABLE_ERROR,
+                    error=f"no preview data obtained for {game_date}",
+                    error_code=FailureCode.FETCH_HTTP_ERROR.value,
+                    url=self.GAME_LIST_URL,
+                )
+                run.status = RUN_STATUS_FAILED
+                run.error_code = failed.error_code
+                run.error_message = failed.error
+                if record_dead_letters:
+                    self._enqueue_dead_letter(run.run_id, game_date, failed)
+                return []
+
+            return previews
+
+    async def _date_is_confirmed_empty(self, game_date: str) -> bool:
+        """Return whether the date genuinely holds no games to preview.
+
+        An empty result is the normal state before first pitch, so it must not
+        be recorded as a failure. An empty result is also what an unreadable
+        page produces, so the two are told apart by the game's own list: a day
+        with no games is confirmed empty, and a day whose games were listed but
+        whose pregame data could not be read is not.
+
+        Read without the fallback chain, so a compliance block or an
+        unreachable host reads as "cannot confirm" rather than as a quiet day.
+
+        Args:
+            game_date: Target date as ``YYYYMMDD``.
+
+        Returns:
+            Whether the date is confirmed to hold no games.
+
+        """
+        if not await compliance.is_allowed(self.GAME_LIST_URL):
+            return False
+        try:
+            payload = await self._http.post_json(
+                self.GAME_LIST_URL,
+                data={"leId": "1", "srId": "0,1,3,4,5,7,9", "date": game_date},
+                headers={**self.BASE_HEADERS, "Referer": self.BASE_REFERER},
+            )
+        except PREVIEW_CRAWL_EXCEPTIONS:
+            logger.exception("[PREVIEW] Could not confirm an empty date for %s", game_date)
+            return False
+        if not payload.ok:
+            logger.info("[PREVIEW] Empty date for %s is unconfirmed: %s", game_date, payload.error)
+            return False
+        return not PreviewCrawler._extract_list_payload(payload.data)
+
+    def _enqueue_dead_letter(self, original_run_id: str, game_date: str, result: CrawlResult[Any]) -> None:
+        """Enqueue one dead letter for a date whose pregame data is missing."""
+        error_code = result.error_code or FailureCode.UNKNOWN.value
+        try:
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=original_run_id,
+                    crawler=PREVIEW_CRAWLER_NAME,
+                    target_type=PREVIEW_TARGET_TYPE,
+                    # The date is the replay unit, so it is the target identity.
+                    target_id=game_date,
+                    game_id=game_date,
+                    source_url=result.url or self.GAME_LIST_URL,
+                    # Derived from the code, never supplied beside it.
+                    failure_stage=stage_for_code(error_code).value,
+                    error_code=error_code,
+                    error_message=result.error,
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to enqueue preview dead letter for %s", game_date)
+
     async def crawl_preview_for_date(self, game_date: str) -> list[dict[str, Any]]:
         """주어진 날짜(game_date: 'YYYYMMDD')의 모든 경기에 대해.
 
         선발투수와 선발 라인업(발표되었을 경우) 정보를 수집합니다.
+
+        Returns an empty list both for a date with nothing to preview and for a
+        date that could not be read. `run` is what tells those apart, and this
+        stays a plain fetch so its callers are unaffected.
 
         Args:
             game_date: Game Date.
