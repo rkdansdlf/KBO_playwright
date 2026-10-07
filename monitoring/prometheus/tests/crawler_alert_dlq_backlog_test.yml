@@ -1,0 +1,66 @@
+# Rule-level tests for KboDlqBacklogAgeHigh in monitoring/prometheus/alert_rules_crawler.yml.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_dlq_backlog_test.yml
+#
+# Separate from crawler_alert_dlq_test.yml because `for: 30m` is only reachable
+# on a coarse evaluation interval. promtool has no per-test
+# `evaluation_interval`, so a rule whose `for` is longer than the file-level
+# interval cannot mature inside the file's own tests -- KboDlqRecoveryStalled
+# (`for: 1m`) and this rule need separate fixtures. Same reason the existing
+# freshness and write-drop rules each have their own.
+#
+# Every series extends well past its evaluation time on purpose: Prometheus
+# drops a sample once it falls outside the lookback window, so a series that
+# stops at the evaluation point reads as absent and the rule never fires.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 30m
+
+tests:
+  # Past the threshold, held long enough for `for: 30m` to mature.
+  - interval: 30m
+    input_series:
+      # 90000s, not 86400: the rule is `> 86400`, so a letter exactly a day old
+      # does not fire. Keeping the fixture off that boundary means the firing
+      # test asserts the rule rather than the strict-inequality edge.
+      - series: 'kbo_crawl_dlq_oldest_due_age_seconds'
+        values: '90000x10'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KboDlqBacklogAgeHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "크롤링 실패 회수 대기 열화: 최장 1d 1h 0m 0s"
+              description: >-
+                가장 오래된 대기 중 dead letter가 1d 1h 0m 0s 동안 회수되지 않았습니다.
+                10분 주기 재시도가 큐를 따라가지 못하는 상태일 수 있습니다.
+                `python3 -m src.cli.kbo dlq stats` 로 백로그를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # The boundary itself. `> 86400` is false at exactly 86400, so a letter one
+  # day overdue stays quiet -- asserted rather than assumed, because the rule
+  # uses a strict inequality on purpose.
+  - interval: 30m
+    input_series:
+      - series: 'kbo_crawl_dlq_oldest_due_age_seconds'
+        values: '86400x10'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KboDlqBacklogAgeHigh
+        exp_alerts: []
+
+  # Comfortably under. A letter a few hours overdue is normal backlog: the
+  # backoff schedule runs 60s/300s/900s/3600s across a five-attempt budget, so
+  # hours of age is the queue working, not falling behind.
+  - interval: 30m
+    input_series:
+      - series: 'kbo_crawl_dlq_oldest_due_age_seconds'
+        values: '7200x10'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KboDlqBacklogAgeHigh
+        exp_alerts: []

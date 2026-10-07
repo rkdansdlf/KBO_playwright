@@ -67,6 +67,41 @@ groups:
           summary: "크롤러 쓰기 급감: {{ $labels.crawler }}"
           description: "{{ $labels.crawler }} 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."
 
+      # ── Sustained partial ────────────────────────────────────────────
+      # The two rules above cannot see this one, and that is the point of it.
+      # `partial` is in SUCCESS_STATUSES, so a crawler that partially fails
+      # every day keeps advancing `kbo_crawl_last_success_timestamp` and stays
+      # healthy for KboCrawlerNoRecentSuccess; and "one source of three quietly
+      # fails" keeps writing through the other two, so the write-drop rule
+      # stays healthy too. What is left is the outcome mix: runs landed, and
+      # none of them completed (BUG-001).
+      #
+      # `unless` rather than `== 0` on the success side is deliberate. A
+      # crawler that has never recorded a success has no success series at all,
+      # and `increase()` over a missing series yields no sample to compare --
+      # the longest-running degradation would be exactly the case the rule
+      # stays silent for. `unless` drops the partial only when a success
+      # sample actually exists.
+      #
+      # The 24h window follows the daily pipeline cadence (03:00-06:45 KST),
+      # the same schedule-derived choice as KboDlqBacklogAgeHigh. It also gives
+      # a daily crawler one full cycle of grace: after a single partial day,
+      # yesterday's success is still inside the window and nothing pages. No
+      # production sample was available when this rule was written (BUG-001);
+      # re-measure before treating the window as calibrated.
+      - alert: KboCrawlerSustainedPartial
+        expr: |
+          (sum by (crawler) (increase(kbo_crawl_runs_total{status="partial"}[24h])) > 0)
+          unless on (crawler)
+          (sum by (crawler) (increase(kbo_crawl_runs_total{status="success"}[24h])) > 0)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤러 지속 부분 성공: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 은(는) 24시간 동안 완전 성공 없이 partial 실행만 기록했습니다. 일부 소스만 실패하는 저하가 이어지고 있을 수 있으니 소스별 결과와 DLQ를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
       # ── Ledger lifecycle failure ─────────────────────────────────────
       # A crawl can fail cleanly and still leave nothing behind. If the run row
       # was never opened, or its terminal transition was never committed, the
@@ -100,3 +135,60 @@ groups:
         annotations:
           summary: "크롤링 원장 기록 지속 실패: {{ $labels.crawler }} ({{ $labels.operation }})"
           description: "{{ $labels.crawler }} 의 {{ $labels.operation }} 단계가 최근 1시간 동안 {{ $value }}회 실패했습니다. DB 연결과 원장 쓰기 경로를 확인하세요."
+
+      # ── Dead letter recovery stalled ────────────────────────────────
+      # `kbo_crawl_failures_total` reports that a crawl failed. It says nothing
+      # about whether the failure was ever *recovered*, which is the whole point
+      # of the dead letter queue: a letter is enqueued, a worker retries it, and
+      # the letter resolves.
+      #
+      # A letter stranded in `retrying` means the worker claimed it and then the
+      # process died mid-replay -- the state is transient by design, so it is
+      # only meaningful once it has outlived the staleness cutoff
+      # (DLQ_STALE_RETRYING_SECONDS, default 1800s). `crawl_dead_letter_recovery`
+      # exists to reconcile exactly this condition, every 30 minutes.
+      #
+      # The threshold is `> 0` rather than a rate or a count because every other
+      # rule in this file is about volume, and volume is the wrong question here.
+      # One stuck letter is already a stopped recovery: there is no healthy
+      # amount of stranded work. A rate-based threshold would need a baseline to
+      # compare against, and the baseline for "letters per run" is the variable
+      # being investigated.
+      #
+      # `for: 1m` matches KBODatabaseUnavailable. It is not a debounce -- it is
+      # there so a scheduler restart, which briefly leaves the gauge stale from
+      # the previous process, cannot page someone on the way back up.
+      - alert: KboDlqRecoveryStalled
+        expr: kbo_crawl_dlq_stale_retrying_letters > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "크롤링 실패 복구 정체: {{ $value }}건이 retrying에 묶임"
+          description: "{{ $value }}건의 dead letter가 DLQ_STALE_RETRYING_SECONDS(기본 1800초)를 넘겨 retrying 상태에 있습니다. replay 중 프로세스가 종료되었을 수 있습니다. `python3 -m src.cli.kbo dlq list --status retrying` 로 확인하고, `crawl_dead_letter_recovery` 잡이 실행 중인지 점검하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # ── Worker backlog age ──────────────────────────────────────────
+      # Distinct from the stall above: the worker may be running perfectly while
+      # the queue simply grows faster than one retry per 10 minutes can drain it.
+      # That is a throughput problem, not a crash, and the two need different
+      # responses -- so this reads the oldest due letter's age instead of the
+      # stranded count.
+      #
+      # The threshold is 24h because a letter is worth retrying for days: the
+      # backoff schedule runs 60s/300s/900s/3600s across a five-attempt budget,
+      # so a letter being a day overdue is normal backlog, while a week overdue
+      # means the drain is not keeping up. This value was chosen from the retry
+      # schedule rather than from observed production data -- no production
+      # sample was available when the rule was written (BUG-002). Re-measure
+      # `kbo_crawl_dlq_oldest_due_age_seconds` over a real week before treating
+      # this number as calibrated.
+      - alert: KboDlqBacklogAgeHigh
+        expr: kbo_crawl_dlq_oldest_due_age_seconds > 86400
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤링 실패 회수 대기 열화: 최장 {{ $value | humanizeDuration }}"
+          description: "가장 오래된 대기 중 dead letter가 {{ $value | humanizeDuration }} 동안 회수되지 않았습니다. 10분 주기 재시도가 큐를 따라가지 못하는 상태일 수 있습니다. `python3 -m src.cli.kbo dlq stats` 로 백로그를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
