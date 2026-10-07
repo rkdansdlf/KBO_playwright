@@ -48,11 +48,14 @@ SYMBOLS: dict[str, str] = {
 }
 
 #: The five handlers this change registered, with the unit each letter names.
+#: The team codes are real entries of each crawler's source table: an unknown
+#: code is refused now, so a placeholder here would exercise the refusal path
+#: instead of the contract this file is about.
 PHASE_I: tuple[tuple[str, str], ...] = (
-    ("food", "OB"),
-    ("parking", "OB"),
+    ("food", "LT"),
+    ("parking", "LG"),
     ("team_history", "history"),
-    ("kbo_event", "main"),
+    ("kbo_event", "one"),
     ("player_movement", "2026"),
 )
 
@@ -154,7 +157,7 @@ class TestARetryNeverQueuesAnotherLetter:
     def test_the_earlier_handlers_obey_it_too(self, factory: sessionmaker) -> None:
         """The refactor into shared helpers did not soften the Phase B handlers."""
         _record_run(factory, status="success")
-        _, cls = _replay("awards", "wikipedia")
+        _, cls = _replay("awards", dispatcher_mod.WIKI_SOURCE_KEY)
 
         assert cls.return_value.run.await_args.kwargs["record_dead_letters"] is False
 
@@ -185,17 +188,17 @@ class TestAReplayActuallyStoresWhatItFetches:
 class TestAReplayAimsAtTheFailingUnit:
     """The letter names one unit. Re-crawling more than that spends goodwill."""
 
-    @pytest.mark.parametrize("crawler", ["food", "parking"])
-    def test_a_stadium_replay_asks_for_one_team(self, factory: sessionmaker, crawler: str) -> None:
+    @pytest.mark.parametrize(("crawler", "team"), [("food", "LT"), ("parking", "LG")])
+    def test_a_stadium_replay_asks_for_one_team(self, factory: sessionmaker, crawler: str, team: str) -> None:
         _record_run(factory, status="success")
-        _, cls = _replay(crawler, "OB")
+        _, cls = _replay(crawler, team)
 
-        assert cls.return_value.run.await_args.kwargs["team_filter"] == "OB"
+        assert cls.return_value.run.await_args.kwargs["team_filter"] == team
 
     def test_an_event_replay_asks_for_one_page(self, factory: sessionmaker) -> None:
         """Handing the letter's URL back as `base_url` narrows the sweep to it."""
         _record_run(factory, status="success")
-        _, cls = _replay("kbo_event", "main")
+        _, cls = _replay("kbo_event", "one")
 
         assert cls.call_args.kwargs["base_url"] == "https://www.koreabaseball.com/one"
 
@@ -221,7 +224,7 @@ class TestTheStoredRunIsTheVerdict:
     )
     def test_the_run_status_decides(self, factory: sessionmaker, status: str, success: bool) -> None:
         _record_run(factory, status=status)
-        outcome, _ = _replay("food", "OB")
+        outcome, _ = _replay("food", "LT")
 
         assert outcome.success is success
         assert outcome.status == status
@@ -240,10 +243,10 @@ class TestTheStoredRunIsTheVerdict:
             cls.return_value.run = AsyncMock(side_effect=RuntimeError("crashed after the write"))
 
             with pytest.raises(RuntimeError):
-                handler(_letter_for("food", "OB"), RUN_B)
+                handler(_letter_for("food", "LT"), RUN_B)
 
     def test_a_run_that_was_never_recorded_is_not_a_success(self, factory: sessionmaker) -> None:
-        outcome, _ = _replay("food", "OB", "RUN-never-written")
+        outcome, _ = _replay("food", "LT", "RUN-never-written")
 
         assert outcome.success is False
         assert outcome.status == "missing"
