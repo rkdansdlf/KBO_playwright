@@ -25,7 +25,7 @@ from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.crawl_execution_repository import CrawlRunSpec
-from src.repositories.parking_lot_repository import ParkingLotRepository
+from src.repositories.parking_lot_repository import ParkingFeeKindRepository, ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.crawl_run_service import track_crawl_run
@@ -372,21 +372,35 @@ class ParkingCrawler(BaseHttpCrawler):
     def _save_team(self, team_code: str, entries: list[dict]) -> bool:
         """Write one team's lots, returning whether they committed.
 
-        The parsed fee rules are deliberately not written. They are keyed by fee
-        kind -- 기본/추가/일일/행사 -- while ``parking_fee_rules`` is keyed by
-        vehicle class (``compact``/``sedan``/``van``/``bus``) and requires a
-        non-null base duration. The stadium pages state neither, so filling those
-        columns would mean inventing them, and writing the kinds into
-        ``vehicle_type`` would put a fabricated vehicle class in a column a real
-        one later keys on. The fee text stays in the raw snapshot, which is
-        committed ahead of these rows and can be re-parsed by
-        ``kbo snapshot replay`` whenever the schema grows a kind that fits.
+        The fee kinds (기본/추가/일일/행사/경기/무료) are written to
+        ``parking_fee_kinds`` -- the column set the stadium pages actually state.
+        They are *not* written to ``parking_fee_rules``, which is keyed by vehicle
+        class (``compact``/``sedan``/``van``/``bus``) and requires a non-null base
+        duration the source never states; putting a kind into that table would
+        fabricate a vehicle class in a column real data later keys on.
+
+        Args:
+            team_code: Team whose entries are being written.
+            entries: Parsed lot entries for this team.
+
+        Returns:
+            True when the team's transaction committed.
+
         """
         try:
             with SessionLocal() as session:
                 lot_repo = ParkingLotRepository(session)
+                kind_repo = ParkingFeeKindRepository(session)
                 for entry in entries:
-                    lot_repo.save(entry["lot"])
+                    lot = lot_repo.save(entry["lot"])
+                    for fee in entry.get("fee_rules", []):
+                        kind_repo.save(
+                            {
+                                "parking_lot_id": lot.id,
+                                "fee_kind": fee["label"],
+                                "amount_krw": fee["amount"],
+                            },
+                        )
                 session.commit()
         except PARKING_SAVE_EXCEPTIONS as exc:
             self._record_persist_failure(team_code, exc)
