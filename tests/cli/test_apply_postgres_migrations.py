@@ -11,6 +11,7 @@ from src.cli.apply_postgres_migrations import (
     adopt_existing_schema,
     apply_migrations,
     main,
+    split_sql_statements,
 )
 
 
@@ -89,6 +90,80 @@ def test_postgres_migrations_require_baseline(tmp_path):
 
     with pytest.raises(RuntimeError, match="ORM baseline schema"):
         apply_migrations(create_engine("sqlite:///:memory:"), directory=tmp_path)
+
+
+class TestStatementSplitting:
+    """Splitting on ``;`` alone cuts migrations in the wrong place.
+
+    Regression for the production failure behind ``split_sql_statements``: a
+    header comment carrying a ``;`` made the naive split emit a comment-only
+    chunk and weld the rest of that comment onto the next statement. A
+    comment-only chunk reaching Postgres is an empty query, so the table was
+    created while the version row was never written -- schema and bookkeeping
+    left disagreeing, with nothing in the output to say which half happened.
+    """
+
+    def test_a_comment_only_leading_chunk_is_dropped(self) -> None:
+        source = "-- header; with a semicolon inside it\nCREATE TABLE t (id INT);\n"
+
+        assert split_sql_statements(source) == ["-- header; with a semicolon inside it\nCREATE TABLE t (id INT)"]
+
+    def test_a_trailing_comment_without_a_terminator_is_dropped(self) -> None:
+        assert split_sql_statements("CREATE TABLE t (id INT);\n-- trailing note") == ["CREATE TABLE t (id INT)"]
+
+    def test_a_semicolon_inside_a_string_literal_does_not_split(self) -> None:
+        statements = split_sql_statements("INSERT INTO t VALUES ('a;b');\nSELECT 1;\n")
+
+        assert statements == ["INSERT INTO t VALUES ('a;b')", "SELECT 1"]
+
+    def test_an_escaped_quote_does_not_end_the_literal(self) -> None:
+        statements = split_sql_statements("INSERT INTO t VALUES ('it''s; fine');\n")
+
+        assert statements == ["INSERT INTO t VALUES ('it''s; fine')"]
+
+    def test_a_semicolon_inside_a_block_comment_does_not_split(self) -> None:
+        statements = split_sql_statements("/* a; b */\nCREATE TABLE t (id INT);\n")
+
+        assert statements == ["/* a; b */\nCREATE TABLE t (id INT)"]
+
+    def test_a_migration_whose_header_comment_holds_a_semicolon_still_applies_and_records(self, tmp_path) -> None:
+        """The version row is the ledger; a header comment must not cost it."""
+        migration = tmp_path / "060_parking_fee_kinds.sql"
+        migration.write_text(
+            "-- these kinds never had a table of their own; they lived only in raw text\n"
+            "CREATE TABLE parking_fee_kinds (id INTEGER PRIMARY KEY);\n"
+            "CREATE INDEX idx_parking_fee_kinds_lot ON parking_fee_kinds(id);\n",
+            encoding="utf-8",
+        )
+        engine = create_engine("sqlite:///:memory:")
+        _create_baseline(engine)
+
+        assert apply_migrations(engine, directory=tmp_path) == ["060_parking_fee_kinds.sql"]
+        assert apply_migrations(engine, directory=tmp_path) == []
+
+        inspector = inspect(engine)
+        assert inspector.has_table("parking_fee_kinds")
+        indexes = inspector.get_indexes("parking_fee_kinds")
+        assert [index["name"] for index in indexes] == ["idx_parking_fee_kinds_lot"]
+        assert indexes[0]["column_names"] == ["id"]
+
+
+def test_every_postgres_and_sqlite_migration_splits_into_executable_statements() -> None:
+    """No shipped migration may reach the splitter as comments only.
+
+    A comment-only chunk is dropped rather than sent, so a migration that is
+    *entirely* comments would apply as nothing while still recording a version.
+    That is the same silent half-apply this splitter exists to prevent.
+    """
+    from src.cli.apply_postgres_migrations import MIGRATION_DIR
+
+    for dialect in ("postgresql", "sqlite"):
+        for path in sorted((MIGRATION_DIR.parent / dialect).glob("*.sql")):
+            statements = split_sql_statements(path.read_text(encoding="utf-8"))
+            assert statements, f"{dialect}/{path.name} split into nothing"
+            for statement in statements:
+                code = [line for line in statement.splitlines() if line.strip() and not line.strip().startswith("--")]
+                assert code, f"{dialect}/{path.name} produced a comment-only statement"
 
 
 def test_adopt_existing_schema_records_current_baseline_without_running_sql() -> None:
