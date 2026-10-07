@@ -45,6 +45,10 @@ class CrawlRunSpec:
     snapshot_id: int | None = None
     evidence_id: int | None = None
     run_id: str | None = None
+    #: Which subsystem started this run, from :class:`CrawlRunOrigin`. Left
+    #: ``None`` when the caller does not identify itself, which is honest for a
+    #: row that predates this field and for a caller nobody classified yet.
+    origin: str | None = None
 
 
 class CrawlExecutionRepository:
@@ -72,6 +76,7 @@ class CrawlExecutionRepository:
             replay_of_run_id=spec.replay_of_run_id,
             snapshot_id=spec.snapshot_id,
             evidence_id=spec.evidence_id,
+            origin=spec.origin,
         )
         self.session.add(run)
         self.session.flush()

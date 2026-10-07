@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.crawlers.failure_taxonomy import FailureCode
+from src.crawlers.run_origin import CrawlRunOrigin
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED
 from src.parsers.registry import get_parser
@@ -431,6 +432,7 @@ def record_snapshot_replay(
         target_id=parsed.source_key,
         snapshot_id=parsed.snapshot_id,
         parser_version=parsed.parser_version,
+        origin=CrawlRunOrigin.REPLAY,
     )
     with track_crawl_run(spec, session_factory=factory) as run:
         run.records_read = parsed.parsed_count
