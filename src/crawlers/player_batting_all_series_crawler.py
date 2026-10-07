@@ -20,7 +20,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from playwright.sync_api import Browser, ElementHandle, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
@@ -29,6 +29,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.aggregators.season_stat_aggregator import SeasonStatAggregator
 from src.constants import KST
+from src.crawlers.season_series_outcome import (
+    SeriesRead,
+    SeriesReadRecorder,
+    SeriesStatus,
+    run_series_crawl,
+)
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameBattingStat
 from src.models.player import PlayerBasic
@@ -44,6 +50,9 @@ from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT, retry_navigatio
 from src.utils.request_policy import RequestPolicy
 from src.utils.team_codes import resolve_team_code
 from src.utils.team_mapping import get_team_code, get_team_mapping_for_year
+
+if TYPE_CHECKING:
+    from src.repositories.crawl_execution_repository import CrawlRunSpec
 
 logger = logging.getLogger(__name__)
 
@@ -1218,6 +1227,25 @@ class BattingSeriesExecutionContext:
     policy: RequestPolicy
     unique_players: set[int | tuple[int, str | None]]
     all_players_data: list[dict]
+    #: Where the crawl reports an outcome the runner cannot infer from the rows.
+    recorder: SeriesReadRecorder | None = None
+
+
+def _report_series_fallback(ctx: BattingSeriesExecutionContext, reason_key: str) -> None:
+    """Report a fallback whose cause is only known here.
+
+    The fallback helper fetches rows; why they were needed is the caller's
+    knowledge, so the classification is made where the cause is visible rather
+    than threaded through the helper as another argument.
+    """
+    if ctx.recorder is not None:
+        ctx.recorder(
+            SeriesRead(
+                status=SeriesStatus.FALLBACK,
+                reason=reason_key,
+                rows=len(ctx.all_players_data),
+            ),
+        )
 
 
 def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
@@ -1242,6 +1270,7 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
                 "KBO robots.txt blocked",
                 save_to_db=False,
             )
+            _report_series_fallback(ctx, "compliance_blocked")
             return ctx.all_players_data
 
         ctx.policy.delay(host="www.koreabaseball.com")
@@ -1253,7 +1282,13 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
         except CRAWLER_EXCEPTIONS as e:
             reason = f"Season/Series selection error: {e}"
             logger.exception("Season/Series selection error, falling back to DB aggregation")
-            ctx.all_players_data = _handle_batting_fallback(ctx.year, ctx.series_key, reason, save_to_db=False)
+            ctx.all_players_data = _handle_batting_fallback(
+                ctx.year,
+                ctx.series_key,
+                reason,
+                save_to_db=False,
+            )
+            _report_series_fallback(ctx, "season_series_selection_failed")
             return ctx.all_players_data
 
         team_options = _get_team_options(page, by_team=ctx.by_team)
@@ -1279,6 +1314,11 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
 
     except DB_SAVE_EXCEPTIONS:
         logger.exception("❌ 크롤링 중 오류")
+        if ctx.recorder is not None and not ctx.all_players_data:
+            # The broad catch above turns a raised crawl into "no rows", which is
+            # also what a season that has not started returns. Saying so here is
+            # what keeps the two apart for the ledger.
+            ctx.recorder(SeriesRead(status=SeriesStatus.FAILED, reason="crawl_error", rows=0))
 
     finally:
         context.close()
@@ -1286,11 +1326,16 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
     return ctx.all_players_data
 
 
-def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]:
+def crawl_series_batting_stats(
+    request: BattingSeriesCrawlRequest,
+    *,
+    recorder: SeriesReadRecorder | None = None,
+) -> list[dict]:
     """특정 시리즈의 타자 기록을 크롤링.
 
     Args:
         request: Selection and persistence settings.
+        recorder: Where an outcome the rows cannot express is reported.
 
     Returns:
         수집된 타자 기록 리스트
@@ -1308,6 +1353,8 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
 
     if series_key not in series_mapping:
         logger.error("❌ 지원하지 않는 시리즈: %s", series_key)
+        if recorder is not None:
+            recorder(SeriesRead(status=SeriesStatus.FAILED, reason="crawl_error", rows=0))
         return []
 
     series_info = series_mapping[series_key]
@@ -1328,6 +1375,7 @@ def crawl_series_batting_stats(request: BattingSeriesCrawlRequest) -> list[dict]
         policy=policy,
         unique_players=unique_players,
         all_players_data=all_players_data,
+        recorder=recorder,
     )
 
     if request.browser is not None:
@@ -1366,6 +1414,56 @@ def _save_batting_if_needed(all_players_data: list[dict], *, save_to_db: bool) -
             logger.info("✅ 타자 데이터 저장 완료: %s명", saved_count)
         except DB_SAVE_EXCEPTIONS:
             logger.exception("❌ 타자 데이터 저장 실패")
+
+
+BATTING_SERIES_CRAWLER_NAME = "player_batting_all_series"
+BATTING_SERIES_TARGET_TYPE = "player_season_series"
+BATTING_SERIES_PARSER_VERSION = "batting-all-series-v1"
+#: Faults the tracked run records instead of propagating. An unknown series key
+#: is deliberately absent: that is the caller's mistake and raising it is right.
+BATTING_SERIES_FAILURE_EXCEPTIONS = (*CRAWLER_EXCEPTIONS, SQLAlchemyError)
+
+
+def run_batting_series(
+    request: BattingSeriesCrawlRequest,
+    *,
+    run_spec: CrawlRunSpec | None = None,
+    record_dead_letters: bool = True,
+) -> list[dict]:
+    """Crawl one season and series under a tracked run.
+
+    The unit of work is the season-and-series pair, because that is what the page
+    asks for and what a replay has to name to reproduce it. The crawl drives a
+    browser synchronously, so this is a plain function rather than a coroutine:
+    ``sync_playwright`` refuses to run inside an event loop, and the callers
+    already reach it through ``asyncio.to_thread``.
+
+    Args:
+        request: Selection and persistence settings.
+        run_spec: Optional pre-built ledger spec (replay supplies one).
+        record_dead_letters: Whether an unresolved series enqueues a DLQ entry.
+
+    Returns:
+        The rows the crawl produced, from the page or from its fallback.
+
+    """
+    year = request.year or datetime.now(KST).year
+
+    def crawl(recorder: SeriesReadRecorder) -> list[dict]:
+        return crawl_series_batting_stats(request, recorder=recorder)
+
+    return run_series_crawl(
+        crawl=crawl,
+        crawler=BATTING_SERIES_CRAWLER_NAME,
+        target_type=BATTING_SERIES_TARGET_TYPE,
+        year=year,
+        series_key=request.series_key,
+        source_url=HITTER_BASIC1,
+        exceptions=BATTING_SERIES_FAILURE_EXCEPTIONS,
+        parser_version=BATTING_SERIES_PARSER_VERSION,
+        run_spec=run_spec,
+        record_dead_letters=record_dead_letters,
+    )
 
 
 def crawl_all_series(

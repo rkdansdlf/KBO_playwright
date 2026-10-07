@@ -84,3 +84,15 @@ class TestFailureCarriesTheCode:
         result = CrawlResult.failure(CrawlOutcome.PERMANENT_ERROR, error="nope")
 
         assert result.to_dict()["error_code"] is None
+
+    def test_content_type_is_preserved_without_serializing_response_headers(self):
+        result = CrawlResult.success(
+            "payload",
+            http_status=200,
+            url="https://example.test/data",
+            content_type="application/json; charset=utf-8",
+        )
+
+        assert result.content_type == "application/json; charset=utf-8"
+        assert result.to_dict()["content_type"] == "application/json; charset=utf-8"
+        assert "headers" not in result.to_dict()

@@ -113,6 +113,91 @@ Decision guide:
 | `exhausted`/`pending`, root cause permanent (removed page, retired player) | `ignore --reason … --apply` |
 | `retrying` and stale (older than `DLQ_STALE_RETRYING_SECONDS`) | recovery job finalizes it; re-check `dlq stats` after the next 30-min tick |
 
+### 3.2b DLQ alerting
+
+Two Prometheus rules cover the queue. Both live in
+`monitoring/prometheus/alert_rules_crawler.yml` and read the gauges
+`publish_dlq_state_metrics()` refreshes after each worker, recovery and operator
+batch.
+
+| Alert | Condition | Severity | First response |
+| --- | --- | --- | --- |
+| `KboDlqRecoveryStalled` | `kbo_crawl_dlq_stale_retrying_letters > 0` for 1m | critical | a letter outlived the staleness cutoff — recovery itself stopped. Check the `crawl_dead_letter_recovery` job ran, then `dlq list --status retrying` |
+| `KboDlqBacklogAgeHigh` | `kbo_crawl_dlq_oldest_due_age_seconds > 86400` for 30m | warning | the drain is not keeping up. `dlq stats` for queue depth, then raise the retry batch limit or fix the failing crawler |
+
+The two answer different questions and need different responses: a *stranded*
+letter means a worker died mid-replay, while an *aged* backlog means the worker
+is fine and the queue is growing faster than one pass per 10 minutes drains it.
+
+Thresholds, and what they are worth:
+
+- `> 0` for stranded letters is not a tunable. One stranded letter is already a
+  stopped recovery; there is no healthy amount of stranded work. A rate-based
+  threshold would need a baseline, and the baseline for this condition is the
+  thing being investigated.
+- The 24h backlog age was derived from the retry schedule
+  (`RETRY_SCHEDULE = (60, 300, 900, 3600)` across a 5-attempt budget), **not**
+  from production data — none was available when the rule was written (BUG-002).
+  Re-measure `kbo_crawl_dlq_oldest_due_age_seconds` over a real week before
+  treating it as calibrated.
+
+Three further DLQ series are exported and deliberately unread by any rule —
+`kbo_crawl_dlq_letters`, `..._due_letters`, `..._failures_total`,
+`..._retry_attempts_total`, `..._retry_outcomes_total`,
+`..._recovery_actions_total`. Each is registered as an exemption with a reason
+in `tests/monitoring/test_crawler_alert_rules_contract.py`, so adding a new
+unread DLQ series fails CI instead of joining the silent ones.
+
+Firing behaviour is asserted, not assumed:
+`monitoring/prometheus/tests/crawler_alert_dlq_test.yml` (30s interval, for the
+1m rule) and `crawler_alert_dlq_backlog_test.yml` (30m interval, for the 30m
+rule). Each has a firing case and quiet cases, including the exact-threshold
+boundary. Run either with:
+
+```bash
+promtool test rules monitoring/prometheus/tests/crawler_alert_dlq_test.yml
+```
+
+### 3.2c Sustained-partial alerting
+
+One rule covers the quietest failure mode in the crawl family: a crawler that
+keeps recording `partial` -- some sources failing while others succeed. It is
+quiet by construction for the other rules, because `partial` is in
+`SUCCESS_STATUSES` (it advances `kbo_crawl_last_success_timestamp`, so
+`KboCrawlerNoRecentSuccess` stays healthy) and the surviving sources keep
+writing (so `KboCrawlerWriteDrop` usually stays healthy). "One source of three
+quietly fails" is exactly that shape.
+
+| Alert | Condition | Severity | First response |
+| --- | --- | --- | --- |
+| `KboCrawlerSustainedPartial` | `increase(kbo_crawl_runs_total{status="partial"}[24h]) > 0` unless a success increased in the same window, for 30m | warning | a crawler landed runs but none completed. Check that crawler's per-source results; if it enqueues DLQ letters, `python3 -m src.cli.kbo dlq list --status pending` shows what is still failing |
+
+Why the shape is what it is:
+
+- The success side uses `unless`, not `== 0`: a crawler that has never recorded
+  a success has no success series, and `increase()` over a missing series yields
+  no sample to compare -- the longest-running degradation would be the one the
+  rule stays silent for.
+- The 24h window follows the daily pipeline cadence (03:00-06:45 KST), the same
+  schedule-derived choice as `KboDlqBacklogAgeHigh`. It also gives a daily
+  crawler one full cycle of grace: after a single partial day, yesterday's
+  success is still inside the window and nothing pages. No production sample was
+  available when the rule was written (BUG-001) -- re-measure before treating
+  the window as calibrated.
+- Dropping `partial` from `SUCCESS_STATUSES` was deliberately **not** done: it
+  would reclassify a working crawler as an outage and change the meaning of the
+  existing critical. The detection is an added warning instead (BUG-001 in
+  `Docs/certification/bug-hunt/BH0_CONTRACTS.md`).
+
+Firing behaviour is asserted, not assumed:
+`monitoring/prometheus/tests/crawler_alert_partial_test.yml` (1m interval, for
+the 30m rule) covers sustained partials firing, the missing-success-series case,
+the `for:` hold-back, and mixed/healthy staying quiet:
+
+```bash
+promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
+```
+
 ### 3.3 Retry policy
 
 `src/services/crawl_retry_policy.py`:

@@ -35,6 +35,7 @@ from src.crawlers.parking_crawler import (
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
+from src.models.parking_fee_kind import ParkingFeeKind
 from src.models.parking_fee_rule import ParkingFeeRule
 from src.models.parking_lot import ParkingLot
 from src.models.source_registry import DataSource, RawSourceSnapshot
@@ -185,7 +186,13 @@ def write_db(monkeypatch: pytest.MonkeyPatch, session_factory: sessionmaker) -> 
     databases that never coexisted.
     """
     engine = session_factory.kw["bind"]
-    for table in (DataSource.__table__, RawSourceSnapshot.__table__, ParkingLot.__table__, ParkingFeeRule.__table__):
+    for table in (
+        DataSource.__table__,
+        RawSourceSnapshot.__table__,
+        ParkingLot.__table__,
+        ParkingFeeRule.__table__,
+        ParkingFeeKind.__table__,
+    ):
         table.create(engine)
     monkeypatch.setattr("src.crawlers.parking_crawler.SessionLocal", session_factory)
     with session_factory() as session:

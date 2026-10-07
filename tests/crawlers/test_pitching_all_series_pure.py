@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.crawlers.season_series_outcome import SeriesReadRecorder, SeriesStatus
 from src.crawlers.player_pitching_all_series_crawler import (
     PitcherStats,
     PitchingSeriesCrawlRequest,
@@ -565,6 +566,7 @@ class TestPitchingPageParsers:
 
     def test_crawl_pitcher_series_uses_db_fallback_when_kbo_page_is_blocked(self):
         stats = PitcherStats(player_id=123, season=2025, league="REGULAR", player_name="홍길동")
+        recorder = SeriesReadRecorder()
 
         with (
             patch("src.crawlers.player_pitching_all_series_crawler.compliance.is_allowed_sync", return_value=False),
@@ -576,10 +578,18 @@ class TestPitchingPageParsers:
         ):
             result = crawl_pitcher_series(
                 PitchingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True),
+                recorder=recorder,
             )
 
         assert result == [stats]
-        fallback.assert_called_once_with(2025, "regular", "KBO robots.txt blocked", save_to_db=True)
+        assert fallback.call_args.args == (2025, "regular", "KBO robots.txt blocked")
+        assert fallback.call_args.kwargs["save_to_db"] is True
+        # The classification is made where the cause is visible, so the reason
+        # key is what tells a compliance skip from a page that failed to set up.
+        assert recorder.read is not None
+        assert recorder.read.status is SeriesStatus.FALLBACK
+        assert recorder.read.reason == "compliance_blocked"
+        assert recorder.read.rows == 1
         playwright.assert_not_called()
 
     def test_crawl_pitcher_series_rejects_unknown_series(self):

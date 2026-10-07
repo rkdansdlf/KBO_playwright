@@ -6,18 +6,22 @@ import argparse
 import logging
 import re
 from datetime import datetime, timedelta
-from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.db.engine import SessionLocal
 from src.repositories.game_mvp_repository import GameMvpRepository
 
+if TYPE_CHECKING:
+    from src.crawlers.result import CrawlResult
+
 logger = logging.getLogger(__name__)
 
+GAME_MVP_CRAWLER_NAME = "game_mvp_crawler"
 NAVER_API_URL = (
     "https://api-gw.sports.naver.com/news/articles/kbaseball?sort=latest&date={date}&page=1&pageSize=30&isPhoto=N"
 )
@@ -31,6 +35,32 @@ HEADERS = {
 
 class GameMvpCrawler:
     """GameMvpCrawler class."""
+
+    def __init__(self, http_client: CrawlerHttpClient | None = None) -> None:
+        """Initialize the crawler with its governed Naver transport.
+
+        Args:
+            http_client: Transport to use. Defaults to a client named for this
+                crawler. Tests inject a client backed by a mock transport.
+
+        """
+        self._http = http_client or CrawlerHttpClient(
+            name=GAME_MVP_CRAWLER_NAME,
+            policy=HttpPolicy(timeout_seconds=15.0),
+            headers=HEADERS,
+        )
+
+    async def _fetch_news_for_date(self, date_str: str) -> CrawlResult[Any]:
+        """Fetch one day's Naver news feed, classifying the outcome.
+
+        Args:
+            date_str: Date in the Naver API's ``YYYYMMDD`` format.
+
+        Returns:
+            The transport's classified result for that day.
+
+        """
+        return await self._http.fetch_json(NAVER_API_URL.format(date=date_str))
 
     async def run(self, game_ids: list[str] | None = None, *, save: bool = False) -> None:
         """Run run.
@@ -63,13 +93,16 @@ class GameMvpCrawler:
 
     async def _search_mvp_for_game(self, game_id: str) -> dict[str, Any] | None:
         date_str = game_id[:8]
-        url = NAVER_API_URL.format(date=date_str)
         try:
-            async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
-                resp = await client.get(url)
-            if resp.status_code != HTTPStatus.OK:
+            result = await self._fetch_news_for_date(date_str)
+            if not result.ok:
+                logger.warning(
+                    "Game MVP search failed for %s: %s",
+                    game_id,
+                    result.error_code or result.outcome.value,
+                )
                 return None
-            news_list = resp.json().get("result", {}).get("newsList", [])
+            news_list = result.data.get("result", {}).get("newsList", [])
             for article in news_list:
                 title = article.get("title", "")
                 text = title + " " + article.get("subContent", "")
@@ -92,36 +125,39 @@ class GameMvpCrawler:
     async def _fetch_recent_mvp_news(self) -> list[dict]:
         results = []
         today = datetime.now(KST)
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15) as client:
-            for days_ago in range(7):
-                date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
-                url = NAVER_API_URL.format(date=date_str)
-                try:
-                    resp = await client.get(url)
-                    if resp.status_code != HTTPStatus.OK:
+        for days_ago in range(7):
+            date_str = (today - timedelta(days=days_ago)).strftime("%Y%m%d")
+            try:
+                result = await self._fetch_news_for_date(date_str)
+                if not result.ok:
+                    logger.warning(
+                        "Game MVP news fetch failed for %s: %s",
+                        date_str,
+                        result.error_code or result.outcome.value,
+                    )
+                    continue
+                news_list = result.data.get("result", {}).get("newsList", [])
+                for article in news_list:
+                    title = article.get("title", "")
+                    if "MVP" not in title:
                         continue
-                    news_list = resp.json().get("result", {}).get("newsList", [])
-                    for article in news_list:
-                        title = article.get("title", "")
-                        if "MVP" not in title:
-                            continue
-                        player_name = GameMvpCrawler._parse_mvp_player(title)
-                        if not player_name:
-                            continue
-                        game_id_match = re.search(r"(\d{8})", title)
-                        game_id = game_id_match.group(1) if game_id_match else date_str + "0000"
-                        results.append(
-                            {
-                                "game_id": game_id,
-                                "player_name": player_name,
-                                "team_id": GameMvpCrawler._parse_mvp_team(title),
-                                "mvp_type": "GAME",
-                                "reason": title[:300],
-                                "award_source": "NAVER",
-                            },
-                        )
-                except (httpx.HTTPError, ValueError) as e:
-                    logger.warning("Game MVP news fetch failed: %s", e)
+                    player_name = GameMvpCrawler._parse_mvp_player(title)
+                    if not player_name:
+                        continue
+                    game_id_match = re.search(r"(\d{8})", title)
+                    game_id = game_id_match.group(1) if game_id_match else date_str + "0000"
+                    results.append(
+                        {
+                            "game_id": game_id,
+                            "player_name": player_name,
+                            "team_id": GameMvpCrawler._parse_mvp_team(title),
+                            "mvp_type": "GAME",
+                            "reason": title[:300],
+                            "award_source": "NAVER",
+                        },
+                    )
+            except (httpx.HTTPError, ValueError) as e:
+                logger.warning("Game MVP news fetch failed: %s", e)
         return results
 
     @staticmethod

@@ -11,16 +11,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, time
-from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import urlparse
 
-import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import KST
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.db.engine import SessionLocal
 from src.parsers.ticket_parser import parse_ticket_page
 from src.repositories.source_registry_repository import save_raw_snapshots
@@ -28,14 +26,15 @@ from src.repositories.ticket_open_rule_repository import TicketOpenRuleRepositor
 from src.repositories.ticket_price_repository import TicketPriceRepository
 from src.utils.compliance import compliance, log_source_limited
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
-from src.utils.throttle import throttle
 
 if TYPE_CHECKING:
+    from src.crawlers.result import CrawlResult
     from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
 TICKET_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
+TICKET_CRAWLER_NAME = "ticket_crawler"
 
 # Mapping of teams to their ticket platforms and stadiums
 TEAM_TICKET_INFO: dict[str, dict[str, Any]] = {
@@ -119,19 +118,35 @@ class TicketCrawler(BaseHttpCrawler):
         self,
         request_delay: float = 0.5,
         policy: RequestPolicy | None = None,
+        http_client: CrawlerHttpClient | None = None,
     ) -> None:
         """Initialize a new instance.
 
         Args:
             request_delay: Request delay in seconds.
             policy: Optional request policy.
+            http_client: Governed transport. Defaults to a client named for this
+                crawler. Tests inject a client backed by a mock transport.
 
         """
         super().__init__(request_delay=request_delay, policy=policy, default_headers=HEADERS)
+        # The three direct clients below all used a manual per-host wait but had
+        # no retry, redirect-target validation, circuit breaker or typed result.
+        # Keep their 15-second timeout and configured base delay while moving the
+        # request lifecycle into the shared client.
+        self._http = http_client or CrawlerHttpClient(
+            name=TICKET_CRAWLER_NAME,
+            policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
+            headers=HEADERS,
+        )
         self.kbo_ticket_url = "https://www.koreabaseball.com/Kbo/League/Map.aspx"
         self.current_season = datetime.now(KST).year
         self._raw_pages: list[dict] = []
         self._last_failure_reason: str | None = None
+
+    async def _fetch_page(self, url: str) -> CrawlResult[str]:
+        """Fetch one ticket page, classifying the outcome."""
+        return await self._http.fetch_text(url)
 
     def get_last_failure_reason(self) -> str | None:
         """Return the latest KBO source failure reason, if any."""
@@ -186,25 +201,19 @@ class TicketCrawler(BaseHttpCrawler):
             return []
         self._last_failure_reason = None
 
-        async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
-            try:
-                host = urlparse(self.kbo_ticket_url).hostname or "koreabaseball.com"
-                await throttle.wait(host)
-                resp = await client.get(self.kbo_ticket_url)
-                if resp.status_code != HTTPStatus.OK:
-                    return []
-                html = resp.text
-                self._raw_pages.append(
-                    {
-                        "source_key": "kbo_ticket_map",
-                        "url": self.kbo_ticket_url,
-                        "html": html,
-                        "status_code": resp.status_code,
-                    },
-                )
-            except httpx.HTTPError:
-                logger.exception("KBO ticket map fetch failed")
-                return []
+        result = await self._fetch_page(self.kbo_ticket_url)
+        if not result.ok:
+            logger.warning("KBO ticket map fetch failed: %s", result.error_code or result.outcome.value)
+            return []
+        html = result.data
+        self._raw_pages.append(
+            {
+                "source_key": "kbo_ticket_map",
+                "url": self.kbo_ticket_url,
+                "html": html,
+                "status_code": result.http_status,
+            },
+        )
 
         soup = BeautifulSoup(html, "html.parser")
         team_view = soup.find("ul", class_="teamView")
@@ -255,31 +264,26 @@ class TicketCrawler(BaseHttpCrawler):
             url = info.get("ticket_url")
             if not url:
                 continue
-            try:
-                async with httpx.AsyncClient(
-                    headers=HEADERS,
-                    timeout=15,
-                    follow_redirects=True,
-                ) as c:
-                    host = urlparse(url).hostname or "koreabaseball.com"
-                    await throttle.wait(host)
-                    resp = await c.get(url)
-                    if resp.status_code != HTTPStatus.OK:
-                        continue
-                    html = resp.text
-                    source_key = self.TICKET_SOURCE_KEY_MAP.get(team_code, "")
-                    self._raw_pages.append(
-                        {
-                            "source_key": source_key,
-                            "url": url,
-                            "html": html,
-                            "status_code": resp.status_code,
-                        },
-                    )
-                    prices = parse_ticket_page(html, source_key, {"season": self.current_season})
-                    all_prices.extend(prices)
-            except httpx.HTTPError:
-                logger.exception("Failed to crawl ticket page for %s", team_code)
+            result = await self._fetch_page(url)
+            if not result.ok:
+                logger.warning(
+                    "Failed to crawl ticket page for %s: %s",
+                    team_code,
+                    result.error_code or result.outcome.value,
+                )
+                continue
+            html = result.data
+            source_key = self.TICKET_SOURCE_KEY_MAP.get(team_code, "")
+            self._raw_pages.append(
+                {
+                    "source_key": source_key,
+                    "url": url,
+                    "html": html,
+                    "status_code": result.http_status,
+                },
+            )
+            prices = parse_ticket_page(html, source_key, {"season": self.current_season})
+            all_prices.extend(prices)
 
         return all_prices
 
@@ -290,25 +294,19 @@ class TicketCrawler(BaseHttpCrawler):
         if not url:
             return []
 
-        try:
-            async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as c:
-                host = urlparse(url).hostname or "koreabaseball.com"
-                await throttle.wait(host)
-                resp = await c.get(url)
-                if resp.status_code != HTTPStatus.OK:
-                    return []
-                html = resp.text
-                self._raw_pages.append(
-                    {
-                        "source_key": "lg_twins_ticket",
-                        "url": url,
-                        "html": html,
-                        "status_code": resp.status_code,
-                    },
-                )
-        except httpx.HTTPError:
-            logger.exception("LG ticket page fetch failed")
+        result = await self._fetch_page(url)
+        if not result.ok:
+            logger.warning("LG ticket page fetch failed: %s", result.error_code or result.outcome.value)
             return []
+        html = result.data
+        self._raw_pages.append(
+            {
+                "source_key": "lg_twins_ticket",
+                "url": url,
+                "html": html,
+                "status_code": result.http_status,
+            },
+        )
 
         return parse_ticket_page(html, "lg_twins_ticket", {"season": self.current_season})
 
