@@ -74,6 +74,7 @@ class TestDailyRosterCrawler:
         crawler._crawl_date = AsyncMock(return_value=[{"player_id": 1}])
         save_callback = MagicMock()
         monkeypatch.setattr("src.crawlers.daily_roster_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+        monkeypatch.setattr("src.crawlers.base.validate_url", lambda url: (True, "OK"))
 
         records = await crawler.crawl_date_range("2025-05-01", "2025-05-02", save_callback)
 
