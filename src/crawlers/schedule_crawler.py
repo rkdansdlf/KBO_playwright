@@ -144,6 +144,36 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         suffix = series_id if series_id is not None else "all"
         return f"{year}-{month:02d}:{suffix}"
 
+    async def lookup_month(self, year: int, month: int, series_id: str | None = None) -> CrawlResult[list[dict]]:
+        """Read one month of schedule without recording a run or a dead letter.
+
+        This exists for callers that need the schedule as a *dependency* rather
+        than as work of their own. The live polling loop is the motivating case:
+        it asks "which games are today" every cycle, and routing that through
+        :meth:`crawl_schedule` made each cycle a ledger row and, on failure, a
+        dead letter -- so one day of a two-minute polling loop produced 422 runs
+        of the same month and up to 422 x 31 upstream API calls.
+
+        Neither record is truthful here. The loop did not do a month's worth of
+        work, so the ledger said it had; and a source that is merely unavailable
+        to a dependency read is not a unit of work that needs reprocessing, so
+        the DLQ said it did.
+
+        The result still carries its classification, so the caller can decide
+        what an unreadable month means for it -- the live loop falls back to
+        games already in the database.
+
+        Args:
+            year: Season year.
+            month: Month (1-12).
+            series_id: Optional series filter, which skips the Naver path.
+
+        Returns:
+            The classified month result, with no ledger or DLQ side effects.
+
+        """
+        return await self._resolve_month(year, month, series_id)
+
     async def crawl_schedule(  # noqa: PLR0913
         self,
         year: int,

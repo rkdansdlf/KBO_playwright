@@ -677,6 +677,48 @@ async def _process_single_live_game(
 
 _DATE_STR_DIGITS = 8
 
+#: How long one upstream schedule read may serve later polls.
+#:
+#: A month changes when a fixture is rescheduled or a game is postponed, which
+#: is rare enough that re-reading it on every poll bought nothing -- while the
+#: poll itself runs every 30s to two minutes. Ten minutes bounds how long a
+#: postponement can go unnoticed, and it is only consulted when the database
+#: has no row for the date, which is itself the signal that it was read.
+SCHEDULE_LOOKUP_TTL_SECONDS = 600
+
+#: Only this many months are cached.
+#:
+#: The loop only ever asks for the current month, so the working set is one
+#: entry. The cap is what makes the cache safe to keep at module scope: without
+#: it a long-lived process would accumulate an entry per month it ever ran
+#: through, and a test suite would inherit them. Anything older than the previous
+#: month is dropped on write rather than kept for a lookup that cannot come.
+SCHEDULE_LOOKUP_CACHE_MAX_MONTHS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class _ScheduleLookup:
+    """One cached upstream schedule read, with the time it was taken."""
+
+    games: list[dict[str, Any]]
+    at: datetime
+
+
+_SCHEDULE_LOOKUP_CACHE: dict[tuple[int, int], _ScheduleLookup] = {}
+
+
+def _evict_stale_lookup_months(current: tuple[int, int]) -> None:
+    """Keep the cache to the months the loop can still ask for.
+
+    The loop resolves games for today, so at most the current and the previous
+    month are reachable. Entries older than that cannot be read again, and
+    leaving them would make this module-level dict grow once per month forever.
+    """
+    year, month = current
+    oldest = (year - 1, 12) if month == 1 else (year, month - 1)
+    for key in [k for k in _SCHEDULE_LOOKUP_CACHE if k < oldest]:
+        del _SCHEDULE_LOOKUP_CACHE[key]
+
 
 def _load_today_games_from_db(today_str: str) -> list[dict[str, Any]]:
     """Load today's scheduled games from database when schedule crawler fails."""
@@ -708,18 +750,50 @@ async def _resolve_today_games(
     today_str: str,
     now: datetime,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Fetch or fallback today's scheduled games."""
-    games = await sched_crawler.crawl_schedule(now.year, now.month)
-    failure_reason = getattr(sched_crawler, "get_last_failure_reason", lambda _key: None)(
-        f"{now.year}-{now.month:02d}:all"
-    )
-    today_games = [g for g in (games or []) if g.get("game_date", "").replace("-", "") == today_str]
+    """Resolve today's games, preferring what the ledger already knows.
+
+    The database comes first because it is what the daily pipeline already
+    stored: today's games are in it before the first poll of the day. Re-reading
+    the whole month from upstream on every poll bought nothing that the rows did
+    not already say, and it cost a month's worth of API calls per cycle.
+
+    When the database has nothing -- a late fixture change, a season's first
+    day -- the source is consulted once and the result cached, so a polling loop
+    degrades into one upstream read rather than one per cycle.
+
+    The upstream read goes through :meth:`ScheduleCrawler.lookup_month`, which
+    records neither a ledger run nor a dead letter. A dependency read that failed
+    because the page was unavailable is not a unit of work needing reprocessing,
+    and recording it as one made the live loop look like a failing crawler.
+    """
+    today_games = _load_today_games_from_db(today_str)
+    if today_games:
+        return today_games, None
+
+    year, month = now.year, now.month
+    cache_key = (year, month)
+    cached = _SCHEDULE_LOOKUP_CACHE.get(cache_key)
+    if cached is not None and (now - cached.at).total_seconds() < SCHEDULE_LOOKUP_TTL_SECONDS:
+        games = cached.games
+    else:
+        result = await sched_crawler.lookup_month(year, month)
+        games = result.data or []
+        # Only an answered month is cached. Caching an empty result would pin the
+        # loop to "no games today" for the whole TTL, so a source that failed
+        # once -- or a month whose games were simply not published yet -- would
+        # silence real games until the entry expired. An unreadable month is
+        # retried on the next poll instead, which is also what the caller needs:
+        # it reports the failure rather than treating it as an empty schedule.
+        if result.ok:
+            _SCHEDULE_LOOKUP_CACHE[cache_key] = _ScheduleLookup(games=games, at=now)
+            _evict_stale_lookup_months(cache_key)
+
+    failure_reason = getattr(sched_crawler, "get_last_failure_reason", lambda _key: None)(f"{year}-{month:02d}:all")
+    today_games = [g for g in games if g.get("game_date", "").replace("-", "") == today_str]
 
     if not today_games and failure_reason and isinstance(failure_reason, str):
-        today_games = _load_today_games_from_db(today_str)
-        if not today_games:
-            logger.info("[INFO] Schedule failed (%s); no DB games for %s.", failure_reason, today_str)
-            return [], failure_reason
+        logger.info("[INFO] Schedule failed (%s); no DB games for %s.", failure_reason, today_str)
+        return [], failure_reason
 
     return today_games, None
 
