@@ -49,6 +49,14 @@ NON_RETRYABLE_CODES: frozenset[str] = frozenset(
         "PARSE_EMPTY",
         "VALIDATION_SCHEMA",
         "PERSIST_CONSTRAINT",
+        # A run stranded in `running` by a dead process has no guarantee of where
+        # it stopped, so there is no unit to re-run from -- unlike
+        # REPLAY_INTERRUPTED, which always has a dead letter naming its target.
+        # Named explicitly because both codes share the `orchestrate` stage and
+        # carry opposite retry meaning; leaving this to the default would make
+        # them behave identically, and the sweeper's job is to close the state
+        # space rather than to spend another attempt on the same process.
+        "RUN_INTERRUPTED",
     },
 )
 

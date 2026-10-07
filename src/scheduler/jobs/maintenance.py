@@ -33,6 +33,10 @@ logger = logging.getLogger("src.scheduler.jobs.maintenance")
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+#: Runtime import: the sweep's empty result is constructed on the failure path,
+#: not merely annotated, so this cannot live in the TYPE_CHECKING block above.
+from src.services.orphan_run_sweeper import OrphanSweepResult
+
 #: Tenacity must not retry a tier-lock skip.
 #:
 #: ``_scheduler_job_lock`` raises ``_LockSkipped`` to mean "another process holds
@@ -770,7 +774,15 @@ def _refresh_dlq_metrics() -> None:
     retry_error_callback=alert_failure,
 )
 def crawl_dead_letter_recovery_job() -> None:
-    """Recover dead letters stranded in ``retrying`` after a crash."""
+    """Recover dead letters stranded in ``retrying`` after a crash.
+
+    Also sweeps ordinary crawl runs stranded in ``running``. Sharing the tick is
+    deliberate: both are "a process died mid-write" recovery, and a separate
+    30-minute job would add a second `MAINTENANCE_LOCK` competitor for the same
+    window rather than any new coverage. The two do not overlap -- stranded
+    replays belong to the dead letter path below, which can act on them, and the
+    sweeper skips those rows explicitly.
+    """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Recovery ===")
         try:
@@ -778,9 +790,10 @@ def crawl_dead_letter_recovery_job() -> None:
 
             results = recover_stuck_retrying()
             _refresh_dlq_metrics()
+            orphans = _sweep_orphaned_runs()
             if not results:
-                logger.info("=== Dead Letter Recovery: nothing stuck ===")
-                alert_success("crawl_dead_letter_recovery", "nothing stuck")
+                logger.info("=== Dead Letter Recovery: nothing stuck (orphans: %s) ===", orphans.summary())
+                alert_success("crawl_dead_letter_recovery", f"nothing stuck; orphan sweep {orphans.summary()}")
                 return
 
             counts: dict[str, int] = {}
@@ -802,6 +815,31 @@ def crawl_dead_letter_recovery_job() -> None:
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter recovery failed")
             raise
+
+
+def _sweep_orphaned_runs() -> OrphanSweepResult:
+    """Close crawl runs stranded in ``running``, isolating a failed sweep.
+
+    Reported through the same alert as the dead letter recovery rather than its
+    own: both describe one tick of crash recovery, and an operator reading
+    `crawl_dead_letter_recovery` should not have to know that a stranded `game`
+    run is also cleaned up there.
+
+    A sweep that raises is swallowed after logging, because the dead letter work
+    in the same tick has already succeeded and should not be reported as failed
+    on the strength of a housekeeping problem.
+    """
+    try:
+        from src.services.orphan_run_sweeper import sweep_orphaned_runs
+
+        result = sweep_orphaned_runs()
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("Orphan run sweep failed; dead letter recovery is unaffected")
+        return OrphanSweepResult(finalized=0, skipped_replays=0, failed=0, stale_threshold_seconds=0)
+
+    if result.finalized:
+        logger.warning("=== Orphan Run Sweep closed %d stranded run(s) (%s) ===", result.finalized, result.summary())
+    return result
 
 
 @_with_db_fail_fast_guard
