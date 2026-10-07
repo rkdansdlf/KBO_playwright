@@ -54,6 +54,39 @@ def test_execute_migration_preserves_plsql_block_terminator(tmp_path) -> None:
     assert statement.endswith("END;")
 
 
+def test_execute_migration_preserves_terminator_behind_a_block_comment(tmp_path) -> None:
+    """A ``/* */`` banner must not hide the PL/SQL keyword behind it.
+
+    Only line comments used to be stripped before looking for ``DECLARE`` or
+    ``BEGIN``, so a file opening with a block banner was never recognised as
+    PL/SQL. Its terminating ``;`` was then stripped as though the block were
+    plain SQL, and the server rejected the body -- an error pointing at the
+    migration's last line for a cause on its first.
+    """
+    migration = tmp_path / "066_plsql.sql"
+    migration.write_text("/* banner; with a semicolon */\nDECLARE\nBEGIN\n    NULL;\nEND;\n/\n", encoding="utf-8")
+    connection = MagicMock()
+
+    _execute_migration(connection, migration)
+
+    statement = connection.exec_driver_sql.call_args.args[0]
+    assert statement.endswith("END;")
+    assert "banner" in statement
+
+
+def test_a_plain_statement_behind_a_block_comment_still_loses_its_semicolon(tmp_path) -> None:
+    """The block-comment fix must not start preserving terminators everywhere."""
+    migration = tmp_path / "066_plain.sql"
+    migration.write_text("/* banner */\nCREATE TABLE t (id INT);\n/\n", encoding="utf-8")
+    connection = MagicMock()
+
+    _execute_migration(connection, migration)
+
+    statement = connection.exec_driver_sql.call_args.args[0]
+    assert statement.endswith("CREATE TABLE t (id INT)")
+    assert not statement.endswith(";")
+
+
 def test_already_exists_error_recognizes_oracle_object_exists_code() -> None:
     error = SQLAlchemyError("object exists")
     error.orig = SimpleNamespace(code=955)  # type: ignore[attr-defined]
