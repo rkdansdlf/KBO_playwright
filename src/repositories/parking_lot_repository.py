@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
+from src.models.parking_fee_kind import ParkingFeeKind
 from src.models.parking_fee_rule import ParkingFeeRule
 from src.models.parking_lot import ParkingLot
 
@@ -151,5 +152,61 @@ class ParkingFeeRuleRepository:
             select(ParkingFeeRule)
             .where(ParkingFeeRule.parking_lot_id == parking_lot_id)
             .order_by(ParkingFeeRule.vehicle_type)
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
+
+class ParkingFeeKindRepository:
+    """ParkingFeeKindRepository class."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize a new instance.
+
+        Args:
+            session: Session.
+
+        """
+        self.session = session
+
+    def save(self, data: dict) -> ParkingFeeKind:
+        """Upsert a fee kind row for one lot.
+
+        Args:
+            data: Data carrying ``parking_lot_id``, ``fee_kind``, ``amount_krw``.
+
+        Returns:
+            ParkingFeeKind instance.
+
+        """
+        lot_id = data["parking_lot_id"]
+        kind = data["fee_kind"]
+        stmt = select(ParkingFeeKind).where(
+            ParkingFeeKind.parking_lot_id == lot_id,
+            ParkingFeeKind.fee_kind == kind,
+        )
+        existing = self.session.execute(stmt).scalar_one_or_none()
+        if existing:
+            for key, value in data.items():
+                if key not in ("parking_lot_id", "fee_kind") and value is not None:
+                    setattr(existing, key, value)
+            return existing
+        new_record = ParkingFeeKind(**data)
+        self.session.add(new_record)
+        return new_record
+
+    def get_by_lot(self, parking_lot_id: int) -> list[ParkingFeeKind]:
+        """Get fee kinds by lot.
+
+        Args:
+            parking_lot_id: Parking Lot ID.
+
+        Returns:
+            List of fee kind rows.
+
+        """
+        stmt = (
+            select(ParkingFeeKind)
+            .where(ParkingFeeKind.parking_lot_id == parking_lot_id)
+            .order_by(ParkingFeeKind.fee_kind)
         )
         return list(self.session.execute(stmt).scalars().all())

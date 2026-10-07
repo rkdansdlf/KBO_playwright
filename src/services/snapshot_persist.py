@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
-from src.repositories.parking_lot_repository import ParkingLotRepository
+from src.repositories.parking_lot_repository import ParkingFeeKindRepository, ParkingLotRepository
 from src.repositories.roster_transaction_repository import RosterTransactionRepository
 from src.repositories.source_registry_repository import (
     DataSourceRepository,
@@ -94,20 +94,27 @@ def _save_flat(session: Session, domain: str, data: Sequence[dict]) -> SaveOutco
 
 
 def _save_parking(session: Session, data: Sequence[dict]) -> SaveOutcome:
-    """Persist parking lots, leaving the parsed fee kinds where they belong.
+    """Persist parking lots and their printed fee kinds.
 
-    The fee rules carry a kind -- 기본/추가/일일/행사 -- while
     ``parking_fee_rules`` is keyed by vehicle class and requires a non-null base
-    duration the source never states. Writing them raised ``KeyError`` on
-    ``vehicle_type`` and aborted the whole domain write, so the lot that had
-    already been flushed was lost with it. The kinds stay in the snapshot this
-    replay is reading from.
+    duration the source never states, so the paid kinds (기본/추가/일일/행사) are
+    written to ``parking_fee_kinds`` instead -- the column set the stadium pages
+    actually carry.
     """
     lot_repo = ParkingLotRepository(session)
+    kind_repo = ParkingFeeKindRepository(session)
     saved = failed = 0
     for entry in data:
         try:
-            lot_repo.save(entry.get("lot", {}))
+            lot = lot_repo.save(entry.get("lot", {}))
+            for fee in entry.get("fee_rules", []):
+                kind_repo.save(
+                    {
+                        "parking_lot_id": lot.id,
+                        "fee_kind": fee["label"],
+                        "amount_krw": fee["amount"],
+                    },
+                )
             saved += 1
         except PERSIST_EXCEPTIONS:
             failed += 1
