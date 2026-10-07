@@ -2756,12 +2756,32 @@ def _asked_crawler_to_save(tree: ast.Module, symbols: set[str]) -> bool:
                 instances |= names
     if not instances:
         return False
+    # A caller that names the save decision -- whether a literal ``save=True``
+    # or the CLI flag it forwards -- has already accounted for the write, so it
+    # is not a path the analysis failed to follow. Reading only the literal
+    # treated ``save=args.save`` as if it were unknown, when the unknown is
+    # resolved the moment the flag is set.
+    save_requested = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in instances
+        and any(keyword.arg == "save" for keyword in node.keywords)
+        for node in ast.walk(tree)
+    )
+    if save_requested:
+        return True
+    # An explicit write call on the crawler itself is the caller driving the
+    # crawler's persistence -- ``crawler.save_to_db(records)`` persists the rows
+    # it just crawled, through the crawler's own method. That is the same shape
+    # as a ``save=True`` argument: the caller decided where the write goes, so
+    # it is not an untraced path.
     return any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id in instances
-        and any(_is_literal_true(keyword) for keyword in node.keywords)
+        and _is_write_call(node.func.attr)
         for node in ast.walk(tree)
     )
 
