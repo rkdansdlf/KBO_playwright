@@ -267,12 +267,111 @@ def apply_migrations(engine: Engine, *, directory: Path = MIGRATION_DIR, check: 
         applied = _applied_versions(connection, numeric=numeric)
         pending = [path for path in paths if not _is_applied(path.name, applied, numeric=numeric)]
         for path in pending:
-            for statement in path.read_text(encoding="utf-8").split(";"):
-                sql = statement.strip()
-                if sql:
-                    connection.exec_driver_sql(sql)
+            for statement in split_sql_statements(path.read_text(encoding="utf-8")):
+                connection.exec_driver_sql(statement)
             _record_version(connection, path.name, numeric=numeric)
     return [path.name for path in pending]
+
+
+def split_sql_statements(source: str) -> list[str]:
+    """Split a migration file into executable statements.
+
+    Splitting on ``;`` alone is wrong, and it failed in production. The header
+    comment on ``060_parking_fee_kinds.sql`` reads "these kinds never had a
+    table of their own; they lived only in the raw snapshot text", so the naive
+    split cut the file inside that comment and welded its tail onto the next
+    statement as though it were code. Postgres rejected the result with
+    ``syntax error at or near ...`` on the *following* statement -- the table
+    had already been created by the ORM baseline, so the run left schema and
+    bookkeeping disagreeing, with the table present and the version never
+    recorded.
+
+    The comment-only leading chunk is not itself the failure: measured against
+    PostgreSQL 15 with psycopg, a comment-only statement is accepted. It is
+    dropped here because a chunk that carries no SQL is not a statement, and
+    because the empty-query rejection belongs to PL/pgSQL ``EXECUTE`` rather
+    than to this path -- an operator chasing that error would be chasing the
+    wrong one.
+
+    The scanner is deliberately small -- enough to know where a ``;`` is real
+    data and where it is text. Line comments, block comments and single-quoted
+    strings are all it tracks, which covers every migration in the PostgreSQL
+    and SQLite chains; neither uses dollar quoting. The Oracle chain is not read
+    by this runner, and its PL/SQL blocks would need real block tracking.
+
+    Args:
+        source: The migration file's text.
+
+    Returns:
+        The statements to execute, in file order, without comment-only chunks.
+
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    has_code = False
+    index = 0
+    length = len(source)
+
+    while index < length:
+        char = source[index]
+        pair = source[index : index + 2]
+
+        if pair == "--":
+            end = source.find("\n", index)
+            end = length if end == -1 else end
+            current.append(source[index:end])
+            index = end
+            continue
+
+        if pair == "/*":
+            end = source.find("*/", index + 2)
+            end = length if end == -1 else end + 2
+            current.append(source[index:end])
+            index = end
+            continue
+
+        if char == "'":
+            end = index + 1
+            while end < length:
+                if source[end] == "'":
+                    if source[end + 1 : end + 2] == "'":
+                        end += 2
+                        continue
+                    end += 1
+                    break
+                end += 1
+            current.append(source[index:end])
+            has_code = True
+            index = end
+            continue
+
+        if char == ";":
+            _append_statement(statements, "".join(current), has_code=has_code)
+            current = []
+            has_code = False
+            index += 1
+            continue
+
+        current.append(char)
+        if not char.isspace():
+            has_code = True
+        index += 1
+
+    _append_statement(statements, "".join(current), has_code=has_code)
+    return statements
+
+
+def _append_statement(statements: list[str], chunk: str, *, has_code: bool) -> None:
+    """Keep a chunk only when it holds SQL that is not a comment.
+
+    A chunk of comments alone reaches Postgres as an empty query, which it
+    rejects -- the failure that motivated this scanner. `has_code` is tracked by
+    the scanner rather than recomputed here so the two cannot disagree about
+    what counts as a comment.
+    """
+    sql = chunk.strip()
+    if sql and has_code:
+        statements.append(sql)
 
 
 DEFAULT_PROD_DB_NAMES = frozenset({"bega_prod"})
