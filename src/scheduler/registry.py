@@ -38,6 +38,7 @@ from src.scheduler.jobs.daily import (
     crawl_p1p2_data_job,
     crawl_phase1_extra_job,
     daily_gap_report_job,
+    db_reachability_check_job,
     lock_health_check_job,
 )
 from src.scheduler.jobs.live import (
@@ -217,6 +218,13 @@ def _start_scheduler(args: argparse.Namespace) -> None:
             "lock_health_check",
             "Scheduler Lock Health Check (post P1/P2)",
             600,
+        ),
+        (
+            db_reachability_check_job,
+            trigger_cls(minute="*/15"),
+            "db_reachability_check",
+            "Primary Database Reachability Check",
+            300,
         ),
         (
             crawl_p0_non_game_job,
