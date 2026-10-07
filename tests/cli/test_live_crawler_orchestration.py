@@ -9,6 +9,7 @@ import pytest
 
 import src.cli.live_crawler as live_crawler
 from src.cli.live_crawler import LiveGameInput, LiveSaveOptions, RelaySaveInput
+from src.crawlers.result import CrawlResult
 
 
 class _FakeSession:
@@ -138,6 +139,11 @@ class TestRelaySaving:
         queue_snapshot.assert_called_once_with("game", "20260101")
 
 
+def _empty_month() -> CrawlResult[list[dict]]:
+    """An answered, empty month -- what the loop sees from a healthy off-season."""
+    return CrawlResult.success([])
+
+
 class TestProcessAndCycle:
     def test_processes_one_game_and_returns_resolved_lifecycle(self, monkeypatch):
         relay = MagicMock()
@@ -168,7 +174,7 @@ class TestProcessAndCycle:
                 return datetime(2026, 1, 1, 18, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
         schedule = MagicMock()
-        schedule.crawl_schedule = AsyncMock(return_value=[])
+        schedule.lookup_month = AsyncMock(return_value=_empty_month())
         monkeypatch.setattr(live_crawler, "datetime", FixedDateTime)
         monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
 
@@ -184,7 +190,7 @@ class TestProcessAndCycle:
 
     def test_cycle_does_not_treat_blocked_schedule_as_finished(self, monkeypatch):
         schedule = MagicMock()
-        schedule.crawl_schedule = AsyncMock(return_value=[])
+        schedule.lookup_month = AsyncMock(return_value=_empty_month())
         schedule.get_last_failure_reason.return_value = "blocked"
         monkeypatch.setattr(live_crawler, "_load_today_games_from_db", lambda _today: [])
         monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
@@ -202,7 +208,7 @@ class TestProcessAndCycle:
                 return datetime(2026, 1, 1, 18, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
         schedule = MagicMock()
-        schedule.crawl_schedule = AsyncMock(return_value=[])
+        schedule.lookup_month = AsyncMock(return_value=_empty_month())
         schedule.get_last_failure_reason.return_value = "blocked"
         fallback_games = [{"game_id": "20260101LGSS0", "game_date": "2026-01-01"}]
         monkeypatch.setattr(live_crawler, "datetime", FixedDateTime)
@@ -228,15 +234,21 @@ class TestProcessAndCycle:
                 return datetime(2026, 1, 1, 18, 0, tzinfo=ZoneInfo("Asia/Seoul"))
 
         schedule = MagicMock()
-        schedule.crawl_schedule = AsyncMock(
-            return_value=[
-                {"game_id": "running", "game_date": "20260101"},
-                {"game_id": "suspended", "game_date": "20260101"},
-            ],
+        schedule.lookup_month = AsyncMock(
+            return_value=CrawlResult.success(
+                [
+                    {"game_id": "running", "game_date": "20260101"},
+                    {"game_id": "suspended", "game_date": "20260101"},
+                ],
+            ),
         )
         process = AsyncMock(side_effect=[("running", "running"), ("suspended", "suspended")])
         manifest = MagicMock(return_value="manifest.json")
         monkeypatch.setattr(live_crawler, "datetime", FixedDateTime)
+        # The loop asks the database before the source, so a test that supplies
+        # games from the source must also say the database has none. Left
+        # unstubbed this read hit a real SQLite file and raised "no such table".
+        monkeypatch.setattr(live_crawler, "_load_today_games_from_db", lambda _today: [])
         monkeypatch.setattr(live_crawler, "ScheduleCrawler", MagicMock(return_value=schedule))
         monkeypatch.setattr(live_crawler, "NaverRelayCrawler", MagicMock())
         monkeypatch.setattr(live_crawler, "GameDetailCrawler", MagicMock())
