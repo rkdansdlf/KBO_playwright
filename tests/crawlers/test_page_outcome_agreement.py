@@ -103,31 +103,37 @@ class TestTheThreeModulesAgreeOnShape:
 
 
 class TestNoModuleCarriesAConstantColumn:
-    """BUG-005: `kbo_event` carries an `absence` column that is always False.
+    """BUG-005: `kbo_event` carried an `absence` column that was always False.
 
     The other two modules were migrated to a 3-tuple; this one was not. Nothing
-    reads the field, so it is dead weight that documents an intention the code
-    does not implement -- and the docstring actively argues the distinction
-    matters.
+    read the field, so it was dead weight that documented an intention the code
+    did not implement -- and the docstring actively argued the distinction
+    matters. Fixed by dropping the column.
+
+    The assertion is deliberately about *width* rather than about the absence
+    field specifically: a fourth column of any kind would reintroduce the same
+    gap between what the module appears to track and what it actually reads. The
+    module's docstring still explains why an empty guide page and an unreadable
+    one look identical from outside, because that reasoning is real and still
+    decides between `EMPTY` and `SCHEMA_CHANGED`. It just no longer carries a
+    column that says so without meaning it.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG-005: kbo_event_outcome._REASON_FAILURES still carries a 4th 'absence' column that "
-            "is False in every entry and read by no caller. Strict, so resolving it turns this "
-            "into an XPASS failure that forces the marker off."
-        ),
-    )
     def test_kbo_event_has_no_dead_fourth_column(self) -> None:
         table = kbo_event_outcome._REASON_FAILURES
         width = len(next(iter(table.values())))
 
         assert width == 3, (
-            f"BUG-005: kbo_event_outcome._REASON_FAILURES still has a {width}-tuple with a fourth "
-            "'absence' field, but every entry sets it False and no caller reads it. Either give it a "
-            "real consumer or drop it to a 3-tuple like player_movement and team_history."
+            f"BUG-005: kbo_event_outcome._REASON_FAILURES has a {width}-tuple, but the other two "
+            "outcome modules use 3. A constant column is not evidence: it makes the module read as "
+            "though it tracks a distinction it discards at the point of use."
         )
+
+    def test_every_entry_has_the_declared_width(self) -> None:
+        """A table can be 3-wide overall and still carry one ragged entry."""
+        widths = {len(entry) for entry in kbo_event_outcome._REASON_FAILURES.values()}
+
+        assert widths == {3}, widths
 
     @pytest.mark.parametrize(
         ("module", "_classifier_name"),
