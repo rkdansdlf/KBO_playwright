@@ -542,20 +542,49 @@ def test_oracle_source_rejects_non_postgres_split_vector_target(monkeypatch) -> 
         )
 
 
-def test_postgresql_production_build_remains_fail_closed(monkeypatch) -> None:
-    """Do not silently allow production writes to a non-Oracle target."""
+def test_postgresql_production_build_requires_the_production_opt_in(monkeypatch) -> None:
+    """Keep a non-Oracle production write closed until its own guard is set.
+
+    The engine is no longer what closes this door -- the vector store's move to
+    pgvector made "production" and "Oracle" separate questions. What closes it
+    is the opt-in, which the pgvector path now needs exactly as the Oracle path
+    always did.
+    """
     monkeypatch.setenv("PGVECTOR_URL", "postgresql://vector:secret@127.0.0.1:5432/rag_vector")
     monkeypatch.setenv("RAG_TARGET_ENV", "production")
     monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-    monkeypatch.setenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", "1")
+    monkeypatch.delenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", raising=False)
+    monkeypatch.delenv("RAG_INDEX_DB_URL", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
-    with pytest.raises(ValueError, match="staging"):
+    with pytest.raises(ValueError, match="RAG_INDEX_ALLOW_PRODUCTION_WRITE"):
         build_rag_index._resolve_build_targets(
             "postgresql://source:secret@127.0.0.1:5432/bega_prod",
             embedding_mode="configured",
             dry_run=False,
         )
+
+
+def test_postgresql_production_build_is_allowed_with_both_guards(monkeypatch) -> None:
+    """Accept the deployment the vector store now lives in.
+
+    The sparse index stays in the operational database beside its source rows,
+    which is where it has always been, so a production build may leave
+    ``RAG_INDEX_DB_URL`` unset rather than naming a third database.
+    """
+    monkeypatch.setenv("PGVECTOR_URL", "postgresql://vector:secret@127.0.0.1:5432/rag_vector")
+    monkeypatch.setenv("RAG_TARGET_ENV", "production")
+    monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
+    monkeypatch.setenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", "1")
+    monkeypatch.delenv("RAG_INDEX_DB_URL", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+    targets = build_rag_index._resolve_build_targets(
+        "postgresql://source:secret@127.0.0.1:5432/bega_prod",
+        embedding_mode="configured",
+        dry_run=False,
+    )
+    assert targets.vector_db == "postgresql://vector:secret@127.0.0.1:5432/rag_vector"
 
 
 def test_separate_oracle_sparse_target_reports_itself_as_vector_store(monkeypatch) -> None:
