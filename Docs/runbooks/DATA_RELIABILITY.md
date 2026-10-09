@@ -258,6 +258,100 @@ the `for:` hold-back, and mixed/healthy staying quiet:
 promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
 ```
 
+### 3.2d Sustained-partial alerting — measured, and its premise does not hold
+
+`KboCrawlerSustainedPartial` reads `kbo_crawl_runs_total{status="partial"}`.
+Measured against production on 2026-10-09, over every run the ledger has
+recorded since it began (1093 runs, 2026-09-29 onward):
+
+| status | runs |
+| --- | --- |
+| `success` | 1088 |
+| `failed` | 5 |
+| `partial` | **0** |
+
+The status has never been written. Not rare — absent. So the rule cannot be
+calibrated, because there is no sample of the condition it detects: the 24h
+window and the `> 0` threshold are both currently unexercised, and no amount of
+production observation will change that until a partial run exists.
+
+#### The partial path is proven; production has simply not exercised it
+
+Worth being precise about, because the obvious next inference -- "the branch is
+unreachable, so the rule watches nothing" -- is wrong and was checked before
+being recorded. All five crawlers that can set `partial` have tests that drive
+the mixed outcome and assert `status == "partial"`: `kbo_event` (one of seven
+pages failing), `award` (one of two sources failing), `food` and `parking` (one
+team failing), `player_movement` (one year failing). The branch is exercised on every
+CI run.
+
+So the zero is a fact about the field, not about the code. Every failure
+production has recorded was total rather than partial -- all five failed runs
+wrote nothing (`records_written=0`), which is what sends them to `failed`
+instead. Until a mixed failure happens in production, the rule is *unvalidated*
+rather than *calibrated*, and no re-measurement will change that.
+
+#### Why this is not "the rule is fine, nothing is happening"
+
+The six crawlers that record runs *do* have a partial path in code — `food`,
+`parking`, `kbo_event`, `player_movement` and `award` all set
+`RUN_STATUS_PARTIAL`. They have simply never taken it, because the failures
+observed so far are total rather than partial: all five failed runs wrote
+nothing (`records_written=0`), so they landed in the `failed` branch.
+
+That is a fact about the data, not about the rule. The condition it watches for
+is the dangerous one — *some* sources failing while others succeed — and the
+ledger has no evidence it has ever happened. Either production is healthy, or
+the partial path is unreachable in practice. **This measurement cannot tell
+those apart**, and neither can the alert: a rule watching a status nothing
+produces cannot distinguish "healthy" from "never fires".
+
+#### What would make this measurable
+
+- A crawler whose per-unit work is genuinely mixed in the field. `kbo_event`
+  sweeps seven independent pages and fails per page, so it is the most likely
+  producer; `food`/`parking` fail per team for the same reason.
+- Until then, the honest description of this rule is *unvalidated*, not
+  *calibrated*. Re-measure once a partial run exists; the 24h window is still
+  the right starting point because it follows the daily pipeline cadence.
+
+#### Related: the ledger cannot record a partial for the one path that most needs it
+
+`RUN_INTERRUPTED` runs were absent entirely before `b2f3bc27`, which is why
+`crawl_execution_runs.id=37` sat in `running` from 2026-10-03 until the sweeper
+first ran. That row is now `failed` with `RUN_INTERRUPTED` and a `finished_at`
+of 2026-10-09 12:00:00 — **the sweep working in production**, not a pending
+deploy check.
+
+--- | --- | --- | --- |
+| `KboCrawlerSustainedPartial` | `increase(kbo_crawl_runs_total{status="partial"}[24h]) > 0` unless a success increased in the same window, for 30m | warning | a crawler landed runs but none completed. Check that crawler's per-source results; if it enqueues DLQ letters, `python3 -m src.cli.kbo dlq list --status pending` shows what is still failing |
+
+Why the shape is what it is:
+
+- The success side uses `unless`, not `== 0`: a crawler that has never recorded
+  a success has no success series, and `increase()` over a missing series yields
+  no sample to compare -- the longest-running degradation would be the one the
+  rule stays silent for.
+- The 24h window follows the daily pipeline cadence (03:00-06:45 KST), the same
+  schedule-derived choice as `KboDlqBacklogAgeHigh`. It also gives a daily
+  crawler one full cycle of grace: after a single partial day, yesterday's
+  success is still inside the window and nothing pages. No production sample was
+  available when the rule was written (BUG-001) -- re-measure before treating
+  the window as calibrated.
+- Dropping `partial` from `SUCCESS_STATUSES` was deliberately **not** done: it
+  would reclassify a working crawler as an outage and change the meaning of the
+  existing critical. The detection is an added warning instead (BUG-001 in
+  `Docs/certification/bug-hunt/BH0_CONTRACTS.md`).
+
+Firing behaviour is asserted, not assumed:
+`monitoring/prometheus/tests/crawler_alert_partial_test.yml` (1m interval, for
+the 30m rule) covers sustained partials firing, the missing-success-series case,
+the `for:` hold-back, and mixed/healthy staying quiet:
+
+```bash
+promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
+```
+
 ### 3.3 Retry policy
 
 `src/services/crawl_retry_policy.py`:
@@ -326,13 +420,59 @@ Fields: `total`, `with_baseline`, `drifted`, `matched`, `unknown_baseline`,
 `failed`, `drifted_ids`, `failed_ids`.
 
 - `unknown_baseline` means the snapshot predates baseline capture — it is
-  reported but **never** counted as drift.
+  reported but **never** counted as drift. Read §4.2a before treating a low
+  `drifted` as good news: a high `unknown_baseline` makes the gate blind.
 - `drifted` means the parser produced a different record count for identical
   bytes → fix the parser, then re-validate.
 - `failed` means replay itself could not run (missing artifact, no registered
   parser, path outside the evidence root). Investigate `error` first; drift
   numbers are meaningless while `failed` is high.
 - Gate semantics: `ok = drifted <= SNAPSHOT_DRIFT_MAX and failed <= SNAPSHOT_DRIFT_FAIL_MAX`.
+
+### 4.2a Why a snapshot may have no baseline (read before trusting `drifted`)
+
+The drift gate compares a re-parse against a baseline held in
+`capture_metadata["parsed_records"]`, and **that column is written only at crawl
+time** — by the crawler's own snapshot capture. `persist_snapshot`'s
+`_mark_status` writes `parser_version` and `error_message` and nothing else.
+
+So a snapshot has no baseline whenever it was not produced by a crawl:
+
+| baseline | re-parsed | delta | counted as drift |
+| --- | --- | --- | --- |
+| absent | 4 | `None` | **no** |
+| 4 | 4 | 0 | no |
+| 7 | 4 | −3 | yes |
+| non-integer | 4 | `None` | **no** |
+
+The last row matters: a malformed baseline is treated as *absent*, not as an
+error, so it also lands in `unknown_baseline` rather than `failed`.
+
+**This is intended, not a gap.** Recording "today's parser output" as the
+baseline for a re-parse would make the parser compare against itself, which
+cannot detect drift in principle. Not judging is the honest answer; a
+fail-closed rule would instead lock the gate every day over snapshots that have
+nothing to compare.
+
+What it costs is easy to misread. `kbo snapshot replay --persist` produces
+snapshots with no baseline by construction, so a run of that produces rows that
+**structurally cannot be judged**. If `unknown_baseline` is large, `drifted = 0`
+means "nothing was compared", not "nothing changed". Check the ratio:
+
+```bash
+python3 -m src.cli.kbo snapshot validate --limit 100 --json \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"with_baseline={d["with_baseline"]} unknown={d["unknown_baseline"]} drifted={d["drifted"]}")'
+```
+
+Only `with_baseline` carries a verdict. The daily summary reports
+`with_baseline=0` alongside `SNAPSHOT_DRIFT_MAX=0` and passes, which is correct
+and easy to misread as a clean result.
+
+The one gap that is *not* intended: a snapshot left at `parse_status='pending'`
+by a crash between the last record commit and `_mark_status` has finished domain
+rows but never reaches `done`. Nothing filters on `parse_status`, so it enters
+the drift sample and contributes to `with_baseline=0` for the wrong reason. See
+`tests/services/test_snapshot_persist_crash_window.py` (BUG-007).
 
 ### 4.3 Replay and persist
 
