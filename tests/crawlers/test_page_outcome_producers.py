@@ -139,3 +139,170 @@ class TestTheDocumentStatusesAreReachable:
 
             assert read.status is status
             assert read.is_terminal is False
+
+
+class TestTheProducerIsActuallyWired:
+    """The gap the module-level reachability test could not see.
+
+    `test_kbo_event_reaches_its_document_states` proves the vocabulary *can*
+    construct `FETCH_FAILED`. That was the whole of the original test, and it
+    passed while the state was unreachable -- because the crawler never called
+    the constructor. Reachability of a constructor and reachability of the state
+    are different questions, and only the second one is the bug.
+
+    So these drive the real failure path and assert the read was recorded.
+    """
+
+    async def test_a_fetch_failure_records_a_read(self, monkeypatch) -> None:
+        """The exception branch now produces a status as well as a dead letter."""
+        from src.crawlers import kbo_event_crawler as module
+
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+
+        async def boom(_url: str) -> tuple[str, str]:
+            raise TimeoutError("connection timed out")
+
+        monkeypatch.setattr(crawler, "_fetch_html", boom)
+
+        await crawler._collect_page("https://example.test/a", [], set())
+
+        assert [r.status for r in crawler._page_reads] == [module.KboEventStatus.FETCH_FAILED]
+
+    async def test_the_recorded_read_says_which_page_failed(self, monkeypatch) -> None:
+        """Seven pages, one failure: a read that cannot name its page says nothing."""
+        from src.crawlers import kbo_event_crawler as module
+
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+
+        async def boom(_url: str) -> tuple[str, str]:
+            raise TimeoutError("connection timed out")
+
+        monkeypatch.setattr(crawler, "_fetch_html", boom)
+
+        await crawler._collect_page("https://example.test/a", [], set())
+
+        assert crawler._page_reads[0].url == "https://example.test/a"
+
+    async def test_a_fetch_failure_is_not_terminal(self, monkeypatch) -> None:
+        """Retryable is the whole reason this differs from a missing frame.
+
+        A connection error is a fact about this moment; a page that lost its
+        frame is a fact about the site. Getting that backwards would spend the
+        retry budget on a document that will keep answering the same way.
+        """
+        from src.crawlers import kbo_event_crawler as module
+
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+
+        async def boom(_url: str) -> tuple[str, str]:
+            raise TimeoutError("connection timed out")
+
+        monkeypatch.setattr(crawler, "_fetch_html", boom)
+
+        await crawler._collect_page("https://example.test/a", [], set())
+
+        assert crawler._page_reads[0].is_terminal is False
+
+    async def test_the_dead_letter_still_carries_the_real_taxonomy_code(self, monkeypatch) -> None:
+        """Recording a read must not replace the recovery path.
+
+        The exception branch was already correct before this change, and the
+        vocabulary status is a report on top of it rather than a substitute for
+        it: the code that drives the retry policy comes from `classify_failure`
+        on the actual exception, not from the page-level reason table.
+        """
+        from src.crawlers import kbo_event_crawler as module
+
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+
+        async def boom(_url: str) -> tuple[str, str]:
+            raise TimeoutError("connection timed out")
+
+        monkeypatch.setattr(crawler, "_fetch_html", boom)
+        await crawler._collect_page("https://example.test/a", [], set())
+
+        url, code, message = crawler._page_failures[0]
+        assert url == "https://example.test/a"
+        from src.crawlers.failure_taxonomy import FailureCode
+
+        assert code == FailureCode.FETCH_TIMEOUT.value
+        assert "timed out" in message
+
+    async def test_reads_do_not_survive_into_the_next_run(self, monkeypatch) -> None:
+        """Sweep state reset per run, or a second sweep inherits the first's failures.
+
+        Found while wiring the producer: `_page_failures` was reset inside
+        `run()` but the reads list had no reset at all, so the same class of bug
+        was one line away from the fix that added it.
+        """
+        from src.crawlers import kbo_event_crawler as module
+
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+        crawler._page_reads.append(
+            module.fetch_failed_read("https://example.test/stale"),
+        )
+        crawler._page_failures.append(("https://example.test/stale", "FETCH_TIMEOUT", "old"))
+
+        frame = "<header></header><nav></nav><footer></footer>"
+
+        async def noop(_url: str) -> tuple[str, str]:
+            # Must carry the site frame, or the page reads as SCHEMA_CHANGED and
+            # the assertion below would be checking a failure rather than a reset.
+            return f"<html><head><title>KBO</title></head><body>{frame}</body></html>", _url
+
+        monkeypatch.setattr(crawler, "_fetch_html", noop)
+        monkeypatch.setattr(crawler, "_blocked_by_compliance", _no_block_async)
+        monkeypatch.setattr(module, "track_crawl_run", _null_ledger)
+        monkeypatch.setattr(module, "save_raw_snapshots", lambda *_a, **_k: None)
+
+        await crawler.run(save=False)
+
+        assert crawler._page_failures == []
+        assert [r.url for r in crawler._page_reads] == ["https://example.test/a"]
+
+    async def test_a_parsed_page_also_records_a_read(self, monkeypatch) -> None:
+        """Every visited page, not just the failing ones.
+
+        A reads list containing only failures would answer "what went wrong" but
+        not "what did the sweep see", which is the other half of what an outcome
+        vocabulary is for.
+        """
+        from src.crawlers import kbo_event_crawler as module
+
+        frame = "<header></header><nav></nav><footer></footer>"
+        crawler = module.KboEventCrawler(base_url="https://example.test/a")
+
+        async def ok(_url: str) -> tuple[str, str]:
+            return f"<html><head><title>KBO</title></head><body>{frame}</body></html>", _url
+
+        monkeypatch.setattr(crawler, "_fetch_html", ok)
+        await crawler._collect_page("https://example.test/a", [], set())
+
+        assert len(crawler._page_reads) == 1
+        assert crawler._page_reads[0].status is module.KboEventStatus.EMPTY
+        assert crawler._page_reads[0].is_terminal is False
+
+
+async def _no_block_async(_run: object) -> bool:
+    """Stand in for the compliance gate, which needs a live request."""
+    return False
+
+
+def _null_ledger(spec: object):
+    """A ledger context yielding a row-shaped object, so `run()` can proceed."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    @contextmanager
+    def _ctx():
+        yield SimpleNamespace(
+            run_id="test-run",
+            records_read=0,
+            records_written=0,
+            records_failed=0,
+            status="running",
+            error_code=None,
+            error_message=None,
+        )
+
+    return _ctx()

@@ -13,11 +13,13 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.crawlers import kbo_event_outcome
 from src.crawlers.failure_taxonomy import classify_failure, classify_persist_failure, stage_for_code
 from src.crawlers.kbo_event_outcome import (
     KboEventPageRead,
     KboEventStatus,
     classify_page_failure,
+    fetch_failed_read,
 )
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
@@ -60,8 +62,9 @@ GENERIC_PAGE_TITLES = {"메인", "신청하기", "신청확인"}
 #: The reason keys understood by ``classify_page_failure``. Spelled here so a
 #: typo in either module fails at import rather than as an UNKNOWN code in
 #: the ledger.
-FRAME_MISSING_REASON = "site_frame_missing"
-FETCH_FAILED_REASON = "page_fetch_failed"
+# Re-exported from the outcome vocabulary so there is one definition of each key.
+FRAME_MISSING_REASON = kbo_event_outcome.FRAME_MISSING_REASON
+FETCH_FAILED_REASON = kbo_event_outcome.FETCH_FAILED_REASON
 GENERIC_LINK_TITLES = {"신청하기", "신청 확인", "신청확인", "행사 개요"}
 
 
@@ -135,7 +138,7 @@ def read_kbo_event_page(html: str, base_url: str = KBO_EVENT_BASE_URL) -> KboEve
     no events when it was never actually asked.
     """
     if not has_kbo_event_frame(html):
-        return KboEventPageRead(status=KboEventStatus.SCHEMA_CHANGED, reason=FRAME_MISSING_REASON)
+        return KboEventPageRead(status=KboEventStatus.SCHEMA_CHANGED, reason=FRAME_MISSING_REASON, url=base_url)
 
     events = list(extract_kbo_event_links(html, base_url))
     page_event = extract_kbo_event_page(html, base_url)
@@ -144,6 +147,7 @@ def read_kbo_event_page(html: str, base_url: str = KBO_EVENT_BASE_URL) -> KboEve
     return KboEventPageRead(
         status=KboEventStatus.SUCCESS if events else KboEventStatus.EMPTY,
         events=events,
+        url=base_url,
     )
 
 
@@ -223,6 +227,12 @@ class KboEventCrawler:
         connection error, and the run has to be able to say so.
         """
 
+        #: One read per page visited, so the sweep's outcome vocabulary has a
+        #: producer for every state it declares. Kept alongside `_page_failures`
+        #: rather than instead of it: the failures drive the ledger and the dead
+        #: letter queue, while the reads say what the sweep saw (BUG-006).
+        self._page_reads: list[KboEventPageRead] = []
+
     async def run(
         self,
         *,
@@ -258,7 +268,11 @@ class KboEventCrawler:
             if await self._blocked_by_compliance(run):
                 return []
 
+            # Reset per run, not per instance: both lists are sweep state, and a
+            # crawler object outlives one sweep. Leaving them set would make a
+            # second `run()` report the first sweep's failures as its own.
             self._page_failures = []
+            self._page_reads = []
             events: list[dict[str, object]] = []
             seen_urls: set[str] = set()
             for url in self.urls:
@@ -301,9 +315,16 @@ class KboEventCrawler:
             logger.exception("[KBO_EVENT] Failed to fetch %s", url)
             _stage, code = classify_failure(exc)
             self._page_failures.append((url, code.value, str(exc)))
+            # Recorded so the fetch failure reaches the outcome vocabulary rather
+            # than being handled entirely by this except branch. The dead letter
+            # above is the recovery path and was always correct; what was missing
+            # is that `KboEventStatus.FETCH_FAILED` had no producer at all, so the
+            # enum claimed a distinction the sweep could not express (BUG-006).
+            self._page_reads.append(fetch_failed_read(url))
             return
 
         read = read_kbo_event_page(html, final_url)
+        self._page_reads.append(read)
         if read.status is KboEventStatus.SCHEMA_CHANGED:
             # Keep the raw document: it is the evidence for what the page turned
             # into, and `kbo snapshot replay` re-parses from it.

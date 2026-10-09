@@ -238,26 +238,51 @@ BH9는 DLQ 계열(`kbo_crawl_dlq_*`)이 두 계약의 접두어 필터를 모두
 - 이 계약은 이제 `kbo_` 접두어를 갖는 모든 메트릭을 덮지만, **접두어가 없는 메트릭은 덮지 않습니다.** 현재 그런 메트릭은 없습니다.
 - 4종은 **분류만** 했고 규칙을 추가하지 않았습니다. `kbo_auto_healer_unresolved_total`처럼 이미 다른 경로가 알리는 것은 중복 페이지를 피한 것이고, 나머지는 사유가 유효한 동안은 무음이 맞습니다. 사유가 바뀌면(예: 캐시를 SLO로 삼으면) 그때 규칙을 추가해야 합니다.
 
-### BUG-004 — PARTIAL 실행의 error_code가 5개 중 4개에서 비어 있음
+### BUG-004 — ~~PARTIAL 실행의 error_code가 비어 있음~~ → **기각. 의도된 계약이다**
 
 - **영역**: ledger / crawler 계층 간
 - **발견 방식**: BH0 계약("PARTIAL → error_code 존재") 대조
-- **조건**: 크롤러가 `partial`을 기록할 때
+- **최초 판정**: P2 보고. **재검토 결과 결함이 아니다.**
 
-| 크롤러 | partial 분기 | error_code |
-|---|---|---|
-| `award_crawler` | 864행 | ✅ `SOURCE_PARTIAL` |
-| `food_crawler` | 198행 | ❌ FAILED 분기에서만 설정 |
-| `parking_crawler` | 203행 | ❌ FAILED 분기에서만 설정 |
-| `kbo_event_crawler` | 380행 | ❌ FAILED 분기에서만 설정 |
-| `player_movement_crawler` | 202행 | ❌ 어디에도 없음 |
+| 크롤러 | partial 분기 | error_code | 계약 |
+|---|---|---|---|
+| `award_crawler` | 864행 | `SOURCE_PARTIAL` | aggregate 실패를 명명하는 코드 |
+| `food_crawler` | 197행 | 비움 | 아래 근거 |
+| `parking_crawler` | 202행 | 비움 | 아래 근거 |
+| `kbo_event_crawler` | 379행 | 비움 | 아래 근거 |
+| `player_movement_crawler` | 202행 | 비움 | 아래 근거 |
 
-- **구조적 원인**: `food`/`parking`/`kbo_event`는 `run.status = PARTIAL`과 `run.error_code = ...`를 **if/else로 나눠 배치**해 partial 경로가 error_code를 건너뛴다. `player_movement`는 partial 블록에 error_code가 없다.
-- **영향**: **계산상 낭비이며 진단 가능성 문제다.** 소비자를 확인한 결과 partial 실행의 `error_code`를 읽는 곳이 `crawl_run_replay`, `dlq` CLI, `crawler_metrics` 어디에도 없다. DLQ는 별도 경로(`_enqueue_dead_letter`)로 개별 실패를 적재하므로 복구 정보는 사라지지 않는다.
-- **심각도**: P2. hunt 정책상 보고만.
-- **회귀 테스트**: 미추가 (P2, 수정 시점에 함께 추가)
+#### 왜 결함이 아닌가
 
----
+**1. 이미 거부된 설계에 대한 명시적 계약이 존재한다.**
+`tests/crawlers/test_food_persist_failure_contracts.py::test_the_run_leaves_the_code_to_the_queue_when_it_is_only_partial`
+은 partial 실행의 `error_code is None`을 **단언한다**. 그 테스트의 docstring이 논리를 명시한다:
+
+> One team timed out and two wrote cleanly. Putting that code on the run would
+> imply the whole run failed for that reason. The queue is where a per-team code
+> belongs, and the run is where the tally belongs.
+
+ hunt가 처음에 이 테스트를 읽고 그 계약을 **버그로 재분류**했다. 계약이 존재한다는 사실 자체가 결함이 아니라는 증거였다.
+
+**2. 수정은 `error_message`를 오염시킨다.** BH0은 "계산상 낭비이며 진단 가능성 문제"라고 적었으나,
+4개 크롤러는 이미 `run.error_message`에 무엇이 실패했는지 팀·페이지·연도 단위로 적는다
+(`teams failed: [...]` / `pages failed: [...]` / `years failed: [...]`).
+`error_code`는 분류이고 `error_message`는 열거다. 둘을 같은 칸에 넣으면 어느 쪽이 불명확해진다.
+
+**3. `award_crawler`가 유일한 예외가 아니라 다른 집계다.** aggregate 실패에는
+`SOURCE_PARTIAL`(retryable)이 정확한 코드이고, 단일 대상 replay에는 그 코드가
+실제 원인을 대체하므로 `failed`가 된다 — 그 주석이 이미 이유를 적고 있다.
+즉 "빈 error_code"가 아니라 "`SOURCE_PARTIAL` 미사용"이 선택 문제지,
+`SOURCE_PARTIAL`로 통일하는 것이 올바른 수정은 아니다. **partial이 단일 원인이
+없다는 사실 자체가 contract다.**
+
+**4. DLQ는 복구 정보를 잃지 않는다.** 각 실패는 개별 DLQ 레터로 적재되므로
+`failure_stage`와 `error_code`가 큐에 그대로 있다. 실행 행은 집계다.
+
+- **재판정**: **기각 (설계 의도, 계약으로 고정됨)**
+- **회귀 테스트**: 기존 — `test_food_persist_failure_contracts.py`가 partial의
+  `error_code is None`을 이미 고정한다. 신규 테스트는 "이 결정을 하지 말라"를
+  막는 것일 뿐이며, 계약 테스트로 충분하다.
 
 ## 2-BH1. transport/parser 경계 공격 결과
 
@@ -291,13 +316,20 @@ BH1의 목표는 "200 + 빈 body"와 "200 + 마크업 변경"이 실제로 구�
 
 `kbo_event`의 4번째 필드는 **모든 entry에서 `False`**이고 **어떤 호출부도 읽지 않는다.** `classify_page_failure`가 `code, _explanation, terminal, _absence = entry`로 언패킹하고 버린다.
 
-문서까지 그 필드가 "구현된 기능처럼" 보입니다. 모듈 docstring은 길게 论증합니다 — "빈 안내 페이지와 읽을 수 없는 페이지는 밖에서 보면 동일하다" — 그리고 바로 그 구분 근거를 이름 붙여 두었다가 **읽지 않습니다.** 상수인 필드는 근거가 아닙니다.
+문서까지 그 필드가 "구현된 기능처럼" 보입니다. 모듈 docstring은 길게 논증합니다 — "빈 안내 페이지와 읽을 수 없는 페이지는 밖에서 보면 동일하다" — 그리고 바로 그 구분 근거를 이름 붙여 두었다가 **읽지 않습니다.** 상수인 필드는 근거가 아닙니다.
 
 정리는 한쪽만 끝난 상태입니다. 나머지 두 모듈은 이미 3튜플입니다.
 
-- **영향**: 계산상 무해하나, **"absence 추적 중"으로 오독을 유발**한다. docstring이 leng이 그 구분이 중요하다고 주장하는데 코드가 구현하지 않은 의도를 남겨 둔 것.
-- **심각도**: P2. hunt 정책상 보고만.
-- **회귀 테스트**: `tests/crawlers/test_page_outcome_agreement.py` — **xfail(strict)**
+- **영향**: 계산상 무해하나, **"absence 추적 중"으로 오독을 유발**한다. docstring이 길게 그 구분이 중요하다고 주장하는데 코드가 구현하지 않은 의도를 남겨 둔 것.
+- **심각도**: P2 → **해결됨**.
+- **수정**: 4번째 컬럼 제거, `classify_page_failure`의 언패킹도 3개로 축소.
+  나머지 두 모듈과 shape가 일치한다. 구분이 없다는 뜻이 아니라, **상수 컬럼은
+  근거가 아니었다**는 판단이다 — 실제 구분은 `is_terminal`과 호출자의
+  `EMPTY`/`SCHEMA_CHANGED` 선택이 이미 담당한다.
+- **회귀 테스트**: `tests/crawlers/test_page_outcome_agreement.py`.
+  strict xfail이라 해결 시 XPASS 실패가 되도록 설계되어 있었고, 해결과 동시에
+  표시를 제거했다. 좁은 `width == 3` 단언에 더해 **모든 entry의 폭이 같은지**
+  도 보는데, 표 전체가 3폭이어도 어떤 entry만 다른 폭인 경우가 있기 때문이다.
 
 ### BUG-006 — `FETCH_FAILED` 상태를 아무도 생산하지 않음
 
@@ -318,8 +350,21 @@ except KBO_EVENT_CRAWL_EXCEPTIONS as exc:
 부수 효과로 `_REASON_FAILURES["page_fetch_failed"]`가 **호출 없는 도달 가능해 보이는 행**이 됩니다. 즉 enum이 처리하는 것처럼 보이는 경우가 실제로는 다른 분기에서 처리되고 있습니다.
 
 - **영향**: 데이터 결함이 아니라 **어휘 함정**. 실패 자체는 taxonomy code를 단 DLQ 레터로 정상 기록된다. 비용은 enum이 크롤러가 구별할 수 있는 것을 과장한다는 점.
-- **심각도**: P2.
-- **회귀 테스트**: `tests/crawlers/test_page_outcome_producers.py`
+- **심각도**: P2 → **해결됨**.
+- **수정**: 크롤러가 `_page_reads`를 갖고 예외 분기에서 `fetch_failed_read(url)`을
+  기록한다. **DLQ 경로는 그대로**다 — 재시도 정책을 구동하는 코드는 예외를
+  `classify_failure`로 분류한 값이지 reason 표의 값이 아니므로, 상태 기록은 그 위에
+  얹히는 보고이고 대체가 아니다. `read_kbo_event_page`는 이제 최종 URL을 read에
+  담는데, 7개 페이지의 read 목록이 어느 페이지인지 말하지 못하면 담는 정보가
+  없기 때문이다.
+- **수정 중 발견한 실제 버그**: `_page_failures`는 `run()` 안에서 초기화되지만
+  크롤러 객체는 한 번의 스윕보다 오래 산다. `_page_reads`를 추가하면서 같은
+  클래스의 버그가 한 줄 차이로 다시 나타날 뻔했고, 초기화도 함께 넣었다.
+- **회귀 테스트**: `tests/crawlers/test_page_outcome_producers.py`.
+  **기존 테스트가 놓치고 있던 것이 이번 수정의 핵심이다**: 기존은 outcome 모듈이
+  상태를 *구성할 수 있는지*만 봤고, 그 테스트는 `FETCH_FAILED`가 도달 불가능한
+  동안에도 통과했다. 크롤러가 그 생성자를 *호출하는지*가 별개의 질문이고 그것이
+  버그였다. producer 배선을 실제로 구동해 검증하는 테스트를 추가했다.
 
 > 이 테스트의 초안은 크롤러 소스를 `Enum.MEMBER`로 grep했더니 오탐 2건이 나왔습니다. `team_history`는 상태를 `read_team_history()` **함수 안에서** 만들기 때문입니다. 상태에 도달 가능한지는 이름이 아니라 **호출**로 확인해야 하고, 텍스트 검색으로는 답할 수 없습니다.
 
