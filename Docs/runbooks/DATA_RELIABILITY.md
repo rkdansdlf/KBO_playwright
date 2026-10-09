@@ -265,6 +265,66 @@ the `for:` hold-back, and mixed/healthy staying quiet:
 promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
 ```
 
+### 3.2e A source that is never consulted
+
+`KboCrawlerSourceNeverConsulted` (warning) fires when a crawler keeps running
+but has not actually asked its source for 48 hours.
+
+It exists because of how a compliance skip is recorded. A run that robots.txt or
+the compliance policy refuses is written as `success` — deliberately, because
+nothing failed — and `success` is in `SUCCESS_STATUSES`, so it also advances
+`kbo_crawl_last_success_timestamp`. `KboCrawlerNoRecentSuccess` therefore cannot
+see a crawler that is skipped on *every* run: the freshness gauge is refreshed by
+the very runs that collected nothing.
+
+**Measured in production (2026-10-10):** `roster_transactions` and
+`player_movement` were skipped on every run, while their domain tables held no
+rows after 2026-08-16. Eight weeks of nothing collected, and no alert could see
+it. `source_limited` was also the only checkpoint outcome ever written.
+
+The rule reads `kbo_crawl_last_source_consulted_timestamp`, which only a run that
+actually asked sets — a skipped run deliberately does not touch it, because
+setting it there would reproduce the defect. `kbo_crawl_source_limited_total`
+breaks the same condition down by reason once the alert has fired, so the first
+question ("why") has an answer.
+
+| Signal | Question it answers |
+| --- | --- |
+| `kbo_crawl_last_success_timestamp` | did the run finish without an error? |
+| `kbo_crawl_last_source_consulted_timestamp` | did it actually ask the source? |
+| `kbo_crawl_source_limited_total{reason}` | why not, if it did not |
+
+**What to do when it fires.** It is a warning, not a critical, because being
+blocked by policy is not the same as being broken. Read the reason label:
+
+```bash
+python3 -m src.cli.kbo dlq stats          # unrelated, but confirms the DB path
+```
+
+then decide, and record the decision here:
+
+- `compliance_blocked` / `kbo_robots_blocked` **accepted** — the source is
+  intentionally off-limits. Add it to `Docs/references/KNOWN_LIMITATIONS.md` so
+  the next reader knows the silence is chosen, and expect this alert to keep
+  firing (it is the record that the choice is still in force).
+- **not acceptable** — the data is needed, so a permissioned route or a
+  different source has to be found. Until then the table is stale and anything
+  reading it is reading August.
+
+Thresholds, and what they are worth:
+
+- 48h rather than 7d: these crawlers run daily, so two missed days is a change
+  in behaviour rather than a blip. Not yet calibrated against a real recovery
+  (BUG-014) — the cadence is the basis, not a measurement.
+- The 6-hour run guard mirrors `KboCrawlerNoRecentSuccess`: a crawler that
+  stopped running entirely is that rule's business, and reporting it here as well
+  would raise two alerts for one condition.
+
+Firing behaviour is pinned by
+`monitoring/prometheus/tests/crawler_alert_source_limited_test.yml` — a crawler
+skipped for days, one still asking, one that stopped running, one that skipped
+once and resumed, and a brand-new crawler whose gauge has never been set.
+
 ### 3.2d Sustained-partial alerting — measured, and its premise does not hold
 
 `KboCrawlerSustainedPartial` reads `kbo_crawl_runs_total{status="partial"}`.

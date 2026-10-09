@@ -102,6 +102,42 @@ groups:
           description: "{{ $labels.crawler }} 은(는) 24시간 동안 완전 성공 없이 partial 실행만 기록했습니다. 일부 소스만 실패하는 저하가 이어지고 있을 수 있으니 소스별 결과와 DLQ를 확인하세요."
           runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
+      # ── A source that is never consulted ─────────────────────────────
+      # A compliance or robots decision that skips a fetch is recorded as
+      # `success` -- deliberately, because nothing failed -- and that status also
+      # advances `kbo_crawl_last_success_timestamp`. So a crawler that is skipped
+      # on every run looks permanently healthy to `KboCrawlerNoRecentSuccess`,
+      # and a source that stopped answering is indistinguishable from one that
+      # was never asked (BUG-014).
+      #
+      # Measured: `roster_transactions` and `player_movement` were skipped on
+      # every run from 2026-10-07 while their domain tables held no rows after
+      # 2026-08-16. No alert could see it.
+      #
+      # The rule reads `kbo_crawl_last_source_consulted_timestamp`, which only a
+      # run that actually asked sets -- climbing it back onto `last_success`
+      # would reproduce the defect. The run-count guard is the same shape as
+      # KboCrawlerNoRecentSuccess: a crawler that stopped running entirely is
+      # that rule's business, and reporting it here too would double-page.
+      #
+      # 48h rather than 7d: these crawlers run daily, so two missed days is
+      # already a change in behaviour rather than a blip. Warning, not critical,
+      # because being blocked by policy is not the same as being broken -- the
+      # reader decides whether the block is acceptable, and the decision is
+      # recorded in the runbook rather than in the alert's severity.
+      - alert: KboCrawlerSourceNeverConsulted
+        expr: |
+          (sum by (crawler) (increase(kbo_crawl_runs_total[6h])) > 0)
+          and on (crawler)
+          (time() - kbo_crawl_last_source_consulted_timestamp > 172800)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤러 소스 미조회: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 은(는) 48시간 넘게 소스를 한 번도 조회하지 않았습니다. 실행은 계속되고 있으므로 정지가 아니라 준법·robots 정책으로 건너뛰고 있을 가능성이 높습니다. `kbo_crawl_source_limited_total` 로 사유를 확인하고, 그 차단이 수용 가능한지 판단하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
       # ── Ledger lifecycle failure ─────────────────────────────────────
       # A crawl can fail cleanly and still leave nothing behind. If the run row
       # was never opened, or its terminal transition was never committed, the

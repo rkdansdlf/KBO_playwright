@@ -320,3 +320,42 @@ an explicit completeness predicate and an alternate historical source.
 - 9,508 rows from the historical database snapshot
 - 2,453 rows inferred from team modal stadium mapping
 - 8 remaining 2020 HH games manually backfilled
+
+## Blocked sources: roster transactions and player movements (open decision)
+
+**Status: measured, decision pending** — recorded 2026-10-10.
+
+Two crawlers are refused by the source's own policy and therefore collect
+nothing:
+
+| Crawler | Block | Reason label |
+| --- | --- | --- |
+| `roster_transactions` | compliance policy | `compliance_blocked` |
+| `player_movement` | robots.txt | `kbo_robots_blocked` |
+
+**What this means for the data.** `roster_transactions` has no rows after
+2026-08-16; the two tables have been static since then. Anything reading them is
+reading August.
+
+**Why it went unnoticed.** A policy skip is recorded as `success` — that part is
+deliberate, since nothing failed — and `success` also advances
+`kbo_crawl_last_success_timestamp`. `KboCrawlerNoRecentSuccess` was therefore
+refreshed by the very runs that collected nothing, so eight weeks of no data
+looked identical to eight weeks of healthy collection. Fixed on 2026-10-10 by
+`KboCrawlerSourceNeverConsulted` and `kbo_crawl_last_source_consulted_timestamp`
+(see BUG-014 in `Docs/certification/bug-hunt/BH0_CONTRACTS.md` and
+§3.2e of `Docs/runbooks/DATA_RELIABILITY.md`).
+
+**The decision that is still open.** The alert now fires, which is the point —
+but whether the block is *acceptable* has not been decided:
+
+- **Accept it** — the source is intentionally off-limits. Leave this section as
+  the record and expect `KboCrawlerSourceNeverConsulted` to keep firing; the
+  alert is the evidence that the choice is still in force. If the decision is
+  that this is permanent, say so here explicitly so a reader stops treating it as
+  an outage.
+- **Do not accept it** — the data is needed, so a permissioned route or a
+  different source has to be found before the tables become current again.
+
+Until one of those is recorded, treat the alert as unresolved rather than as
+noise.
