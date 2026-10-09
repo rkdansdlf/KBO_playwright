@@ -10,10 +10,17 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.cli.rag import reconcile_rag_stores
 from src.cli.rag.reconcile_rag_stores import fetch_identity_entries, main
 from src.services.rag_reconciliation import ManifestEntry, write_manifest
+
+
+def _patch_columns(monkeypatch: pytest.MonkeyPatch, names: set[str]) -> None:
+    """Pin the columns the store reports, so the query shape can be asserted."""
+    monkeypatch.setattr(reconcile_rag_stores, "_embedding_column_names", lambda bind: set(names))
 
 
 def _row(
@@ -64,12 +71,13 @@ def _clean_reports_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path
 
 
 class TestFetchIdentityEntries:
-    def test_prefers_timestamped_query_with_fallback(self) -> None:
+    def test_prefers_timestamped_query_with_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = Mock()
         session.execute.side_effect = [
             SQLAlchemyError("no such column: created_at"),
             _FakeResult([_row("awards", "1")]),
         ]
+        _patch_columns(monkeypatch, {"embedding"})
 
         entries = fetch_identity_entries(session)
 
@@ -77,41 +85,106 @@ class TestFetchIdentityEntries:
         assert entries[0].key == "awards:1"
         assert session.execute.call_count == 2
 
-    def test_raises_runtime_error_when_both_variants_fail(self) -> None:
+    def test_raises_runtime_error_when_both_variants_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = Mock()
         session.execute.side_effect = SQLAlchemyError("boom")
+        _patch_columns(monkeypatch, {"embedding"})
 
         with pytest.raises(RuntimeError, match="identity query failed"):
             fetch_identity_entries(session)
 
-    def test_datetime_timestamp_serialized_to_iso(self) -> None:
+    def test_datetime_timestamp_serialized_to_iso(self, monkeypatch: pytest.MonkeyPatch) -> None:
         stamp = datetime(2026, 8, 22, 17, 40, 39, tzinfo=UTC)
         session = Mock()
         session.execute.return_value = _FakeResult([_row("game", "9", updated_at=stamp.isoformat())])
+        _patch_columns(monkeypatch, {"embedding"})
 
         entries = fetch_identity_entries(session)
 
         assert entries[0].updated_at is not None
 
-    def test_oracle_projection_uses_native_vector_column(self) -> None:
+    def test_oracle_projection_uses_native_vector_column(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = Mock()
         session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
         session.execute.return_value = _FakeResult([_row("game", "9")])
+        _patch_columns(monkeypatch, {"embedding_vector", "embedding"})
 
         fetch_identity_entries(session)
 
         assert "embedding_vector" in str(session.execute.call_args.args[0])
 
-    def test_postgresql_projection_uses_embedding_column(self) -> None:
+    def test_postgresql_projection_uses_embedding_column(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = Mock()
         session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
         session.execute.return_value = _FakeResult([_row("game", "9")])
+        _patch_columns(monkeypatch, {"embedding"})
 
         fetch_identity_entries(session)
 
         query = str(session.execute.call_args.args[0])
         assert "CASE WHEN embedding IS NULL" in query
         assert "embedding_vector" not in query
+
+    def test_reads_the_column_the_store_actually_has(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pick the embedding column from the table, not from the dialect.
+
+        The operational database and the pgvector store are both PostgreSQL and
+        name the column differently -- ``embedding_vector`` and ``embedding``.
+        Choosing by dialect made the export fail against the store it was
+        written for, and would have chosen wrong for one of them either way.
+        """
+        session = Mock()
+        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        session.execute.return_value = _FakeResult([_row("game", "9")])
+        _patch_columns(monkeypatch, {"embedding_vector"})
+
+        fetch_identity_entries(session)
+
+        assert "embedding_vector IS NULL" in str(session.execute.call_args.args[0])
+
+    def test_a_literal_null_text_is_not_an_embedding(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Treat the text ``null`` as absent, as the local store writes it.
+
+        The dev database records "no vector" as the four-character string
+        ``null`` rather than SQL NULL, so an IS NULL test reports every row as
+        embedded and the drift it should surface moves to the other side.
+        """
+        session = Mock()
+        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        session.execute.return_value = _FakeResult([_row("game", "9")])
+        _patch_columns(monkeypatch, {"embedding_vector"})
+
+        fetch_identity_entries(session)
+
+        assert "'null'" in str(session.execute.call_args.args[0])
+
+    def test_the_vector_type_is_never_cast_to_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Keep Oracle's projection free of a cast its VECTOR type rejects."""
+        session = Mock()
+        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
+        session.execute.return_value = _FakeResult([_row("game", "9")])
+        _patch_columns(monkeypatch, {"embedding_vector"})
+
+        fetch_identity_entries(session)
+
+        assert "CAST(" not in str(session.execute.call_args.args[0])
+
+    def test_column_detection_handles_both_names(self) -> None:
+        """Report whichever of the two candidate columns the table has."""
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE rag_chunks (id INTEGER, embedding TEXT)"))
+            names = reconcile_rag_stores._embedding_column_names(connection)
+        assert "embedding" in names
+        assert "embedding_vector" not in names
+
+    def test_column_detection_sees_the_other_name_too(self) -> None:
+        """Find ``embedding_vector`` on a store that names it that way."""
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE rag_chunks (id INTEGER, embedding_vector TEXT)"))
+            names = reconcile_rag_stores._embedding_column_names(connection)
+        assert "embedding_vector" in names
 
 
 class TestExportCommand:
@@ -125,6 +198,7 @@ class TestExportCommand:
         ]
         import src.db.engine as engine_mod
 
+        _patch_columns(monkeypatch, {"embedding"})
         monkeypatch.setattr(engine_mod, "get_rag_index_session", lambda: _NullContext(session))
         return session
 
