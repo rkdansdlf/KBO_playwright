@@ -1,6 +1,6 @@
 # BH0/BH1/BH2 — 크롤러 신뢰성 계약 목록화 및 경계 공격
 
-> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07); 임계값 실측 완료(2026-10-09) — `partial` 0건이라 보정 불가, 규칙은 '미검증' 상태. BH9 최종 결정(2026-10-09): 24h 유지·미보정, EXHAUSTED 감시는 무음 — BUG-002 미종결.
+> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07); 임계값 실측 완료(2026-10-09) — `partial` 0건이라 보정 불가, 규칙은 '미검증' 상태. BH9: 24h 유지·미보정. **BUG-002는 2026-10-09에 종결**(c387f8b3: `dlq:` 인시던트 3키 + heartbeat 2종 + 규칙 2종 추가). EXHAUSTED 신규 발생률 감시는 실측 후 설계 보류로 남음.
 > 범위: 공유 인프라 6계층(transport → persist → ledger → DLQ → replay → incident/notification/metrics).
 > 전제: 전부 로컬 SQLite. 운영 DB 무접촉.
 
@@ -632,7 +632,11 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 
 - PARTIAL을 발생시키는 크롤러는 실제로 어떤 것인가 (BH2 입력) — **답**: `award`/`food`/`parking`/`kbo_event`/`player_movement` 5종 + `game_detail_runs`/`relay_runs` 2개 경로. 그중 4개는 error_code가 비어 있다(BUG-004).
 - DLQ alert 규칙을 넣을 때 어느 임계값이 적절한가 — **답(2026-10-09)**: 24h 유지로 확정했으나 **적정성은 미검증**이다. 유지 근거는 재시도 스케줄에서 온 구조적 추론이지 관측이 아니다. 운영 7일 측정 후 재판정한다. BUG-002는 이 근거가 확보될 때까지 미종결.
-- EXHAUSTED 누적은 누가 감시하는가 — **답(2026-10-09)**: 아무도 감시하지 않는다. `oldest_due_next_retry_at()`이 PENDING만 조회한다. 지표 `kbo_crawl_dlq_letters{status="exhausted"}`는 있으므로 규칙 추가는 가능하나, 누적값이 아니라 **신규 발생률**로 설계해야 한다. 실측 전 설계 보류.
+- EXHAUSTED 누적은 누가 감시하는가 — **답(2026-10-09, c387f8b3로 해소)**: 처음 판단은 "아무도 감시하지 않는다"였다. `oldest_due_next_retry_at()`이 PENDING만 조회하고 지표는 있어도 규칙이 없었다. Prometheus 규칙 추가는 보류했고, 누적값이 아니라 **신규 발생률**로 설계해야 한다고 적었다.
+
+  **이 설계 보류는 더 이상 필요하지 않다.** 같은 자리에 `dlq:exhausted` 인시던트를 넣으면서 정답이 다른 형태라는 게 드러났다: EXHAUSTED는 누적값을 감시하는 게 아니라 **조치 가능한 상태**를 감시해야 한다. 누적은 0이 될 수 없어서(New rate로 보정해도 절차 잡음이 되고) 무엇이 나빠졌는지 말해주지 않는다. 운영자가 할 일은 "새 letter가 소진되었다"가 아니라 "소진된 letter가 있다"이고, 인시던트가 정확히 그것을 표현한다 — 누적되어 **자가 해소되지 않으며** `kbo dlq retry`/`ignore`로만 닫힌다.
+
+  **그래서 EXHAUSTED Prometheus 규칙은 추가하지 않는다.** 두 경로를 만들면 같은 상태에 중복 경보가 생기고, 인시던트 쪽이 더 정확하다. 운영 실측은 2026-10-09 기준 `ignored` 4건·`exhausted` 0건이라 인시던트가 실제 발동한 적은 아직 없다.
 - `src/utils/metrics.py`의 다른 메트릭도 같은 사각지대에 있는가 (BUG-002 확장) — **답: 4종이었고 분류를 마쳤다. 사각지대 자체도 닫았다(BUG-012).**
 
 ## 6. 누적 버그 목록 (BH0~BH11)
@@ -640,16 +644,16 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 | ID | 심각도 | 영역 | 요약 | 상태 |
 |---|---|---|---|---|
 | BUG-001 | P1 | metrics | 지속 PARTIAL 탐지 불가 | **수정 완료; KboCrawlerSustainedPartial(warning) + 발동/조용 픽스처** |
-| BUG-002 | P1 | metrics/incident | DLQ에 규칙·인시던트 없음; orphan 사각지기가 구조적 | **규칙 2종 추가 + 사각지기 제거; 24h 유지·미보정 확정 (인시던트 미해결)** |
+| BUG-002 | P1 | metrics/incident | DLQ에 규칙·인시던트 없음; orphan 사각지기가 구조적 | **종결**(c387f8b3). 규칙 4종 + `dlq:` 인시던트 3키 + heartbeat 2종. `dlq:exhausted`가 자가 해소되지 않던 문제도 해결 |
 | BUG-003 | — | DLQ | 동시 워커 이중 claim | **기각** |
-| BUG-004 | P2 | ledger | PARTIAL error_code가 5개 중 4개에서 비어 있음 | 보고 |
-| BUG-005 | P2 | crawler | `kbo_event`만 4튜플, `absence` 필드 미소비 | xfail(strict) |
-| BUG-006 | P2 | crawler | `FETCH_FAILED`를 아무도 생산하지 않음 | 회귀 테스트 |
-| BUG-007 | P2 | persist/snapshot | 마지막 커밋~상태 갱신 사이 crash 창 | 회귀 테스트 |
+| BUG-004 | — | ledger | PARTIAL error_code가 비어 있음 | **기각 — 의도된 계약**(8fa569a5). partial에 코드 없음은 거부된 설계이며 `test_food_persist_failure_contracts.py`가 고정한다 |
+| BUG-005 | P2 | crawler | `kbo_event`만 4튜플, `absence` 필드 미소비 | **수정 완료**(8fa569a5). dead 컬럼 제거 → 3튜플. strict xfail이 XPASS로 표시 제거를 강제했다 |
+| BUG-006 | P2 | crawler | `FETCH_FAILED`를 아무도 생산하지 않음 | **수정 완료**(8fa569a5). `_page_reads` producer 추가. 기존 테스트는 생성자 도달 가능성만 봐서 통과했었다 |
+| BUG-007 | P2 | persist/snapshot | 마지막 커밋~상태 갱신 사이 crash 창 | 회귀 테스트 5건 + **런북 §4.2a에 문서화**(0472ac17). 데이터 결함 아님; `pending` 스냅샷이 기준선 사각지대를 만든다 |
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
 | **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
-| BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 |
+| BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
 
