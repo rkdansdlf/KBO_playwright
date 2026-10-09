@@ -33,6 +33,8 @@ logger = logging.getLogger("src.scheduler.jobs.maintenance")
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from src.services.crawl_dead_letter_stats import DlqStats
+
 #: Runtime import: the sweep's empty result is constructed on the failure path,
 #: not merely annotated, so this cannot live in the TYPE_CHECKING block above.
 from src.services.orphan_run_sweeper import OrphanSweepResult
@@ -755,14 +757,26 @@ def relay_state_cleanup_job() -> None:
             alert_warning("relay_state_cleanup", "Relay state cleanup failed")
 
 
-def _refresh_dlq_metrics() -> None:
-    """Refresh DLQ state gauges from the DB; metrics must never break the job."""
+def _refresh_dlq_metrics() -> DlqStats | None:
+    """Refresh DLQ state gauges and return the reading, or None if it failed.
+
+    The reading is returned rather than discarded because it is the only input to
+    the ``dlq:`` state incidents. Deriving them from a *failed* read would be the
+    exact conflation this separates: a queue that could not be read is not a
+    healthy queue, and reporting it as one -- by resolving the incidents of
+    conditions that were never checked -- would clear real alerts on a sweep that
+    observed nothing.
+
+    Metrics remain a side channel: a failure is logged and reported as None, never
+    raised, so it cannot break the recovery work this tick also does.
+    """
     try:
         from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics
 
-        publish_dlq_state_metrics()
+        return publish_dlq_state_metrics()
     except Exception:
         logger.exception("Failed to refresh DLQ metrics")
+        return None
 
 
 @_with_db_fail_fast_guard
@@ -782,6 +796,12 @@ def crawl_dead_letter_recovery_job() -> None:
     window rather than any new coverage. The two do not overlap -- stranded
     replays belong to the dead letter path below, which can act on them, and the
     sweeper skips those rows explicitly.
+
+    The alerts here answer only "did this check work". The queue's own condition
+    is reported separately under the ``dlq:`` namespace, because keying it on the
+    job name meant one noisy check overwrote whatever the queue was trying to say
+    -- and an exhausted letter, which only an operator can clear, was reported as
+    a warning that the next healthy tick would resolve.
     """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Dead Letter Recovery ===")
@@ -789,7 +809,7 @@ def crawl_dead_letter_recovery_job() -> None:
             from src.services.crawl_dead_letter_recovery import recover_stuck_retrying
 
             results = recover_stuck_retrying()
-            _refresh_dlq_metrics()
+            _apply_dlq_state_incidents(_refresh_dlq_metrics())
             orphans = _sweep_orphaned_runs()
             if not results:
                 logger.info("=== Dead Letter Recovery: nothing stuck (orphans: %s) ===", orphans.summary())
@@ -815,6 +835,31 @@ def crawl_dead_letter_recovery_job() -> None:
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Dead letter recovery failed")
             raise
+
+
+def _apply_dlq_state_incidents(stats: DlqStats | None) -> None:
+    """Publish the queue's condition under ``dlq:``, separate from the job's own.
+
+    A ``None`` reading means the queue could not be read. Nothing is derived from
+    it: the conditions were never evaluated, so resolving their incidents would
+    report a recovery that did not happen, and leaving them open would be
+    equally wrong. The sweep heartbeat metrics are what make this state
+    distinguishable from a healthy queue -- see
+    ``kbo_crawl_dlq_last_successful_sweep_timestamp``.
+    """
+    if stats is None:
+        logger.warning("Skipping DLQ state incidents: the queue could not be read")
+        return
+
+    from src.services.crawl_dead_letter_stats import stale_retry_seconds
+    from src.services.dlq_incidents import apply_dlq_incidents
+
+    events = apply_dlq_incidents(stats, stale_retry_threshold=stale_retry_seconds())
+    if events:
+        logger.warning(
+            "=== DLQ state incidents opened: %s ===",
+            ", ".join(sorted(event.incident_key for event in events)),
+        )
 
 
 def _sweep_orphaned_runs() -> OrphanSweepResult:

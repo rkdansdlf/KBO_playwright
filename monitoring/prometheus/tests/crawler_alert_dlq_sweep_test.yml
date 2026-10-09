@@ -1,0 +1,145 @@
+# Rule-level tests for the DLQ sweep heartbeat alerts in
+# monitoring/prometheus/alert_rules_crawler.yml.
+#
+# These two rules exist because of an ambiguity the other DLQ rules cannot
+# resolve on their own. Every other rule reads a gauge the sweep refreshes, and
+# a sweep that cannot reach the database leaves those gauges at their previous
+# values rather than zeroing them -- so "the queue is empty" and "nobody could
+# look" produce an identical dashboard. The heartbeat is what separates them.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_dlq_sweep_test.yml
+#
+# `KboDlqSweepStalled` is written as an age (`time() - gauge > 7200`) rather than
+# a gauge-equals-zero test, which is why these fixtures pin the *never set* case
+# explicitly: at 0 it reads as maximally stale, which is the correct meaning of
+# "no sweep has ever succeeded", but it is a behaviour worth proving rather than
+# assuming.
+#
+# `for: 10m` on both rules means evaluation has to run long enough for the pending
+# window to elapse; the interval below is 30s to keep that tractable.
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 30s
+
+tests:
+  # ── KboDlqSweepStalled: the sweep has never succeeded ─────────────
+  - interval: 30s
+    input_series:
+      # Gauge still at its initial 0: no sweep has run since the process started.
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
+        values: '0x400'
+    alert_rule_test:
+      # The condition (age > 2h) only becomes true at 2h, so `for: 10m` puts the
+      # first possible firing at 2h10m. Five minutes earlier it must be pending
+      # and silent -- otherwise the `for` window is doing nothing.
+      - eval_time: 2h5m
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+      - eval_time: 2h10m30s
+        alertname: KboDlqSweepStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "DLQ 스위프 정지: 2h 10m 30s 동안 큐를 읽지 못함"
+              description: >-
+                최근 2h 10m 30s 동안 dead letter 큐를 한 번도 읽지 못했습니다.
+                큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다.
+                `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── KboDlqSweepStalled: the sweep ran, then stopped ───────────────
+  # The commoner failure than "never ran": a healthy process that later loses the
+  # ability to read the queue. This is the case the incident ledger update covers
+  # (id=37, left running for days) and the one an operator is most likely to hit.
+  - interval: 30s
+    input_series:
+      # Last successful sweep at t=1000s, never updated again.
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
+        values: '1000x400'
+    alert_rule_test:
+      # Inside the 2h allowance: a 1000s-old reading is still fresh enough.
+      - eval_time: 20m
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+      # Condition becomes true at t=8200 (1000 + 7200); `for: 10m` means 8800 is
+      # the first firing. 8700 is 8m20s into the pending window.
+      - eval_time: 8700s
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+      - eval_time: 2h27m
+        alertname: KboDlqSweepStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            # The rendered age is `eval_time - gauge`, so this case reads 2h10m20s
+            # rather than the 2h10m30s of the never-set case above. `$value` is the
+            # age being reported, not the evaluation clock, and conflating the
+            # two is the kind of mistake that makes a fixture pass for the wrong
+            # reason.
+            exp_annotations:
+              summary: "DLQ 스위프 정지: 2h 10m 20s 동안 큐를 읽지 못함"
+              description: >-
+                최근 2h 10m 20s 동안 dead letter 큐를 한 번도 읽지 못했습니다.
+                큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다.
+                `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── KboDlqSweepStalled: a healthy sweep must never fire ───────────
+  - interval: 30s
+    input_series:
+      # Sweep keeps refreshing: the gauge advances faster than the 2h allowance,
+      # so the age never crosses the threshold. This is the case that must stay
+      # quiet -- a rule that fires on a healthy system trains the reader to
+      # dismiss it, which costs more than the missing detection ever would.
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
+        values: '0+1800x200'
+    alert_rule_test:
+      - eval_time: 12h
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+  # ── KboDlqSweepFailing ────────────────────────────────────────────
+  - interval: 30s
+    input_series:
+      # Three failed reads in the window. The counter going up at all is the
+      # signal: there is no "tolerable" number of unreadable sweeps.
+      - series: 'kbo_crawl_dlq_sweep_failures_total'
+        values: '0 0 0 1 1 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
+    alert_rule_test:
+      # A single blip inside `for: 10m` must be suppressed, matching
+      # KboDlqRecoveryStalled: one transient read failure is not a fault.
+      - eval_time: 5m
+        alertname: KboDlqSweepFailing
+        exp_alerts: []
+
+      - eval_time: 13m
+        alertname: KboDlqSweepFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "DLQ 스위프 실패: 30분 내 3회 큐 읽기 실패"
+              description: >-
+                최근 30분 동안 dead letter 큐 읽기가 3회 실패했습니다.
+                DB는 살아있지만 큐를 못 읽는 상태일 수 있으므로,
+                DLQ 지표가 정상으로 보여도 실제로는 갱신되지 않았을 수 있습니다.
+                `python3 -m src.cli.kbo dlq stats` 로 직접 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── KboDlqSweepFailing: a working sweep must never fire ───────────
+  - interval: 30s
+    input_series:
+      # The counter exists but never increments, which is what a healthy system
+      # exports. An absent series and a flat zero must read the same way.
+      - series: 'kbo_crawl_dlq_sweep_failures_total'
+        values: '0x200'
+    alert_rule_test:
+      - eval_time: 6h
+        alertname: KboDlqSweepFailing
+        exp_alerts: []

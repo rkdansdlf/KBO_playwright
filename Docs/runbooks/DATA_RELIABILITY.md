@@ -115,19 +115,51 @@ Decision guide:
 
 ### 3.2b DLQ alerting
 
-Two Prometheus rules cover the queue. Both live in
-`monitoring/prometheus/alert_rules_crawler.yml` and read the gauges
+Four Prometheus rules cover the queue. All live in
+`monitoring/prometheus/alert_rules_crawler.yml`. The first two read the gauges
 `publish_dlq_state_metrics()` refreshes after each worker, recovery and operator
-batch.
+batch; the last two read the sweep's own heartbeat.
 
 | Alert | Condition | Severity | First response |
 | --- | --- | --- | --- |
 | `KboDlqRecoveryStalled` | `kbo_crawl_dlq_stale_retrying_letters > 0` for 1m | critical | a letter outlived the staleness cutoff — recovery itself stopped. Check the `crawl_dead_letter_recovery` job ran, then `dlq list --status retrying` |
 | `KboDlqBacklogAgeHigh` | `kbo_crawl_dlq_oldest_due_age_seconds > 86400` for 30m | warning | the drain is not keeping up. `dlq stats` for queue depth, then raise the retry batch limit or fix the failing crawler |
+| `KboDlqSweepStalled` | `time() - kbo_crawl_dlq_last_successful_sweep_timestamp > 7200` for 10m | critical | **nobody is looking.** The two rules above are reading frozen gauges. Check the recovery job and DB reachability first — do not trust the queue numbers until a sweep has succeeded |
+| `KboDlqSweepFailing` | `increase(kbo_crawl_dlq_sweep_failures_total[30m]) > 0` for 10m | warning | the DB is reachable but the queue read is not. `dlq stats` directly, because the gauges can look healthy while frozen |
 
-The two answer different questions and need different responses: a *stranded*
-letter means a worker died mid-replay, while an *aged* backlog means the worker
-is fine and the queue is growing faster than one pass per 10 minutes drains it.
+The first two answer different questions and need different responses: a
+*stranded* letter means a worker died mid-replay, while an *aged* backlog means
+the worker is fine and the queue is growing faster than one pass per 10 minutes
+drains it.
+
+The last two exist because the first two could both stay silent while the queue
+was in an unknown state. A sweep that cannot reach the database leaves the
+gauges at their **previous** values rather than zeroing them, so "the queue is
+empty" and "nobody could look" produced an identical dashboard. The heartbeat is
+what separates them:
+
+- `kbo_crawl_dlq_last_successful_sweep_timestamp` — Unix time of the last
+  successful read, or 0 when none has run. It is recorded *only* after a read that
+  completed; a failed read increments the counter below and leaves the timestamp
+  alone, because the last known good reading is the only evidence left when the
+  current one is missing.
+- `kbo_crawl_dlq_sweep_failures_total` — sweeps that could not read the queue.
+  Distinct from `kbo_crawl_dlq_failures_total`, which counts failures *found in*
+  the queue. This counts times the queue itself was unreadable, which is the case
+  that leaves every other gauge frozen and is therefore the least visible.
+
+The 2h stall window is four times the 30-minute recovery tick. It is deliberately
+loose: the condition is "the observer is gone", a busy maintenance window can
+defer a tick past one interval, and paging on every deferral trains the reader to
+ignore the rule. Not yet calibrated against production — the tick interval is the
+basis, not a measurement (BUG-002).
+
+Note the asymmetry in severity. `KboDlqSweepStalled` is critical because nothing
+downstream can be trusted while it fires. `KboDlqSweepFailing` is only a warning
+because its usual cause — an unreachable database — already pages through
+`KBODatabaseUnavailable`; two criticals for one outage is how a page becomes
+noise. What the warning adds is the narrower case: the database is up and this
+read still is not.
 
 Thresholds, and what they are worth:
 
@@ -150,13 +182,41 @@ unread DLQ series fails CI instead of joining the silent ones.
 
 Firing behaviour is asserted, not assumed:
 `monitoring/prometheus/tests/crawler_alert_dlq_test.yml` (30s interval, for the
-1m rule) and `crawler_alert_dlq_backlog_test.yml` (30m interval, for the 30m
-rule). Each has a firing case and quiet cases, including the exact-threshold
-boundary. Run either with:
+1m rule), `crawler_alert_dlq_backlog_test.yml` (30m interval, for the 30m rule)
+and `crawler_alert_dlq_sweep_test.yml` (heartbeat, including the never-set case
+and a healthy sweep that must stay quiet). Each has a firing case and quiet
+cases, including the exact-threshold boundary. Run any of them with:
 
 ```bash
 promtool test rules monitoring/prometheus/tests/crawler_alert_dlq_test.yml
 ```
+
+#### Queue state is also an incident, separately from the check
+
+The recovery job opens `scheduler:crawl_dead_letter_recovery:*` when **the check**
+misbehaves, and `dlq:*` when **the queue** is in a bad state. The split matters
+because the two need different responses and one incident key cannot say both.
+
+| Incident key | Opens when | Resolved by |
+| --- | --- | --- |
+| `dlq:stranded_retrying` | a letter outlived `DLQ_STALE_RETRYING_SECONDS` | the recovery job acting on it |
+| `dlq:backlog_age` | the oldest due letter passed 24h | the drain catching up |
+| `dlq:exhausted` | a letter spent its retry budget | an operator: `dlq retry` or `dlq ignore` |
+
+`dlq:exhausted` is an `ERROR` rather than a `WARNING` for the same reason the
+severity split exists above: unlike the other two it does not clear itself. The
+retry budget is spent and only `kbo dlq retry <dlq_id> --apply` (guarded by
+`KBO_ALLOW_DLQ_MUTATION=1`) or `kbo dlq ignore` changes it.
+
+Read them with:
+
+```bash
+python3 -m src.cli.kbo incidents list --state active --source recovery --json
+```
+
+A healthy reading reconciles the whole `dlq:` namespace rather than staying
+silent, so a recovered queue closes its own incident instead of waiting for the
+manual `incidents resolve` in §4.2.
 
 ### 3.2c Sustained-partial alerting
 

@@ -192,3 +192,54 @@ groups:
           summary: "크롤링 실패 회수 대기 열화: 최장 {{ $value | humanizeDuration }}"
           description: "가장 오래된 대기 중 dead letter가 {{ $value | humanizeDuration }} 동안 회수되지 않았습니다. 10분 주기 재시도가 큐를 따라가지 못하는 상태일 수 있습니다. `python3 -m src.cli.kbo dlq stats` 로 백로그를 확인하세요."
           runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # ── The sweep itself is not running ─────────────────────────────
+      # Every rule above reads a gauge the dead letter sweep refreshes. A sweep
+      # that cannot reach the database leaves the previous values in place rather
+      # than zeroing them, so an empty queue and an unreadable one produce
+      # identical readings. That ambiguity is the reason this exists: without a
+      # heartbeat, "there is nothing to reprocess" and "nobody has been able to
+      # look" are the same dashboard.
+      #
+      # Phrased as an age so a gauge that has never been set needs no separate
+      # rule: at 0 the expression reads as maximally stale, which is exactly
+      # what "no sweep has ever succeeded" means. `crawl_dead_letter_recovery`
+      # also refreshes on scheduler startup, so a fresh process publishes a
+      # timestamp within seconds -- remaining at 0 past `for` is a real fault,
+      # not a boot.
+      #
+      # 2 hours is four times the 30-minute tick. It is deliberately loose
+      # because the failure it reports is "the observer is gone", and a busy
+      # maintenance window can defer a tick past one interval; the cost of being
+      # late here is one missed detection, while paging on every deferral would
+      # train the reader to ignore it. Not yet calibrated against production
+      # (BUG-002) -- the tick interval is the basis, not a measurement.
+      - alert: KboDlqSweepStalled
+        expr: time() - kbo_crawl_dlq_last_successful_sweep_timestamp > 7200
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DLQ 스위프 정지: {{ $value | humanizeDuration }} 동안 큐를 읽지 못함"
+          description: "최근 {{ $value | humanizeDuration }} 동안 dead letter 큐를 한 번도 읽지 못했습니다. 큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다. `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # The other half: the sweep ran and failed, which is a different fault from
+      # the sweep not running at all. Warning rather than critical, because the
+      # usual cause -- an unreachable database -- already pages through
+      # KBODatabaseUnavailable, and two criticals for one outage trains the
+      # reader to treat a page as noise. What is new here is the narrower case:
+      # the database is reachable but this read is not.
+      - alert: KboDlqSweepFailing
+        expr: increase(kbo_crawl_dlq_sweep_failures_total[30m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          # Rounded because `increase()` extrapolates over the window and reports
+          # 3.0625 where three sweeps failed. A count of unreadable sweeps
+          # cannot be fractional, so printing the artifact would be noise that
+          # also makes the annotation unmatchable in a rule test.
+          summary: "DLQ 스위프 실패: 30분 내 {{ $value | printf \"%.0f\" }}회 큐 읽기 실패"
+          description: "최근 30분 동안 dead letter 큐 읽기가 {{ $value | printf \"%.0f\" }}회 실패했습니다. DB는 살아있지만 큐를 못 읽는 상태일 수 있으므로, DLQ 지표가 정상으로 보여도 실제로는 갱신되지 않았을 수 있습니다. `python3 -m src.cli.kbo dlq stats` 로 직접 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
