@@ -36,6 +36,7 @@ from src.models.game import (
     GamePitchingStat,
     GamePlayByPlay,
 )
+from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.job_tracker import job_tracker
 from src.utils.lock import ProcessLock
@@ -386,7 +387,10 @@ def _summarize_h2h_game(
 def get_head_to_head(
     team1: Annotated[str, Query(description="첫 번째 팀 코드 (예: KIA)")],
     team2: Annotated[str, Query(description="두 번째 팀 코드 (예: LG)")],
-    season: Annotated[int | None, Query(description="시즌 연도 (기본: 전체 시즌)")] = None,
+    season: Annotated[
+        int | None,
+        Query(description="시즌 연도 (예: 2024, 해당 연도의 전체 리그 유형 포함; 기본: 전체 시즌)"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=50, description="최근 경기 개수 제한")] = 10,
 ) -> dict[str, Any]:
     """Query head-to-head matchups, win-loss records, and recent games between two teams."""
@@ -399,7 +403,14 @@ def get_head_to_head(
                 )
             )
             if season is not None:
-                stmt = stmt.where(Game.season_id == season)
+                season_ids = list(
+                    session.execute(select(KboSeason.season_id).where(KboSeason.season_year == season)).scalars().all()
+                )
+                if season_ids:
+                    stmt = stmt.where(Game.season_id.in_(season_ids))
+                else:
+                    # Backward compatibility: raw season_id surrogate key.
+                    stmt = stmt.where(Game.season_id == season)
 
             games = list(session.execute(stmt.order_by(Game.game_date.desc())).scalars().all())
 

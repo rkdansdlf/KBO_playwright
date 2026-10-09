@@ -10,11 +10,11 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from pathlib import Path
 
 from src.db.engine import Engine, database_reachable
 from src.scheduler.config import (
@@ -75,6 +75,9 @@ def _scheduler_pid_alive(pid: int) -> bool:
 
 
 def _get_scheduler_pid_file() -> Path:
+    env_path = os.environ.get("SCHEDULER_PID_FILE")
+    if env_path:
+        return Path(env_path)
     default_path = PROJECT_ROOT / "data" / "locks" / "scheduler.pid"
     if default_path != _SCHEDULER_PID_FILE:
         return _SCHEDULER_PID_FILE
