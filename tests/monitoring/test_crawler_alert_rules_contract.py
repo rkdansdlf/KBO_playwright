@@ -91,6 +91,15 @@ UNREFERENCED_METRIC_EXEMPTIONS = {
     "kbo_crawl_dlq_recovery_actions_total": (
         "diagnostic; recovery actions only run when something is already stuck, which KboDlqRecoveryStalled alerts"
     ),
+    # --- A source that is never consulted (BUG-014) -----------------------
+    # The alert reads `kbo_crawl_last_source_consulted_timestamp`, which is the
+    # condition itself. This counter breaks the same situation down by reason,
+    # so it answers "why" once the alert has said "what" -- it adds no detection
+    # power, because a skipped run is already the only way the gauge goes stale.
+    "kbo_crawl_source_limited_total": (
+        "diagnostic breakdown by reason; KboCrawlerSourceNeverConsulted reads the consulted-timestamp gauge, "
+        "which is the same condition without depending on which reasons exist"
+    ),
     # --- Series outside the crawler namespace -----------------------------
     # Surfaced when the prefix filter was removed. Each of these was exported
     # and read by nothing, and no test could have noticed: the crawler contract
@@ -277,6 +286,11 @@ class TestCrawlerRulesContent:
             # These read the sweep's own heartbeat instead of the queue's state.
             "KboDlqSweepStalled",
             "KboDlqSweepFailing",
+            # BUG-014: a compliance-skipped run records `success` and advances
+            # `last_success`, so a crawler skipped on every run looks healthy to
+            # KboCrawlerNoRecentSuccess forever. This reads the one gauge only a
+            # run that actually asked the source sets.
+            "KboCrawlerSourceNeverConsulted",
         }
 
     def test_write_drop_does_not_exclude_a_zero_write_count(self):

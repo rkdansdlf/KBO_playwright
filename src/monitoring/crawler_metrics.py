@@ -107,6 +107,38 @@ CRAWL_RECORDS_WRITTEN_LAST = Gauge(
 #: Statuses that count as a success for freshness purposes.
 SUCCESS_STATUSES = frozenset({"success", "partial"})
 
+#: The checkpoint outcome a run writes when it never consulted the source.
+#:
+#: A compliance or robots decision that skips a fetch is recorded as `success`
+#: -- deliberately, because nothing failed -- but it is not evidence that the
+#: source still answers. Two crawlers were skipped on every run for weeks while
+#: `kbo_crawl_last_success_timestamp` stayed fresh, so the liveness alert could
+#: not tell "the source had nothing" from "we never asked" (BUG-014).
+SOURCE_LIMITED_OUTCOME = "source_limited"
+
+#: Reasons a run may be source-limited, as a closed set for the label.
+#:
+#: Same argument as `SAFE_LABEL_PATTERN` for crawlers: a free-form reason would
+#: let a caller mistake multiply series. Anything outside this set is bucketed
+#: rather than dropped, so an unknown reason is still counted -- it just cannot
+#: invent a label.
+SOURCE_LIMITED_REASONS = frozenset({"compliance_blocked", "kbo_robots_blocked"})
+UNKNOWN_SOURCE_LIMITED_REASON = "other"
+
+CRAWL_SOURCE_LIMITED_TOTAL = Counter(
+    "kbo_crawl_source_limited_total",
+    "Runs that recorded success without consulting the source, by reason. "
+    "A rising series means the crawler is not collecting, whatever its status says.",
+    ["crawler", "reason"],
+)
+
+CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP = Gauge(
+    "kbo_crawl_last_source_consulted_timestamp",
+    "Unix time of the last run that actually consulted its source, or 0 when none has. "
+    "Distinct from kbo_crawl_last_success_timestamp, which a skipped run also advances.",
+    ["crawler"],
+)
+
 UNKNOWN_ERROR_CODE = "UNKNOWN"
 UNKNOWN_FAILURE_STAGE = "unknown"
 
@@ -203,10 +235,20 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
     # Create the freshness series first so a never-successful crawler is visible.
     if crawler not in _INITIALIZED_CRAWLERS:
         CRAWL_LAST_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(0)
+        CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP.labels(crawler=crawler).set(0)
         CRAWL_RECORDS_WRITTEN_LAST.labels(crawler=crawler).set(0)
         _INITIALIZED_CRAWLERS.add(crawler)
 
     CRAWL_RUNS_TOTAL.labels(crawler=crawler, status=status).inc()
+
+    limited_reason = _source_limited_reason(run)
+    if limited_reason is not None:
+        CRAWL_SOURCE_LIMITED_TOTAL.labels(crawler=crawler, reason=limited_reason).inc()
+    else:
+        # Only a run that actually asked sets this. Setting it on a skipped run
+        # would reproduce the defect it exists to expose.
+        consulted_at = _epoch_seconds(getattr(run, "finished_at", None))
+        CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP.labels(crawler=crawler).set(consulted_at)
 
     records_read = _safe_int(getattr(run, "records_read", 0))
     records_written = _safe_int(getattr(run, "records_written", 0))
@@ -241,6 +283,34 @@ def _safe_int(value: Any) -> int:  # noqa: ANN401 - ledger columns are untyped
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
+def _source_limited_reason(run: CrawlExecutionRun) -> str | None:
+    """Return the reason when a run never consulted its source, else None.
+
+    `checkpoint` is a crawler-owned JSON column, so nothing here may assume its
+    shape: a run that wrote a list, a string, or a nested document must be read
+    as "not source-limited" rather than raising in the projection. The ledger is
+    what makes runs observable, and a projection that throws on one malformed
+    row would lose every row after it.
+
+    Args:
+        run: A finished run whose checkpoint may record a source-limited skip.
+
+    Returns:
+        A bounded reason label, or None when the source was consulted.
+
+    """
+    checkpoint = getattr(run, "checkpoint", None)
+    if not isinstance(checkpoint, dict):
+        return None
+    if checkpoint.get("outcome") != SOURCE_LIMITED_OUTCOME:
+        return None
+
+    reason = checkpoint.get("reason")
+    if isinstance(reason, str) and reason in SOURCE_LIMITED_REASONS:
+        return reason
+    return UNKNOWN_SOURCE_LIMITED_REASON
 
 
 def _duration_seconds(run: CrawlExecutionRun) -> float | None:

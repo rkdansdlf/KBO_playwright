@@ -704,6 +704,107 @@ prefix로 reconcile하므로 **빈 배치가 모든 `dlq:` 인시던트를 닫�
 (`test_invalid_target_does_not_reschedule` 등)을 고정했으므로 추가 조치는 없다.
 다만 "재시도가 현장에서 돌았다"는 증거는 아직 없고, 그 사실은 숨기지 않는다.
 
+## 5-BH0-가정. "크롤러는 정직하게 보고한다" 가정의 검증 결과 (2026-10-10)
+
+BH0이 명시적으로 남긴 미검증 가정이 있었다 (§1, line 43):
+
+> 레이어는 "크롤러가 자기 결과를 정직하게 보고한다"를 가정하고 있고, 실제 강제 지점은
+> 각 크롤러의 `record_dead_letters` 경로다. 다만 **이 가정은 검증되지 않은 채 전 계층에
+> 전파되어 있으므로** BH2에서 크롤러별 확인 대상으로 남긴다.
+
+**BH2는 이 확인을 하지 않고 crash window(BUG-007)로 이동했다.** 그래서 검증했다.
+
+### 결과: 보고는 정직하다. 그런데 `success`가 과대하다
+
+원장을 read-only로 전수 조회해 찾은 위반은 **0건**이다:
+
+| 검사 | 결과 |
+|---|---|
+| `success`인데 `records_failed > 0` (거짓 성공) | 0 |
+| `failed`인데 `records_written > 0` (쓰고 실패 주장) | 0 |
+| `failed` 89건의 read/write | 전부 0 — 일관 |
+
+크롤러가 **거짓말하지는 않는다.** 문제는 다른 데 있었다.
+
+### BUG-014 — 준법 차단이 `success`로 기록되어 liveness를 갱신한다
+
+`success` 1088건 중 **1051건이 아무것도 쓰지 않았고**, 그중 14건은 **읽지도 않았다**
+(`read=0 AND wrote=0`). 14건 전부 `checkpoint`가 답을 갖고 있었다:
+
+| crawler | 건수 | `checkpoint.outcome` | `reason` |
+|---|---|---|---|
+| `roster_transactions` | 8 | `source_limited` | `compliance_blocked` |
+| `player_movement` | 6 | `source_limited` | `kbo_robots_blocked` |
+
+소스를 **아예 조회하지 않고** `success`를 반환한다. 크롤러 자신의 주석은 그 이유를
+정확히 설명한다 — "정책적 건너뛰기는 데이터 결과가 아니므로 EMPTY도 실패도 아니다".
+**그 판단 자체는 옳다.** 문제는 그 `success`가 `SUCCESS_STATUSES`에 속해
+`kbo_crawl_last_success_timestamp`를 갱신한다는 것이다:
+
+```python
+# src/monitoring/crawler_metrics.py
+if status in SUCCESS_STATUSES:                  # {"success", "partial"}
+    CRAWL_LAST_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(...)
+```
+
+따라서 **매 실행마다 건너뛰는 크롤러는 `KboCrawlerNoRecentSuccess`에게 영원히
+건강하다.** "소스가 가진 게 없다"와 "우리가 묻지 않았다"가 구별되지 않는다.
+
+### 실측 피해
+
+`roster_transactions` 도메인 테이블의 **마지막 행이 2026-08-16**이다. 조회 시점은
+2026-10-10 — **약 8주간 0건**이고, 그 기간 원장은 계속 성공을 기록했다.
+`KNOWN_LIMITATIONS.md`에도 이 차단은 **기록돼 있지 않았다.**
+
+`source_limited`는 또한 운영에서 기록된 **유일한 checkpoint outcome**이다 —
+checkpoint 메커니즘 전체가 이 한 가지 경우만 담고 있었다.
+
+### 수정 (10-10)
+
+원장이 이미 갖고 있던 증거를 메트릭으로 투영한다. 새로운 판정 규칙을 만드는 게
+아니라 **이미 기록된 것을 보이게** 하는 것이다.
+
+- `kbo_crawl_last_source_consulted_timestamp` — **실제로 소스를 조회한 런만** 갱신한다.
+  건너뛴 런이 이걸 갱신하면 결함이 그대로 재현되므로 의도적으로 비워 둔다.
+- `kbo_crawl_source_limited_total{crawler, reason}` — 같은 상황을 사유별로 분해.
+  reason은 폐쇄 집합(`compliance_blocked`/`kbo_robots_blocked`)이고 그 밖은 `other`로
+  묶는다 — 크롤러 라벨과 같은 이유(자유 형식은 시리즈를 무한히 늘린다).
+- `KboCrawlerSourceNeverConsulted`(warning) — 실행은 계속되는데 48시간 넘게 조회가
+  없을 때. **critical이 아닌 이유**: 정책 차단은 고장이 아니며, 수용 여부는 운영자가
+  결정한다. 그 결정을 심각도가 아니라 런북이 기록한다.
+
+`checkpoint`는 크롤러 소유 JSON 컬럼이므로 형태를 가정하지 않는다 — 문자열·리스트·정수
+모두 "차단 아님"으로 읽는다. 투영이 한 행에서 예외를 내면 **그 뒤의 모든 행을 잃는다.**
+
+### 남은 결정 (미해결)
+
+**두 크롤러의 차단이 수용 가능한지 결정되지 않았다.** 코드는 이제 그것을 말할 수
+있게 됐지만, "그래서 괜찮은가"는 운영자 몫이다:
+
+- **수용** — `KNOWN_LIMITATIONS.md`에 기록하고 경보가 계속 발동하는 것을 받아들인다
+  (경보는 선택이 아직 유효하다는 기록이다).
+- **불수용** — 데이터가 필요하므로 허가된 경로나 다른 소스를 찾아야 한다. 그때까지
+  `roster_transactions`/`player_movements`는 8월 데이터다.
+
+### 검증
+
+회귀 `tests/monitoring/test_crawler_source_limited_metrics.py`(29건) + promtool
+픽스처 5케이스(연속 차단 발동 / 계속 조회 조용 / 실행 중단 조용 / 1회 건너뜀 후 복구
+조용 / 신규 크롤러 발동). 뮤테이션 4건 모두 검출:
+
+| 뮤테이션 | 결과 |
+|---|---|
+| 건너뛴 런을 조회한 것으로 취급 (결함 그대로) | 8건 실패 |
+| reason을 그대로 수용 (라벨 무한) | 3건 실패 |
+| 건너뛰기를 세지 않음 | 3건 실패 |
+| malformed checkpoint에서 예외 | `AttributeError` (이후 행 전부 유실) |
+
+**작업 중 발견한 함정**: 카운터의 이름이 세 가지 형태로 나타난다 — `_name`은
+`kbo_crawl_source_limited`, 노출 형식과 `get_sample_value`는 `..._total`,
+`Counter.collect()`는 다시 축약형. 규칙이 읽는 것은 **노출 형식**이므로, 이 차이를
+테스트로 고정했다. 두 형태가 같다고 가정하는 것이 동작하는 규칙을 조용한 규칙으로
+바꾸는 경로다.
+
 ## 6. 누적 버그 목록 (BH0~BH11)
 
 | ID | 심각도 | 영역 | 요약 | 상태 |
@@ -718,6 +819,7 @@ prefix로 reconcile하므로 **빈 배치가 모든 `dlq:` 인시던트를 닫�
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
 | **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
+| **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
