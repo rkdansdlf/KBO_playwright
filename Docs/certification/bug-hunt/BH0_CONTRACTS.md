@@ -1,6 +1,6 @@
 # BH0/BH1/BH2 — 크롤러 신뢰성 계약 목록화 및 경계 공격
 
-> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07, 임계값 미보정).
+> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07, 임계값 미보정). BH9 최종 결정(2026-10-09): 24h 유지·미보정, EXHAUSTED 감시는 무음 — BUG-002 미종결.
 > 범위: 공유 인프라 6계층(transport → persist → ledger → DLQ → replay → incident/notification/metrics).
 > 전제: 전부 로컬 SQLite. 운영 DB 무접촉.
 
@@ -111,6 +111,25 @@ KboCrawlerPartialFailures         = 지속 PARTIAL 탐지 (신규, warning)
 
 `stale_retrying > 0`을 택한 이유: 다른 규칙은 전부 "얼마나 많이"를 보지만 이건 **"얼마나 있는가"**가 맞습니다. 빈도가 기준이 필요한데, 그 기준이 조사 대상 자체입니다.
 
+#### `KboDlqBacklogAgeHigh`가 보는 범위와 안 보는 범위 (2026-10-09 정정)
+
+이 규칙의 유지 근거를 설명하면서 **"EXHAUSTED 적체를 함께 감시한다"는 논리를 잘못 세운 것이 확인됐습니다.** 실제 쿼리는 `crawl_dead_letter_repository.py:281-285`이고, `status == PENDING`만 조회합니다.
+
+| DLQ 상태 | `oldest_due_age_seconds` |
+|---|---|
+| `pending`, 재시도 시각 전 | 제외 |
+| `pending`, 재시도 시각 경과 | **포함** |
+| `retrying`, 실행 중 | 제외 |
+| `retrying`, 정체 | 제외 — `KboDlqRecoveryStalled` 담당 |
+| `exhausted`, 재시도 소진 | **제외** |
+| `ignored` / `resolved` | 제외 |
+
+즉 이 규칙은 **PENDING 적체 전용**입니다. 예산 소진으로 `EXHAUSTED`에 닫힌 레터는 어떤 `KboDlq*` 규칙도 세지 않습니다.
+
+관측 수단 자체는 있습니다 — `crawl_dead_letter_stats.py`가 `exhausted`를 집계하고 `metrics.py`가 `kbo_crawl_dlq_letters{status="exhausted"}`로 내보냅니다. **경보가 없을 뿐 값은 보인다.** 그래서 EXHAUSTED 감시는 별도 규칙 설계 과제로 남깁니다.
+
+과거 EXHAUSTED 1건이 영구히 같은 경보를 울리는 구조는 피해야 합니다. 누적 건수보다 **신규 발생률**이 알맞고, 그것은 대개 DB를 못 읽은 구간과 정상 표본을 구분해야만 얻을 수 있습니다. 운영 실측 전에는 설계하지 않습니다.
+
 **사각지기 제거** — 계약 테스트가 `src.utils.metrics`도 스캔하도록 확장. 이 작업이 즉시 **진짜 미참조 메트릭 6종을 드러냈습니다**(`_due_letters`, `_letters`, `_failures_total`, `_retry_attempts_total`, `_retry_outcomes_total`, `_recovery_actions_total`). 원래도 조용했지만 스캔이 도달하지 않아 아무도 몰랐던 것입니다. 각각 사유를 명시한 예외로 등록.
 
 **발동 증명** — promtool 픽스처 2종 추가(`crawler_alert_dlq_test.yml` 30s interval / `crawler_alert_dlq_backlog_test.yml` 30m interval). promtool은 per-test `evaluation_interval`을 받지 않으므로 `for` 길이가 다른 규칙은 파일을 분리해야 합니다(기존 freshness/write-drop도 같은 이유로 분리됨).
@@ -122,6 +141,24 @@ KboCrawlerPartialFailures         = 지속 PARTIAL 탐지 (신규, warning)
 - **인시던트 원장은 여전히 미사용.** DLQ 상태는 이제 Prometheus로 잡히지만 `kbo incidents list`에는 여전히 안 나옵니다. 두 경로가 병존합니다.
 - **24h 임계값은 미보정.** 운영 실측 데이터가 없어 스케줄에서 도출했습니다. 규칙 주석과 `DATA_RELIABILITY.md` §3.2b에 "재측정 후 보정하라"고 명시해 두었습니다.
 - **나머지 6종은 여전히 무음.** 사유를 명시한 예외로 등록해 "의도적"으로 만들었지만, 경보가 필요해지면 그때 규칙을 추가해야 합니다.
+- **EXHAUSTED 누적은 무음.** 위 표대로 `KboDlq*` 어느 규칙도 세지 않습니다. 지표 값은 존재하므로 규칙 추가 자체는 가능하지만, 누적 건수는 과거 1건을 영구히 반복 보고하니 **신규 발생률**로 설계해야 합니다.
+
+#### BH9 최종 결정 (2026-10-09, 사용자 승인)
+
+| 항목 | 판단 |
+|---|---|
+| `KboDlqBacklogAgeHigh` 유지 | **유지** |
+| 86400초(24h) 임계값 | **변경하지 않음** |
+| 경보 활성화 | **유지** (warning) |
+| 임계값 적정성 검증 | **미완료** — 운영 실측 대기 |
+| BH9 처리 상태 | 구조적 안전장치 완료, 운영 보정 보류 |
+| BUG-002 | 측정 근거 확보 전까지 미종결 |
+
+유지 근거는 "24시간이 최적이라는 증거"가 아니라 **"재시도 스케줄(60/300/900/3600s)에서 하루가 지난 것은 조사할 가치가 있다는 구조적 추론"**입니다. 반대로 운영 데이터로 보정된 적정값이라는 확인도 없습니다. 따라서 "유지했다"와 "검증했다"를 문서에서 구분해 남깁니다.
+
+**오탐률을 낮다고 단정하지 않습니다.** 현재 근거는 재시도 스케줄이지 관측이 아닙니다.
+
+**후속 (운영 DB 복구 후):** 7일 측정 — 30분 단위 PENDING·RETRYING·EXHAUSTED 건수, oldest due age, 실제 재시도 성공률, 스위프 실패. DB 연결이 끊긴 구간은 정상 표본에서 제외. 24h 초과 사례가 실제 조치 대상이었는지 정상 처리된 지연이었는지 구분해 재판정합니다. 유효 표본이 거의 없으면 보정 기간을 연장합니다.
 
 #### 실측 실패 기록 (중요)
 
@@ -436,7 +473,7 @@ _year_range_of('2023-') -> None        ← 같은 축의 다른 함수는 거부
 | 파일 | 역할 |
 |---|---|
 | `tests/services/test_replay_handler_write_contracts.py` | BUG-010. schedule replay의 저장 인자와 run 기반 핸들러 계약 (**11 passed**) |
-| `tests/services/test_replay_target_validation_contracts.py` | BH11 대상 검증. schedule 안전 실패 3건 + 거부 경로 6건 + DLQ 비재시도 계약 1건 + kbo_event URL·slug 불일치 1건, **11 passed** (BUG-011 수정 완료) |
+| `tests/services/test_replay_target_validation_contracts.py` | BH11 대상 검증. schedule 3건 + 거부 경로 6건 + DLQ 비재시도 1건 + kbo_event URL·slug 1건 + `target_type` 5건 + 미존재 경기 종결 2건, **18 passed** (BUG-011 수정 완료) |
 
 ### BH11-b. 현재 12개 replay handler의 target 계약
 
@@ -447,8 +484,8 @@ DLQ 생산자와 replay consumer를 대조했다. 현재 `REPLAY_HANDLERS`는 12
 | `awards` | `award_history` / source key / 실패한 source URL | `target_id`를 source key로만 사용; source URL은 실행 선택에 쓰지 않음. 알 수 없는 key는 실행 전 `unaddressable`로 거부 | 거부 계약 ✅ (BUG-011) |
 | `roster_transactions` | `roster_date` / `YYYY-MM-DD` / mobile URL; `game_id`에도 날짜 기록 | `target_id`만 `target_date`로 전달하고 source URL은 쓰지 않음. 결측·불가독 날짜는 오늘로 기본값 처리하지 않고 실행 전 `unaddressable`로 거부 | 거부 계약 ✅ (BUG-011) |
 | `schedule` | `schedule_month` / `YYYY-MM` / crawler 기본 URL | `target_id` 파싱 실패 또는 월 범위 오류는 실행을 건너뜀; 원장 행이 없어 `missing`, 실패. `VALIDATION_SCHEMA`로 재시도 없이 종료 | `unaddressable`이 아니라 `missing`으로 남지만 false-success와 재시도 누적은 닫힘 |
-| `game_detail` | `game` / game ID; `game_id`에도 같은 값 기록 / URL 없음 | `target_id` 우선, 없으면 `game_id`; 둘 다 비면 `unaddressable`. 형식이 있는 잘못된 ID 결과는 미확정 | 추가 실측 필요 |
-| `relay` | `game` / game ID; `game_id`에도 같은 값 기록 / URL 없음 | `target_id` 우선, 없으면 `game_id`; 둘 다 비면 `unaddressable`. 형식이 있는 잘못된 ID 결과는 미확정 | 추가 실측 필요 |
+| `game_detail` | `game` / game ID; `game_id`에도 같은 값 기록 / URL 없음 | `target_id` 우선, 없으면 `game_id`; 둘 다 비면 `unaddressable`. **형식 맞는 미존재 ID는 페치 후 `failed`로 종결** (below) | 레터는 닫히지 않음 — 예산 소진 후 `EXHAUSTED` |
+| `relay` | `game` / game ID; `game_id`에도 같은 값 기록 / URL 없음 | `target_id` 우선, 없으면 `game_id`; 둘 다 비면 `unaddressable`. **형식 맞는 미존재 ID는 `EMPTY` → `success`로 종결** (below) | **의도된 부재 처리** ✅ |
 | `food` / `parking` | 각 타입(`food` / `parking`) / 설정된 팀 코드 / 해당 팀 페이지 URL | `target_id`만 팀 필터로 사용; 저장된 URL은 재생 시 쓰지 않고 팀 설정에서 다시 선택. 미등록 코드는 빈 선택으로 진행하지 않고 `unaddressable`로 거부 | 거부 계약 ✅ (BUG-011) |
 | `kbo_event` | `kbo_event` / URL에서 만든 페이지 slug / 실패한 페이지 URL | 실행 주소는 `source_url`; URL·slug 불일치 시 `unaddressable` + `VALIDATION_SCHEMA`로 거부 | 거부 계약 ✅ (부분 보강 완료) |
 | `player_movement` | `player_movement` / 한 연도 또는 양끝 포함 연도 범위 / 기준 URL | `target_id`만 연도 범위로 파싱. 불가독·역순 범위는 실행 전 `unaddressable`로 거부 | 거부 계약 ✅ (BUG-011) |
@@ -474,12 +511,39 @@ DLQ 생산자와 replay consumer를 대조했다. 현재 `REPLAY_HANDLERS`는 12
 
 - **심각도**: 결과 영향은 P1급 잘못된 성공 종결이지만, 입력 도달성과 발생 빈도는 미확인이다. 지금은 P1 후보로 기록하며 P0로 올리거나 추정 임계값을 만들지 않는다.
 - **수정 (2026-10-07 승인 후 적용)**: 5개 경로에 실행 전 거부 가드를 추가했다. `food`/`parking`은 `TEAM_*_SOURCES` 미등록 코드, `roster_transactions`는 결측·불가독 날짜(오늘 기본값 금지), `awards`는 미지 source key, `preview`는 `YYYYMMDD`가 아닌 날짜, `player_movement`는 역순 연도 범위를 각각 `unaddressable`로 반환한다. `schedule`은 기존 `missing` 실패를 유지한다(성공 오판이 아니며 기존 테스트가 그 계약을 고정). 운영 발생 빈도는 여전히 미측정이다.
-- **회귀 테스트**: 6개 거부 경로의 `xfail(strict)` 마커를 제거해 **9 passed**가 됐다. `tests/services/test_replay_handler_contracts.py`의 placeholder target(`OB`, `wikipedia`)은 실제 유효 값(`LT`/`LG`, `WIKI_SOURCE_KEY`)으로 갱신했다 — 거부 가드가 켜지면 그 테스트들이 거부 경로를 타기 때문이다. mutation 증명: 팀 코드·preview 날짜·역순 범위 가드를 각각 제거하면 해당 계약이 `ReplayOutcome(success=True)`를 관찰하며 실패한다.
-- **남은 것**: schedule의 `missing` 분류는 다른 handler의 `unaddressable`과 형태가 다르지만, 거부 outcome 14곳 전부 `error_code="VALIDATION_SCHEMA"`를 달아 `NON_RETRYABLE_CODES`로 분류되고 `finalize_retry`가 재시도 예산 소진 없이 즉시 `EXHAUSTED`로 종결한다(DLQ 수준 계약 `test_invalid_target_does_not_reschedule`가 고정). `target_type` 미대조(P2 후보)도 그대로다.
+- **회귀 테스트**: 6개 거부 경로의 `xfail(strict)` 마커를 제거해 **9 passed**가 됐고, 이후 DLQ 비재시도·kbo_event URL·slug·`target_type` 계약이 추가되어 현재 **18 passed**. `tests/services/test_replay_handler_contracts.py`의 placeholder target(`OB`, `wikipedia`)은 실제 유효 값(`LT`/`LG`, `WIKI_SOURCE_KEY`)으로 갱신했다 — 거부 가드가 켜지면 그 테스트들이 거부 경로를 타기 때문이다. mutation 증명: 팀 코드·preview 날짜·역순 범위 가드를 각각 제거하면 해당 계약이 `ReplayOutcome(success=True)`를 관찰하며 실패한다.
+- **남은 것**: schedule의 `missing` 분류는 다른 handler의 `unaddressable`과 형태가 다르지만, 거부 outcome 전부 `error_code="VALIDATION_SCHEMA"`를 달아 `NON_RETRYABLE_CODES`로 분류되고 `finalize_retry`가 재시도 예산 소진 없이 즉시 `EXHAUSTED`로 종결한다(DLQ 수준 계약 `test_invalid_target_does_not_reschedule`가 고정). `target_type` 대조도 아래 절대로 보강했다.
 
-### `target_type` 감사
+### 실측 — 형식은 맞지만 존재하지 않는 game ID
 
-생산자들은 crawler별 상수로 `target_type`을 기록한다. 반면 dispatcher는 비어 있지 않은 `dead_letter.target_type`을 기대 타입과 대조하지 않고 RUN-B 명세에 전달한다. dispatch 자체는 `crawler`로 결정되므로 잘못된 `target_type`이 다른 handler를 실행시키지는 않지만, lineage metadata가 틀릴 수 있다. 잘못된 target type의 운영 사례를 확인하지 못했으므로 별도 P2 후보로만 남기며, 자동 정규화는 하지 않았다.
+빈 ID는 `unaddressable`로 거부된다. 그다음 질문은 **형식은 유효하지만 소스에 없는 경기**였다. `season_of`·`game_date_of`가 모두 `20991231ZZZZ0`을 정상 파싱하므로 target 검사 계층을 통과해 실제 fetch까지 도달한다. 그래서 판정은 크롤이 돌려준 결과에서 나온다.
+
+두 handler가 **의도적으로 다르게** 종결한다.
+
+| handler | 소스 응답 | RUN-B status | 레터 종결 |
+|---|---|---|---|
+| `game_detail` | payload 없음 → `no_detail_payload` | `failed` | 닫히지 않음. 예산 소진 후 `EXHAUSTED` |
+| `relay` | `RelayStatus.EMPTY` | `success` (`records_written=0`) | `resolved` |
+
+**이 차이는 버그가 아니다.** `build_attempt`의 docstring이 규칙을 명시한다 — "A terminal failure becomes `EMPTY` rather than staying `FAILED`, because 'the source has nothing' and 'we could not get it' must not share a status: the first is never retried and the second always is." `_collect_one_relay`도 같은 이유로 `EMPTY`를 success로 기록한다.
+
+**부재로 오판되지 않는 이유**도 확인했다. `_resolve_naver_game_id`는 스케줄 조회가 **실제로 성공했을 때만** `relay_not_found`/`invalid_relay_match`를 남긴다(`relay_crawler.py` 712–721). 조회 자체가 실패하면 부재를 결론 내리지 않으므로, 전송 장애가 영구absence처럼 보이거나 아무도 재시도하지 않는 상황이 생기지 않는다. 404도 relay 엔드포인트 한정에서만 absence다.
+
+**`game_detail`의 남는 특성**: 존재하지 않는 경기를 가리키는 레터는 예산 5회를 모두 소모한 뒤에야 `EXHAUSTED`로 닫힌다. 하지만 닫히는 시점과 코드가 정직하고(성공 아님), 실측으로 잃어버리는 데이터가 없다는 점을 확인했다. 따라서 **수정 대상이 아니라 관찰 기록**으로 남긴다. 존재 확인을 replay마다 하지 않는 이유도 분명하다 — 지금은 DLQ가 만들어진 경기만 재생하는데, 그 경기가 사라지는 일은 저장소 문제이지 수집 원본 문제가 아니다.
+
+**회귀 테스트**: `TestAGameTheSourceDoesNotHave` 2건. relay 쪽은 collection 서비스 레벨(`test_relay_runs.py::test_a_genuine_absence_succeeds_and_is_never_queued`)에서 이미 규칙이 검증되므로, 이 테스트는 **replay → 레터 종결 경계**에서 그 결과를 본다 — 어느 계층에서 무엇을 보장하는지 분리해서 고정한다.
+
+### `target_type` 감사 (P2 후보 → 수정 완료)
+
+생산자들은 crawler별 상수로 `target_type`을 기록한다. dispatcher도 `crawler`로 dispatch하므로 잘못된 `target_type`이 다른 handler를 실행시키지는 않는다. 피해는 lineage metadata에 한정된다 — RUN-B 행이 크롤러가 생산하지 않는 타입으로 기록되고, 타입별로 묶는 모든 메트릭이 오염된다. replay 결과 자체는 정상이라 기존 재현 경로로는 드러나지 않는다.
+
+**수정**: `_EXPECTED_TARGET_TYPES` 매핑(15개 크롤러)과 `_target_type_mismatch()`를 추가했다. `ReplayDispatcher.replay()`이 유일한 운영 진입점이므로 거기서 한 번만 검사한다 — handler마다 넣으면 검사 누락이 곧 회귀가 된다. 불일치는 `unaddressable` + `VALIDATION_SCHEMA`로 거부한다.
+
+**빈 값은 불일치가 아니다.** 컬럼이 non-nullable이므로 빈 문자열은 legacy·수동 생성 행이지 틀린 주장이 아니다. 모든 handler가 이미 `target_type or <상수>`로 정규화하므로, 여기서 거부하면 회복 경로가 없는 레터를 그냥 방치하게 된다. 거부는 거짓 주장에만 적용한다.
+
+**회귀 테스트**: `test_target_type_must_match_the_crawler_contract`(4개 크롤러) + `test_a_blank_target_type_is_not_treated_as_a_mismatch`.
+
+**남은 것**: 운영에서 실제로 잘못된 `target_type`이 발생했는지는 프로덕션 DB 미접촉으로 확인하지 못했다. 검사 자체는 코드 계약이므로 운영 빈도와 무관하게 유효하다.
 
 ---
 
@@ -496,7 +560,7 @@ DLQ 생산자와 replay consumer를 대조했다. 현재 `REPLAY_HANDLERS`는 12
 | `tests/services/test_snapshot_persist_crash_window.py` | BUG-007. 커밋 경계 crash 창과 복구. **5 passed** |
 | `tests/services/test_snapshot_drift_baseline.py` | BH2-c. 기준선 유무에 따른 게이트 판단 차이. **6 passed** |
 | `tests/services/test_replay_handler_write_contracts.py` | BUG-010. schedule replay 저장 회귀 및 run 기반 저장 인자 계약. **11 passed** |
-| `tests/services/test_replay_target_validation_contracts.py` | BH11. 잘못된 target 처리. **11 passed** (BUG-011 수정 완료) |
+| `tests/services/test_replay_target_validation_contracts.py` | BH11. 잘못된 target 처리. **18 passed** (BUG-011 수정 완료) |
 | `monitoring/prometheus/tests/crawler_alert_dlq_test.yml` | BUG-002. `KboDlqRecoveryStalled` 발동 + 조용 (promtool) |
 | `monitoring/prometheus/tests/crawler_alert_dlq_backlog_test.yml` | BUG-002. `KboDlqBacklogAgeHigh` 발동 + 경계 + 조용 (promtool) |
 
@@ -522,7 +586,8 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 ## 5. BH0이 남긴 미해결 질문
 
 - PARTIAL을 발생시키는 크롤러는 실제로 어떤 것인가 (BH2 입력) — **답**: `award`/`food`/`parking`/`kbo_event`/`player_movement` 5종 + `game_detail_runs`/`relay_runs` 2개 경로. 그중 4개는 error_code가 비어 있다(BUG-004).
-- DLQ alert 규칙을 넣을 때 어느 임계값이 적절한가 (BH9 실측 필요)
+- DLQ alert 규칙을 넣을 때 어느 임계값이 적절한가 — **답(2026-10-09)**: 24h 유지로 확정했으나 **적정성은 미검증**이다. 유지 근거는 재시도 스케줄에서 온 구조적 추론이지 관측이 아니다. 운영 7일 측정 후 재판정한다. BUG-002는 이 근거가 확보될 때까지 미종결.
+- EXHAUSTED 누적은 누가 감시하는가 — **답(2026-10-09)**: 아무도 감시하지 않는다. `oldest_due_next_retry_at()`이 PENDING만 조회한다. 지표 `kbo_crawl_dlq_letters{status="exhausted"}`는 있으므로 규칙 추가는 가능하나, 누적값이 아니라 **신규 발생률**로 설계해야 한다. 실측 전 설계 보류.
 - `src/utils/metrics.py`의 다른 메트릭도 같은 사각지대에 있는가 (BUG-002 확장) — **답: 4종이었고 분류를 마쳤다. 사각지대 자체도 닫았다(BUG-012).**
 
 ## 6. 누적 버그 목록 (BH0~BH11)
@@ -530,7 +595,7 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 | ID | 심각도 | 영역 | 요약 | 상태 |
 |---|---|---|---|---|
 | BUG-001 | P1 | metrics | 지속 PARTIAL 탐지 불가 | **수정 완료; KboCrawlerSustainedPartial(warning) + 발동/조용 픽스처** |
-| BUG-002 | P1 | metrics/incident | DLQ에 규칙·인시던트 없음; orphan 사각지기가 구조적 | **규칙 2종 추가 + 사각지기 제거** (인시던트 미해결) |
+| BUG-002 | P1 | metrics/incident | DLQ에 규칙·인시던트 없음; orphan 사각지기가 구조적 | **규칙 2종 추가 + 사각지기 제거; 24h 유지·미보정 확정 (인시던트 미해결)** |
 | BUG-003 | — | DLQ | 동시 워커 이중 claim | **기각** |
 | BUG-004 | P2 | ledger | PARTIAL error_code가 5개 중 4개에서 비어 있음 | 보고 |
 | BUG-005 | P2 | crawler | `kbo_event`만 4튜플, `absence` 필드 미소비 | xfail(strict) |
@@ -538,7 +603,7 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 | BUG-007 | P2 | persist/snapshot | 마지막 커밋~상태 갱신 사이 crash 창 | 회귀 테스트 |
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
-| **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `VALIDATION_SCHEMA` 종료, 11 passed (운영 빈도 미측정)** |
+| **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 |
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
@@ -557,7 +622,7 @@ schedule은 false-success 경로는 아니지만, 잘못된 target이 raw 재시
 
 ### BH11 검증
 
-- replay 집중 검증: BUG-011 수정 승인 후 **106 passed** (대상 검증 파일은 11 passed).
+- replay 집중 검증: BUG-011 수정 승인 후 **106 passed** (대상 검증 파일은 18 passed).
 - 잘못된 awards source의 DLQ 끝단 검증: 현재 동작은 `VALIDATION_SCHEMA` 분류와 `EXHAUSTED` 종료다. 수정 전에는 빈 성공 RUN-B가 기록되고 DLQ가 `resolved`로 전이됐다.
 - 변경 파일 단독 Ruff 검사와 형식 검사는 통과했다.
 - 전체 비통합 테스트: `12,983 passed, 2 failed, 5 skipped, 2 xfailed`. 실패는 병행 변경 중인 adoption matrix 2건이다. BUG-011 회귀는 현재 없고 대상 검증은 전부 통과했다.
@@ -573,8 +638,8 @@ schedule은 false-success 경로는 아니지만, 잘못된 target이 raw 재시
 - BUG-011은 확인됐고, 6개 handler 경로가 strict `xfail`로 고정됐다. (→ 같은 날 마커 제거, 수정 완료)
 - schedule은 false-success 경로는 아니지만 `missing` 분류가 다른 handler와 달랐다. 현재는 `VALIDATION_SCHEMA`를 붙여 DLQ 재시도 누적을 막았다.
 - `target_type` 불일치는 현재 P2 후보이며, replay dispatch 자체는 crawler 이름으로 결정되어 다른 handler를 실행시키지는 않는다.
-- 수정 승인 전까지 source 변경은 하지 않는다. 현재 replay 집중 검증은 `79 passed, 6 xfailed`다. (→ 승인 후 수정 완료; replay 집중 검증은 `106 passed`다. 대상 검증 파일은 11 passed)
-- `tests/services/test_replay_target_validation_contracts.py`의 strict `xfail` 6건은 BUG-011 미수정 상태를 증명한다. schedule 3건은 현재도 `missing` 실패로 통과한다. → **같은 날 승인 후 수정 완료. 마커 6건을 제거했고 파일은 11 passed다 (아래).**
+- 수정 승인 전까지 source 변경은 하지 않는다. 현재 replay 집중 검증은 `79 passed, 6 xfailed`다. (→ 승인 후 수정 완료; replay 집중 검증은 `106 passed`다. 대상 검증 파일은 18 passed)
+- `tests/services/test_replay_target_validation_contracts.py`의 strict `xfail` 6건은 BUG-011 미수정 상태를 증명한다. schedule 3건은 현재도 `missing` 실패로 통과한다. → **같은 날 승인 후 수정 완료. 마커 6건을 제거했고 파일은 18 passed다 (아래).**
 
 ### BUG-011 수정 완료 (2026-10-07)
 
@@ -583,13 +648,15 @@ schedule은 false-success 경로는 아니지만, 잘못된 target이 raw 재시
 | 파일 | 변경 |
 |---|---|
 | `src/services/crawl_replay_dispatcher.py` | 5개 거부 가드 + 날짜 형식 헬퍼(`_is_iso_date`, `_is_compact_date`) + `_TEAM_SOURCES` 매핑 + schedule malformed month 가드 + `kbo_event` URL·slug 불일치 거부 + 모든 거부 outcome에 `VALIDATION_SCHEMA` 분류 추가. **병행 작업자의 preview/realtime/pbp 핸들러와 `save=True` 변경은 그대로 보존** |
-| `tests/services/test_replay_target_validation_contracts.py` | `xfail(strict)` 마커 6건 제거 + `VALIDATION_SCHEMA` 어서션·DLQ 비재시도 계약 추가 → **11 passed** |
+| `tests/services/test_replay_target_validation_contracts.py` | `xfail(strict)` 마커 6건 제거 + `VALIDATION_SCHEMA` 어서션·DLQ 비재시도 계약 + `kbo_event` URL·slug·`target_type` 검사 + 미존재 경기 종결 2건 → **18 passed** |
 | `tests/services/test_replay_handler_contracts.py` | placeholder target을 실제 유효 값으로 갱신 (`OB`→`LT`/`LG`, `wikipedia`→`WIKI_SOURCE_KEY`) |
+| `tests/services/test_replay_handler_write_contracts.py` | `target_type="unit"` placeholder 제거 → 크롤러별 실제 계약 값. `target_type` 대조가 켜지면 placeholder는 거부 가드에서 멈춰 테스트 대상 handler에 도달하지 못한다 |
 
 검증:
-- replay 집중: **106 passed** (대상 검증 11 + handler 계약 + write 계약 + run replay + realtime issue + snapshot replay + preview canary).
+- replay 집중: **106 passed** (대상 검증 18 + handler 계약 + write 계약 + run replay + realtime issue + snapshot replay + preview canary).
+- `tests/services/` 전체: **1608 passed**.
 - `tests/services/` + 관련 crawler 테스트(6종): **1765 passed**.
-- mutation: 팀 코드·preview 날짜·역순 범위 가드를 각각 제거 → 해당 계약이 `ReplayOutcome(success=True)`를 관찰하며 실패. 복원 후 통과(이후 DLQ 비재시도 계약과 kbo_event URL·slug 불일치 계약이 추가되어 현재 11 passed).
+- mutation: 팀 코드·preview 날짜·역순 범위 가드를 각각 제거 → 해당 계약이 `ReplayOutcome(success=True)`를 관찰하며 실패. 복원 후 통과(이후 DLQ 비재시도 계약, kbo_event URL·slug 불일치, `target_type` 대조, 미존재 경기 종결 계약이 추가되어 현재 18 passed).
 - 변경 파일 Ruff/format 통과.
 
 **정직하게 남기는 것**: ① 운영 레터의 잘못된 target 발생 빈도는 여전히 미측정(프로덕션 DB 미접근). ② 거부 outcome 14곳 전부 `error_code="VALIDATION_SCHEMA"`를 달고, `NON_RETRYABLE_CODES` 분류로 `finalize_retry`가 재시도 예산 소진 없이 즉시 `EXHAUSTED`로 종결한다(DLQ 수준 계약 `test_invalid_target_does_not_reschedule`). ③ 커밋은 하지 않았다: dispatcher에 병행 작업자의 미커밋 변경이 함께 있어 커밋 경계는 파일 소유자와 조율이 필요하다.

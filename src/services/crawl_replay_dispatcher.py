@@ -122,6 +122,28 @@ _TEAM_SOURCES: dict[str, Collection[str]] = {
     PARKING_CRAWLER_NAME: TEAM_PARKING_SOURCES,
 }
 
+#: The ``target_type`` each registered crawler produces, keyed by crawler name.
+#: Dispatch is decided by ``crawler``, so a mismatched type cannot redirect the
+#: replay to another handler -- but forwarding it would write false lineage into
+#: the RUN-B row and into every later metric grouped by type.
+_EXPECTED_TARGET_TYPES: dict[str, str] = {
+    AWARD_CRAWLER_NAME: AWARD_TARGET_TYPE,
+    ROSTER_CRAWLER_NAME: ROSTER_TARGET_TYPE,
+    SCHEDULE_CRAWLER_NAME: SCHEDULE_TARGET_TYPE,
+    GAME_DETAIL_CRAWLER_NAME: GAME_DETAIL_TARGET_TYPE,
+    RELAY_CRAWLER_NAME: RELAY_TARGET_TYPE,
+    FOOD_CRAWLER_NAME: FOOD_TARGET_TYPE,
+    PARKING_CRAWLER_NAME: PARKING_TARGET_TYPE,
+    KBO_EVENT_CRAWLER_NAME: KBO_EVENT_TARGET_TYPE,
+    PLAYER_MOVEMENT_CRAWLER_NAME: PLAYER_MOVEMENT_TARGET_TYPE,
+    TEAM_HISTORY_CRAWLER_NAME: TEAM_HISTORY_TARGET_TYPE,
+    REALTIME_ISSUE_CRAWLER_NAME: REALTIME_ISSUE_TARGET_TYPE,
+    PREVIEW_CRAWLER_NAME: PREVIEW_TARGET_TYPE,
+    PBP_CRAWLER_NAME: PBP_TARGET_TYPE,
+    BATTING_SERIES_CRAWLER_NAME: BATTING_SERIES_TARGET_TYPE,
+    PITCHING_SERIES_CRAWLER_NAME: PITCHING_SERIES_TARGET_TYPE,
+}
+
 
 @dataclass(frozen=True)
 class ReplayOutcome:
@@ -159,7 +181,32 @@ class ReplayDispatcher:
         if handler is None:
             msg = f"No replay handler registered for crawler '{dead_letter.crawler}'"
             raise KeyError(msg)
+        mismatch = _target_type_mismatch(dead_letter)
+        if mismatch is not None:
+            return ReplayOutcome(
+                success=False,
+                replay_run_id=replay_run_id,
+                status="unaddressable",
+                error_message=mismatch,
+                error_code="VALIDATION_SCHEMA",
+            )
         return handler(dead_letter, replay_run_id)
+
+
+def _target_type_mismatch(dead_letter: CrawlDeadLetter) -> str | None:
+    """Return why the letter's own ``target_type`` is unusable, or ``None``.
+
+    A blank type is not a mismatch: the column is non-nullable, so an empty
+    value is a legacy or hand-built row, and every handler already falls back to
+    its canonical constant with ``target_type or ...``. Only a value that
+    disagrees with the producer's contract is refused, because that one is a
+    false claim rather than an absent one.
+    """
+    expected = _EXPECTED_TARGET_TYPES.get(dead_letter.crawler)
+    actual = dead_letter.target_type
+    if expected is None or not actual or actual == expected:
+        return None
+    return f"dead letter target_type '{actual}' does not match {dead_letter.crawler} contract '{expected}'"
 
 
 async def _execute_award_replay(

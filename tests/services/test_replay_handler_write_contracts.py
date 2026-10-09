@@ -90,11 +90,14 @@ def _ledger(monkeypatch: pytest.MonkeyPatch) -> Iterator[sessionmaker]:
 
 
 def _letter(crawler: str, **overrides: Any) -> CrawlDeadLetter:
+    # The dispatcher refuses a `target_type` that contradicts the crawler's own
+    # contract, so the placeholder this file used to pass would stop at the
+    # guard instead of reaching the handler under test.
     fields: dict[str, Any] = {
         "dlq_id": "DLQ-1",
         "original_run_id": "RUN-A",
         "crawler": crawler,
-        "target_type": "unit",
+        "target_type": dispatcher_mod._EXPECTED_TARGET_TYPES[crawler],
         "target_id": "2026-05",
         "failure_stage": STAGE,
         "error_code": "FETCH_TIMEOUT",
