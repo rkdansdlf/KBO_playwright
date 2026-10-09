@@ -28,13 +28,14 @@ from src.services.crawl_dead_letter_service import (
     retry_dead_letter,
 )
 from src.services.crawl_dead_letter_state import InvalidDlqTransitionError, can_requeue
-from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics
+from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics, stale_retry_seconds
 from src.services.crawl_replay_dispatcher import build_default_dispatcher
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from src.models.crawl_dead_letter import CrawlDeadLetter
+
 
 EXIT_OK = 0
 EXIT_NOT_FOUND = 1
@@ -108,10 +109,40 @@ def _load_letter(dlq_id: str) -> CrawlDeadLetter | None:
 
 
 def _refresh_metrics() -> None:
+    """Re-derive the queue's gauges *and* its incidents after a mutation.
+
+    Metrics alone left the incident ledger stale. `retry` resolving a letter is
+    the operator answering the exact question `dlq:exhausted` asked, yet the
+    incident stayed ERROR until the next 30-minute recovery tick re-read the
+    queue -- so the alert that was resolved by hand kept claiming to be open.
+
+    The incidents are derived from the reading rather than patched directly, so
+    one code path decides what the queue looks like. `apply_dlq_incidents`
+    reconciles the whole `dlq:` namespace, which is what closes the other two
+    keys if this mutation happened to affect them too.
+
+    A failure here is a warning, not an error: the mutation itself already
+    committed, and the next recovery tick re-derives the same state. Reporting
+    the command as failed would make the operator retry a mutation that worked.
+    """
     try:
-        publish_dlq_state_metrics()
+        stats = publish_dlq_state_metrics()
     except DB_SESSION_EXCEPTIONS:
         sys.stderr.write("warning: failed to refresh DLQ metrics\n")
+        return
+    if stats is None:
+        # Not a reading. The real function is typed `-> DlqStats` and raises on
+        # failure, so this only happens with a test double -- but treating it as
+        # empty would reconcile the `dlq:` namespace against a reading nobody
+        # took, closing incidents for conditions that were never evaluated.
+        return
+
+    # No guard here on purpose: `apply_dlq_incidents` swallows its own failures
+    # and logs them, so a notifying failure cannot turn a committed mutation into
+    # a failed command. A second try would imply that guarantee is unreliable.
+    from src.services.dlq_incidents import apply_dlq_incidents
+
+    apply_dlq_incidents(stats, stale_retry_threshold=stale_retry_seconds())
 
 
 def _cmd_retry(args: argparse.Namespace) -> int:  # noqa: PLR0911

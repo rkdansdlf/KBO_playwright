@@ -639,6 +639,71 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
   **그래서 EXHAUSTED Prometheus 규칙은 추가하지 않는다.** 두 경로를 만들면 같은 상태에 중복 경보가 생기고, 인시던트 쪽이 더 정확하다. 운영 실측은 2026-10-09 기준 `ignored` 4건·`exhausted` 0건이라 인시던트가 실제 발동한 적은 아직 없다.
 - `src/utils/metrics.py`의 다른 메트릭도 같은 사각지대에 있는가 (BUG-002 확장) — **답: 4종이었고 분류를 마쳤다. 사각지대 자체도 닫았다(BUG-012).**
 
+## 5-BH10. DLQ → incident 사슬 종결 관찰 결과 (2026-10-10)
+
+BH10은 사슬을 **기대값 없이 관찰**하라고 지정했다:
+
+```
+RUN-A PARTIAL → DLQ enqueue → [incident] → replay RUN-B → DLQ resolution → [incident 변화]
+```
+
+데이터 절반은 `tests/crawlers/test_award_dead_letter_e2e.py` 2건이 이미 끝까지 검증한다
+(실제 원장·DLQ 서비스·dispatcher·canary, 네트워크만 fake). 관찰되지 않은 것은
+`c387f8b3`이 `dlq:` 키를 도입한 **이후의 인시던트 절반**이었다.
+
+### 발견: `dlq retry`가 인시던트를 닫지 않았다
+
+`src/cli/dlq_operator.py`의 `_refresh_metrics()`는 `publish_dlq_state_metrics()`만
+호출했다 — 게이지와 heartbeat는 갱신되지만 **인시던트 원장은 손대지 않는다.**
+
+```
+letter resolve (운영자가 dlq:exhausted가 물은 질문에 답함)
+        ↓
+게이지 갱신 ✓ / heartbeat 갱신 ✓
+        ↓
+dlq:exhausted 인시던트 = ERROR 그대로  ← 최대 30분(다음 recovery tick)까지
+```
+
+30분 뒤 스케줄러가 같은 상태를 재도출해 닫아주므로 데이터는 상하지 않는다. 그러나
+**방금 손으로 해소한 경보가 계속 열려 있다고 주장**했고, 그 지연은 정확히 해소한
+사람에게 떨어진다. `dlq:exhausted`는 자가 해소가 불가능한 유일한 조건이라 더 나쁘다.
+
+### 수정 (`src/cli/dlq_operator.py`)
+
+`_refresh_metrics()`가 읽기에서 인시던트까지 도출한다. 세 mutation 경로
+(`retry`/`requeue`/`ignore`)가 **이미 이 함수를 호출**하므로 고치는 지점이 하나다.
+
+- 읽기 결과로 도출하지, 직접 패치하지 않는다 — `apply_dlq_incidents`가 `dlq:`
+  네임스페이스 전체를 reconcile하므로 이 mutation이 다른 키에 영향을 줬다면 함께 닫힌다.
+- **읽을 수 없으면 도출하지 않는다.** `None`과 예외 둘 다 "읽기가 아님"이다.
+  기본값으로 대체하면 평가되지 않은 조건을 reconcile해 **일어나지 않은 회복을 보고**한다
+  (B1/B2가 스케줄러 경로에서 제거한 바로 그 혼동).
+- **가드는 두지 않는다.** `apply_dlq_incidents`가 자기 실패를 삼키고 로깅하므로
+  커밋된 mutation이 알림 실패로 실패 처리되지 않는다. 이중 가드는 그 보장이
+  불신뢰라는 인상을 준다.
+
+### 검증
+
+회귀 `tests/cli/test_dlq_operator_incidents.py`(9건). 뮤테이션 3건 모두 검출:
+
+| 뮤테이션 | 결과 |
+|---|---|
+| metrics-only로 회귀(발견한 버그 그대로) | 5건 실패 |
+| 읽기 실패 시 빈 `DlqStats()`로 대체 | 2건 실패 |
+| `None` 가드 제거 | `AttributeError` (커밋된 mutation 실패 경로) |
+
+**뮤테이션 중 제 테스트의 허점을 하나 잡았다**: `published == []`는 "호출 안 됨"과
+"빈 이벤트로 호출됨"을 구분하지 못한다. 후자는 더 위험한데 `apply_incidents`가
+prefix로 reconcile하므로 **빈 배치가 모든 `dlq:` 인시던트를 닫기** 때문이다.
+단언을 "호출되지 않음"으로 강화해 두 번째 뮤테이션이 검출된다.
+
+### 남은 관찰
+
+`retry_count`가 운영에서 **전부 0**이고 replay-linked run도 **0건**이다 — 사슬의
+재시도 구간은 production에서 한 번도 밟히지 않았다. BH11이 이미 DLQ 수준 계약
+(`test_invalid_target_does_not_reschedule` 등)을 고정했으므로 추가 조치는 없다.
+다만 "재시도가 현장에서 돌았다"는 증거는 아직 없고, 그 사실은 숨기지 않는다.
+
 ## 6. 누적 버그 목록 (BH0~BH11)
 
 | ID | 심각도 | 영역 | 요약 | 상태 |
@@ -653,6 +718,7 @@ BUG-002가 확정적으로 수정되기 전까지는 `incident OPEN → RECOVERE
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
 | **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
+| **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
