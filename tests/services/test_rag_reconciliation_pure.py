@@ -132,6 +132,24 @@ class TestReconcileWithAsOf:
         assert report.left_only_after_cutoff == ("game:fresh",)
         assert report.right_only_after_cutoff == ()
 
+    def test_time_explainable_additions_are_not_counted_as_common(self) -> None:
+        """Count only keys both sides hold, even when the extra one is expected.
+
+        A copy still filling up produces exactly this shape: the larger side has
+        rows the smaller side has not reached, and the as-of policy explains
+        them. Counting them as common reported more shared keys than the smaller
+        side contained at all.
+        """
+        left = [
+            _entry("game", "keep", updated_at="2026-08-20T00:00:00+09:00"),
+            _entry("game", "fresh", updated_at="2026-08-23T00:00:00+09:00"),
+        ]
+        right = [_entry("game", "keep", updated_at="2026-08-19T00:00:00+09:00")]
+        report = reconcile_manifests(left, right, as_of=self.CUTOFF)
+
+        assert report.common_count == 1
+        assert report.total_union_count == 2
+
     def test_missing_timestamp_stays_conservative(self) -> None:
         left = [_entry("awards", "1", content_hash="h1")]
         right = [_entry("awards", "1", content_hash="h2", updated_at="2026-08-25T00:00:00+09:00")]

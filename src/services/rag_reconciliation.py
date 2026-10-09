@@ -142,8 +142,16 @@ class ReconciliationReport:
 
     @property
     def common_count(self) -> int:
-        """Count keys present on both sides regardless of explanation."""
-        singles = set(self.unexplained_issues.get("MISSING_IN_RIGHT", ()))
+        """Count keys present on both sides regardless of explanation.
+
+        One-sided keys are subtracted whether or not the as-of policy explains
+        them. The earlier version subtracted only the unexplained ones, so a
+        copy still filling up -- whose extra rows are all time-explainable --
+        reported more keys in common than the smaller side even had.
+        """
+        singles = set(self.left_only_after_cutoff)
+        singles.update(self.right_only_after_cutoff)
+        singles.update(self.unexplained_issues.get("MISSING_IN_RIGHT", ()))
         singles.update(self.unexplained_issues.get("MISSING_IN_LEFT", ()))
         return self.total_union_count - len(singles)
 

@@ -48,12 +48,46 @@ def _entry_from_db_row(row: Mapping[Any, Any]) -> ManifestEntry:
     return entry_from_manifest_row(mapping)
 
 
+def _embedding_column_names(bind: object) -> set[str]:
+    """Return the embedding-named columns of ``rag_chunks`` on this store."""
+    from sqlalchemy import inspect
+
+    return {column["name"] for column in inspect(bind).get_columns("rag_chunks")}
+
+
+def _resolve_embedding_column(session: Session) -> str:
+    """Return the column that holds the vector on this store.
+
+    Asked of the table rather than inferred from the dialect: the operational
+    database and the pgvector store are both PostgreSQL and name the column
+    differently (``embedding_vector`` and ``embedding``), so a dialect switch
+    picked the wrong one for exactly one of the two stores it serves.
+    """
+    names = _embedding_column_names(session.get_bind())
+    for candidate in ("embedding_vector", "embedding"):
+        if candidate in names:
+            return candidate
+    message = "rag_chunks has no embedding or embedding_vector column on this store"
+    raise RuntimeError(message)
+
+
 def _identity_select_prefix(session: Session) -> str:
-    """Build the identity projection using the active backend's vector column."""
+    """Build the identity projection using the active backend's vector column.
+
+    The presence test is deliberately stricter than ``IS NULL`` on stores whose
+    column is textual: the local database records "no vector" as the literal
+    string ``null``, which an ``IS NULL`` test counts as embedded. Oracle keeps
+    the plain test, because its ``VECTOR`` type rejects the text cast this uses
+    (ORA-51810) and never carries that placeholder.
+    """
     bind = session.get_bind()
     dialect = getattr(getattr(bind, "dialect", None), "name", None)
-    embedding_column = "embedding_vector" if dialect == "oracle" else "embedding"
-    return f"{_IDENTITY_SELECT_PREFIX}CASE WHEN {embedding_column} IS NULL THEN 0 ELSE 1 END AS embedding_present"
+    column = _resolve_embedding_column(session)
+    if dialect == "oracle":
+        presence = f"CASE WHEN {column} IS NULL THEN 0 ELSE 1 END"
+    else:
+        presence = f"CASE WHEN {column} IS NULL OR CAST({column} AS TEXT) IN ('null', '[]', '') THEN 0 ELSE 1 END"
+    return f"{_IDENTITY_SELECT_PREFIX}{presence} AS embedding_present"
 
 
 def fetch_identity_entries(session: Session) -> list[ManifestEntry]:
