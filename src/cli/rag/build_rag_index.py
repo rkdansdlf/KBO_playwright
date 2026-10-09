@@ -298,17 +298,30 @@ def _write_target_errors(
     vector_url: str,
     target_environment: str,
 ) -> list[str]:
-    """Return write-target safety errors for a staging build."""
+    """Return write-target safety errors for a non-dry-run build.
+
+    ``production`` used to be reserved for Oracle, because Oracle was the only
+    production vector store when this was written. The vector store now lives in
+    a pgvector database, so the environment and the engine are separate
+    questions; what must not separate is the opt-in, which every production
+    write still needs.
+
+    A production build may leave ``RAG_INDEX_DB_URL`` unset, meaning the sparse
+    index lives in the target database -- which is where it lives today, inside
+    the operational database next to the rows it indexes. Staging keeps the
+    stricter rule: a staging build must name its own sparse store, so an
+    experiment cannot default into the operational one.
+    """
     errors: list[str] = []
     is_oracle = _is_oracle_url(target_url)
-    if not sparse_url and not is_oracle:
-        errors.append("non-dry-run builds require an explicit RAG_INDEX_DB_URL")
-    if target_environment not in ({"staging", "production"} if is_oracle else {"staging"}):
-        errors.append("non-dry-run builds require RAG_TARGET_ENV=staging or production for Oracle")
+    if not sparse_url and not is_oracle and target_environment != "production":
+        errors.append("non-dry-run staging builds require an explicit RAG_INDEX_DB_URL")
+    if target_environment not in {"staging", "production"}:
+        errors.append("non-dry-run builds require RAG_TARGET_ENV=staging or production")
     if os.getenv("RAG_INDEX_ALLOW_WRITE") != "1":
         errors.append("non-dry-run builds require RAG_INDEX_ALLOW_WRITE=1")
-    if is_oracle and target_environment == "production" and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
-        errors.append("production Oracle builds require RAG_INDEX_ALLOW_PRODUCTION_WRITE=1")
+    if target_environment == "production" and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
+        errors.append("production builds require RAG_INDEX_ALLOW_PRODUCTION_WRITE=1")
     if is_oracle:
         errors.extend(_oracle_write_target_errors(sparse_url, vector_url, target_environment))
     errors.extend(_index_target_errors(source_url, target_url, sparse_url, vector_url))
