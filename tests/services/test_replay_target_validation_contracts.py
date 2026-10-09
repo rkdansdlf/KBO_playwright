@@ -243,6 +243,62 @@ def test_bad_schedule_target_stays_a_failed_missing_run(
     assert _stored_run(factory, RUN_ID) is None
 
 
+@pytest.mark.parametrize(
+    ("crawler", "target_type"),
+    [
+        ("awards", "food"),
+        ("roster_transactions", "schedule_month"),
+        ("schedule", "roster_date"),
+        ("kbo_event", "game"),
+    ],
+)
+def test_target_type_must_match_the_crawler_contract(
+    ledger: tuple[sessionmaker, Callable[[str], None]],
+    crawler: str,
+    target_type: str,
+) -> None:
+    """Dispatch runs on ``crawler``; a false ``target_type`` only poisons lineage.
+
+    The letter still reached the right handler before this guard existed, so the
+    harm was a RUN-B row recorded under a type the crawler never produces --
+    invisible in the replay result and wrong in every metric grouped by type.
+    """
+    factory, _bind_tracker = ledger
+
+    outcome = dispatcher.build_default_dispatcher().replay(
+        _letter(crawler, None, target_type),
+        replay_run_id=RUN_ID,
+    )
+
+    assert outcome.success is False
+    assert outcome.status == "unaddressable"
+    assert outcome.error_code == "VALIDATION_SCHEMA"
+    assert _stored_run(factory, RUN_ID) is None
+
+
+def test_a_blank_target_type_is_not_treated_as_a_mismatch(
+    ledger: tuple[sessionmaker, Callable[[str], None]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent type falls back to the canonical one; only a false claim is refused.
+
+    ``target_type`` is non-nullable, so an empty value is a legacy or hand-built
+    row rather than a wrong one, and every handler already normalizes it with
+    ``target_type or ...``. Refusing here would strand those letters with no
+    path to recovery.
+    """
+    factory, _bind_tracker = ledger
+    crawler = AsyncMock()
+    monkeypatch.setattr(dispatcher, "ScheduleCrawler", lambda: crawler)
+
+    outcome = dispatcher.build_default_dispatcher().replay(
+        _letter("schedule", "2026-05", ""),
+        replay_run_id=RUN_ID,
+    )
+
+    assert outcome.status != "unaddressable"
+
+
 def test_kbo_event_target_must_match_source_url(
     ledger: tuple[sessionmaker, Callable[[str], None]],
     monkeypatch: pytest.MonkeyPatch,
@@ -261,6 +317,125 @@ def test_kbo_event_target_must_match_source_url(
     assert outcome.status == "unaddressable"
     assert outcome.error_code == "VALIDATION_SCHEMA"
     assert _stored_run(factory, RUN_ID) is None
+
+
+class _NoSuchGameDetailCrawler:
+    """A well-formed game the source has never heard of returns no payload.
+
+    This is the shape a real nonexistent game produces, and it is deliberately
+    distinct from a timeout: the crawl completed and the source had nothing.
+    """
+
+    def __init__(self) -> None:
+        self.requested: list[str] = []
+
+    async def crawl_game_attempts(self, games: list[dict[str, object]], **_: object) -> list[object]:
+        from src.crawlers.game_detail_outcome import attempt_from_result
+
+        self.requested = [str(game["game_id"]) for game in games]
+        return [attempt_from_result(str(game["game_id"]), None, lightweight=False) for game in games]
+
+    async def close(self) -> None:
+        return None
+
+
+class TestAGameTheSourceDoesNotHave:
+    """A well-formed ID that names no game: absence, not a shape failure.
+
+    Both handlers accept the ID -- `season_of` and `game_date_of` both parse it --
+    so the verdict comes from what the crawl reports back, not from the target
+    check. That is why these tests exist rather than one more target guard.
+    """
+
+    NONEXISTENT = "20991231ZZZZ0"
+
+    @staticmethod
+    def _wire_run_ledgers(
+        factory: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Point the run ledgers at the test database.
+
+        Both ledgers bind `SessionLocal` when they are constructed, and they are
+        constructed per call, so rebinding the module attribute is enough. Without
+        this the run cannot be opened, the handler returns before fetching, and the
+        test would observe `missing` -- an artifact of the wiring rather than the
+        verdict under test.
+        """
+        for module in (
+            "src.services.game_collection_service",
+            "src.services.game_detail_runs",
+            "src.services.relay_runs",
+        ):
+            monkeypatch.setattr(f"{module}.SessionLocal", factory)
+
+    def test_game_detail_records_a_failure_rather_than_closing_the_letter(
+        self,
+        ledger: tuple[sessionmaker, Callable[[str], None]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        factory, _bind_tracker = ledger
+        self._wire_run_ledgers(factory, monkeypatch)
+        crawler = _NoSuchGameDetailCrawler()
+        monkeypatch.setattr(dispatcher, "GameDetailCrawler", lambda: crawler)
+        monkeypatch.setattr(
+            "src.services.game_collection_service._detail_payload_failure_reason",
+            lambda target, payload, *_args: (
+                ("crawl_failed", "no payload", "no_detail_payload") if not payload else None
+            ),
+        )
+
+        outcome = dispatcher.build_default_dispatcher().replay(
+            _letter("game_detail", self.NONEXISTENT, "game"),
+            replay_run_id=RUN_ID,
+        )
+
+        assert crawler.requested == [self.NONEXISTENT]
+        assert outcome.success is False
+        stored = _stored_run(factory, RUN_ID)
+        assert stored is not None
+        assert stored.status == "failed"
+
+    def test_relay_records_success_because_the_source_has_nothing(
+        self,
+        ledger: tuple[sessionmaker, Callable[[str], None]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`EMPTY` is a completed answer, so this one is supposed to resolve.
+
+        `_collect_one_relay` records success for `EMPTY` on purpose: a game the
+        source never carried is finished work, and queuing it would be how a
+        permanent absence turns into a retry loop. The test pins the asymmetry
+        with `game_detail` rather than leaving it to be re-derived.
+        """
+        factory, _bind_tracker = ledger
+        self._wire_run_ledgers(factory, monkeypatch)
+        from src.crawlers.relay_outcome import RelayAttempt, RelayStatus
+
+        class _Absent:
+            async def crawl_relay_attempt(self, game_id: str) -> RelayAttempt:
+                return RelayAttempt(
+                    game_id=game_id,
+                    status=RelayStatus.EMPTY,
+                    result={},
+                    resolution_attempted=True,
+                )
+
+            async def close(self) -> None:
+                return None
+
+        monkeypatch.setattr("src.crawlers.relay_crawler.RelayCrawler", _Absent)
+
+        outcome = dispatcher.build_default_dispatcher().replay(
+            _letter("relay", self.NONEXISTENT, "game"),
+            replay_run_id=RUN_ID,
+        )
+
+        assert outcome.success is True
+        stored = _stored_run(factory, RUN_ID)
+        assert stored is not None
+        assert stored.status == "success"
+        assert stored.records_written == 0
 
 
 def test_invalid_target_does_not_reschedule(
