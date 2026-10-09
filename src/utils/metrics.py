@@ -285,7 +285,11 @@ def register_database_availability_collector(engine: object | None = None) -> No
         return
     from prometheus_client.core import REGISTRY
 
-    from src.monitoring.db_availability import DatabaseAvailabilityCollector
+    try:
+        from src.monitoring.db_availability import DatabaseAvailabilityCollector
+    except ImportError:
+        logger.warning("DatabaseAvailabilityCollector unavailable; skipping DB availability metrics")
+        return
 
     REGISTRY.register(DatabaseAvailabilityCollector(engine))
     _db_availability_registered = True

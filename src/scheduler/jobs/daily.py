@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -76,10 +78,64 @@ class JobResult:
 # Global job state for tracking dependencies
 _JOB_REGISTRY: dict[str, JobResult] = {}
 
+# Disk backup of the registry so a scheduler restart between the 03:00 daily
+# job and its downstream jobs does not wipe today's dependency evidence.
+_JOB_REGISTRY_FILE = PROJECT_ROOT / "data" / "last_runs" / "job_registry.json"
+
+
+def _job_registry_file() -> Path:
+    """Return the registry snapshot path, honoring the test override."""
+    env_path = os.environ.get("JOB_REGISTRY_FILE")
+    return Path(env_path) if env_path else _JOB_REGISTRY_FILE
+
+
+def _persist_job_registry() -> None:
+    """Snapshot today's registry to disk for restart recovery."""
+    try:
+        payload = {"date": datetime.now(KST).date().isoformat(), "jobs": get_job_status_summary()}
+        target = _job_registry_file()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except (OSError, ValueError, TypeError):
+        logger.exception("Failed to persist job registry")
+
+
+def _load_job_registry() -> None:
+    """Restore today's registry snapshot after a scheduler restart."""
+    try:
+        payload = json.loads(_job_registry_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(payload, dict) or payload.get("date") != datetime.now(KST).date().isoformat():
+        return
+    jobs = payload.get("jobs")
+    if not isinstance(jobs, dict):
+        return
+    for name, raw_entry in jobs.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        try:
+            status = JobStatus(raw_entry.get("status", JobStatus.SKIPPED.value))
+        except ValueError:
+            continue
+        message = str(raw_entry.get("message", ""))
+        if status == JobStatus.RUNNING:
+            status = JobStatus.SKIPPED
+            message = "Interrupted by scheduler restart"
+        details = raw_entry.get("details")
+        _JOB_REGISTRY[str(name)] = JobResult(
+            job_name=str(name),
+            status=status,
+            message=message,
+            details=details if isinstance(details, dict) else {},
+            dependencies=[str(dep) for dep in raw_entry.get("dependencies", []) if isinstance(dep, str)],
+        )
+
 
 def _register_job(job_name: str, dependencies: list[str] | None = None) -> None:
     """Register a job in the dependency registry."""
     _JOB_REGISTRY[job_name] = JobResult(job_name=job_name, status=JobStatus.RUNNING, dependencies=dependencies or [])
+    _persist_job_registry()
 
 
 def _update_job_status(job_name: str, status: JobStatus, message: str = "", details: dict | None = None) -> None:
@@ -89,6 +145,7 @@ def _update_job_status(job_name: str, status: JobStatus, message: str = "", deta
         _JOB_REGISTRY[job_name].message = message
         if details:
             _JOB_REGISTRY[job_name].details = details
+        _persist_job_registry()
 
 
 def _can_run_job(job_name: str) -> tuple[bool, str]:
@@ -649,6 +706,36 @@ def crawl_p1p2_data_job() -> None:
             _update_job_status("crawl_p1p2_data_job", JobStatus.FAILURE, "Exception")
 
 
+def db_reachability_check_job() -> None:
+    """Verify the primary database is reachable; alert on failure."""
+    from urllib.parse import urlparse
+
+    from sqlalchemy import text
+
+    _register_job("db_reachability_check_job", dependencies=[])
+    db_url = os.getenv("DATABASE_URL", "")
+    host = urlparse(db_url).hostname or "unknown"
+    port = urlparse(db_url).port or 5432
+    try:
+        import socket
+
+        with socket.create_connection((host, port), timeout=5):
+            pass
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from src.db.engine import Engine
+
+        with Engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except (OSError, SQLAlchemyError) as exc:
+        logger.warning("DB reachability check failed for %s:%s: %s", host, port, exc)
+        alert_warning("db_reachability_check", details=f"{host}:{port} unreachable: {exc}")
+        _update_job_status("db_reachability_check_job", JobStatus.FAILURE, "DB unreachable")
+        return
+    alert_success("db_reachability_check", "primary database reachable")
+    _update_job_status("db_reachability_check_job", JobStatus.SUCCESS, "Passed")
+
+
 def lock_health_check_job() -> None:
     """Post-run lock-health verification for the 06:45 P1/P2 job."""
     _register_job("lock_health_check_job", dependencies=["crawl_p1p2_data_job"])
@@ -814,3 +901,6 @@ def get_job_status_summary() -> dict[str, Any]:
 def clear_job_registry() -> None:
     """Clear the job registry (useful for testing)."""
     _JOB_REGISTRY.clear()
+
+
+_load_job_registry()

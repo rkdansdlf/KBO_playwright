@@ -10,3 +10,6 @@
 # what the trailing-whitespace and end-of-file hooks were fixing, twice, on two
 # different fixtures.
 *.html text eol=lf
+*.sh text eol=lf
+# Byte-sensitive test fixtures (sha256-verified at runtime): never convert line endings
+tests/fixtures/** text eol=lf

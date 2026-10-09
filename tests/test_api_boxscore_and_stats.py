@@ -106,7 +106,11 @@ def test_get_head_to_head_api() -> None:
     with patch("src.api.routers.games.get_db_session") as mock_get_db:
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_game]
+        season_result = MagicMock()
+        season_result.scalars.return_value.all.return_value = [283]
+        game_result = MagicMock()
+        game_result.scalars.return_value.all.return_value = [mock_game]
+        mock_session.execute.side_effect = [season_result, game_result]
 
         res = client.get("/api/v1/games/head-to-head?team1=KIA&team2=LG&season=2026", headers=AUTH_HEADERS)
         assert res.status_code == 200
@@ -117,6 +121,34 @@ def test_get_head_to_head_api() -> None:
         assert data["team2_wins"] == 0
         assert data["total_games"] == 1
         assert len(data["recent_games"]) == 1
+
+
+def test_head_to_head_falls_back_to_raw_season_id_without_mapping() -> None:
+    """Test season values with no kbo_seasons mapping use direct season_id equality."""
+    mock_game = Game(
+        game_id="20260809LGKIA0",
+        game_date=date(2026, 8, 9),
+        home_team="KIA",
+        away_team="LG",
+        home_score=6,
+        away_score=3,
+        winning_team="KIA",
+        season_id=9999,
+    )
+
+    with patch("src.api.routers.games.get_db_session") as mock_get_db:
+        mock_session = MagicMock()
+        mock_get_db.return_value.__enter__.return_value = mock_session
+        season_result = MagicMock()
+        season_result.scalars.return_value.all.return_value = []
+        game_result = MagicMock()
+        game_result.scalars.return_value.all.return_value = [mock_game]
+        mock_session.execute.side_effect = [season_result, game_result]
+
+        res = client.get("/api/v1/games/head-to-head?team1=KIA&team2=LG&season=9999", headers=AUTH_HEADERS)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_games"] == 1
 
 
 def test_head_to_head_excludes_incomplete_games_from_recent_results() -> None:
@@ -141,7 +173,11 @@ def test_head_to_head_excludes_incomplete_games_from_recent_results() -> None:
     with patch("src.api.routers.games.get_db_session") as mock_get_db:
         mock_session = MagicMock()
         mock_get_db.return_value.__enter__.return_value = mock_session
-        mock_session.execute.return_value.scalars.return_value.all.return_value = [scheduled_game, complete_game]
+        season_result = MagicMock()
+        season_result.scalars.return_value.all.return_value = [277]
+        game_result = MagicMock()
+        game_result.scalars.return_value.all.return_value = [scheduled_game, complete_game]
+        mock_session.execute.side_effect = [season_result, game_result]
 
         res = client.get("/api/v1/games/head-to-head?team1=KIA&team2=LG&season=2025", headers=AUTH_HEADERS)
 

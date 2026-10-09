@@ -23,6 +23,7 @@ from src.scheduler.jobs.daily import (
     crawl_p1p2_data_job,
     crawl_phase1_extra_job,
     daily_gap_report_job,
+    db_reachability_check_job,
     lock_health_check_job,
 )
 from src.scheduler.jobs.live import (
@@ -120,6 +121,7 @@ __all__ = [
     "crawl_transit_time_job",
     "daily_gap_report_job",
     "data_integrity_check_job",
+    "db_reachability_check_job",
     "heal_unverified_pbp_job",
     "lock_health_check_job",
     "rag_audit_sentinel_job",
