@@ -1,6 +1,6 @@
 # BH0/BH1/BH2 — 크롤러 신뢰성 계약 목록화 및 경계 공격
 
-> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07, 임계값 미보정). BH9 최종 결정(2026-10-09): 24h 유지·미보정, EXHAUSTED 감시는 무음 — BUG-002 미종결.
+> 상태: BH0·BH1·BH2·BH9(규칙 부분)·BH11 완료. BH3~BH8, BH10, BH12~BH14 미시작. BUG-011 수정 완료(2026-10-07, 운영 빈도 미측정). BUG-001 탐지 규칙 추가(2026-10-07); 임계값 실측 완료(2026-10-09) — `partial` 0건이라 보정 불가, 규칙은 '미검증' 상태. BH9 최종 결정(2026-10-09): 24h 유지·미보정, EXHAUSTED 감시는 무음 — BUG-002 미종결.
 > 범위: 공유 인프라 6계층(transport → persist → ledger → DLQ → replay → incident/notification/metrics).
 > 전제: 전부 로컬 SQLite. 운영 DB 무접촉.
 
@@ -685,6 +685,41 @@ schedule은 false-success 경로는 아니지만, 잘못된 target이 raw 재시
 - `target_type` 불일치는 현재 P2 후보이며, replay dispatch 자체는 crawler 이름으로 결정되어 다른 handler를 실행시키지는 않는다.
 - 수정 승인 전까지 source 변경은 하지 않는다. 현재 replay 집중 검증은 `79 passed, 6 xfailed`다. (→ 승인 후 수정 완료; replay 집중 검증은 `106 passed`다. 대상 검증 파일은 18 passed)
 - `tests/services/test_replay_target_validation_contracts.py`의 strict `xfail` 6건은 BUG-011 미수정 상태를 증명한다. schedule 3건은 현재도 `missing` 실패로 통과한다. → **같은 날 승인 후 수정 완료. 마커 6건을 제거했고 파일은 18 passed다 (아래).**
+
+### BUG-001 임계값 실측 완료 (2026-10-09) — **보정 대상이 아니라 전제가 성립하지 않음**
+
+운영 DB를 read-only(`SET TRANSACTION READ ONLY`)로 조회했다. 원장 전체 구간
+(2026-09-29 ~ 10-09, 1093런):
+
+| status | runs |
+|---|---|
+| `success` | 1088 |
+| `failed` | 5 |
+| `partial` | **0** |
+
+**`partial`이 한 번도 기록된 적이 없다.** 희소가 아니라 부재이므로 24h 창을
+보정할 표본이 없다. 관측을 더해도 바뀌지 않고, 표본이 생기기 전까지 이 규칙의
+정직한 기술은 "보정됨"이 아니라 **"미검증"**이다.
+
+#### "부분 실패 분기가 도달 불가능해서 규칙이 아무것도 못 본다"는 추론은 틀렸다
+
+기록에 앞서 확인했다. `partial`을 만들 수 있는 5개 크롤러 **모두** 혼합 실패를
+구동해 `status == "partial"`을 단언하는 테스트가 있다 — `kbo_event`(7개 중 1개
+페이지 실패), `award`(2개 소스 중 1개 실패), `food`/`parking`(팀 1개 실패),
+`player_movement`(연도 1개 실패). CI에서 계속 실행된다.
+
+즉 **0건은 코드의 사실이 아니라 현장의 사실**이다. 운영이 기록한 5건의 실패는
+모두 전부 실패였고(`records_written=0`), 그게 `failed` 분기로 가는 경로다.
+혼합 실패가 현장에서 한 번이라도 일어나기 전까지는 재측정으로 달라질 게 없다.
+
+#### 같은 실측에서 확인된 것: C1은 프로덕션에서 이미 동작한다
+
+`crawl_execution_runs.id=37`이 **이미 회수됐다.** 2026-10-09 12:00:00 UTC에
+`status='failed'`, `error_code='RUN_INTERRUPTED'`, `finished_at`이 채워졌고
+메시지에 스위퍼 문구가 남아 있다 — 이 조회를 시각(12:11 UTC)에 직접 확인했다.
+
+AGENTS.md의 "배포 후 `id=37` 회수 여부로 배포 성공을 확인한다"는 항목은
+**기다릴 항목이 아니라 이미 충족된 항목**이다. 배포 전 확인을 기다릴 이유가 없다.
 
 ### BUG-011 수정 완료 (2026-10-07)
 
