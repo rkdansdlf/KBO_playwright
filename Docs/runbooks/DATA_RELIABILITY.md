@@ -218,6 +218,13 @@ A healthy reading reconciles the whole `dlq:` namespace rather than staying
 silent, so a recovered queue closes its own incident instead of waiting for the
 manual `incidents resolve` in §4.2.
 
+**An operator mutation does the same.** `dlq retry`, `requeue` and `ignore` all
+re-derive the incidents from the reading after the mutation commits, so
+answering `dlq:exhausted` closes it immediately rather than leaving the alert
+open until the next 30-minute recovery tick. A queue that could not be read
+derives nothing — reconciling against a reading nobody took would *close*
+incidents for conditions that were never evaluated.
+
 ### 3.2c Sustained-partial alerting
 
 One rule covers the quietest failure mode in the crawl family: a crawler that
