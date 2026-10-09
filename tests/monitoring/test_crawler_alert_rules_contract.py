@@ -269,6 +269,14 @@ class TestCrawlerRulesContent:
             # recovery stalled, and the drain not keeping up.
             "KboDlqRecoveryStalled",
             "KboDlqBacklogAgeHigh",
+            # The other half of BUG-002: every rule above reads a gauge the DLQ
+            # sweep refreshes, and a sweep that cannot reach the database leaves
+            # those gauges at their previous values. An empty queue and an
+            # unreadable one were therefore indistinguishable -- which meant the
+            # two rules above could stay quiet while nobody was looking at all.
+            # These read the sweep's own heartbeat instead of the queue's state.
+            "KboDlqSweepStalled",
+            "KboDlqSweepFailing",
         }
 
     def test_write_drop_does_not_exclude_a_zero_write_count(self):

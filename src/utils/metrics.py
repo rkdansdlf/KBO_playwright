@@ -151,6 +151,32 @@ KBO_DLQ_RECOVERY_ACTIONS_TOTAL = Counter(
     ["action"],
 )
 
+#: When the dead letter queue was last observed successfully.
+#:
+#: An empty queue is ambiguous on its own. "There is nothing to reprocess" and
+#: "nobody has been able to look" produce the same gauges, because a sweep that
+#: cannot reach the database leaves the previous values in place rather than
+#: zeroing them -- so `kbo_crawl_dlq_letters` reads 0 for both. This timestamp
+#: separates them: 0 letters plus a recent sweep is a verified zero, 0 letters
+#: plus a stale one means the check itself is not running.
+#:
+#: Unix time rather than a count so the comparison is a plain age, the way
+#: `kbo_crawl_last_success_timestamp` already works for crawler freshness.
+KBO_DLQ_LAST_SUCCESSFUL_SWEEP_TIMESTAMP = Gauge(
+    "kbo_crawl_dlq_last_successful_sweep_timestamp",
+    "Unix time of the last successful dead letter queue sweep, or 0 when none has run.",
+)
+
+#: Sweeps that could not read the queue.
+#:
+#: Separate from `kbo_crawl_dlq_failures_total`, which counts failures *found in
+#: the queue*. This counts the times the queue itself could not be read, which
+#: is the case that leaves every other gauge frozen and therefore least visible.
+KBO_DLQ_SWEEP_FAILURES_TOTAL = Counter(
+    "kbo_crawl_dlq_sweep_failures_total",
+    "Total dead letter queue sweeps that could not read the queue.",
+)
+
 
 def record_notification_dispatch(channel: str, status: str, duration_seconds: float) -> None:
     """Record one notification delivery attempt and its latency."""
@@ -207,6 +233,30 @@ def record_dlq_retry_outcome(crawler: str, outcome: str) -> None:
 def record_dlq_recovery_action(action: str) -> None:
     """Record one dead letter recovery action."""
     KBO_DLQ_RECOVERY_ACTIONS_TOTAL.labels(action=action).inc()
+
+
+def record_dlq_sweep_succeeded(at: float) -> None:
+    """Record that the queue was read successfully at a Unix timestamp.
+
+    Only called when the read actually completed. A sweep that could not reach
+    the queue must leave this untouched: overwriting it would make an
+    unreachable queue look freshly verified, which is the exact confusion it
+    exists to prevent.
+
+    Args:
+        at: Unix time of the successful read.
+
+    """
+    KBO_DLQ_LAST_SUCCESSFUL_SWEEP_TIMESTAMP.set(at)
+
+
+def record_dlq_sweep_failed() -> None:
+    """Record a sweep that could not read the queue.
+
+    Deliberately not touching the success timestamp -- a failure is exactly the
+    case where the last *known good* reading is the only evidence available.
+    """
+    KBO_DLQ_SWEEP_FAILURES_TOTAL.inc()
 
 
 def refresh_dlq_state_metrics(
