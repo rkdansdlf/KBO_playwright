@@ -805,6 +805,110 @@ checkpoint 메커니즘 전체가 이 한 가지 경우만 담고 있었다.
 테스트로 고정했다. 두 형태가 같다고 가정하는 것이 동작하는 규칙을 조용한 규칙으로
 바꾸는 경로다.
 
+## 5-BH0-가정-b. KBO robots.txt 전면 금지와 그 귀결 (2026-10-10)
+
+BUG-014를 조사하다 **데이터 원천 자체가 닫힌 사실**을 발견했다. 앞 절의 두 크롤러만의
+문제가 아니었다.
+
+### robots.txt 타임라인 (준법 모듈이 저장한 스냅샷 3,000여 건에서 복원)
+
+| 기간 | `User-agent: *` 정책 | 스냅샷 수 |
+|---|---|---|
+| ~2026-06-26 ~ 07-13 | `Disallow: /Manager` | 974 |
+| ~2026-06-26 ~ 08-02 | `Disallow: /Common/`, `/Help/`, `/Member/`, `/ws/` | 991 |
+| **~2026-08-05 ~ 현재** | **`Disallow: /`** | **964** |
+
+**KBO가 8월 초에 사이트 전체를 일반 에이전트에게 금지했다.** Googlebot·Yeti·Daumoa·
+Bingbot만 예외이며 그것도 `/ws/`만 막힌다.
+
+### 범위: 검사하는 26개 중 24개가 KBO 사이트 의존
+
+준법 계층 자체는 철저하다 — 26개 크롤러가 `compliance.is_allowed`를 호출하고,
+미호출은 인프라(`http_client.py`, `selectors.py`)뿐이다. 문제는 그 26개 중
+**24개가 `koreabaseball.com`을 원천으로 쓴다**는 것이다. 살아남은 것은 다른 도메인을
+쓰는 크롤러뿐이다:
+
+| 크롤러 | 원천 | 상태 |
+|---|---|---|
+| `game_detail` | Naver API만 | 정상 |
+| `schedule` | Naver 우선 + KBO fallback | Naver 경로로 수집 |
+| `parking` | 구장·구단 사이트 | 정상 |
+
+즉 경기 데이터는 신선하지만(`game_*`, `player_season_*` 최근 갱신), **KBO 자체 페이지만
+가진 데이터는 8월 이후 갱신되지 않고 있다.**
+
+### BUG-015 — 차단이 "HTTP 오류 + 재시도 가능"으로 둔갑한다
+
+`preview_crawler`에서 실측했다. `_fetch_api_json`이 차단 시 **조용히 `None`을 반환**하고
+(INFO 로그만), 그 결과가 "no preview data obtained" → `_date_is_confirmed_empty`가
+`False` → 다음으로 분류된다:
+
+```python
+error_code=FailureCode.FETCH_HTTP_ERROR.value,   # HTTP 요청을 한 적이 없다
+run.status = RUN_STATUS_FAILED
+self._enqueue_dead_letter(...)                   # 재시도 불가능한데 레터를 만든다
+```
+
+**두 번 틀렸다.** HTTP 요청이 없었는데 HTTP 오류라고 하며, robots가 금지하는 동안
+어떤 재시도도 성공할 수 없는데 재시도 큐에 넣는다.
+
+실측 피해:
+
+| 항목 | 값 |
+|---|---|
+| `preview` 런 | **459건 전부 failed** / `FETCH_HTTP_ERROR` |
+| DLQ 레터 | **89건** (exhausted 77 + pending 12) |
+| 대상 날짜 | 10/10·11·12 — **경기가 있는 날**(3·2·3경기) |
+| 결과 | `dlq:exhausted` 인시던트(ERROR/31회)로 표면화 |
+
+즉 **현재 열려 있는 `dlq:exhausted`의 출처가 이 오분류**다. 운영자가 런북대로
+`dlq retry`를 해도 같은 차단을 다시 만난다.
+
+### 수정
+
+`roster_transaction_crawler`가 이미 쓰는 관례를 preview에 적용한다 — 차단은 데이터
+결과도 실패도 아니므로 `source_limited`로 기록하고 DLQ에 넣지 않는다.
+
+- `_source_limited_reason` 플래그를 **차단이 발견되는 두 지점 모두**에서 설정한다
+  (크롤 자체의 fetch, 그리고 빈 결과일 때만 도는 확인 read).
+- **런마다 초기화**한다. 크롤러 객체는 날짜보다 오래 살므로, 한 날짜의 차단이 다음
+  날짜의 결과로 보고되면 그것은 반대 방향의 같은 결함이다.
+- 결과 판정은 **두 지점을 모두 지난 뒤**에 한다. 처음에 플래그 검사를 확인 read 앞에
+  뒀더니 주 경로(빈 크롤 → 확인 중 차단 발견)가 그대로 `FETCH_HTTP_ERROR`로 남았다 —
+  기존 테스트 12건이 통과한 것이 이를 드러냈다.
+
+### 부수 효과: BUG-014 수정의 구멍이 닫혔다
+
+BUG-014의 `KboCrawlerSourceNeverConsulted`는 `checkpoint.outcome == "source_limited"`를
+읽는다. **preview는 그 체크포인트를 쓰지 않았으므로 새 경보에도 잡히지 않았다.**
+이 수정으로 preview가 그 어휘를 쓰게 되어 메트릭·경보가 함께 동작한다
+(`tests/monitoring/test_crawler_source_limited_metrics.py`의 크롤러 스캔이 preview를
+찾는 것으로 확인).
+
+### 검증
+
+회귀 `tests/crawlers/test_preview_reliability_canary.py`(16건, 신규 5건 포함).
+기존 `test_a_compliance_block_is_not_confirmation`이 **잘못된 동작을 고정하고 있었다** —
+이름은 "차단은 확인이 아니다"인데 본문은 `FAILED`와 DLQ 적재를 단언했다. 의도는
+보존하고 분류를 바로잡았다.
+
+뮤테이션 4건 모두 검출:
+
+| 뮤테이션 | 결과 |
+|---|---|
+| `FETCH_HTTP_ERROR` 분류로 회귀 (결함 그대로) | 5건 실패 |
+| 플래그 검사를 확인 read 앞으로 (무효했던 첫 수정) | 3건 실패 |
+| 런별 초기화 제거 (차단이 다음 날짜로 누출) | 1건 실패 |
+| 사유를 상수로 고정 (정책/네트워크 구분 불가) | 1건 실패 |
+
+### 남은 것 (운영자 결정)
+
+- **77건의 exhausted 레터**: 재시도로 풀리지 않는다. `dlq ignore`(사유 기록)가 맞지만
+  이는 가드된 mutation이므로 운영자 판단이다. 12건의 pending은 다음 재시도에서
+  `source_limited`로 종결된다.
+- **24개 크롤러의 8월 이후 공백**: 차단이 정확하므로 수집할 수 없다. 허가된 경로나
+  대체 원천이 필요하며, 그것이 `KNOWN_LIMITATIONS.md`의 열린 결정이다.
+
 ## 6. 누적 버그 목록 (BH0~BH11)
 
 | ID | 심각도 | 영역 | 요약 | 상태 |
@@ -819,6 +923,7 @@ checkpoint 메커니즘 전체가 이 한 가지 경우만 담고 있었다.
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
 | **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
+| **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |

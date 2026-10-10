@@ -150,15 +150,103 @@ class TestAnEmptyResultIsToldApartFromAFailure:
         enqueue.assert_called_once()
 
     def test_a_compliance_block_is_not_confirmation(self, harness):
+        """A policy refusal is not evidence that the date is empty.
+
+        The confirmation read is what distinguishes a quiet day from an
+        unreadable one, and a block is neither: it cannot confirm anything, so
+        `_date_is_confirmed_empty` must not report the date as empty and the
+        crawl must not be attempted against a source that refused us.
+        """
         crawler, run, _, enqueue = harness
         crawler._http.post_json = AsyncMock(return_value=_empty_games_response())
 
         with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=False)):
             asyncio.run(crawler.run(GAME_DATE))
 
-        assert run.status == RUN_STATUS_FAILED
         crawler._http.post_json.assert_not_awaited()
-        enqueue.assert_called_once()
+        assert run.checkpoint["outcome"] == "source_limited"
+
+    def test_a_compliance_block_is_not_a_failure(self, harness):
+        """It was recorded as `FETCH_HTTP_ERROR` with a retryable dead letter.
+
+        Wrong twice over: no HTTP request was ever made, and no retry can succeed
+        while robots.txt disallows the site -- measured in production as 77
+        exhausted letters from runs that could never have worked (BUG-015). A
+        policy decision is not an error to be retried, so it is neither a failure
+        nor a queue entry.
+        """
+        crawler, run, _, enqueue = harness
+        crawler._http.post_json = AsyncMock(return_value=_empty_games_response())
+
+        with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=False)):
+            previews = asyncio.run(crawler.run(GAME_DATE))
+
+        assert previews == []
+        assert run.status != RUN_STATUS_FAILED
+        assert run.error_code is None
+        enqueue.assert_not_called()
+
+    def test_a_compliance_block_names_its_reason(self, harness):
+        """The reason is what tells an operator the source is off-limits.
+
+        Without it the ledger says only that nothing was collected, and the
+        reader has to guess whether the network, the parser or the policy is at
+        fault.
+        """
+        crawler, run, _, _ = harness
+        crawler._http.post_json = AsyncMock(return_value=_empty_games_response())
+
+        with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=False)):
+            asyncio.run(crawler.run(GAME_DATE))
+
+        assert run.checkpoint["reason"] == "kbo_robots_blocked"
+        assert run.records_read == 0
+        assert run.records_written == 0
+
+    def test_a_block_from_the_crawl_itself_is_also_recorded(self, harness):
+        """The other discovery site: the crawl fetch is refused, not the check.
+
+        The reason can surface while crawling or while confirming, and checking
+        it between the two left this path still reporting a fetch error.
+        """
+        crawler, run, _, enqueue = harness
+        # An empty crawl, so the confirmation read is what runs -- but the block
+        # is hit by the crawl's own fetch instead.
+        crawler.crawl_preview_for_date = AsyncMock(return_value=[])
+        crawler._http.post_json = AsyncMock(return_value=_empty_games_response())
+
+        async def _blocked(*_args, **_kwargs):
+            crawler._source_limited_reason = "kbo_robots_blocked"
+            return []
+
+        crawler.crawl_preview_for_date = AsyncMock(side_effect=_blocked)
+
+        with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=True)):
+            asyncio.run(crawler.run(GAME_DATE))
+
+        assert run.checkpoint["outcome"] == "source_limited"
+        enqueue.assert_not_called()
+
+    def test_the_block_does_not_leak_into_the_next_date(self, harness):
+        """The crawler is reused, so the flag is per run rather than per instance.
+
+        A stale reason would report the next date as blocked when it was not,
+        which is the mirror of the bug being fixed: a real outcome replaced by a
+        policy one.
+        """
+        crawler, run, _, enqueue = harness
+        crawler._http.post_json = AsyncMock(return_value=_empty_games_response())
+
+        with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=False)):
+            asyncio.run(crawler.run(GAME_DATE))
+
+        assert run.checkpoint["outcome"] == "source_limited"
+
+        # Second date, allowed this time: the previous block must not carry over.
+        with patch.object(preview_module.compliance, "is_allowed", AsyncMock(return_value=True)):
+            asyncio.run(crawler.run(GAME_DATE))
+
+        assert run.checkpoint.get("outcome") != "source_limited"
 
     def test_the_confirmation_read_does_not_run_the_playwright_fallback(self, harness):
         """Confirming uses the shared client only.
