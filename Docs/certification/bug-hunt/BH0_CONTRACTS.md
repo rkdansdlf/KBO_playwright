@@ -909,6 +909,90 @@ BUG-014의 `KboCrawlerSourceNeverConsulted`는 `checkpoint.outcome == "source_li
 - **24개 크롤러의 8월 이후 공백**: 차단이 정확하므로 수집할 수 없다. 허가된 경로나
   대체 원천이 필요하며, 그것이 `KNOWN_LIMITATIONS.md`의 열린 결정이다.
 
+## 5-BH0-가정-c. 운영 1단계: 두 계약 불일치 (2026-10-10)
+
+사용자 지적 두 건을 실측으로 확인하고 수정했다. 둘 다 "정책 차단을 정상 흐름으로
+취급"의 잔재이며, **두 번째는 제 BUG-015 수정이 만든 회귀**였다.
+
+### A. `dlq ignore`가 `exhausted`를 거부
+
+| 계층 | 동작 |
+|---|---|
+| 상태 머신 (`ALLOWED_TRANSITIONS`) | `EXHAUSTED → IGNORED` **허용** |
+| 서비스 (`mark_ignored` → `ensure_transition`) | **계약대로 허용** |
+| CLI (`_cmd_ignore` 사전 검사) | `pending`만 — **거부** |
+| 문서 | 런북 라인 80·113과 `dlq:exhausted` 인시던트 본문이 `ignore`를 복구 절차로 안내 |
+
+즉 **서비스는 옳았고 호출자만 계약보다 좁았다.** 문서화된 복구가 작동하지 않았다.
+
+**수정**: `IGNORABLE_STATUSES`를 전이 테이블에서 **파생**하고(`pending`, `exhausted`),
+`can_ignore`로 CLI가 라이프사이클에 묻는다. `retry`/`requeue`도 같은 패턴으로
+통일했고, 오류 메시지도 집합에서 생성해 다시는 낡지 않게 했다.
+
+### B. replay가 `source_limited`를 `resolved`로 처리 (제 회귀)
+
+`_outcome_from_persisted_run`은 `success = run.status == RUN_STATUS_SUCCESS`만 봤다.
+BUG-015 수정으로 정책 차단이 `success`가 되면서, 재시도하면 **아무것도 수집하지
+않고 레터가 닫힌다.**
+
+범위는 preview보다 넓다. `source_limited`를 기록하는 크롤러 5종(preview,
+roster_transaction, player_movement, kbo_event, team_history) 모두 해당하며,
+replay 판정은 이 체크포인트를 **전혀 보지 않았다.** roster_transaction·
+player_movement는 **제 수정 이전부터** 같은 상태였다.
+
+**수정**: 어휘를 `src/crawlers/source_limited.py`로 추출해(세 계층이 공유) 판정과
+메트릭 투영이 같은 파서를 쓰게 하고, replay는 정책 차단을 **비재시도
+`FETCH_BLOCKED`**로 보고한다.
+
+**비재시도가 필수인 이유**: `finalize_retry`는 `success`와 예산만 보고 다음 상태를
+정하고, `_schedule_next_attempt`가 코드로 재시도 여부를 판단한다. `success=False`만
+하면 **pending → 예산 소진까지 반복**된다 — 실제로 91건이 그렇게 `exhausted`가 됐다.
+비재시도 코드는 **예산을 쓰지 않고 즉시 종결**한다.
+
+새 코드를 만들지 않고 `FETCH_BLOCKED`를 재사용했다: 이미 정책 거부를 의미하고,
+비재시도이며, 워커가 `schedule`의 robots 차단에 쓰는 것과 같은 코드다.
+
+### 순서 제약 (실측 근거)
+
+운영 DB는 **아직 옛 preview 코드**를 실행 중이다:
+
+| 관측 | 값 |
+|---|---|
+| 최근 6시간 preview 런 | 265건 **전부 `failed`**, `source_limited` 0건 |
+| 최신 레터 생성 | 10:15 (계속 생성) |
+| `resolved` | 0건 |
+
+따라서 **BUG-016 수정이 `3eeafa40` 배포와 함께 나가야 한다.** 먼저 배포하면
+차단된 레터가 "회복됨"으로 닫히기 시작한다.
+
+### 검증
+
+회귀 `tests/services/test_replay_source_limited_verdict.py`(17건) +
+`tests/cli/test_dlq_operator_cli.py`(갱신). 뮤테이션 3건 모두 검출:
+
+| 뮤테이션 | 결과 |
+|---|---|
+| CLI precheck를 `pending`만으로 되돌림 | 1건 실패 |
+| 정책 차단을 회복으로 처리 (결함 그대로) | 3건 실패 |
+| 판정은 유지하되 비재시도 코드 제거 | 1건 실패 (예산 소진 경로) |
+
+**기존 테스트 하나가 잘못된 계약을 고정하고 있었다**:
+`test_ignore_pending_only`는 이름부터 "pending만"을 주장하며 `EXHAUSTED` 거부를
+단언했다. 계약에 맞게 교체하고, 사전 검사가 여전히 값을 하는 이유(가드 요구 전에
+실패)도 별도 테스트로 고정했다.
+
+### 정리 명령
+
+91건(증가 중)은 재시도로 풀리지 않는다. 운영자 판단으로:
+
+```bash
+python3 -m src.cli.kbo dlq list --status exhausted --limit 200   # 검토
+python3 -m src.cli.kbo dlq ignore <dlq_id> --reason "robots policy" --apply
+```
+
+`retry`/`requeue`를 먼저 쓰지 않는다 — 둘 다 **고쳐진 원인**을 위한 것이고,
+robots 거부는 큐에서 고치는 것이 아니다.
+
 ## 6. 누적 버그 목록 (BH0~BH11)
 
 | ID | 심각도 | 영역 | 요약 | 상태 |
@@ -923,6 +1007,7 @@ BUG-014의 `KboCrawlerSourceNeverConsulted`는 `checkpoint.outcome == "source_li
 | **BUG-012** | **P1** | **metrics** | **`kbo_crawl`/`kbo_notification` 밖의 메트릭은 두 계약 모두 검사하지 않음; 4종이 미참조** | **분류 완료 + 접두어 필터 제거 (18 passed)** |
 | **BUG-010** | **P1** | **replay** | **schedule replay가 저장 없이 성공 보고 → 레터가 닫힘** | **수정 완료; 회귀 테스트 통과** |
 | **BUG-011** | **P1 후보** | **replay target** | **허용되지 않은 target이 빈/default 작업을 성공으로 기록해 레터를 닫을 수 있음** | **수정 완료; 거부 가드 + `target_type` 대조 + `VALIDATION_SCHEMA` 종료, 18 passed (운영 빈도 미측정)** |
+| **BUG-016** | **P1** | **CLI/replay** | **`dlq ignore`가 `exhausted`를 거부해 문서화된 복구가 작동하지 않음 + replay가 `source_limited`를 `resolved`로 처리** | **수정 완료(10-10); `IGNORABLE_STATUSES`를 상태 머신에서 파생, replay는 비재시도 `FETCH_BLOCKED`로 즉시 종결** |
 | **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
