@@ -164,6 +164,37 @@ def test_dns_error_fails_closed(monkeypatch):
     assert validate_url("https://example.com")[0] is False
 
 
+def test_dns_error_is_marked_as_a_resolver_fault(monkeypatch):
+    """The marker is what lets a caller keep this retryable.
+
+    Failing closed is right, but "we could not resolve it" must stay
+    distinguishable from "we decided not to fetch it": the first can clear on
+    its own, the second cannot.
+    """
+
+    def fail(*args, **kwargs):
+        raise socket.gaierror("unavailable")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fail)
+    ok, reason = validate_url("https://example.com")
+
+    assert ok is False
+    assert url_validator.is_dns_resolution_failure(reason) is True
+
+
+def test_a_policy_reason_is_not_marked_as_a_resolver_fault():
+    """The control for the test above: the marker must not match everything."""
+    assert url_validator.is_dns_resolution_failure("Resolved to private/reserved IP: 127.0.0.1") is False
+    assert url_validator.is_dns_resolution_failure("Domain 'x.test' not in allowlist") is False
+
+
+def test_the_marker_survives_a_caller_wrapping_the_reason():
+    """Callers embed the reason in their own sentence before raising."""
+    wrapped = "Blocked crawler request to https://gone.test/x: DNS resolution failed for: gone.test"
+
+    assert url_validator.is_dns_resolution_failure(wrapped) is True
+
+
 def test_validation_does_not_log_url_secrets(monkeypatch, caplog):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("127.0.0.1", 443))])
     ok, reason = url_validator.validate_url("https://example.com/private-token?api_key=secret-value")
