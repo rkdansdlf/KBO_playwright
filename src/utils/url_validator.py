@@ -73,6 +73,36 @@ _DOMAIN_ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
+#: Marker for a host that could not be resolved at all. Exported so callers can
+#: tell an operational resolver failure apart from a deliberate block without
+#: parsing prose of their own.
+DNS_FAILURE_REASON = "DNS resolution failed for:"
+
+
+def is_dns_resolution_failure(reason: str) -> bool:
+    """Return whether a rejection reason describes an unresolvable host.
+
+    The SSRF guard refuses a name it cannot resolve because it cannot prove the
+    target is public, and that refusal is correct. But the cause is a resolver
+    fault, not a policy decision: the same name may resolve on the next attempt,
+    so a caller that assigns retry semantics must not treat this as a permanent
+    block. The distinction lives here, beside the only code that produces it.
+
+    The marker is searched for rather than required at the start: callers wrap
+    the reason in their own sentence (``"Blocked crawler request to <url>: ..."``)
+    before raising, so a prefix test would never match the string it receives.
+
+    Args:
+        reason: The rejection reason, as returned by :func:`validate_url` or as
+            it appears inside a caller's wrapping message.
+
+    Returns:
+        True when the reason carries the DNS resolution marker.
+
+    """
+    return DNS_FAILURE_REASON in reason
+
+
 def is_private_ip(ip_str: str) -> bool:
     """Return True if the IP address belongs to a private/reserved range.
 
@@ -156,7 +186,7 @@ def _check_resolved_ips(hostname: str) -> tuple[bool, str]:
     try:
         resolved_ips = socket.getaddrinfo(hostname, 443, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        return False, f"DNS resolution failed for: {hostname}"
+        return False, f"{DNS_FAILURE_REASON} {hostname}"
 
     if not resolved_ips:
         return False, f"DNS resolution returned no addresses for: {hostname}"
@@ -239,6 +269,8 @@ def validate_crawler_url(url: str, *, allow_private: bool = False) -> tuple[bool
 
 
 __all__ = [
+    "DNS_FAILURE_REASON",
+    "is_dns_resolution_failure",
     "is_private_ip",
     "validate_crawler_url",
     "validate_url",

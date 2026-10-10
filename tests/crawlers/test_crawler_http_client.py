@@ -252,6 +252,84 @@ def test_open_circuit_fails_fast_without_a_request():
     assert len(calls) == 1
 
 
+class TestUrlValidationIsClassifiedByCause:
+    """A rejected URL must not report one cause for two different faults.
+
+    Both branches block the request; the difference is whether the letter
+    behind it can ever be retried. Collapsing them made a resolver outage
+    permanent.
+    """
+
+    def _client_with_hook(self, handler: Handler) -> CrawlerHttpClient:
+        """Build a client whose inner transport keeps the validation event hook.
+
+        `_client` in the helpers above drops the hook to keep tests offline, so
+        the hook has to be reinstated for this class -- patching `validate_url`
+        is what makes the real `_validate_request_url` fire.
+        """
+        transport = httpx.MockTransport(handler)
+        client = CrawlerHttpClient(
+            name="validation-case",
+            policy=HttpPolicy(base_delay_seconds=0.0, max_attempts=1, max_backoff_seconds=0.0),
+        )
+
+        @asynccontextmanager
+        async def _mock_client():
+            async with httpx.AsyncClient(
+                headers=client.default_headers,
+                timeout=client.timeout,
+                transport=transport,
+                follow_redirects=True,
+                event_hooks={"request": [client._validate_request_url]},
+            ) as raw:
+                yield raw
+
+        client._client = _mock_client  # type: ignore[method-assign]
+        circuit_registry.reset_all()
+        return client
+
+    def test_a_resolver_failure_is_retryable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The name may resolve next time, so the letter must stay retryable."""
+        monkeypatch.setattr(
+            "src.crawlers.http_client.validate_url",
+            lambda _url: (False, "DNS resolution failed for: www.example.test"),
+        )
+        client = self._client_with_hook(lambda request: httpx.Response(200, text="ok"))
+
+        result = asyncio.run(client.fetch_text("https://www.example.test/food"))
+
+        assert result.ok is False
+        assert result.outcome is CrawlOutcome.RETRYABLE_ERROR
+        assert result.error_code == "FETCH_HTTP_ERROR"
+
+    def test_a_policy_block_is_still_permanent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An SSRF refusal is a decision, not an outage; it must not be retried."""
+        monkeypatch.setattr(
+            "src.crawlers.http_client.validate_url",
+            lambda _url: (False, "Resolved to private/reserved IP: 127.0.0.1"),
+        )
+        client = self._client_with_hook(lambda request: httpx.Response(200, text="ok"))
+
+        result = asyncio.run(client.fetch_text("https://internal.example.test/x"))
+
+        assert result.ok is False
+        assert result.outcome is CrawlOutcome.PERMANENT_ERROR
+        assert result.error_code == "FETCH_BLOCKED"
+
+    def test_the_two_reasons_do_not_share_a_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The whole point of the split, stated as one assertion."""
+        codes = {}
+        for label, reason in (
+            ("dns", "DNS resolution failed for: gone.example.test"),
+            ("policy", "Domain 'gone.example.test' not in allowlist"),
+        ):
+            monkeypatch.setattr("src.crawlers.http_client.validate_url", lambda _url, r=reason: (False, r))
+            client = self._client_with_hook(lambda request: httpx.Response(200, text="ok"))
+            codes[label] = asyncio.run(client.fetch_text("https://x.test/y")).error_code
+
+        assert codes["dns"] != codes["policy"]
+
+
 class TestParseRetryAfter:
     def test_delay_seconds_form(self):
         assert parse_retry_after("120") == 120.0

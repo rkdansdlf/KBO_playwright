@@ -26,7 +26,7 @@ from src.crawlers.resilience import AdaptiveRateLimiter
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.retry_after import parse_retry_after
 from src.utils.throttle import throttle
-from src.utils.url_validator import validate_url
+from src.utils.url_validator import is_dns_resolution_failure, validate_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -106,6 +106,33 @@ class _RequestOptions:
 
 
 DEFAULT_HTTP_POLICY = HttpPolicy()
+
+
+def _validation_failure(url: str, reason: str) -> CrawlResult[Any]:
+    """Classify a URL that the validation hook rejected before the request.
+
+    Two different causes arrive here and they must not share a verdict. A policy
+    block (SSRF, allowlist, scheme) is permanent by construction. A host that
+    does not resolve is a resolver fault -- the SSRF guard refused it because it
+    could not prove the target is public, and the same name may resolve on the
+    next attempt. Giving the resolver fault the block code would mark a
+    transient outage as terminal, and the dead letter queue would ignore it
+    permanently instead of retrying it. The request is blocked either way; only
+    the retry meaning differs.
+    """
+    if is_dns_resolution_failure(reason):
+        return CrawlResult.failure(
+            CrawlOutcome.RETRYABLE_ERROR,
+            error=reason,
+            error_code=FailureCode.FETCH_HTTP_ERROR.value,
+            url=url,
+        )
+    return CrawlResult.failure(
+        CrawlOutcome.PERMANENT_ERROR,
+        error=reason,
+        error_code=FailureCode.FETCH_BLOCKED.value,
+        url=url,
+    )
 
 
 class CrawlerHttpClient:
@@ -319,12 +346,7 @@ class CrawlerHttpClient:
                 )
         except ValueError as exc:
             # Raised by the URL validation hook for blocked or invalid targets.
-            return CrawlResult.failure(
-                CrawlOutcome.PERMANENT_ERROR,
-                error=str(exc),
-                error_code=FailureCode.FETCH_BLOCKED.value,
-                url=url,
-            )
+            return _validation_failure(url, str(exc))
         except httpx.TimeoutException as exc:
             # Split from TransportError: a timeout is a distinct operational
             # signal from a connection-level fault, and collapsing them would
