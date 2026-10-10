@@ -58,8 +58,19 @@ class TestParseFoodPage:
 
 
 def test_food_sources_cover_seeded_refresh_sources():
-    assert TEAM_FOOD_SOURCES["ALL"]["source_key"] == "gujangfood_com"
+    assert TEAM_FOOD_SOURCES["NC"]["source_key"] == "nc_dinos_food_seat"
     assert TEAM_FOOD_SOURCES["NC"]["url"] == "https://www.ncdinos.com/dinos/stadium.do"
+    assert TEAM_FOOD_SOURCES["LT"]["source_key"] == "lotte_giants_fnb"
+
+
+def test_the_expired_domain_is_gone():
+    """gujangfood.com can never resolve again, so it must not be a source.
+
+    It expired on 2026-08-08 and sits in the registry's redemption period with
+    no NS records. Keeping it produced one DNS failure per run and no data.
+    """
+    assert "ALL" not in TEAM_FOOD_SOURCES
+    assert not any("gujangfood" in info["url"] for info in TEAM_FOOD_SOURCES.values())
 
 
 class TestFoodCrawlerOperations:
