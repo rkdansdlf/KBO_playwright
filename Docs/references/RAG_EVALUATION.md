@@ -1,5 +1,20 @@
 # RAG Retrieval Evaluation
 
+> [!IMPORTANT]
+> **이 문서는 두 시기의 기록이 섞여 있다.** `Current Oracle Cutover Status`(2026-08-22)와
+> 그 이후의 Oracle 절들은 **Oracle이 RAG 저장소였던 시기의 실측 기록**이며, 그대로
+> 현재 구성이 아니다.
+>
+> **현재 배포(2026-10-10 실측)**: RAG 저장소는 **PostgreSQL + pgvector**다 —
+> `DATABASE_URL`(운영, `100.81.73.13:5432`)과 `PGVECTOR_URL`(`100.81.73.13:55433`),
+> 양쪽 `rag_chunks` 동일하게 223,114행. `RAG_INDEX_DB_URL`은 미설정이다.
+> `build_rag_index`가 "Oracle production builds must not use PGVECTOR_URL"로 두 구성을
+> 상호 배타로 강제하므로, `PGVECTOR_URL`이 설정된 이 배포는 Oracle 빌드가 아니다.
+>
+> 아래 Oracle 서술은 **왜 그 결정을 했는지**를 읽는 용도로 남긴다. 현재 백엔드를
+> 판단할 때는 `src/db/vector_engine.is_oracle_vector_backend()`와
+> `Docs/references/RAG_RECONCILIATION.md`의 "백엔드 해석"을 볼 것.
+
 The retrieval evaluation command uses a labeled JSON array and does not call an
 LLM. Each case must identify the stable chunk identity used by the indexes:
 `source_table:source_row_id`.
@@ -89,11 +104,14 @@ documentation sources are enrichment and remain optional.
 The complete-scope manifest includes per-source `source_rows`, `chunks_generated`,
 `new`, `unchanged`, `updated`, `deleted`, `elapsed_ms`, and defect counts, plus
 aggregate totals. Do not use a run with `--limit` as the production baseline.
-Before staging or production indexing, require the Oracle `DATABASE_URL` and an
-embedding provider key; configured embedding runs use `OPENROUTER_API_KEY`.
-Oracle uses one `rag_chunks` table for sparse and dense state, so
-`RAG_INDEX_DB_URL` is normally unset. `audit_rag_index --require-nonempty` must
-be run after Oracle migrations and after the batch publish. Non-dry-run staging
+Before staging or production indexing, require the operational `DATABASE_URL` and
+an embedding provider key; configured embedding runs use `OPENROUTER_API_KEY`.
+Which store holds sparse and dense state depends on the backend (see
+`Docs/references/RAG_RECONCILIATION.md`, "백엔드 해석"): on Oracle both live in one
+`rag_chunks` table, while on PostgreSQL + pgvector the dense column lives behind
+`PGVECTOR_URL`. `RAG_INDEX_DB_URL` is normally unset in either case.
+`audit_rag_index --require-nonempty` must be run after migrations and after the
+batch publish. Non-dry-run staging
 builds require `RAG_TARGET_ENV=staging` and `RAG_INDEX_ALLOW_WRITE=1`; production
 builds additionally require `RAG_TARGET_ENV=production` and
 `RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`. The target URL is redacted in logs.

@@ -2,23 +2,56 @@
 
 서로 다른 시점에 빌드된 RAG 저장소(primary `rag_chunks` vs staging sparse/vector)를
 비교할 때 발생하는 **시점 드리프트 오탐**을 제거하기 위한 재비교 계약.
-2026-08-23 reconciliation(`data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/`)의
-후속 조치다. 당시 결론: staging sparse↔vector는 일관, adb↔staging은
+
+**계약 본문은 "도구"와 "백엔드 해석" 두 절이다.** 그 아래 `2026-08-28` 항목들은
+그 시점의 실측 기록이며 현재 구성을 서술하지 않는다 — 읽을 때 날짜를 먼저 볼 것.
+
+**작성 배경(2026-08-23, 역사)**: `data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/`의
+후속 조치다. 당시 결론은 staging sparse↔vector는 일관, adb↔staging은
 "공유 불변 소스 스냅샷 없이는 비교 불가"(좌 유일 15,992 / 우 유일 13,760 / 해시 불일치 668).
+그때는 Oracle이 저장소였으므로 "adb↔staging"이 곧 교차 비교였다 — 지금은 그렇지 않다.
 
 ## 도구
 
 - `python3 -m src.cli.rag.reconcile_rag_stores export --side {primary,staging} --out <file.ndjson>`
 - `python3 -m src.cli.rag.reconcile_rag_stores compare --left <a.ndjson> --right <b.ndjson> [--as-of ISO8601] --output-dir <dir>`
 
-`primary` = `RAG_INDEX_DB_URL` 세션(Oracle `rag_chunks` 통합 스토어),
-`staging` = `PGVECTOR_URL` 세션(pgvector 스토어). 매니페스트는 NDJSON 한 줄 = 청크 1개:
+두 side는 **백엔드 이름이 아니라 세션 해석 결과**로 정의된다. 이 구분을 놓치면
+설정이 바뀔 때 문서가 조용히 거짓이 된다 — 실제로 그렇게 됐다(아래 "백엔드 해석").
+
+- `primary` = `get_rag_index_session()` — `RAG_INDEX_DB_URL`이 있으면 그 세션, 없거나
+  `DATABASE_URL`과 같으면 **운영 DB로 폴백**한다.
+- `staging` = `get_vector_session()` — `PGVECTOR_URL`이 있으면 pgvector, 없고 운영 DB
+  dialect가 oracle이면 `primary`와 **같은 세션으로 폴백**한다(`is_oracle_vector_backend()`).
+
+매니페스트는 NDJSON 한 줄 = 청크 1개:
 
 ```
 {"source_table": "...", "source_row_id": "...", "content_hash": "...",
  "index_version": "...", "index_status": "ACTIVE", "embedding_present": true,
  "updated_at": "2026-08-22T17:40:39+09:00" | null}
 ```
+
+## 백엔드 해석
+
+side 이름이 백엔드를 함의하지 않는다. 무엇을 비교하게 되는지는 환경이 결정한다.
+
+| 환경 | `primary` | `staging` | 비교의 의미 |
+| --- | --- | --- | --- |
+| `PGVECTOR_URL` 설정 (현재 운영) | 운영 DB (`RAG_INDEX_DB_URL` 없음) | pgvector | **독립된 두 스토어** — 실제 교차 검증 |
+| `PGVECTOR_URL` 미설정 + 운영 DB가 Oracle | Oracle | Oracle (폴백) | **자기 비교** — 불일치가 나올 수 없다 |
+
+두 번째 행이 위험하다. `staging`이 `primary`로 폴백하면 두 매니페스트가 같은
+세션에서 나오므로 `unexplained == 0`이 **구성상 보장**되고, 그것을 독립 검증으로
+읽으면 안 된다. `2026-08-28 Exporter Verification`의 "clean self-comparison"이
+정확히 이 경우다.
+
+**현재 운영 구성 (2026-10-10 실측)**: 두 저장소 모두 PostgreSQL이다 —
+`DATABASE_URL`(운영, `100.81.73.13:5432`)과 `PGVECTOR_URL`(`100.81.73.13:55433`).
+양쪽 `rag_chunks`가 동일하게 223,114행이므로 위 표의 첫 번째 행에 해당한다.
+`RAG_INDEX_DB_URL`은 설정돼 있지 않다. **Oracle은 이 배포의 RAG 저장소가 아니다** —
+`build_rag_index`가 "Oracle production builds must not use PGVECTOR_URL"로 두 구성을
+상호 배타로 강제하므로, `PGVECTOR_URL`이 설정된 이 배포는 Oracle 빌드가 될 수 없다.
 
 ## 스냅샷 의미론 (as-of 분류)
 
@@ -117,6 +150,14 @@ the reconciliation reported `unexplained=0`. This local environment has no
 session; the result is a clean self-comparison, not independent PostgreSQL
 staging evidence. An independent staging gate remains pending until a
 separate pgvector endpoint or preserved staging manifest is available.
+
+> **이 절은 2026-08-28 시점 기록이다.** 그때는 `PGVECTOR_URL`이 없어 `staging`이
+> `primary`로 폴백했고, 그래서 `unexplained=0`이 구성상 보장되는 자기 비교였다.
+> **이후 `PGVECTOR_URL`이 설정되어 두 side가 분리됐다**(위 "백엔드 해석"의 현재 구성).
+> 즉 위 문장이 "pending"이라고 부른 독립 staging 게이트의 **전제는 해소됐다.**
+> 다만 **그 게이트를 다시 돌린 산출물은 남아 있지 않다** — `reports/rag_reconciliation/`가
+> 비어 있고 `unexplained_keys.txt`가 없다. 그러므로 현재 상태는 "돌릴 수 있게 됐지만
+> 아직 안 돌린" 것이며, **재실행 전까지 `unexplained=0`을 독립 검증으로 인용하지 말 것.**
 
 ## Tombstone Gate Policy
 
