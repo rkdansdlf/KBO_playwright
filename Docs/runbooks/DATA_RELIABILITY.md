@@ -419,6 +419,58 @@ the `for:` hold-back, and mixed/healthy staying quiet:
 promtool test rules monitoring/prometheus/tests/crawler_alert_partial_test.yml
 ```
 
+### 3.2f A policy block is not a fetch error
+
+Every crawler consults `compliance.is_allowed` before fetching, and since
+2026-08-05 KBO's `robots.txt` answers `Disallow: /` for `*` — the entire site.
+What a crawler does with that refusal is what this section is about.
+
+**The rule: a refusal is recorded as `source_limited`, not as a failure, and
+never as a dead letter.**
+
+| Recorded as | Meaning | Retryable |
+| --- | --- | --- |
+| `success` + `checkpoint.outcome="source_limited"` | the policy refused us; nothing was asked | n/a — nothing to retry |
+| `failed` + `FETCH_HTTP_ERROR` + DLQ letter | **wrong for a refusal**: no HTTP request was made | no retry can succeed |
+
+Measured before the fix: `preview_crawler` recorded 459 refusals as
+`FETCH_HTTP_ERROR` and produced 89 dead letters, 77 of them exhausted — from runs
+that could never have succeeded (BUG-015). Those letters are what
+`dlq:exhausted` was reporting.
+
+**Why it is not merely cosmetic.** A refusal classified as a fetch error sends an
+operator looking for a network fault, fills the retry queue with letters that
+cannot drain, and spends the retry budget that real transient failures need. The
+queue is a triage tool; a policy decision in it is noise that hides signal.
+
+**How to tell them apart:**
+
+```bash
+python3 -m src.cli.kbo dlq list --status exhausted
+python3 -m src.cli.kbo incidents list --state active --source recovery
+```
+
+If the letters carry `FETCH_HTTP_ERROR` and name a crawler whose source is
+`koreabaseball.com`, the cause is almost certainly the robots policy rather than
+a network fault. Confirm against the saved snapshots rather than guessing —
+`docs/robots/` holds every robots.txt the compliance layer has read, so the
+change history is recoverable:
+
+```bash
+ls docs/robots/ | tail -3 | xargs -I{} cat docs/robots/{}
+```
+
+**Blocked letters already in the queue.** They are not actionable by retry, so
+`dlq ignore --reason "robots policy" --apply` is the accurate disposition (it
+needs `KBO_ALLOW_DLQ_MUTATION=1`). Do not requeue them: the same refusal is
+waiting.
+
+**What is still open.** 24 of the 26 compliance-checking crawlers use
+`koreabaseball.com` as their source, and the site is closed to generic agents.
+Whether that is acceptable is an operator decision recorded in
+`Docs/references/KNOWN_LIMITATIONS.md`. The advisory alert for it is
+`KboCrawlerSourceNeverConsulted` (§3.2e).
+
 ### 3.3 Retry policy
 
 `src/services/crawl_retry_policy.py`:

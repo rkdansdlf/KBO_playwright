@@ -321,21 +321,33 @@ an explicit completeness predicate and an alternate historical source.
 - 2,453 rows inferred from team modal stadium mapping
 - 8 remaining 2020 HH games manually backfilled
 
-## Blocked sources: roster transactions and player movements (open decision)
+## KBO's own site is closed to generic crawlers (open decision)
 
 **Status: measured, decision pending** — recorded 2026-10-10.
 
-Two crawlers are refused by the source's own policy and therefore collect
-nothing:
+KBO's `robots.txt` answers **`Disallow: /` for `*`** — the entire site. Only
+Googlebot, Yeti, Daumoa and Bingbot are named, and those only for `/ws/`. The
+change is visible in the compliance layer's own snapshots (`docs/robots/`):
+`Disallow: /Manager` until mid-July, a short path list until early August, and
+the site-wide rule from **~2026-08-05** onward (964 snapshots and counting).
 
-| Crawler | Block | Reason label |
+**Scope.** 26 crawlers consult the compliance policy and 24 of them use
+`koreabaseball.com` as their source, so they cannot collect under the current
+policy. The three that still deliver use other origins — `game_detail` (Naver
+API), `schedule` (Naver first, KBO as fallback), `parking` (stadium and club
+sites). Match data is therefore current; anything that exists only on KBO's own
+pages has been static since August.
+
+Two crawlers have confirmed it in the ledger:
+
+| Crawler | Reason label | Last data |
 | --- | --- | --- |
-| `roster_transactions` | compliance policy | `compliance_blocked` |
-| `player_movement` | robots.txt | `kbo_robots_blocked` |
+| `roster_transactions` | `compliance_blocked` | 2026-08-16 |
+| `player_movement` | `kbo_robots_blocked` | (same window) |
 
-**What this means for the data.** `roster_transactions` has no rows after
-2026-08-16; the two tables have been static since then. Anything reading them is
-reading August.
+The rest run weekly or monthly and have not reported since the block began, so
+their silence is expected rather than verified — `KboCrawlerSourceNeverConsulted`
+(§3.2e of the reliability runbook) is what turns that into a signal.
 
 **Why it went unnoticed.** A policy skip is recorded as `success` — that part is
 deliberate, since nothing failed — and `success` also advances

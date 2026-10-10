@@ -26,7 +26,7 @@ from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
 from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.crawl_run_service import track_crawl_run
-from src.utils.compliance import compliance
+from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -88,6 +88,19 @@ class PreviewCrawler(BasePlaywrightCrawler):
             ),
             headers=dict(self.BASE_HEADERS),
         )
+
+        #: Set when the compliance policy refuses a URL during this run.
+        #:
+        #: The refusal used to be indistinguishable from an unreachable host:
+        #: `_fetch_preview_game_list` returned None, the empty result read as
+        #: "no preview data", and the run was recorded as `FETCH_HTTP_ERROR` with
+        #: a retryable dead letter. No HTTP request had been made at all, and no
+        #: retry can succeed while robots.txt disallows the site -- measured as
+        #: 459 failed runs and 89 dead letters, 77 of them exhausted (BUG-015).
+        #:
+        #: Reset per run: the crawler outlives one date, and a block on one date
+        #: must not be reported as the outcome of the next.
+        self._source_limited_reason: str | None = None
 
     @staticmethod
     def _coerce_api_payload(payload: object) -> object | None:
@@ -321,6 +334,10 @@ class PreviewCrawler(BasePlaywrightCrawler):
         headers = dict(self.BASE_HEADERS)
 
         if not await compliance.is_allowed(url):
+            # Recorded, not merely logged: the caller otherwise reads this None
+            # as "no preview data" and reports a fetch error for a request that
+            # was never made.
+            self._source_limited_reason = log_source_limited(PREVIEW_CRAWLER_NAME, url)
             logger.info("[COMPLIANCE] Navigation to %s aborted.", url)
             return None
 
@@ -404,11 +421,51 @@ class PreviewCrawler(BasePlaywrightCrawler):
         )
 
         with track_crawl_run(spec) as run:
+            # Reset before the crawl, not after: the crawler is reused across
+            # dates, and a block recorded for one date must not become the
+            # reported outcome of the next.
+            self._source_limited_reason = None
             previews = await self.crawl_preview_for_date(game_date)
             run.records_read = len(previews)
+
+            # The block can surface at either fetch site: the crawl itself, or
+            # the confirmation read that only happens for an empty result. So the
+            # confirmation is attempted first and the reason is checked after
+            # both, not between them -- checking it here instead left the common
+            # path (empty crawl, block found while confirming) still reporting a
+            # fetch error.
+            confirmed_empty = False
+            if not previews:
+                confirmed_empty = await self._date_is_confirmed_empty(game_date)
+
+            if self._source_limited_reason is not None:
+                # A policy refusal is not a data outcome and not a failure: the
+                # source was never consulted. Recorded the same way
+                # `roster_transaction_crawler` records it, so the ledger, the
+                # alerting projection and the DLQ all agree about what happened.
+                #
+                # Without this the run landed in the branch below as
+                # `FETCH_HTTP_ERROR` with a retryable dead letter, which was
+                # wrong twice: no HTTP request was made, and no retry can
+                # succeed while robots.txt disallows the site. Measured as 77
+                # exhausted letters from runs that could never have worked
+                # (BUG-015).
+                run.records_written = 0
+                run.checkpoint = {
+                    "outcome": "source_limited",
+                    "reason": self._source_limited_reason,
+                    "game_date": game_date,
+                }
+                logger.info(
+                    "[PREVIEW] %s skipped: blocked by policy (%s)",
+                    game_date,
+                    self._source_limited_reason,
+                )
+                return []
+
             run.checkpoint = {"game_date": game_date, "previews": len(previews)}
 
-            if not previews and not await self._date_is_confirmed_empty(game_date):
+            if not previews and not confirmed_empty:
                 failed = CrawlResult.failure(
                     CrawlOutcome.RETRYABLE_ERROR,
                     error=f"no preview data obtained for {game_date}",
@@ -444,6 +501,11 @@ class PreviewCrawler(BasePlaywrightCrawler):
 
         """
         if not await compliance.is_allowed(self.GAME_LIST_URL):
+            # `False` means "cannot confirm", which is shared with an unreachable
+            # host and an unreadable page. The block is the one case where the
+            # answer will not change on retry, so it is recorded separately
+            # rather than left to the caller's classification.
+            self._source_limited_reason = log_source_limited(PREVIEW_CRAWLER_NAME, self.GAME_LIST_URL)
             return False
         try:
             payload = await self._http.post_json(
