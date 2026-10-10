@@ -69,10 +69,58 @@ side 이름이 백엔드를 함의하지 않는다. 무엇을 비교하게 되�
 ## 절차
 
 1. primary/staging 각각 `export` (타깃 DB 쓰기 잠금 없음, read-only)
-2. `compare --as-of <min(left.exported_at, right.exported_at)>`
+2. `compare --left <a.ndjson> --right <b.ndjson>` — 아래 "as-of 사용 불가" 참고
 3. `unexplained_count == 0` 이면 PASS. 남으면 `*_keys.txt`의 키로 소스 테이블별 원인 조사
 4. 결과 요약 JSON은 `reports/rag_reconciliation/<실행시각>/comparison_summary.json`에 기록
    (`reports/`는 gitignore — 대용량 산출물 보관 규칙은 `Docs/runbooks/WORKSPACE_HYGIENE.md`)
+
+### as-of 사용 불가 (2026-10-10 확인)
+
+**이 절차의 이전 판본이 지시한 `--as-of <min(left.exported_at, right.exported_at)>`은 실행할 수 없다.**
+**매니페스트에 `exported_at`이 없다.** 실측 필드는 `source_table`·`source_row_id`·
+`content_hash`·`index_version`·`index_status`·`embedding_present`·`updated_at` 일곱 개뿐이고
+(`ManifestEntry.to_manifest_dict`), 코드베이스 전체에 `exported_at`이라는 이름이 없다.
+
+`--as-of`를 생략하면 전부 UNEXPLAINED 규칙으로 계산되어 **보수적 방향으로 실패**하므로
+안전하지만, 그 상태로는 `TIME_EXPLAINABLE`이 영영 0이 되어 시점 드리프트를 걸러내려는
+이 계약의 목적이 달성되지 않는다. as-of를 쓰려면 **먼저 매니페스트에 내보낸 시각을
+기록해야 한다**(미구현).
+
+## 2026-10-10 최초 교차 검증 실측
+
+두 side가 실제로 분리된 뒤(위 "백엔드 해석") **처음 돌린** 비교다. `--as-of` 없이 실행했다.
+
+| 항목 | 값 |
+| --- | --- |
+| left / right 행 수 | 228,681 / 228,681 |
+| 공통 키 | 228,681 (한쪽만 있는 키 **0**) |
+| `unexplained_count` | **221,656** |
+| `unexplained_by_issue` | `EMBEDDING_MISSING` 단일 종류 |
+| `CONTENT_HASH_MISMATCH` / `_MISSING` | 0 |
+| `INDEX_STATUS_MISMATCH` / `INDEX_VERSION_MISMATCH` | 0 |
+
+**식별자·해시·버전·상태는 네 종류 모두 일치**하고, 차이는 오직 한 가지 — 운영 DB의
+벡터 컬럼이 채워지지 않은 것이다.
+
+| 저장소 | 컬럼 | 타입 | 채워진 행 |
+| --- | --- | --- | --- |
+| `primary` (운영 DB, 5432) | `embedding_vector` | `json` | **7,025** / 228,681 |
+| `staging` (pgvector, 55433) | `embedding` | `vector` | **228,681** / 228,681 |
+
+양쪽 `index_status` 분포는 동일하다(ACTIVE 226,660 / DELETED 2,021).
+
+**이것이 결함인지 설계상 비대칭인지는 확정되지 않았다.** 근거가 양쪽으로 갈린다.
+
+- **결함 쪽 근거**: `_pair_findings`가 `left.embedding_present is False **or** right...`로
+  판정한다 — 즉 **양쪽 모두에 벡터가 있기를 요구**한다. `_resolve_embedding_column`이
+  "두 저장소가 컬럼명이 달라 dialect 추정이 한쪽을 잘못 골랐다"며 테이블에 물어보도록
+  고친 것도 두 저장소의 벡터 컬럼을 **비교하려는** 의도로 읽힌다.
+- **비대칭 쪽 근거**: `RAG_INDEX_DB_URL`이 미설정이라 sparse는 운영 DB로 폴백하고 dense는
+  `PGVECTOR_URL`이 갖는다. 역할이 갈렸다면 운영 DB의 dense 컬럼이 비어 있는 것이 정상이고,
+  그러면 이 게이트는 **한쪽만 소유한 컬럼을 비교**하는 셈이 된다.
+
+`unexplained=0`을 독립 검증으로 인용하려던 계획은 이 결과로 **보류**된다. 위 둘 중
+어느 쪽인지는 RAG 저장소 설계 소유자가 정할 문제이며, 이 문서는 판정하지 않는다.
 
 ## 주의
 
@@ -153,11 +201,11 @@ separate pgvector endpoint or preserved staging manifest is available.
 
 > **이 절은 2026-08-28 시점 기록이다.** 그때는 `PGVECTOR_URL`이 없어 `staging`이
 > `primary`로 폴백했고, 그래서 `unexplained=0`이 구성상 보장되는 자기 비교였다.
-> **이후 `PGVECTOR_URL`이 설정되어 두 side가 분리됐다**(위 "백엔드 해석"의 현재 구성).
-> 즉 위 문장이 "pending"이라고 부른 독립 staging 게이트의 **전제는 해소됐다.**
-> 다만 **그 게이트를 다시 돌린 산출물은 남아 있지 않다** — `reports/rag_reconciliation/`가
-> 비어 있고 `unexplained_keys.txt`가 없다. 그러므로 현재 상태는 "돌릴 수 있게 됐지만
-> 아직 안 돌린" 것이며, **재실행 전까지 `unexplained=0`을 독립 검증으로 인용하지 말 것.**
+> **이후 `PGVECTOR_URL`이 설정되어 두 side가 분리됐고, 2026-10-10에 처음 재실행했다**
+> — 결과는 위 "2026-10-10 최초 교차 검증 실측" 참고. **`unexplained=0`이 아니다**
+> (221,656건, 전부 `EMBEDDING_MISSING`). 따라서 이 절의 `unexplained=0`은 여전히
+> 독립 검증으로 인용할 수 없다 — 이유가 "안 돌려서"에서 "돌렸는데 깨끗하지 않아서"로
+> 바뀌었을 뿐이다.
 
 ## Tombstone Gate Policy
 
