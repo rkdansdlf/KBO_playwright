@@ -80,9 +80,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 3
 
     from src.db.vector_engine import get_vector_session
+    from src.scheduler import locks as scheduler_locks
 
-    with get_vector_session() as session:
-        report = apply_entries(session, entries, dry_run=not args.apply)
+    lock_acquired = False
+    try:
+        if args.apply:
+            # Mirrors apply_rag_rekey: an apply is a maintenance mutation, and the
+            # two tools are meant to run in one window rather than interleaved
+            # with the scheduled RAG jobs.
+            lock_acquired = scheduler_locks.MAINTENANCE_LOCK.acquire(blocking=True, timeout=300)
+            if not lock_acquired:
+                _error("could not acquire maintenance lock")
+                return 1
+        with get_vector_session() as session:
+            report = apply_entries(session, entries, dry_run=not args.apply)
+    finally:
+        if lock_acquired:
+            scheduler_locks.MAINTENANCE_LOCK.release()
     _write(
         {
             "event": "applied" if args.apply else "preview",
