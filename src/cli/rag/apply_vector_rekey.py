@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True, help="Census manifest JSON to apply.")
     parser.add_argument("--apply", action="store_true", help="Persist the mutations.")
+    parser.add_argument(
+        "--no-lock",
+        action="store_true",
+        help="Run without the maintenance lock. Use when a peer holds the tier lock "
+        "and the sparse side has already serialized this window.",
+    )
     parser.add_argument("--json", action="store_true", help="Render the report as JSON.")
     return parser
 
@@ -80,15 +86,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 3
 
     from src.db.vector_engine import get_vector_session
-    from src.scheduler import locks as scheduler_locks
 
     lock_acquired = False
     try:
-        if args.apply:
+        if args.apply and not args.no_lock:
             # Mirrors apply_rag_rekey: an apply is a maintenance mutation, and the
             # two tools are meant to run in one window rather than interleaved
             # with the scheduled RAG jobs.
-            lock_acquired = scheduler_locks.MAINTENANCE_LOCK.acquire(blocking=True, timeout=300)
+            from src.scheduler import locks as scheduler_locks
+
+            lock_acquired = scheduler_locks.MAINTENANCE_LOCK.acquire(blocking=True, timeout=120)
             if not lock_acquired:
                 _error("could not acquire maintenance lock")
                 return 1
@@ -96,6 +103,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = apply_entries(session, entries, dry_run=not args.apply)
     finally:
         if lock_acquired:
+            from src.scheduler import locks as scheduler_locks
+
             scheduler_locks.MAINTENANCE_LOCK.release()
     _write(
         {
