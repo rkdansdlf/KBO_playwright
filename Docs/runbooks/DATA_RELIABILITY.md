@@ -110,7 +110,7 @@ Decision guide:
 | `pending`, `next_retry_at` in the future | wait — the retry job owns it |
 | `pending` and due, transient code (`FETCH_TIMEOUT`, `RATE_LIMITED`, …) | `retry --apply` (or let the job pick it up) |
 | `exhausted` but the root cause is fixed | `requeue --apply` |
-| `exhausted`/`pending`, root cause permanent (removed page, retired player) | `ignore --reason … --apply` |
+| `exhausted`/`pending`, root cause permanent (removed page, retired player, policy block) | `ignore --reason … --apply` — accepted from either status |
 | `retrying` and stale (older than `DLQ_STALE_RETRYING_SECONDS`) | recovery job finalizes it; re-check `dlq stats` after the next 30-min tick |
 
 ### 3.2b DLQ alerting
@@ -470,6 +470,50 @@ waiting.
 Whether that is acceptable is an operator decision recorded in
 `Docs/references/KNOWN_LIMITATIONS.md`. The advisory alert for it is
 `KboCrawlerSourceNeverConsulted` (§3.2e).
+
+### 3.2g Retrying a policy block cannot succeed
+
+Two facts have to be held together, and holding only one of them produced 91
+exhausted letters in production.
+
+**The letter.** A policy block used to be recorded as `FETCH_HTTP_ERROR` with a
+retryable dead letter, so the retry worker spent five attempts per letter on a
+decision no attempt can change (BUG-015). New runs record `source_limited` and
+queue nothing, so the flow has stopped at the source.
+
+**The retry verdict.** `_outcome_from_persisted_run` decided success from the
+stored run's status alone. A policy skip is stored as `success` — nothing failed
+— so a retried letter would have resolved as *recovered* while nothing was
+collected. That is the opposite error and it was live in the other direction:
+the incident would close over a gap that is still there (BUG-016).
+
+A policy skip is now reported as a non-retryable outcome
+(`FETCH_BLOCKED`), which does two things: it does **not** resolve the letter, and
+`_schedule_next_attempt` terminates it as `exhausted` immediately rather than
+walking the budget down. Terminating is correct — the letter is not actionable —
+and doing it without spending attempts is what stops a policy decision from
+looking like a chronic failure.
+
+#### Clearing the letters that are already queued
+
+```bash
+python3 -m src.cli.kbo dlq list --status exhausted --limit 200   # review first
+python3 -m src.cli.kbo dlq ignore <dlq_id> --reason "robots policy" --apply
+```
+
+`ignore` accepts `exhausted` as well as `pending`; the CLI previously accepted
+only `pending` while the lifecycle allowed both, so the recovery named above was
+rejected by the caller's own precheck (BUG-016). `KBO_ALLOW_DLQ_MUTATION=1` is
+required.
+
+**Do not reach for `retry` or `requeue` first.** `retry` only accepts `pending`,
+and both exist for a cause that has been *fixed*. A robots refusal is not a
+cause you fix in the queue — if the block itself is resolved, the next scheduled
+run collects the data and no letter is needed.
+
+Firing behaviour and the verdict are pinned by
+`tests/services/test_replay_source_limited_verdict.py` and
+`tests/cli/test_dlq_operator_cli.py`.
 
 ### 3.3 Retry policy
 

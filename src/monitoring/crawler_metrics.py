@@ -24,6 +24,16 @@ from typing import TYPE_CHECKING, Any
 
 from prometheus_client import Counter, Gauge, Histogram
 
+# Re-exported so `crawler_metrics.SOURCE_LIMITED_OUTCOME` keeps working for the
+# tests and callers that already read it here; the definitions live with the
+# crawlers that write them.
+from src.crawlers.source_limited import (
+    SOURCE_LIMITED_OUTCOME,
+    SOURCE_LIMITED_REASONS,
+    UNKNOWN_SOURCE_LIMITED_REASON,
+    source_limited_reason,
+)
+
 if TYPE_CHECKING:
     from src.models.crawl_execution import CrawlExecutionRun
 
@@ -106,24 +116,6 @@ CRAWL_RECORDS_WRITTEN_LAST = Gauge(
 
 #: Statuses that count as a success for freshness purposes.
 SUCCESS_STATUSES = frozenset({"success", "partial"})
-
-#: The checkpoint outcome a run writes when it never consulted the source.
-#:
-#: A compliance or robots decision that skips a fetch is recorded as `success`
-#: -- deliberately, because nothing failed -- but it is not evidence that the
-#: source still answers. Two crawlers were skipped on every run for weeks while
-#: `kbo_crawl_last_success_timestamp` stayed fresh, so the liveness alert could
-#: not tell "the source had nothing" from "we never asked" (BUG-014).
-SOURCE_LIMITED_OUTCOME = "source_limited"
-
-#: Reasons a run may be source-limited, as a closed set for the label.
-#:
-#: Same argument as `SAFE_LABEL_PATTERN` for crawlers: a free-form reason would
-#: let a caller mistake multiply series. Anything outside this set is bucketed
-#: rather than dropped, so an unknown reason is still counted -- it just cannot
-#: invent a label.
-SOURCE_LIMITED_REASONS = frozenset({"compliance_blocked", "kbo_robots_blocked"})
-UNKNOWN_SOURCE_LIMITED_REASON = "other"
 
 CRAWL_SOURCE_LIMITED_TOTAL = Counter(
     "kbo_crawl_source_limited_total",
@@ -241,7 +233,7 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
 
     CRAWL_RUNS_TOTAL.labels(crawler=crawler, status=status).inc()
 
-    limited_reason = _source_limited_reason(run)
+    limited_reason = source_limited_reason(getattr(run, "checkpoint", None))
     if limited_reason is not None:
         CRAWL_SOURCE_LIMITED_TOTAL.labels(crawler=crawler, reason=limited_reason).inc()
     else:
@@ -285,34 +277,6 @@ def _safe_int(value: Any) -> int:  # noqa: ANN401 - ledger columns are untyped
         return 0
 
 
-def _source_limited_reason(run: CrawlExecutionRun) -> str | None:
-    """Return the reason when a run never consulted its source, else None.
-
-    `checkpoint` is a crawler-owned JSON column, so nothing here may assume its
-    shape: a run that wrote a list, a string, or a nested document must be read
-    as "not source-limited" rather than raising in the projection. The ledger is
-    what makes runs observable, and a projection that throws on one malformed
-    row would lose every row after it.
-
-    Args:
-        run: A finished run whose checkpoint may record a source-limited skip.
-
-    Returns:
-        A bounded reason label, or None when the source was consulted.
-
-    """
-    checkpoint = getattr(run, "checkpoint", None)
-    if not isinstance(checkpoint, dict):
-        return None
-    if checkpoint.get("outcome") != SOURCE_LIMITED_OUTCOME:
-        return None
-
-    reason = checkpoint.get("reason")
-    if isinstance(reason, str) and reason in SOURCE_LIMITED_REASONS:
-        return reason
-    return UNKNOWN_SOURCE_LIMITED_REASON
-
-
 def _duration_seconds(run: CrawlExecutionRun) -> float | None:
     """Return the run duration, or None when the run has no finish time."""
     started = getattr(run, "started_at", None)
@@ -339,18 +303,24 @@ def _epoch_seconds(value: object) -> float:
 __all__ = [
     "CRAWL_DURATION_SECONDS",
     "CRAWL_FAILURES_TOTAL",
+    "CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP",
     "CRAWL_LAST_SUCCESS_TIMESTAMP",
     "CRAWL_RECORDS_FAILED_TOTAL",
     "CRAWL_RECORDS_READ_TOTAL",
     "CRAWL_RECORDS_WRITTEN_LAST",
     "CRAWL_RECORDS_WRITTEN_TOTAL",
     "CRAWL_RUNS_TOTAL",
+    "CRAWL_SOURCE_LIMITED_TOTAL",
     "DURATION_BUCKETS",
     "SAFE_LABEL_PATTERN",
+    "SOURCE_LIMITED_OUTCOME",
+    "SOURCE_LIMITED_REASONS",
     "SUCCESS_STATUSES",
+    "UNKNOWN_SOURCE_LIMITED_REASON",
     "is_safe_crawler_label",
     "record_crawl_run",
     "reset_initialized_crawlers",
+    "source_limited_reason",
 ]
 
 

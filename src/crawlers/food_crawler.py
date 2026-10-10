@@ -44,11 +44,10 @@ FOOD_CRAWLER_NAME = "food"
 FOOD_TARGET_TYPE = "food"
 
 TEAM_FOOD_SOURCES: dict[str, dict[str, Any]] = {
-    "ALL": {
-        "source_key": "gujangfood_com",
-        "stadium_id": "UNKNOWN",
-        "url": "https://www.gujangfood.com",
-    },
+    # The `ALL` source (gujangfood.com) was removed on 2026-10-10. The domain
+    # expired on 2026-08-08 and is in the registry's redemption period with no
+    # NS records, so it cannot resolve and never will again without the former
+    # owner acting. Keeping it produced one DNS failure per run and nothing else.
     "LT": {
         "source_key": "lotte_giants_fnb",
         "stadium_id": "SAJIK",
@@ -279,7 +278,19 @@ class FoodCrawler(BaseHttpCrawler):
                 "status_code": result.http_status,
             },
         )
-        return self._parse_food_page(html, info)
+        vendors = self._parse_food_page(html, info)
+        if not vendors:
+            # A page that answered 200 but carries no menu is not a success.
+            # The source is plain HTTP, so nothing here renders late: a page
+            # whose prices cannot be found will not have them on the next
+            # attempt either. Without this the empty parse passed silently and
+            # the run closed as `success` with `records_written=0`, which is
+            # how three unusable sources stayed invisible for a month.
+            self._team_failures.append(
+                (team_code, FailureCode.PARSE_EMPTY.value, f"no menu items found at {info['url']}"),
+            )
+            logger.warning("[FOOD] %s returned no menu items at %s", team_code, info["url"])
+        return vendors
 
     def _parse_food_page(self, html: str, info: dict) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")

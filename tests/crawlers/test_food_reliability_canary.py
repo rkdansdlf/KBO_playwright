@@ -103,10 +103,13 @@ class TestTeamFailures:
     async def test_a_failing_team_is_isolated_and_enqueued(self, session_factory: sessionmaker) -> None:
         vendors = await _crawler({LT_URL}).run()
 
-        assert len(vendors) == 2
+        # Every other source still answers, so only the failing team's rows are
+        # missing. Counting from the table keeps this from going stale when a
+        # source is added or retired.
+        assert len(vendors) == len(TEAM_FOOD_SOURCES) - 1
         run = _only_run(session_factory)
         assert run.status == "partial"
-        assert run.records_read == 2
+        assert run.records_read == len(TEAM_FOOD_SOURCES) - 1
         assert run.crawler == FOOD_CRAWLER_NAME
         assert run.target_type == FOOD_TARGET_TYPE
 
@@ -127,7 +130,7 @@ class TestTeamFailures:
         run = _only_run(session_factory)
         assert run.status == "failed"
         assert run.error_code == FailureCode.FETCH_HTTP_ERROR.value
-        assert sorted(letter.target_id for letter in _letters(session_factory)) == ["ALL", "LT", "NC"]
+        assert sorted(letter.target_id for letter in _letters(session_factory)) == sorted(TEAM_FOOD_SOURCES)
 
     @pytest.mark.asyncio
     async def test_no_dead_letter_is_enqueued_when_recording_is_disabled(
@@ -145,7 +148,7 @@ class TestHealthyAndFilteredRuns:
     async def test_a_healthy_sweep_is_a_successful_run(self, session_factory: sessionmaker) -> None:
         vendors = await _crawler().run()
 
-        assert len(vendors) == 3
+        assert len(vendors) == len(TEAM_FOOD_SOURCES)
         run = _only_run(session_factory)
         assert run.status == "success"
         assert run.error_code is None
@@ -159,3 +162,62 @@ class TestHealthyAndFilteredRuns:
         run = _only_run(session_factory)
         assert run.target_id == "NC"
         assert run.source_url == TEAM_FOOD_SOURCES["NC"]["url"]
+
+
+class TestAPageThatAnswersWithNothing:
+    """A 200 with no menu is not a success.
+
+    Every source this crawler shipped with turned out to be unusable: one dead
+    domain, one removed page that still answered 200 with the site's own error
+    screen, and one page that was never about food. None of them raised, so the
+    parse returned an empty list, and an empty list was indistinguishable from a
+    page that simply had nothing to say. The run closed as `success` with
+    `records_written=0` and the crawler looked healthy for a month while
+    producing nothing at all.
+    """
+
+    #: The body `https://www.giantsclub.com/food` actually serves: the site's
+    #: "page removed" screen, delivered with HTTP 200.
+    REMOVED_PAGE = (
+        "<html><body><div class='error_nopage'>"
+        "<p class='t1'>서비스 이용에 불편을 드려 죄송합니다.</p>"
+        "<p class='t2'>잘못된 주소입력, 주소변경, 주소삭제로 접근이 안되시거나,<br />"
+        "예기치 못한 에러가 발생하여 해당 페이지로 접근이 불가능합니다.</p>"
+        "</div></body></html>"
+    )
+
+    def _empty_pages(self) -> FoodCrawler:
+        crawler = FoodCrawler()
+        crawler._http.fetch_text = AsyncMock(
+            side_effect=lambda url: CrawlResult.success(self.REMOVED_PAGE, http_status=200, url=url),
+        )
+        return crawler
+
+    @pytest.mark.asyncio
+    async def test_an_empty_parse_is_a_failure_not_a_quiet_success(self, session_factory: sessionmaker) -> None:
+        vendors = await self._empty_pages().run()
+
+        assert vendors == []
+        run = _only_run(session_factory)
+        assert run.status == "failed"
+        assert run.error_code == FailureCode.PARSE_EMPTY.value
+        assert run.records_read == 0
+        assert run.records_written == 0
+
+    @pytest.mark.asyncio
+    async def test_every_team_is_named_in_the_queue(self, session_factory: sessionmaker) -> None:
+        await self._empty_pages().run()
+
+        letters = _letters(session_factory)
+        assert sorted(letter.target_id for letter in letters) == sorted(TEAM_FOOD_SOURCES)
+        assert {letter.error_code for letter in letters} == {FailureCode.PARSE_EMPTY.value}
+
+    @pytest.mark.asyncio
+    async def test_a_page_with_a_menu_is_still_a_success(self, session_factory: sessionmaker) -> None:
+        """The control: the new check must not fire on a readable page."""
+        vendors = await _crawler().run()
+
+        run = _only_run(session_factory)
+        assert len(vendors) == len(TEAM_FOOD_SOURCES)
+        assert run.status == "success"
+        assert _letters(session_factory) == []

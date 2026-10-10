@@ -158,21 +158,21 @@ class TestWriteFailuresAreNotSilent:
         await self._writer({"LT"}).run(save=True)
 
         run = _only_run(session_factory)
-        assert run.records_read == 3
-        assert run.records_written == 2
+        assert run.records_read == len(TEAM_FOOD_SOURCES)
+        assert run.records_written == len(TEAM_FOOD_SOURCES) - 1
 
     @pytest.mark.asyncio
     async def test_reading_every_page_and_writing_none_is_a_failed_run(self, session_factory: sessionmaker) -> None:
         """`partial` would report a total write loss as a short sweep.
 
-        The table is in the same state either way, so a run that read 3 rows and
-        wrote 0 is not "mostly fine" -- it is a failed run that happens to have
-        done its reading.
+        The table is in the same state either way, so a run that read every row
+        and wrote 0 is not "mostly fine" -- it is a failed run that happens to
+        have done its reading.
         """
-        await self._writer({"ALL", "LT", "NC"}).run(save=True)
+        await self._writer(set(TEAM_FOOD_SOURCES)).run(save=True)
 
         run = _only_run(session_factory)
-        assert run.records_read == 3
+        assert run.records_read == len(TEAM_FOOD_SOURCES)
         assert run.records_written == 0
         assert run.status == "failed"
         assert run.error_code == FailureCode.PERSIST_CONSTRAINT.value
@@ -184,7 +184,7 @@ class TestWriteFailuresAreNotSilent:
 
         run = _only_run(session_factory)
         assert run.status == "partial"
-        assert run.records_written == 2
+        assert run.records_written == len(TEAM_FOOD_SOURCES) - 1
 
     @pytest.mark.asyncio
     async def test_a_write_failure_respects_the_recording_switch(self, session_factory: sessionmaker) -> None:
@@ -235,7 +235,7 @@ class TestWriteFailuresAreNotSilent:
 
         run = _only_run(session_factory)
         assert run.status == "success"
-        assert run.records_written == 3
+        assert run.records_written == len(TEAM_FOOD_SOURCES)
         assert _letters(session_factory) == []
 
     @pytest.mark.asyncio
@@ -252,8 +252,8 @@ class TestWriteFailuresAreNotSilent:
 
         run = _only_run(session_factory)
         assert run.records_failed == 1
-        assert run.records_written == 2
-        assert run.records_read == 3
+        assert run.records_written == len(TEAM_FOOD_SOURCES) - 1
+        assert run.records_read == len(TEAM_FOOD_SOURCES)
 
     @pytest.mark.asyncio
     async def test_a_clean_sweep_reports_no_failure(self, session_factory: sessionmaker) -> None:
@@ -263,10 +263,10 @@ class TestWriteFailuresAreNotSilent:
 
     @pytest.mark.asyncio
     async def test_a_total_write_loss_counts_every_row(self, session_factory: sessionmaker) -> None:
-        await self._writer({"ALL", "LT", "NC"}).run(save=True)
+        await self._writer(set(TEAM_FOOD_SOURCES)).run(save=True)
 
         run = _only_run(session_factory)
-        assert run.records_failed == 3
+        assert run.records_failed == len(TEAM_FOOD_SOURCES)
         assert run.records_written == 0
 
 
@@ -330,8 +330,7 @@ class TestTheTransactionBoundaryIsReal:
         await _crawler().run(save=True)
 
         assert self._stored_stadiums(write_db) == {
-            TEAM_FOOD_SOURCES["ALL"]["stadium_id"],
-            TEAM_FOOD_SOURCES["NC"]["stadium_id"],
+            info["stadium_id"] for code, info in TEAM_FOOD_SOURCES.items() if code != "LT"
         }
         assert _only_run(write_db).status == "partial"
 
@@ -374,7 +373,7 @@ class TestTheTransactionBoundaryIsReal:
         run = _only_run(write_db)
         assert run.status == "failed"
         assert run.records_written == 0
-        assert run.records_failed == 3
+        assert run.records_failed == len(TEAM_FOOD_SOURCES)
 
     @pytest.mark.asyncio
     async def test_a_healthy_sweep_commits_every_team_and_its_menus(self, write_db: sessionmaker) -> None:
@@ -383,11 +382,11 @@ class TestTheTransactionBoundaryIsReal:
 
         run = _only_run(write_db)
         assert run.status == "success"
-        assert run.records_written == 3
+        assert run.records_written == len(TEAM_FOOD_SOURCES)
         assert run.records_failed == 0
         assert self._stored_stadiums(write_db) == {info["stadium_id"] for info in TEAM_FOOD_SOURCES.values()}
         with write_db() as check:
-            assert check.query(StadiumFoodMenuItem).count() == 3
+            assert check.query(StadiumFoodMenuItem).count() == len(TEAM_FOOD_SOURCES)
 
 
 class TestAWriteTimeoutIsNotAFetchTimeout:
