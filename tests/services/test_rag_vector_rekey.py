@@ -197,6 +197,25 @@ class TestApply:
         fixture = _Fixture()
         fixture.insert("467")
         report = apply_entries(fixture.session(), [_entry()], dry_run=True)
+        assert report.planned_rekeyed == 1
         assert report.rekeyed == 0
-        assert report.samples["planned_rekeyed"] == ["awards:467"]
         assert fixture.rows() == [("467", "ACTIVE")]
+
+    def test_both_keys_present_is_a_conflict(self) -> None:
+        """Leave the merge to a human rather than guess at it."""
+        fixture = _Fixture()
+        fixture.insert("467")
+        fixture.insert("2026_올스타전MVP_NONE_허인서")
+        report = apply_entries(fixture.session(), [_entry()], dry_run=False)
+        assert report.conflicted == 1
+        assert report.rekeyed == 0
+        assert ("467", "ACTIVE") in fixture.rows()
+
+    def test_a_vanished_legacy_row_with_its_target_is_already_applied(self) -> None:
+        """Read the aftermath of an interrupted run as done, not as drift."""
+        fixture = _Fixture()
+        fixture.insert("2026_올스타전MVP_NONE_허인서")
+        report = apply_entries(fixture.session(), [_entry()], dry_run=False)
+        assert report.already_applied == 1
+        assert report.conflicted == 0
+        assert report.missing == 0

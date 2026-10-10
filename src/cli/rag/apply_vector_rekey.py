@@ -107,6 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "already_applied": report.already_applied,
             "skipped_unsupported": report.skipped_unsupported,
             "missing": report.missing,
+            "conflicted": report.conflicted,
             "failed": report.failed,
             "summary": report.summary,
         }
