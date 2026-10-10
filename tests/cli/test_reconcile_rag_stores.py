@@ -187,21 +187,29 @@ class TestFetchIdentityEntries:
         assert "embedding_vector" in names
 
 
+@pytest.fixture()
+def _primary_session(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    """Wire the primary side to a fake session.
+
+    Module level rather than inside one class: the export path is exercised by
+    two classes now -- one asserting the projection, one asserting the role the
+    manifest carries -- and a fixture that only one can reach invites the other
+    to re-implement it slightly differently.
+    """
+    rows = [_row("awards", "1"), _row("game", "abc", embedding_present=0)]
+    session = Mock()
+    session.execute.side_effect = [
+        SQLAlchemyError("no such column"),
+        _FakeResult(rows),
+    ]
+    import src.db.engine as engine_mod
+
+    _patch_columns(monkeypatch, {"embedding"})
+    monkeypatch.setattr(engine_mod, "get_rag_index_session", lambda: _NullContext(session))
+    return session
+
+
 class TestExportCommand:
-    @pytest.fixture()
-    def _primary_session(self, monkeypatch: pytest.MonkeyPatch) -> Mock:
-        rows = [_row("awards", "1"), _row("game", "abc", embedding_present=0)]
-        session = Mock()
-        session.execute.side_effect = [
-            SQLAlchemyError("no such column"),
-            _FakeResult(rows),
-        ]
-        import src.db.engine as engine_mod
-
-        _patch_columns(monkeypatch, {"embedding"})
-        monkeypatch.setattr(engine_mod, "get_rag_index_session", lambda: _NullContext(session))
-        return session
-
     def test_export_writes_manifest_and_reports_rows(
         self,
         tmp_path: Path,
@@ -211,7 +219,11 @@ class TestExportCommand:
         out_path = tmp_path / "out.ndjson"
 
         exit_code = main(["export", "--side", "primary", "--out", str(out_path)])
-        captured = json.loads(capsys.readouterr().out)
+        # The suite routes DEBUG logging to stdout (`tests/conftest.py`), so the
+        # JSON payload is the last line rather than the whole stream. Reading the
+        # last line is the established shape here -- `test_incidents_operator_cli`
+        # and `test_sqlite_integrity_guard` do the same.
+        captured = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
 
         assert exit_code == 0
         assert captured["rows"] == 2
@@ -328,3 +340,57 @@ class TestCompareCommand:
         )
 
         assert exit_code == 1
+
+
+class TestTheRoleComesFromTheConfigurationNotTheSideName:
+    """`primary` is not a synonym for `sparse`.
+
+    Which side holds the vectors is a fact about the deployment, and dense search
+    answers it through `get_vector_session()`. On Oracle there is no separate
+    pgvector store, so the index session *is* the dense store -- calling it sparse
+    there would exempt the one side that must be checked, and the comparison would
+    report clean while verifying nothing.
+    """
+
+    def test_a_separate_pgvector_store_makes_primary_the_sparse_side(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import src.db.vector_engine as vector_engine
+
+        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: False)
+
+        assert reconcile_rag_stores._side_role("primary") == "sparse"
+        assert reconcile_rag_stores._side_role("staging") == "dense"
+
+    def test_an_oracle_single_store_makes_primary_the_dense_side(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import src.db.vector_engine as vector_engine
+
+        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: True)
+
+        assert reconcile_rag_stores._side_role("primary") == "dense"
+
+    def test_the_oracle_case_does_not_exempt_the_vector_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The reason the distinction matters, asserted on the consequence."""
+        import src.db.vector_engine as vector_engine
+
+        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: True)
+
+        role = reconcile_rag_stores._side_role("primary")
+        entry = ManifestEntry("game", "1", embedding_present=False, role=role)
+
+        assert entry.requires_embeddings is True
+
+    def test_the_exported_manifest_carries_the_resolved_role(
+        self,
+        tmp_path: Path,
+        _primary_session: Mock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The stamp happens at export, the only point that knows the answer."""
+        import src.db.vector_engine as vector_engine
+
+        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: False)
+        out_path = tmp_path / "out.ndjson"
+
+        assert main(["export", "--side", "primary", "--out", str(out_path)]) == 0
+
+        first = json.loads(out_path.read_text(encoding="utf-8").splitlines()[0])
+        assert first["role"] == "sparse"
