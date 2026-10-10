@@ -7,7 +7,7 @@
 >
 > **현재 배포(2026-10-10 실측)**: RAG 저장소는 **PostgreSQL + pgvector**다 —
 > `DATABASE_URL`(운영, `100.81.73.13:5432`)과 `PGVECTOR_URL`(`100.81.73.13:55433`),
-> 양쪽 `rag_chunks` 동일하게 223,114행. `RAG_INDEX_DB_URL`은 미설정이다.
+> 양쪽 `rag_chunks`의 identity 집합을 대조해 왔고, 행 수는 **재색인이 진행 중이라 변동한다**(223,114 → 228,681). `RAG_INDEX_DB_URL`은 미설정이다.
 > `build_rag_index`가 "Oracle production builds must not use PGVECTOR_URL"로 두 구성을
 > 상호 배타로 강제하므로, `PGVECTOR_URL`이 설정된 이 배포는 Oracle 빌드가 아니다.
 >

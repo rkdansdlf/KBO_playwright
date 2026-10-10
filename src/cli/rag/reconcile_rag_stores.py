@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 from src.services.rag_reconciliation import (
+    ROLE_DENSE,
+    ROLE_SPARSE,
     ManifestEntry,
     entry_from_manifest_row,
     parse_updated_at,
@@ -106,6 +108,31 @@ def fetch_identity_entries(session: Session) -> list[ManifestEntry]:
     raise RuntimeError(message)
 
 
+def _side_role(side: str) -> str:
+    """Return the storage role the named side actually serves.
+
+    Derived from the same resolution dense search uses, not from the side name.
+    ``get_vector_session()`` is what ``vector_search_repository`` reads, and it
+    answers with the Oracle index session when there is no ``PGVECTOR_URL`` and
+    the operational database is Oracle, and with the pgvector store otherwise.
+    So:
+
+    * Oracle single-store -- ``primary`` **is** the dense store, and naming it
+      ``sparse`` would exempt the one side that must be checked.
+    * Separate pgvector -- ``primary`` is the sparse store and ``staging`` holds
+      the vectors.
+
+    Reading this off the configuration is the point. Hard-coding it by side name
+    is how the previous version came to demand vectors from a store that no
+    dense reader opens.
+    """
+    if side == "primary":
+        from src.db.vector_engine import is_oracle_vector_backend
+
+        return ROLE_DENSE if is_oracle_vector_backend() else ROLE_SPARSE
+    return ROLE_DENSE
+
+
 def _write_key_lines(path: Path, keys: Sequence[str]) -> None:
     """Write one identity key per line, ending with a newline when non-empty."""
     body = "\n".join(keys) + "\n" if keys else ""
@@ -129,19 +156,43 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def _export_side(side: str) -> list[ManifestEntry]:
-    """Open the configured session for a side and export its manifest."""
+    """Open the configured session for a side and export its manifest.
+
+    The role is stamped onto every entry here, at export time, because this is
+    the only place that knows which stores the configuration actually resolved
+    to. A manifest read back later cannot recover that -- and a comparison that
+    guesses the role from a file name is the defect this stamping removes.
+    """
     if side not in _SIDES:
         message = f"unknown side: {side}"
         raise RuntimeError(message)
+    role = _side_role(side)
     if side == "primary":
         from src.db.engine import get_rag_index_session
 
         with get_rag_index_session() as session:
-            return fetch_identity_entries(session)
+            return _with_role(fetch_identity_entries(session), role)
     from src.db.vector_engine import get_vector_session
 
     with get_vector_session() as session:
-        return fetch_identity_entries(session)
+        return _with_role(fetch_identity_entries(session), role)
+
+
+def _with_role(entries: list[ManifestEntry], role: str) -> list[ManifestEntry]:
+    """Return the entries stamped with the role of the store they came from."""
+    return [
+        ManifestEntry(
+            source_table=entry.source_table,
+            source_row_id=entry.source_row_id,
+            content_hash=entry.content_hash,
+            index_version=entry.index_version,
+            index_status=entry.index_status,
+            embedding_present=entry.embedding_present,
+            updated_at=entry.updated_at,
+            role=role,
+        )
+        for entry in entries
+    ]
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
