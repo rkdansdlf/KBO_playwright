@@ -380,3 +380,65 @@ class TestTheInventoryIsReadOnly:
             after = session.execute(text("SELECT count(*) FROM old_table")).scalar()
 
         assert before == after
+
+
+class TestCadence:
+    """Staleness is judged against what a crawler promises, not a flat number."""
+
+    def test_the_schedule_is_read_from_the_registry(self) -> None:
+        """Not restated here: a copied cadence goes stale the next time it moves."""
+        cadence = inv.scheduled_cadence()
+
+        assert cadence, "the registry should expose at least one job"
+        assert "crawl_daily_games" in cadence
+
+    def test_a_daily_job_allows_days_not_a_month(self) -> None:
+        """A table refreshed every night being a month old is a finding."""
+        daily = inv.scheduled_cadence()["crawl_daily_games"]
+
+        assert daily.period_days == 1
+        assert daily.max_age_days <= 7
+
+    def test_a_monthly_job_allows_more(self) -> None:
+        """Otherwise every monthly crawler reads as broken between runs."""
+        monthly = inv.scheduled_cadence()["crawl_retired_players"]
+
+        assert monthly.period_days == 31
+        assert monthly.max_age_days > 31
+
+    def test_a_weekly_job_sits_between_them(self) -> None:
+        weekly = inv.scheduled_cadence()["weekly_sla_report"]
+
+        assert 7 <= weekly.max_age_days < 31
+
+    def test_the_summary_names_the_time_and_zone(self) -> None:
+        """The scheduler runs KST, so a bare hour would be ambiguous."""
+        summary = inv.scheduled_cadence()["crawl_daily_games"].summary
+
+        assert "KST" in summary
+        assert "daily" in summary
+
+    def test_a_declared_period_wins_over_the_job_cadence(self) -> None:
+        """Awards are annual: the job cadence cannot answer for them.
+
+        Flagging a healthy table is the failure this guards against -- a reader
+        who sees one false STALE stops trusting the column.
+        """
+        declaration = inv.SourceDeclaration(
+            tables=("awards",),
+            job="crawl_daily_games",
+            expected_max_age_days=400,
+        )
+
+        assert inv._threshold_for(declaration, inv.scheduled_cadence(), 30) == 400
+
+    def test_a_crawler_with_no_job_falls_back_to_the_default(self) -> None:
+        declaration = inv.SourceDeclaration(tables=("awards",))
+
+        assert inv._threshold_for(declaration, inv.scheduled_cadence(), 30) == 30
+
+    def test_a_declared_job_that_no_longer_exists_falls_back(self) -> None:
+        """A renamed job must not silently make a table look current forever."""
+        declaration = inv.SourceDeclaration(tables=("awards",), job="job_that_was_renamed")
+
+        assert inv._threshold_for(declaration, inv.scheduled_cadence(), 30) == 30

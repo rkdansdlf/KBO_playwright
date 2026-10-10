@@ -179,17 +179,26 @@ def _dispatch_single_run(args: argparse.Namespace) -> bool:
     return False
 
 
-def _start_scheduler(args: argparse.Namespace) -> None:
-    mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
-    scheduler_cls = getattr(mod, "BlockingScheduler", BlockingScheduler) if mod else BlockingScheduler
-    trigger_cls = getattr(mod, "CronTrigger", CronTrigger) if mod else CronTrigger
+def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str, str, int]]:
+    """Return every scheduled job as data, so the schedule can be read.
 
-    scheduler = scheduler_cls(timezone="Asia/Seoul")
-    global _SCHEDULER_REF  # noqa: PLW0603
-    _SCHEDULER_REF = scheduler
-    scheduler.add_listener(job_lifecycle_listener, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+    Extracted from the registration loop for one reason: the schedule is a
+    contract an operator needs to check against reality -- a table updated by
+    a daily job being a month old means something different from an annual
+    one -- and a list literal inside a function that starts a scheduler can
+    only be read by starting it. The loop below still registers; this holds
+    the entries.
 
-    jobs = [
+    Args:
+        trigger_cls: The cron trigger class to build. A parameter rather than a
+            module reference because `_start_scheduler` resolves it through a
+            test seam, and the schedule must be built the same way either side.
+
+    Returns:
+        ``(callable, trigger, job_id, name, misfire_grace_seconds)`` tuples.
+
+    """
+    return [
         (
             selector_drift_sentinel_job,
             trigger_cls(hour=5, minute=40),
@@ -290,6 +299,19 @@ def _start_scheduler(args: argparse.Namespace) -> None:
             7200,
         ),
     ]
+
+
+def _start_scheduler(args: argparse.Namespace) -> None:
+    mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
+    scheduler_cls = getattr(mod, "BlockingScheduler", BlockingScheduler) if mod else BlockingScheduler
+    trigger_cls = getattr(mod, "CronTrigger", CronTrigger) if mod else CronTrigger
+
+    scheduler = scheduler_cls(timezone="Asia/Seoul")
+    global _SCHEDULER_REF  # noqa: PLW0603
+    _SCHEDULER_REF = scheduler
+    scheduler.add_listener(job_lifecycle_listener, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+
+    jobs = job_specs(trigger_cls)
     for fn, trigger, job_id, name, grace in jobs:
         scheduler.add_job(
             fn,

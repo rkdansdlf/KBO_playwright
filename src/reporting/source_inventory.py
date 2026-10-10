@@ -70,6 +70,68 @@ KBO_HOST = "www.koreabaseball.com"
 NON_CRAWLER_PREFIXES = ("base_", "legacy_")
 
 
+@dataclass(frozen=True)
+class Cadence:
+    """What a scheduled job promises, and how late it may reasonably run."""
+
+    job_id: str
+    summary: str
+    period_days: int
+
+    @property
+    def max_age_days(self) -> int:
+        """Return the age at which a table stops being plausibly current.
+
+        Three missed cycles, floored at two days. One missed cycle is a retry; two
+        can be a bad afternoon; three is a pattern. The floor matters for the
+        intraday jobs, where ``period_days`` is 1 and a two-day allowance would
+        let a daily crawler sit silent for a weekend unnoticed.
+        """
+        return max(2, self.period_days * 3)
+
+
+def _fields_of(trigger: object) -> dict[str, str]:
+    """Read a cron trigger's non-wildcard fields, as strings."""
+    fields: dict[str, str] = {}
+    for field in getattr(trigger, "fields", ()):  # APScheduler BaseTrigger
+        value = str(field)
+        if value != "*":
+            fields[field.name] = value
+    return fields
+
+
+def _cadence_from(trigger: object, job_id: str) -> Cadence:
+    """Describe how often a trigger fires, in the coarsest unit that fits.
+
+    Coarse on purpose: the inventory compares weeks and months, so an hour field
+    only has to distinguish "daily" from "not daily".
+    """
+    fields = _fields_of(trigger)
+    hour = fields.get("hour", "0")
+    minute = fields.get("minute", "0")
+    if "day" in fields:
+        return Cadence(job_id, f"monthly (day {fields['day']} {hour}:{minute} KST)", 31)
+    if "day_of_week" in fields:
+        return Cadence(job_id, f"weekly ({fields['day_of_week']} {hour}:{minute} KST)", 7)
+    if "hour" in fields:
+        return Cadence(job_id, f"daily ({hour}:{minute} KST)", 1)
+    return Cadence(job_id, "intraday", 1)
+
+
+def scheduled_cadence() -> dict[str, Cadence]:
+    """Return every scheduled job's cadence, keyed by job id.
+
+    Read from the registry's own job list rather than restated here: a cadence
+    copied into a report is a cadence that goes stale the next time the schedule
+    moves, and this report exists because stale contracts are expensive.
+    """
+    from apscheduler.triggers.cron import CronTrigger
+
+    from src.scheduler.registry import job_specs
+
+    return {job_id: _cadence_from(trigger, job_id) for _fn, trigger, job_id, _name, _grace in job_specs(CronTrigger)}
+
+
 class PolicyStatus(StrEnum):
     """Whether the crawler's source may be consulted at all."""
 
@@ -115,6 +177,26 @@ class SourceDeclaration:
     because of when the transaction happened, not when the row was written.
     """
 
+    job: str | None = None
+    """The scheduler job that runs this crawler, for its expected cadence.
+
+    Declared rather than derived. Jobs delegate to CLI entrypoints which call the
+    crawlers, so the chain is two hops deep (``crawl_p0_non_game`` ->
+    ``crawl_p0_data`` -> ``RosterTransactionCrawler``) and a name match against
+    the job bodies finds nothing. ``None`` means the crawler runs on demand, and
+    its tables are then judged by the default threshold rather than a cadence.
+    """
+
+    expected_max_age_days: int | None = None
+    """For data with no scheduled job, how old it may be before it is a problem.
+
+    Declared because the job cadence cannot answer it. Awards are announced once
+    a season, so the 2026 list legitimately does not exist yet and a 54-day-old
+    table is not stale -- but a flat threshold calls it stale, and a report that
+    flags a healthy table teaches its reader to ignore the column. Taken in
+    preference to the job cadence when set.
+    """
+
     alternative_source: str | None = None
     """Where else the data could come from. ``None`` means nobody has looked."""
 
@@ -129,11 +211,13 @@ class SourceDeclaration:
 DECLARED: dict[str, SourceDeclaration] = {
     "award_crawler": SourceDeclaration(
         tables=("awards",),
+        expected_max_age_days=400,
         repository="award_repository",
         alternative_source="Wikipedia and yagoonara; not a KBO-controlled host",
         priority="normal",
     ),
     "game_detail_crawler": SourceDeclaration(
+        job="crawl_daily_games",
         tables=("game_batting_stats", "game_pitching_stats", "game_summary", "game_metadata"),
         alternative_source="Naver relay API (already the primary path)",
         priority="normal",
@@ -156,6 +240,7 @@ DECLARED: dict[str, SourceDeclaration] = {
         priority="high",
     ),
     "press_release_crawler": SourceDeclaration(
+        job="crawl_kbo_press_releases",
         tables=("kbo_press_releases",),
         alternative_source="pending: permission review (6단계)",
         priority="normal",
@@ -166,6 +251,7 @@ DECLARED: dict[str, SourceDeclaration] = {
         priority="high",
     ),
     "roster_transaction_crawler": SourceDeclaration(
+        job="crawl_p0_non_game",
         tables=("roster_transactions",),
         repository="roster_transaction_repository",
         freshness_column="transaction_date",
@@ -173,6 +259,7 @@ DECLARED: dict[str, SourceDeclaration] = {
         priority="high",
     ),
     "schedule_crawler": SourceDeclaration(
+        job="crawl_daily_games",
         tables=("game",),
         freshness_column="game_date",
         repository="game_repository",
@@ -187,6 +274,7 @@ DECLARED: dict[str, SourceDeclaration] = {
     ),
     "ticket_crawler": SourceDeclaration(
         tables=("ticket_prices", "ticket_open_rules"),
+        expected_max_age_days=400,
         alternative_source="pending: permission review (6단계)",
         priority="normal",
     ),
@@ -558,10 +646,25 @@ def consumers_of(repository: str, *, source_dir: Path = SOURCE_DIR) -> tuple[str
     )
 
 
+def _threshold_for(declaration: SourceDeclaration, cadence: dict[str, Cadence], default: int) -> int:
+    """Return the age at which this crawler's tables stop being plausible.
+
+    Derived from the job that runs it rather than fixed: a table refreshed daily
+    and one refreshed monthly mean different things at thirty days old, and a
+    single threshold would call the first healthy or the second broken.
+    """
+    if declaration.expected_max_age_days is not None:
+        return declaration.expected_max_age_days
+    if declaration.job and declaration.job in cadence:
+        return cadence[declaration.job].max_age_days
+    return default
+
+
 def _measure_declared(
     session_factory: Callable[[], Session] | None,
     *,
     stale_after_days: int,
+    cadence: dict[str, Cadence] | None = None,
 ) -> tuple[dict[str, tuple[TableMeasurement, ...]], dict[str, int], list[str]]:
     """Read every declared table once, returning measurements, chunks and drift.
 
@@ -574,15 +677,17 @@ def _measure_declared(
     if session_factory is None:
         return measurements, chunks, drift
 
+    schedules = cadence if cadence is not None else scheduled_cadence()
     with session_factory() as session:
         chunks = rag_chunk_counts(session)
         for module, declaration in DECLARED.items():
+            threshold = _threshold_for(declaration, schedules, stale_after_days)
             measurements[module] = tuple(
                 measure_table(
                     session,
                     table,
                     column=declaration.freshness_column,
-                    stale_after_days=stale_after_days,
+                    stale_after_days=threshold,
                 )
                 for table in declaration.tables
             )
@@ -708,6 +813,7 @@ def build_inventory(
 __all__ = [
     "CRAWLER_DIR",
     "DECLARED",
+    "Cadence",
     "Freshness",
     "PolicyStatus",
     "SourceDeclaration",
@@ -721,5 +827,6 @@ __all__ = [
     "measure_table",
     "policy_status_of",
     "rag_chunk_counts",
+    "scheduled_cadence",
     "source_domains",
 ]
