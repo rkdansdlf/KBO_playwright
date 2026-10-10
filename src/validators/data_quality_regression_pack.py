@@ -175,6 +175,56 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    # Deliberately wider than the check above. That one is scoped to
+    # REGULAR/AGGREGATED, which is 882 of 19,830 season rows, and it reported no
+    # violation while the table held 2,603. The rows it cannot see are
+    # LEGACY_CRAWLER, and every one of those has both sacrifice columns empty
+    # with PA populated -- PA arrived correct from the source and the sacrifices
+    # were simply never written, so the formula cannot be checked at all rather
+    # than being wrong. audit_pa_formula.py calls the same shape FIXABLE_FORMULA.
+    #
+    # No league or source filter here, because the gap is not a regular-season
+    # phenomenon: KOREAN_SERIES and PLAYOFF rows carry it too. Scoping the
+    # verdict to one league would hide those the same way.
+    #
+    # PA strictly greater than AB+BB+HBP, and both sacrifice columns at zero.
+    # Both halves are load-bearing. 15,986 rows reconcile as
+    # PA = AB+BB+HBP+0+0 because nobody sacrificed, and calling that missing
+    # data would bury the finding. The other side -- sacrifices recorded but
+    # still short of PA, 23 rows in REGULAR/CRAWLER and REGULAR/OFFICIAL_ARCHIVE --
+    # is a different defect: either PA is wrong or a sacrifice did not count as
+    # one. This check does not claim those.
+    _SqlCheck(
+        check_id="player_season_batting_unaccounted_pa",
+        description="Season batting PA exceeds AB + BB + HBP with no sacrifice recorded",
+        table="player_season_batting",
+        required_columns=(
+            "player_id",
+            "plate_appearances",
+            "at_bats",
+            "walks",
+            "hbp",
+            "sacrifice_hits",
+            "sacrifice_flies",
+        ),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM player_season_batting
+            WHERE COALESCE(plate_appearances, 0) >
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                AND COALESCE(sacrifice_hits, 0) = 0
+                AND COALESCE(sacrifice_flies, 0) = 0
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
+            FROM player_season_batting
+            WHERE COALESCE(plate_appearances, 0) >
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                AND COALESCE(sacrifice_hits, 0) = 0
+                AND COALESCE(sacrifice_flies, 0) = 0
+            LIMIT 5
+        """,
+    ),
     _SqlCheck(
         check_id="game_batting_hits_not_gt_at_bats",
         description="Game batting hits do not exceed at-bats",
