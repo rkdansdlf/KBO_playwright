@@ -27,7 +27,15 @@ from src.services.crawl_dead_letter_service import (
     DlqNotFoundError,
     retry_dead_letter,
 )
-from src.services.crawl_dead_letter_state import InvalidDlqTransitionError, can_requeue
+from src.services.crawl_dead_letter_state import (
+    IGNORABLE_STATUSES,
+    REQUEUEABLE_STATUSES,
+    RETRYABLE_STATUSES,
+    InvalidDlqTransitionError,
+    can_ignore,
+    can_requeue,
+    can_retry,
+)
 from src.services.crawl_dead_letter_stats import publish_dlq_state_metrics, stale_retry_seconds
 from src.services.crawl_replay_dispatcher import build_default_dispatcher
 
@@ -99,6 +107,16 @@ def _require_guard() -> bool:
     return False
 
 
+def _status_names(statuses: frozenset[DlqStatus]) -> str:
+    """Render a status set for an operator message, in a stable order.
+
+    Derived from the lifecycle rather than spelled into each message: the
+    messages used to restate the sets, which is how the `ignore` one came to
+    promise less than the transition table allowed (BUG-016).
+    """
+    return "/".join(sorted(status.value for status in statuses))
+
+
 def _load_letter(dlq_id: str) -> CrawlDeadLetter | None:
     with get_db_session() as session:
         letter = CrawlDeadLetterRepository(session).get_by_dlq_id(dlq_id)
@@ -150,8 +168,8 @@ def _cmd_retry(args: argparse.Namespace) -> int:  # noqa: PLR0911
     if letter is None:
         _error(f"dead letter not found: {args.dlq_id}")
         return EXIT_NOT_FOUND
-    if letter.status != DlqStatus.PENDING.value:
-        _error(f"retry requires pending status, found {letter.status}")
+    if not can_retry(letter.status):
+        _error(f"retry requires {_status_names(RETRYABLE_STATUSES)} status, found {letter.status}")
         return EXIT_INVALID_STATE
     if letter.next_retry_at is not None and letter.next_retry_at > _utcnow():
         _error(f"retry not due until {letter.next_retry_at.isoformat()}")
@@ -179,7 +197,7 @@ def _cmd_requeue(args: argparse.Namespace) -> int:  # noqa: PLR0911
         _error(f"dead letter not found: {args.dlq_id}")
         return EXIT_NOT_FOUND
     if not can_requeue(letter.status):
-        _error(f"requeue requires ignored/exhausted status, found {letter.status}")
+        _error(f"requeue requires {_status_names(REQUEUEABLE_STATUSES)} status, found {letter.status}")
         return EXIT_INVALID_STATE
     if not args.apply:
         return _emit("requeue", args.dlq_id, applied=False, status=letter.status, json_out=args.json)
@@ -205,8 +223,8 @@ def _cmd_ignore(args: argparse.Namespace) -> int:  # noqa: PLR0911
     if letter is None:
         _error(f"dead letter not found: {args.dlq_id}")
         return EXIT_NOT_FOUND
-    if letter.status != DlqStatus.PENDING.value:
-        _error(f"ignore requires pending status, found {letter.status}")
+    if not can_ignore(letter.status):
+        _error(f"ignore requires {_status_names(IGNORABLE_STATUSES)} status, found {letter.status}")
         return EXIT_INVALID_STATE
     if not args.apply:
         return _emit("ignore", args.dlq_id, applied=False, status=letter.status, json_out=args.json)

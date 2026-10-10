@@ -19,10 +19,27 @@ UNEXPLAINED_ISSUES = (
     "INDEX_VERSION_MISMATCH",
     "INDEX_VERSION_MISSING",
     "EMBEDDING_MISSING",
+    "EMBEDDING_UNMEASURED",
     "INDEX_STATUS_MISMATCH",
     "MISSING_IN_RIGHT",
     "MISSING_IN_LEFT",
 )
+
+ROLE_SPARSE = "sparse"
+ROLE_DENSE = "dense"
+
+#: The roles a manifest may declare. An unrecognised role is refused rather than
+#: treated as exempt -- "unknown" must not become a synonym for "skip the check".
+MANIFEST_ROLES = frozenset({ROLE_SPARSE, ROLE_DENSE})
+
+#: Roles whose store is expected to carry the dense vector.
+#:
+#: Only the dense store is asked for embeddings. The sparse store holds identity
+#: and metadata, and PostgreSQL sparse search reads it through `to_tsvector`, not
+#: through the vector column -- so requiring a vector there asks for a column
+#: nothing reads. Oracle's single-store layout is the exception and is handled by
+#: declaring that store `dense`, which is what it is.
+_ROLES_REQUIRING_EMBEDDINGS = frozenset({ROLE_DENSE})
 
 
 @dataclass(frozen=True)
@@ -36,11 +53,22 @@ class ManifestEntry:
     index_status: str | None = None
     embedding_present: bool | None = None
     updated_at: datetime | None = None
+    role: str | None = None
 
     @property
     def key(self) -> str:
         """Return the stable source identity key."""
         return f"{self.source_table}:{self.source_row_id}"
+
+    @property
+    def requires_embeddings(self) -> bool:
+        """Return whether this store is expected to carry dense vectors.
+
+        ``None`` is not treated as exempt. A manifest that does not say what it
+        holds is the one case where skipping the check would hide a real gap, so
+        an undeclared role keeps the strict reading: the vector is expected.
+        """
+        return self.role is None or self.role in _ROLES_REQUIRING_EMBEDDINGS
 
     def to_manifest_dict(self) -> dict[str, object]:
         """Serialize into an NDJSON-compatible mapping."""
@@ -52,6 +80,7 @@ class ManifestEntry:
             "index_status": self.index_status,
             "embedding_present": self.embedding_present,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "role": self.role,
         }
 
 
@@ -77,8 +106,20 @@ def _optional_str(row: dict[str, object], key: str) -> str | None:
 
 
 def entry_from_manifest_row(row: dict[str, object]) -> ManifestEntry:
-    """Build a ManifestEntry from one parsed NDJSON line."""
+    """Build a ManifestEntry from one parsed NDJSON line.
+
+    Raises:
+        ValueError: When the row declares a role outside :data:`MANIFEST_ROLES`.
+            Refusing beats defaulting: a typo like ``"sparse "`` or ``"vector"``
+            would otherwise be read as an unknown role, and an unknown role is
+            the one value that must not quietly widen the exoneration.
+
+    """
     embedding = row.get("embedding_present")
+    role = _optional_str(row, "role")
+    if role is not None and role not in MANIFEST_ROLES:
+        message = f"unknown manifest role {role!r}; expected one of {sorted(MANIFEST_ROLES)}"
+        raise ValueError(message)
     return ManifestEntry(
         source_table=str(row["source_table"]),
         source_row_id=str(row["source_row_id"]),
@@ -87,6 +128,7 @@ def entry_from_manifest_row(row: dict[str, object]) -> ManifestEntry:
         index_status=_optional_str(row, "index_status"),
         embedding_present=None if embedding is None else bool(embedding),
         updated_at=parse_updated_at(row.get("updated_at")),
+        role=role,
     )
 
 
@@ -202,6 +244,37 @@ class ReconciliationReport:
         }
 
 
+def _embedding_findings(left: ManifestEntry, right: ManifestEntry, key: str) -> list[tuple[str, str]]:
+    """Return embedding findings for a co-present pair, by store role.
+
+    Two distinctions carry the whole check.
+
+    The first is *which* side is asked. Only a store that declares itself the
+    dense store is required to hold the vector; the sparse store holds identity
+    and metadata, and PostgreSQL sparse search reads it through ``to_tsvector``
+    rather than through the vector column, so a missing vector there says nothing
+    about whether retrieval works. A store that declares no role at all is still
+    asked -- the strict reading is the safe default for a manifest that does not
+    describe itself.
+
+    The second is *unmeasured* versus *absent*. ``embedding_present is False``
+    means the column was read and held nothing, which is a finding. ``None``
+    means the question was never answered, and a gate that passes on an
+    unanswered question is not checking anything -- so it is reported separately
+    rather than folded into the same code, because the fix differs: one is a
+    backfill, the other is an exporter that stopped measuring.
+    """
+    findings: list[tuple[str, str]] = []
+    for entry in (left, right):
+        if not entry.requires_embeddings:
+            continue
+        if entry.embedding_present is None:
+            findings.append(("EMBEDDING_UNMEASURED", key))
+        elif entry.embedding_present is False:
+            findings.append(("EMBEDDING_MISSING", key))
+    return findings
+
+
 def _pair_findings(left: ManifestEntry, right: ManifestEntry) -> list[tuple[str, str]]:
     """Compare co-present entries and return (issue, key) pairs."""
     findings: list[tuple[str, str]] = []
@@ -216,8 +289,7 @@ def _pair_findings(left: ManifestEntry, right: ManifestEntry) -> list[tuple[str,
         findings.append(("INDEX_VERSION_MISMATCH", key))
     if left.index_status != right.index_status:
         findings.append(("INDEX_STATUS_MISMATCH", key))
-    if left.embedding_present is False or right.embedding_present is False:
-        findings.append(("EMBEDDING_MISSING", key))
+    findings.extend(_embedding_findings(left, right, key))
     return findings
 
 

@@ -22,6 +22,7 @@ from src.crawlers.award_crawler import (
     YAGOONARA_SOURCE_KEY,
     AwardCrawler,
 )
+from src.crawlers.failure_taxonomy import FailureCode
 from src.crawlers.food_crawler import FOOD_CRAWLER_NAME, FOOD_TARGET_TYPE, TEAM_FOOD_SOURCES, FoodCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.kbo_event_crawler import (
@@ -81,6 +82,7 @@ from src.crawlers.schedule_crawler import (
     SCHEDULE_TARGET_TYPE,
     ScheduleCrawler,
 )
+from src.crawlers.source_limited import SOURCE_LIMITED_OUTCOME, source_limited_reason
 from src.crawlers.team_history_crawler import (
     TEAM_HISTORY_CRAWLER_NAME,
     TEAM_HISTORY_TARGET_ID,
@@ -265,6 +267,18 @@ def _outcome_from_persisted_run(replay_run_id: str) -> ReplayOutcome:
     the same incompleteness in place, and closing that would retire an incident
     that is still true. An empty or unchanged result is a success, because a
     replay that confirms the source has nothing has answered the question.
+
+    A **policy skip is the exception that proves that rule**. It also arrives as
+    `success` -- nothing failed -- but it answered a different question: the
+    source was never consulted, so the incident ("this data is missing") is still
+    true. Reporting it as recovered would close a real gap on the strength of a
+    request that was never made (BUG-016).
+
+    It is reported as non-retryable on purpose. `finalize_retry` decides the next
+    status from `success` and the remaining budget, so a plain failure here would
+    loop until the budget was spent -- which is exactly how 91 letters reached
+    `exhausted` while no retry could ever have succeeded. A code in
+    `NON_RETRYABLE_CODES` terminates the attempt instead of the budget.
     """
     with SessionLocal() as session:
         run = CrawlExecutionRepository(session).get_by_run_id(replay_run_id)
@@ -275,6 +289,20 @@ def _outcome_from_persisted_run(replay_run_id: str) -> ReplayOutcome:
             status="missing",
             error_message="replay run was not recorded",
         )
+
+    limited_reason = source_limited_reason(getattr(run, "checkpoint", None))
+    if limited_reason is not None and run.status == RUN_STATUS_SUCCESS:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status=SOURCE_LIMITED_OUTCOME,
+            error_message=(
+                f"the source was not consulted ({limited_reason}); "
+                "nothing was collected, so the incident is not recovered"
+            ),
+            error_code=FailureCode.FETCH_BLOCKED.value,
+        )
+
     success = run.status == RUN_STATUS_SUCCESS
     return ReplayOutcome(
         success=success,

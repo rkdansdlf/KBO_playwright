@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 SRC_CRAWLERS = Path(__file__).resolve().parents[2] / "src" / "crawlers"
+SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
 
 from src.crawlers.adoption_matrix import (
     _HTTP_BASES,
@@ -42,7 +43,10 @@ from src.crawlers.adoption_matrix import (
     _reaches_httpx_itself,
     _imported_model_names,
     _parse_or_none,
+    _asked_crawler_to_save,
     _crawler_instances,
+    _hands_rows_to_a_writer,
+    _is_write_call,
     _produced_names,
     discover_modules,
     render_markdown,
@@ -151,13 +155,13 @@ class TestAnUntracedCallerDoesNotDemoteAMeasuredCrawler:
     #: Crawlers that resolved a table *and* have an untraced caller, so the two
     #: directions of the rule can be checked against the same rows.
     #:
-    #: Both were rewitnessed when the save-flag rule resolved the schedule
-    #: crawler's callers, and again when the roster transaction's callers resolved,
-    #: leaving ``relay_crawler`` and ``game_detail_crawler`` as the pairs that still
-    #: carry an untraced caller next to a real reader count. The set is expected
-    #: to shrink as callers resolve; a witness that silently went quiet would stop
-    #: testing the rule at all.
-    MEASURED_BUT_PARTLY_UNTRACED = ("relay_crawler", "game_detail_crawler")
+    #: This was three rewitnesses: the save-flag rule resolved the schedule
+    #: crawler's callers, then the roster transaction's, then the handoff rule
+    #: resolved the game detail crawler's smoke test -- leaving one real pair.
+    #: A single live witness makes the test a tripwire on unrelated work rather
+    #: than a check of the rule, so the row-level assertions below are built
+    #: from the same facts the matrix builds them from and cannot drift.
+    MEASURED_BUT_PARTLY_UNTRACED = ("relay_crawler",)
 
     def test_a_measured_crawler_is_not_demoted_for_an_untraced_caller(self) -> None:
         for module in self.MEASURED_BUT_PARTLY_UNTRACED:
@@ -165,6 +169,313 @@ class TestAnUntracedCallerDoesNotDemoteAMeasuredCrawler:
             assert attribution.models, f"{module} resolved no table, so the demotion is warranted"
             assert attribution.unresolved_callers, f"{module} no longer has the untraced callers this guards"
             assert attribution.readers > 0, f"{module} has no measured readers, so it is not the witness"
+
+    def test_an_unmeasured_crawler_with_an_untraced_callers_is_ordered_last(self, monkeypatch) -> None:
+        """The demotion the flag causes, on rows whose facts are stated.
+
+        The live witness above covers the other half of the rule -- a crawler
+        that *has* a measurement is not demoted. This covers the half that
+        applies, because the flag only reaches ``roadmap()`` for a crawler with
+        no measurement at all. Both are stated on synthetic rows rather than on
+        whatever the repository happens to contain, so neither can be outgrown
+        by unrelated work; the live witness is one repository fact away from
+        going quiet, and when it did the rule stopped being tested at all.
+        """
+        resolved: dict[str, Attribution] = {
+            "high_impact_gap": Attribution(
+                module="high_impact_gap",
+                models=frozenset(),
+                reader_files=frozenset(),
+                unresolved_callers=("/some/pipeline.py",),
+            ),
+            "low_impact_clean": Attribution(
+                module="low_impact_clean",
+                models=frozenset(),
+                reader_files=frozenset(),
+                unresolved_callers=(),
+            ),
+        }
+        monkeypatch.setattr("src.crawlers.adoption_matrix.attribution_of", lambda module: resolved[module])
+        rows = (
+            CrawlerRow(_facts(module="high_impact_gap", upstream_dependents=40)),
+            CrawlerRow(_facts(module="low_impact_clean", upstream_dependents=3)),
+        )
+
+        assert AdoptionMatrix(rows=rows).roadmap()[0].module == "low_impact_clean", (
+            "a crawler whose write could not be resolved outranked one measured "
+            "at a fraction of its readers, ranking the absent measurement above a "
+            "real one"
+        )
+
+    def test_a_caller_that_never_hands_its_rows_to_a_writer_is_not_untraced(self) -> None:
+        """Binding a result is not the same as handing it somewhere to be written.
+
+        The flag answers "a write was here and the analysis lost it", so the
+        caller has to have given its rows to something that writes. A smoke
+        check that fetches, asserts on the payload and reports it is not that:
+        nothing was persisted and nothing was lost. Reporting it as an untraced
+        write sent the report after a bug in reading a diff, and it made a real
+        gap indistinguishable from a test.
+        """
+        for module in ("game_detail_crawler", "player_search_crawler", "player_list_crawler"):
+            callers = attribution_of(module).unresolved_callers
+
+            assert not any("crawler_live_smoke" in caller or "lookup_official" in caller for caller in callers), (
+                f"{module} reports a caller that never wrote anything: {callers}"
+            )
+
+    def test_a_method_on_an_expression_is_not_a_writer(self) -> None:
+        """Reaching a verb through an expression is a method on the data, not a write.
+
+        ``_resolve_today_games`` narrows the schedule rows it fetched with
+        ``g.get("game_date", "").replace("-", "")``. That is ``str.replace``, and
+        the verdict came from the name alone, so the one unresolvable caller left
+        in the matrix was a date comparison -- the rows never went anywhere, and
+        the report pointed at the live crawler instead.
+
+        The shape is the whole distinction: a write is reached through a name
+        (``_save_relay_csv(rows)``) or through an object (``crawler.save_to_db``,
+        ``self._replace_pregame_lineups``), while a method on a computed value is
+        applied to that value and returns something else.
+
+        Every path that judges a write makes this call, not only the two that
+        first needed it. The rest read the name alone, so the rule lived in two
+        places and only one of them was the rule.
+        """
+        tree = ast.parse(
+            (SRC_ROOT / "cli/live/live_crawler.py").read_text(encoding="utf-8"),
+        )
+
+        assert _is_write_call("replace"), "the name alone still reads as a write; the receiver is what decides"
+        assert not _hands_rows_to_a_writer(tree, {"ScheduleCrawler"}), (
+            "a date comparison was counted as a writer taking the crawler's rows"
+        )
+
+    def test_every_path_that_judges_a_write_uses_the_receiver(self) -> None:
+        """One rule, not two copies of it.
+
+        The receiver judgement was added where the false positive showed up, and
+        the other four paths kept reading the name alone. Each is currently
+        harmless only because something upstream happens to filter first: the
+        recovery engine's ``text.split(":", 1)[0].replace("타자", "")`` is passed
+        a value the trace never reaches, and the delegated writer only runs
+        after a body has already been scanned. Those are accidents of the current
+        code, and the rule is one predicate either way -- a future change to any
+        one of them would silently reintroduce the same class of error.
+        """
+        source = (SRC_ROOT / "crawlers" / "adoption_matrix.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        judged: dict[str, set[bool]] = {}
+
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            names = {
+                ast.unparse(call.args[0])
+                for call in ast.walk(function)
+                if isinstance(call, ast.Call) and ast.unparse(call.func) == "_is_write_call" and call.args
+            }
+            if names:
+                judged[function.name] = names
+
+        judging_the_rule_itself = {"_is_write_call", "_scope_asked_to_save", "_imported_function"}
+        readers = {name: arguments for name, arguments in judged.items() if name not in judging_the_rule_itself}
+        for name, arguments in readers.items():
+            assert arguments <= {"name"}, (
+                f"{name} judges a write by name alone: {sorted(arguments)}; "
+                "the receiver decides, so these should route through _is_a_writer"
+            )
+
+    def test_the_save_decision_is_read_where_the_crawler_was_bound(self) -> None:
+        """One crawler's save must not answer for another bound to the same name.
+
+        Six callers drive several crawlers each, and they reach for ``crawler``
+        in every one of them -- ``crawl_p0_data`` runs the roster, event and
+        ticket crawlers, all three under that one name. The scan collected the
+        name across the file and then asked the whole file whether anything set
+        ``save``, so a crawler that was never asked to persist inherited the
+        answer from a sibling. The exemption is then granted to a call whose rows
+        genuinely reached no table, which is the one case that must not be
+        exempted.
+
+        The decision is read inside the scope that binds the crawler.
+        """
+        tree = ast.parse(
+            "from src.crawlers.roster_crawler import RosterCrawler\n"
+            "from src.crawlers.ticket_crawler import TicketCrawler\n"
+            "\n"
+            "\n"
+            "async def run_roster() -> list[dict]:\n"
+            "    crawler = RosterCrawler()\n"
+            "    return await crawler.run(save=True)\n"
+            "\n"
+            "\n"
+            "async def run_ticket() -> list[dict]:\n"
+            "    crawler = TicketCrawler()\n"
+            "    return await crawler.run()\n",
+        )
+
+        assert _asked_crawler_to_save(tree, {"RosterCrawler"}) is True, (
+            "the crawler that was asked to save lost its exemption"
+        )
+        assert _asked_crawler_to_save(tree, {"TicketCrawler"}) is False, (
+            "a crawler that was never asked to save was exempted by its sibling"
+        )
+
+    def test_a_caller_that_hands_its_rows_to_a_non_table_writer_is_still_untraced(self) -> None:
+        """The exemption is for not writing, not for writing somewhere harmless.
+
+        Guarding the rule above. ``crawl_text_relay`` takes the payload the
+        relay crawler produced and passes it to ``_save_relay_csv`` -- a write
+        the analysis can see and a destination that is not a table. That is a
+        genuine answer the matrix cannot resolve into a model, so it stays
+        reported; keying the exemption on "some writer was called" instead of
+        "a table was reached" would drop exactly the case worth looking at.
+        """
+        callers = attribution_of("relay_crawler").unresolved_callers
+
+        assert any("crawl_text_relay" in caller for caller in callers), (
+            f"a caller that writes to a non-table destination is no longer reported: {callers}"
+        )
+
+    def test_a_caller_that_writes_nothing_is_counted_apart_from_one_we_could_not_follow(self) -> None:
+        """Two callers, two different situations, one number for both.
+
+        ``crawl_text_relay`` hands the relay payload to a writer and the write
+        lands in a file; ``crawler_live_smoke`` fetches, asserts and reports,
+        persisting nothing. Both bind a result, both were listed as untraced, and
+        the two calls for opposite responses -- the first is a gap in the
+        attribution, the second is correct behaviour. Listed together they can
+        only be triaged by opening every caller, which is the work the list
+        exists to avoid.
+        """
+        writing = attribution_of("relay_crawler")
+        not_writing = attribution_of("game_detail_crawler")
+
+        assert any("crawl_text_relay" in caller for caller in writing.unresolved_callers), (
+            f"the writer whose destination is unknown is missing: {writing.unresolved_callers}"
+        )
+        assert any("crawler_live_smoke" in caller for caller in writing.non_persisting_callers) or any(
+            "crawler_live_smoke" in caller for caller in not_writing.non_persisting_callers
+        ), (
+            "a caller that persists nothing is no longer counted apart from one "
+            f"the analysis failed to follow: {not_writing.unresolved_callers}"
+        )
+        assert not set(writing.unresolved_callers) & set(writing.non_persisting_callers), (
+            "the same caller is reported as both a gap and correct behaviour"
+        )
+
+    def test_the_two_lists_do_not_change_the_ranking(self) -> None:
+        """Separating the answers must not change what the report says to do.
+
+        The demotion reads ``unresolved_callers``, because a caller we could not
+        follow means the zero is the absence of a measurement. A caller that
+        persists nothing is not that, so admitting it to the flag would demote a
+        crawler for correct behaviour -- the mistake this separation exists to
+        prevent.
+        """
+        assert attribution_of("game_detail_crawler").readers > 0, (
+            "the witness for this needs a measured crawler, or the ranking is not at stake"
+        )
+        measured_but_unwitnessed = [row for row in build_matrix().rows if row.module == "game_detail_crawler"]
+        assert measured_but_unwitnessed, "the witness crawler is missing from the matrix"
+
+    def test_a_crawler_that_drives_another_is_named_as_delegating(self) -> None:
+        """A crawler that fetches through another crawler is not missing a transport.
+
+        ``historical_season_crawler`` constructs a ``ScheduleCrawler`` and calls
+        ``crawl_season``; the request happens, in the crawler it delegates to.
+        That is why no transport appears in its own module -- not a gap in the
+        classifier -- and the advisory told an operator to go check one.
+        """
+        assert scan_module("historical_season_crawler").delegates_to == frozenset({"schedule_crawler"})
+        assert scan_module("dynamic_data_crawler").delegates_to == frozenset({"daily_roster_crawler"})
+        assert scan_module("player_list_crawler").delegates_to == frozenset({"player_search_crawler"})
+
+    def test_instantiating_itself_is_not_delegating(self) -> None:
+        """The CLI entrypoint constructs the crawler it belongs to.
+
+        ``transit_time_crawler`` ends with ``crawler = TransitTimeCrawler()`` in
+        ``main``. Read as delegation that would name the module as its own
+        source of transport, and every crawler with a ``__main__`` block would
+        stop being asked where its requests go.
+        """
+        for module in ("transit_time_crawler", "congestion_crawler", "award_crawler"):
+            assert scan_module(module).delegates_to == frozenset(), f"{module} names itself as its own delegate"
+
+    def test_the_advisory_separates_delegation_from_a_detection_gap(self) -> None:
+        """The two shapes need different answers, so they get different words.
+
+        A delegating crawler is working as intended and the classifier is right;
+        a crawler whose transport was genuinely missed needs the classifier
+        checked. One message for both sent the operator to the wrong place half
+        the time, which is how the five advisories read before this.
+        """
+        delegating = CrawlerRow(
+            _facts(module="delegating_crawler", transports=frozenset(), delegates_to=frozenset({"schedule_crawler"})),
+        )
+        unexplained = CrawlerRow(_facts(module="unexplained_crawler", transports=frozenset()))
+
+        assert any("driving schedule_crawler" in note for note in advise_row(delegating)), (
+            f"a delegating crawler was not told apart: {advise_row(delegating)}"
+        )
+        assert not any("check the classifier" in note for note in advise_row(delegating)), (
+            "a delegating crawler was told to check a classifier that is right"
+        )
+        assert any("check the classifier" in note for note in advise_row(unexplained)), (
+            "a crawler with no transport and no delegation lost its advisory"
+        )
+
+    def test_a_crawler_that_reaches_httpx_through_an_imported_helper_is_detected(self) -> None:
+        """The helper lives in another module, and the request still happens.
+
+        ``congestion_crawler`` calls ``get_jamsil_congestion_batch`` and that
+        function opens an ``httpx.AsyncClient``; ``transit_time_crawler`` calls
+        ``get_transit_times_batch`` and that one issues ``client.get`` and
+        ``client.post``. Neither crawler builds a client itself, so the scan
+        reported no transport and the advisory told the operator to check a
+        classifier that was right -- the docstring on ``_reaches_httpx_itself``
+        already claimed it followed a module-level httpx helper, but the helper
+        was in a different file.
+        """
+        for module in ("congestion_crawler", "transit_time_crawler"):
+            facts = scan_module(module)
+
+            assert Transport.RAW_HTTPX in facts.transports, (
+                f"{module} reaches httpx through an imported helper and was reported as reaching nothing"
+            )
+            assert facts.has_transport, f"{module} still has no transport after the helper was followed"
+
+    def test_following_a_helper_does_not_invent_a_transport_for_a_crawler_without_one(self) -> None:
+        """One hop, and only to a helper that really makes a request.
+
+        Guarding the rule above. ``player_list_crawler`` imports
+        ``player_search_crawler`` for a browser and calls a module function of
+        its own; neither reaches httpx. If following any imported name counted,
+        every crawler that calls a helper anywhere would claim a raw client and
+        the axis would stop meaning anything.
+        """
+        for module in ("player_list_crawler", "historical_season_crawler"):
+            facts = scan_module(module)
+
+            assert Transport.RAW_HTTPX not in facts.transports, (
+                f"{module} was credited with a raw client it never reaches"
+            )
+
+    def test_no_crawler_in_the_repository_is_advised_to_check_a_classifier_it_cannot_help(self) -> None:
+        """The repository's own rows, not a synthetic one.
+
+        The five advisories this replaced all named a crawler that either
+        delegates or owns its requests through a helper. Whatever remains must
+        be a real detection gap, because the message now claims one.
+        """
+        matrix = build_matrix()
+        unexplained = [
+            row.module for row in matrix.rows if any("check the classifier" in note for note in advise_row(row))
+        ]
+
+        assert "historical_season_crawler" not in unexplained, "a delegating crawler is still reported as a gap"
+        assert "dynamic_data_crawler" not in unexplained, "a delegating crawler is still reported as a gap"
 
     def test_the_widest_measured_crawlers_lead_the_roadmap(self, matrix: AdoptionMatrix) -> None:
         order = [row.module for row in matrix.roadmap()]

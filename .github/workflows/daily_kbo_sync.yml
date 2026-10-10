@@ -82,6 +82,11 @@ jobs:
             --strict
 
       - name: Data Quality Regression Pack (local, post-run)
+        # Same as the preflight above, and for the same reason from df6693b4:
+        # this gate reports, it does not gate the pipeline. The JSON artifact
+        # below uploads under if: always(), so a failing verdict is still
+        # recorded and readable while post-process and quality keep running.
+        continue-on-error: true
         run: |
           python3 -m src.cli.data_quality_regression_pack \
             --date "${{ steps.job-setup.outputs.KST_DATE }}" \
