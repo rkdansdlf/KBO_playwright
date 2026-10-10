@@ -65,6 +65,7 @@ from .notification_incident import NotificationIncident as NotificationIncident
 from .parking_fee_kind import ParkingFeeKind as ParkingFeeKind
 from .parking_fee_rule import ParkingFeeRule as ParkingFeeRule
 from .parking_lot import ParkingLot as ParkingLot
+from .place import Place as Place
 from .player import PlayerBasic as PlayerBasic
 from .player_draft import PlayerDraftHistory as PlayerDraftHistory
 from .player_milestone import PlayerMilestone as PlayerMilestone
@@ -79,6 +80,7 @@ from .season import KboSeason as KboSeason
 from .sla_metrics import SlaMetrics as SlaMetrics
 from .source_registry import DataSource as DataSource
 from .source_registry import RawSourceSnapshot as RawSourceSnapshot
+from .stadium import Stadium as Stadium
 from .stadium_congestion import StadiumCongestion as StadiumCongestion
 from .stadium_food import StadiumFood as StadiumFood
 from .stadium_food_menu_item import StadiumFoodMenuItem as StadiumFoodMenuItem
