@@ -25,6 +25,19 @@ RETRYABLE_STATUSES = frozenset({DlqStatus.PENDING})
 #: counting automatic plus forced attempts.
 REQUEUEABLE_STATUSES = frozenset({DlqStatus.IGNORED, DlqStatus.EXHAUSTED})
 
+#: Statuses an operator may dismiss, derived from the transition table rather
+#: than restated.
+#:
+#: Derived on purpose. The CLI used to accept only ``pending`` while this table
+#: already allowed ``exhausted -> ignored``, so the documented recovery for a
+#: spent-retry letter (`dlq ignore`, named by the runbook and by the
+#: `dlq:exhausted` incident text) was rejected by the CLI's own precheck. The
+#: service enforced the table correctly all along; only the caller disagreed.
+#: Computing it here means the two cannot drift again (BUG-016).
+IGNORABLE_STATUSES = frozenset(
+    status for status, targets in ALLOWED_TRANSITIONS.items() if DlqStatus.IGNORED in targets
+)
+
 
 class InvalidDlqTransitionError(ValueError):
     """Raised when a dead letter lifecycle transition is not permitted."""
@@ -57,6 +70,16 @@ def requeue_target() -> DlqStatus:
 def can_requeue(status: DlqStatus | str) -> bool:
     """Return whether an operator may force a letter back to pending."""
     return DlqStatus(status) in REQUEUEABLE_STATUSES
+
+
+def can_ignore(status: DlqStatus | str) -> bool:
+    """Return whether an operator may dismiss a letter.
+
+    Mirrors `can_retry` and `can_requeue`: the caller asks the lifecycle rather
+    than restating which statuses are acceptable. The CLI's own list is what
+    went stale last time (BUG-016).
+    """
+    return DlqStatus(status) in IGNORABLE_STATUSES
 
 
 def ensure_requeue(status: DlqStatus | str) -> None:

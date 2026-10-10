@@ -123,7 +123,13 @@ def test_requeue_preview_validates_without_mutation(monkeypatch, capsys) -> None
 def test_requeue_rejects_pending(monkeypatch, capsys) -> None:
     _patch_letter(monkeypatch, _letter(status=DlqStatus.PENDING.value))
     assert operator_main(["requeue", "dlq-1"]) == 2
-    assert "ignored/exhausted" in capsys.readouterr().err
+
+    # The set, not its rendering order: the message is derived from the
+    # lifecycle's own sets, and asserting the exact string would break every
+    # time a status is added rather than when the contract changes.
+    err = capsys.readouterr().err
+    assert "ignored" in err
+    assert "exhausted" in err
 
 
 def test_requeue_apply_json_envelope(monkeypatch, capsys) -> None:
@@ -146,14 +152,44 @@ def test_requeue_race_invalid_state(monkeypatch) -> None:
     assert operator_main(["requeue", "dlq-1", "--apply"]) == 2
 
 
-def test_ignore_pending_only(monkeypatch, capsys) -> None:
+def test_ignore_accepts_a_spent_retry_budget(monkeypatch, capsys) -> None:
+    """`exhausted` must be dismissable -- it is the status that needs it most.
+
+    The CLI used to accept only `pending` while the transition table allowed
+    `exhausted -> ignored`, so the recovery the runbook and the `dlq:exhausted`
+    incident both name was rejected by the caller's own precheck. The service
+    enforced the table correctly throughout (BUG-016).
+
+    Asserted through the CLI rather than the lifecycle alone: the table was never
+    the broken half.
+    """
     monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
+    service = MagicMock()
+    monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
     _patch_letter(monkeypatch, _letter(status=DlqStatus.EXHAUSTED.value))
+
+    assert operator_main(["ignore", "dlq-1", "--reason", "robots policy", "--apply"]) == 0
+    service.mark_ignored.assert_called_once_with("dlq-1", reason="robots policy")
+
+
+def test_ignore_refuses_a_terminal_status(monkeypatch) -> None:
+    """The precheck still earns its place: it fails before demanding the guard.
+
+    A resolved incident is not dismissable, and the command should say so without
+    first requiring an operator to export a mutation flag for a doomed call.
+    """
+    monkeypatch.delenv("KBO_ALLOW_DLQ_MUTATION", raising=False)
+    _patch_letter(monkeypatch, _letter(status=DlqStatus.RESOLVED.value))
+
     assert operator_main(["ignore", "dlq-1", "--apply"]) == 2
 
+
+def test_ignore_still_accepts_pending(monkeypatch) -> None:
+    monkeypatch.setenv("KBO_ALLOW_DLQ_MUTATION", "1")
     service = MagicMock()
     monkeypatch.setattr("src.cli.dlq_operator.CrawlDeadLetterService", lambda _session: service)
     _patch_letter(monkeypatch, _letter(status=DlqStatus.PENDING.value))
+
     assert operator_main(["ignore", "dlq-1", "--reason", "noise", "--apply"]) == 0
     service.mark_ignored.assert_called_once_with("dlq-1", reason="noise")
 

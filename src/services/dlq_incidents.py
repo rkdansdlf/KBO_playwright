@@ -144,9 +144,13 @@ def _exhausted_event(stats: DlqStats) -> AlertEvent:
             f"`python3 -m src.cli.kbo dlq list --status exhausted` 로 확인하세요."
         ),
         incident_key=DLQ_INCIDENT_EXHAUSTED,
+        # Not `retry` first: a letter that spent its budget already answered the
+        # question five times, and the usual cause in production is a policy
+        # block that no retry can clear. The runbook's decision table is the
+        # entry point; `requeue` stays available for a cause that was fixed.
         remediation=(
             "python3 -m src.cli.kbo dlq list --status exhausted",
-            "python3 -m src.cli.kbo dlq retry <dlq_id> --apply",
+            "python3 -m src.cli.kbo dlq ignore <dlq_id> --reason <why> --apply",
             "Docs/runbooks/DATA_RELIABILITY.md",
         ),
         metadata={"exhausted": stats.exhausted},
