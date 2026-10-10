@@ -158,6 +158,156 @@ def test_regression_pack_reports_core_data_quality_violations() -> None:
     assert results["player_season_batting_pa_formula"].sample_ids == ("3002",)
 
 
+def test_regression_pack_flags_season_rows_whose_sacrifices_were_never_recorded() -> None:
+    """The gap the source filter was hiding, in the shape the real data has.
+
+    ``player_season_batting_pa_formula`` only reads
+    ``league = 'REGULAR' AND source = 'AGGREGATED'``, which is 882 of the 19,830
+    season rows and reports no violation at all. The rows it never reads are the
+    ones worth reading: every ``LEGACY_CRAWLER`` row has both sacrifice columns
+    empty while ``plate_appearances`` is populated, so ``PA`` cannot be
+    reconciled against ``AB + BB + HBP + SH + SF``. ``PA`` was supplied
+    correctly by the source -- the sacrifice columns are simply unfilled, and the
+    gate's own ``required_columns`` already names them.
+
+    Counting those rows is what ``scripts/maintenance/audit_pa_formula.py``
+    already calls ``FIXABLE_FORMULA``. The two tools read the same table and only
+    one of them could see the problem.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    -- The real shape: PA present, sacrifices never recorded, and
+                    -- the row the existing check is scoped to ignore.
+                    (4001, 15, 13, 1, 0, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER'),
+                    -- Same gap outside REGULAR; a gate scoped to the regular
+                    -- season would miss this one too.
+                    (4002, 23, 22, 0, 0, NULL, NULL, 'KOREAN_SERIES', 'CRAWLER')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+    unaccounted = results["player_season_batting_unaccounted_pa"]
+
+    assert unaccounted.status == "fail"
+    assert unaccounted.violation_count == 2
+    assert unaccounted.sample_ids == ("4001", "4002")
+
+    # The scoped check still passes: these rows are outside its filter, and
+    # widening that one would double-report what audit_pa_formula already owns.
+    assert results["player_season_batting_pa_formula"].status == "pass"
+
+
+def test_regression_pack_does_not_flag_a_row_that_reconciles_without_sacrifices() -> None:
+    """A player with no sacrifices is not a gap.
+
+    15,986 of the season rows satisfy ``PA = AB + BB + HBP`` with both sacrifice
+    columns at zero. Reading "sacrifices are zero" as "sacrifices are missing"
+    would fail every one of them and bury the 2,549 rows that are the actual
+    finding.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    -- Reconciles exactly, sacrifices genuinely zero.
+                    (5001, 15, 13, 1, 1, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
+                    -- Reconciles including both sacrifices.
+                    (5002, 16, 13, 1, 0, 1, 1, 'REGULAR', 'LEGACY_CRAWLER')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+    unaccounted = results["player_season_batting_unaccounted_pa"]
+
+    assert unaccounted.status == "pass"
+    assert unaccounted.violation_count == 0
+
+
+def test_regression_pack_does_not_flag_a_row_whose_sacrifices_do_not_cover_the_gap() -> None:
+    """Recorded sacrifices that still do not reconcile are a different defect.
+
+    ``REGULAR/CRAWLER`` and ``REGULAR/OFFICIAL_ARCHIVE`` hold 23 rows where PA
+    misses the formula even though both sacrifice columns are populated. Either
+    the PA value is wrong or a sacrifice did not count as one, and neither
+    explanation is "the sacrifices were never recorded" -- so this check must not
+    claim them. They stay on the list for a fix that can tell the two apart.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    (6001, 20, 18, 1, 0, 1, 0, 'REGULAR', 'CRAWLER'),
+                    (6002, 19, 18, 1, 0, 0, 1, 'REGULAR', 'OFFICIAL_ARCHIVE')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+
+    assert results["player_season_batting_unaccounted_pa"].violation_count == 0
+
+
+def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None:
+    """CI scopes this pack to one season, so the new check has to honour it.
+
+    Without the scope the gate would report every season's backlog on every run
+    and the signal would be indistinguishable from the daily one.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"),
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, season, plate_appearances, at_bats, walks, hbp,
+                     sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    (7001, 2026, 15, 13, 1, 0, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER'),
+                    (7002, 2000, 43, 30, 9, 2, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER')
+                """,
+            ),
+        )
+
+        scoped = run_regression_pack(conn, season=2026)
+        unscoped = run_regression_pack(conn)
+
+    scoped_result = next(r for r in scoped.results if r.check_id == "player_season_batting_unaccounted_pa")
+    unscoped_result = next(r for r in unscoped.results if r.check_id == "player_season_batting_unaccounted_pa")
+
+    assert scoped_result.violation_count == 1
+    assert scoped_result.sample_ids == ("7001",)
+    assert unscoped_result.violation_count == 2
+
+
 def test_regression_pack_skips_missing_optional_tables() -> None:
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
