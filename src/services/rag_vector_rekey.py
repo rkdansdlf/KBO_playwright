@@ -85,6 +85,7 @@ class VectorRekeyReport:
     already_applied: int = 0
     skipped_unsupported: int = 0
     missing: int = 0
+    conflicted: int = 0
     failed: int = 0
     samples: dict[str, list[str]] = field(default_factory=dict)
 
@@ -93,7 +94,8 @@ class VectorRekeyReport:
         """Return a one-line rendering for logs and CLI output."""
         return (
             f"rekeyed={self.rekeyed} tombstoned={self.tombstoned} already={self.already_applied} "
-            f"skipped={self.skipped_unsupported} missing={self.missing} failed={self.failed}"
+            f"skipped={self.skipped_unsupported} missing={self.missing} conflicted={self.conflicted} "
+            f"failed={self.failed}"
         )
 
     def note(self, kind: str, key: str) -> None:
@@ -141,111 +143,147 @@ def _params(entry: RekeyEntry, now: datetime) -> dict[str, object]:
     }
 
 
+def _load_store_state(session: Session) -> dict[str, tuple[str | None, str]]:
+    """Read the identities the store holds now, keyed by ``table:row_id``.
+
+    One query instead of one per entry. The per-entry version spent twenty-five
+    minutes crossing the network and then died when the connection did, which is
+    both the slowest and the most fragile way to move 120k keys.
+    """
+    rows = session.execute(text("SELECT source_table, source_row_id, content_hash, index_status FROM rag_chunks")).all()
+    return {f"{row[0]}:{row[1]}": (row[2], str(row[3] or "")) for row in rows}
+
+
+def _classify(entry: RekeyEntry, state: dict[str, tuple[str | None, str]], report: VectorRekeyReport) -> str:
+    """Decide what this entry needs against the state already read.
+
+    Returns ``"rekey"`` or ``"tombstone"`` to plan an update, or ``""`` when the
+    entry is counted (unsupported, already applied, missing, or a conflict) and
+    nothing should be written.
+    """
+    key = f"{entry.source_table}:{entry.legacy_source_row_id}"
+    if entry.disposition not in SUPPORTED_DISPOSITIONS or (
+        entry.disposition == DISPOSITION_REKEY and not entry.natural_source_row_id
+    ):
+        report.skipped_unsupported += 1
+        report.note("skipped_unsupported", key)
+        return ""
+    if entry.disposition == DISPOSITION_REKEY:
+        return _classify_rekey(entry, state, report, key)
+    return _classify_tombstone(entry, state, report, key)
+
+
+def _classify_rekey(
+    entry: RekeyEntry,
+    state: dict[str, tuple[str | None, str]],
+    report: VectorRekeyReport,
+    key: str,
+) -> str:
+    """Decide one rekey entry against the store's current identities."""
+    current = state.get(key)
+    natural_present = f"{entry.source_table}:{entry.natural_source_row_id}" in state
+    if current is None and natural_present:
+        # The legacy row is gone and the natural one is present: this entry was
+        # already applied, most likely by an interrupted earlier run.
+        report.already_applied += 1
+        return ""
+    if current is not None and natural_present:
+        # The census said this target did not exist; it does now. Moving the
+        # legacy row onto it would violate the identity index, so the row is
+        # left for a human rather than merged on a guess.
+        report.conflicted += 1
+        report.note("conflicted", key)
+        return ""
+    if current is None or current[0] != entry.content_hash:
+        report.missing += 1
+        report.note("missing", key)
+        return ""
+    return "rekey"
+
+
+def _classify_tombstone(
+    entry: RekeyEntry,
+    state: dict[str, tuple[str | None, str]],
+    report: VectorRekeyReport,
+    key: str,
+) -> str:
+    """Decide one tombstone entry against the store's current identities."""
+    current = state.get(key)
+    if current is None or current[0] != entry.content_hash:
+        report.missing += 1
+        report.note("missing", key)
+        return ""
+    if current[1] == "DELETED":
+        report.already_applied += 1
+        return ""
+    return "tombstone"
+
+
+def _execute_chunks(  # noqa: PLR0913 - the statement, its params, and the counter they feed are one unit
+    session: Session,
+    statement: object,
+    params: list[dict[str, object]],
+    report: VectorRekeyReport,
+    *,
+    attribute: str,
+    chunk_size: int,
+) -> None:
+    """Apply the planned updates in chunks, committing each one."""
+    for start in range(0, len(params), chunk_size):
+        chunk = params[start : start + chunk_size]
+        try:
+            affected = session.execute(statement, chunk).rowcount or 0
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            report.failed += len(chunk)
+            for item in chunk[:SAMPLE_CAP]:
+                report.note("failed", f"{item['source_table']}:{item['legacy_id']}")
+            logger.exception("Vector rekey chunk failed (%d rows)", len(chunk))
+            continue
+        setattr(report, attribute, getattr(report, attribute) + affected)
+
+
 def apply_entries(
     session: Session,
     entries: Iterable[RekeyEntry],
     *,
     dry_run: bool = True,
     now: datetime | None = None,
+    chunk_size: int = 500,
 ) -> VectorRekeyReport:
     """Move or tombstone the identities this manifest names, and count the rest.
 
-    A row that cannot be matched is counted rather than ignored: it means the two
-    stores have already diverged before this ran, which is the state the report
-    should make visible instead of hiding behind a success count.
+    The store's state is read once and the updates are sent in chunks, so the run
+    is bounded by a handful of round trips rather than one per entry. A row that
+    cannot be matched is counted rather than ignored: it means the two stores
+    have already diverged before this ran, which is the state the report should
+    make visible instead of hiding behind a success count.
     """
     stamp = now or datetime.now(KST)
     report = VectorRekeyReport()
+    state = _load_store_state(session)
+    rekey_params: list[dict[str, object]] = []
+    tombstone_params: list[dict[str, object]] = []
     for entry in entries:
-        _apply_one(session, entry, stamp, report, dry_run=dry_run)
-    if not dry_run:
-        session.commit()
-    return report
-
-
-def _statement_for(
-    entry: RekeyEntry,
-    stamp: datetime,
-    report: VectorRekeyReport,
-) -> tuple[object | None, str, dict[str, object]]:
-    """Return the statement an entry needs, or mark it unsupported and return none."""
-    key = f"{entry.source_table}:{entry.legacy_source_row_id}"
-    if entry.disposition not in SUPPORTED_DISPOSITIONS:
-        report.skipped_unsupported += 1
-        report.note("skipped_unsupported", key)
-        return None, "", {}
-    if entry.disposition == DISPOSITION_REKEY and not entry.natural_source_row_id:
-        report.skipped_unsupported += 1
-        report.note("skipped_unsupported", key)
-        return None, "", {}
-    params = _params(entry, stamp)
-    if entry.disposition == DISPOSITION_REKEY:
-        params["natural_id"] = entry.natural_source_row_id
-        return _REKEY_SQL, "rekeyed", params
-    return _TOMBSTONE_SQL, "tombstoned", params
-
-
-def _apply_one(
-    session: Session,
-    entry: RekeyEntry,
-    stamp: datetime,
-    report: VectorRekeyReport,
-    *,
-    dry_run: bool,
-) -> None:
-    """Apply one entry, counting the outcome without aborting the run."""
-    statement, kind, params = _statement_for(entry, stamp, report)
-    if statement is None:
-        return
-    key = f"{entry.source_table}:{entry.legacy_source_row_id}"
-    if dry_run:
-        if kind == "rekeyed":
+        action = _classify(entry, state, report)
+        if not action:
+            continue
+        params = _params(entry, stamp)
+        if action == "rekey":
+            params["natural_id"] = entry.natural_source_row_id
+            rekey_params.append(params)
             report.planned_rekeyed += 1
         else:
+            tombstone_params.append(params)
             report.planned_tombstoned += 1
-        report.note(f"planned_{kind}", key)
-        return
-    try:
-        affected = session.execute(statement, params).rowcount or 0
-    except SQLAlchemyError:
-        session.rollback()
-        report.failed += 1
-        report.note("failed", key)
-        logger.exception("Vector rekey failed for %s", key)
-        return
-    if affected:
-        if kind == "rekeyed":
-            report.rekeyed += affected
-        else:
-            report.tombstoned += affected
-    elif _already_applied(session, entry, kind):
-        report.already_applied += 1
-    else:
-        report.missing += 1
-        report.note("missing", key)
-
-
-def _already_applied(session: Session, entry: RekeyEntry, kind: str) -> bool:
-    """Return whether this entry has nothing left to do on the vector side."""
-    if kind == "tombstoned":
-        query = text(
-            "SELECT COUNT(*) FROM rag_chunks WHERE source_table = :source_table "
-            "AND source_row_id = :legacy_id AND index_status = 'DELETED'"
-        )
-    else:
-        query = text(
-            "SELECT COUNT(*) FROM rag_chunks WHERE source_table = :source_table AND source_row_id = :legacy_id"
-        )
-        if entry.natural_source_row_id:
-            query = text(
-                "SELECT COUNT(*) FROM rag_chunks WHERE source_table = :source_table AND source_row_id = :natural_id"
-            )
-            return bool(
-                session.execute(
-                    query, {"source_table": entry.source_table, "natural_id": entry.natural_source_row_id}
-                ).scalar()
-            )
-    return bool(session.execute(query, _params(entry, datetime.now(KST))).scalar())
+    if dry_run:
+        return report
+    report.planned_rekeyed = 0
+    report.planned_tombstoned = 0
+    _execute_chunks(session, _REKEY_SQL, rekey_params, report, attribute="rekeyed", chunk_size=chunk_size)
+    _execute_chunks(session, _TOMBSTONE_SQL, tombstone_params, report, attribute="tombstoned", chunk_size=chunk_size)
+    return report
 
 
 def summarize_manifest(entries: Sequence[RekeyEntry]) -> dict[str, int]:
