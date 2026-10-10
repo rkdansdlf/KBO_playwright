@@ -993,6 +993,57 @@ python3 -m src.cli.kbo dlq ignore <dlq_id> --reason "robots policy" --apply
 `retry`/`requeue`를 먼저 쓰지 않는다 — 둘 다 **고쳐진 원인**을 위한 것이고,
 robots 거부는 큐에서 고치는 것이 아니다.
 
+### 정리 실행 완료 (2026-10-11 03:24 KST)
+
+115건을 전부 `ignored`로 종결했다. 실행 전에 **재시도가 이미 끝났음**을 확인했다 —
+이것이 "정리해도 다시 쌓이지 않는가"의 근거다.
+
+| 관측 | 값 |
+|---|---|
+| normal 런 | 115건 (id 1125~1797) — 각각 레터 1건 생성 |
+| replay 런 | 575건 = **115 × 5** — 예산 소진이 정확히 맞아떨어진다 |
+| pending / retrying | 0건 — 되풀이될 재시도가 없다 |
+| 정리 결과 | 115건 전부 `ignored`, `resolved` 0건 |
+
+`replay`는 `record_dead_letters=False`로 호출되므로 레터를 만들지 않는다. 그래서
+마지막 normal 런(14:45 UTC) 이후 `letters = 0`이었고, 이는 **레터 생성 중단이 아니라
+재시도 단계**였다. 처음 이 값을 보고 enqueue 실패를 의심했으나, 575 = 115 × 5가
+정확히 맞아떨어지면서 뒤집혔다.
+
+`dlq:exhausted`는 같은 실행에서 `RECOVERED`로 전환됐고 회복 통지는 1회만 나갔다.
+개별 `ignore`도 인시던트를 재계산하지만 쿨다운이 전송을 억제한다.
+
+**야간의 normal 런 부재는 정상이다**: `crawl_pregame_refresh` 트리거가
+`hour="10-23"`이므로 KST 00~09시에는 돌지 않는다. 그 구간의 런은 24시간 도는
+`crawl_dead_letter_retry`가 만든 replay뿐이다. 조용한 실패로 오진하지 말 것.
+
+### 배포 상태 (미완, 2026-10-11)
+
+`3eeafa40`(BUG-015)과 `0ef2c2a2`(BUG-016)는 **아직 운영에 올라가지 않았다**:
+
+| 배포되었을 때 나타날 신호 | 현재 값 |
+|---|---|
+| `checkpoint.outcome == "source_limited"` 런 | **0건** |
+| `crawl_execution_runs.origin` | **전부 NULL** — `fd666d30` 이전 코드 |
+
+배포 후 확인할 것:
+
+```sql
+-- 런이 정책 거부로 기록되는가 (신규 런 기준)
+SELECT status, checkpoint->>'outcome' AS outcome, COUNT(*)
+FROM crawl_execution_runs
+WHERE crawler='preview' AND started_at > NOW() - INTERVAL '30 minutes'
+GROUP BY 1,2;
+
+-- 재시도 예산이 다시 소모되지 않아야 한다
+SELECT COUNT(*) FROM crawl_dead_letters
+WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
+```
+
+`crawl_pregame_refresh`는 KST 10시부터 다시 돌기 시작한다 — 배포 검증도 그때부터
+가능하다. 배포하지 않으면 수집 불가는 그대로이고, 실패는 계속 `FETCH_HTTP_ERROR`로
+보고되며 레터가 다시 쌓인다.
+
 ## 6. 누적 버그 목록 (BH0~BH11)
 
 | ID | 심각도 | 영역 | 요약 | 상태 |
