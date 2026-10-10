@@ -133,6 +133,17 @@ class ModuleFacts:
     #: through ``NaverNewsCrawlerBase``. :attr:`shared_http` stays a statement
     #: about this module's own code; this records the path it inherits.
     inherited_shared_http: bool = False
+    #: The crawler modules this one drives instead of fetching for itself.
+    #:
+    #: A crawler may fetch through another crawler rather than its own client:
+    #: ``historical_season_crawler`` builds a ``ScheduleCrawler`` and calls
+    #: ``crawl_season``. Such a module has no transport of its own and is not
+    #: missing one, so naming what it delegates to is what lets the advisory
+    #: tell that from a transport the scan genuinely failed to find.
+    #:
+    #: Read from actual calls to the imported class, not from the import: a
+    #: module that imports a crawler for a type annotation drives nothing.
+    delegates_to: frozenset[str] = frozenset()
     #: How many non-crawler modules read the data this crawler feeds.
     #:
     #: Derived from the repository's own sources rather than declared. A declared
@@ -155,19 +166,25 @@ class ModuleFacts:
 
     @property
     def has_transport(self) -> bool:
-        """Return whether the crawler reaches a source at all."""
-        """Return whether the crawler reaches a source at all."""
+        """Return whether the crawler reaches a source at all.
+
+        The inherited path counts. A crawler whose base owns the request code
+        reaches a source exactly as one that builds its own client does, and
+        reporting otherwise put "no transport was detected; check the
+        classifier" on crawlers whose classifier was already right.
+
+        Delegation counts too, for the same reason one level out: the request
+        is made, by the crawler this one drives.
+        """
         # The inherited path counts. A crawler whose base owns the request code
         # reaches a source exactly as one that builds its own client does, and
         # reporting otherwise put "no transport was detected; check the
         # classifier" on crawlers whose classifier was already right.
-        return bool(self.transports) or self.inherited_shared_http
+        return bool(self.transports) or self.inherited_shared_http or bool(self.delegates_to)
 
     @property
     def shared_http(self) -> bool:
         """Return whether the crawler uses the shared HTTP client."""
-        """Return whether the crawler uses the shared HTTP client."""
-        """Return whether the crawler uses the shared HTTP client at all."""
         return Transport.CRAWLER_HTTP_CLIENT in self.transports
 
     @property
@@ -741,6 +758,55 @@ def _reaches_httpx_itself(tree: ast.Module) -> bool:
     return False
 
 
+def _reaches_httpx_through_a_helper(module: str, tree: ast.Module) -> bool:
+    """Return whether an imported helper makes the crawler's HTTP calls.
+
+    The other half of what :func:`_reaches_httpx_itself` claims to detect. A
+    crawler may never build a client because a function it calls does:
+    ``congestion_crawler`` calls ``get_jamsil_congestion_batch`` and the module
+    behind it opens an ``httpx.AsyncClient``; ``transit_time_crawler`` calls
+    ``get_transit_times_batch`` and that module issues ``client.get`` and
+    ``client.post``. Both were reported as reaching nothing.
+
+    The unit is the module the helper was imported from, not the helper
+    function. ``get_jamsil_congestion_batch`` says so itself: it gathers
+    ``get_area_congestion``, and that is the one that opens the client.
+    Following from function to function would have to walk the module's whole
+    call graph before finding it, and the question the axis asks -- where do
+    this crawler's requests go -- is answered by the module it asked.
+
+    The import names that module, which is what a global search over the name
+    would lose: this repository has more than one ``fetch_*`` per domain, and
+    the wrong one would credit a browser crawler with a client it never touches.
+
+    Args:
+        module: The crawler doing the calling.
+        tree: Its parsed source.
+
+    Returns:
+        Whether a module the crawler imported for a helper reaches httpx.
+
+    """
+    crawler_path = CRAWLER_DIR / f"{module}.py"
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        target = _file_for_imported_symbol(crawler_path, node.func.id)
+        if target is None:
+            continue
+        body = _function_body(target, node.func.id)
+        if body is None:
+            continue
+        # The helper's own file comes with it. ``get_jamsil_congestion_batch``
+        # gathers ``get_area_congestion`` and that is the one holding the
+        # client, so a single body is not enough -- and following calls one at
+        # a time would leave the same gap one function further in.
+        expanded = _with_local_helpers(target, body)
+        if _reaches_httpx_itself(ast.parse(expanded)):
+            return True
+    return False
+
+
 #: The typed result vocabulary a crawler imports to classify its outcome.
 _RESULT_VOCABULARY = frozenset({"CrawlResult", "CrawlOutcome"})
 
@@ -836,7 +902,14 @@ def _resolve_transports(tree: ast.Module, crawler: ast.ClassDef | None, *, reach
         transport = _transport_of_node(node)
         if transport is not None:
             found.add(transport)
-    if reaches_httpx and _inherits_any(crawler, _HTTP_BASES):
+    if reaches_httpx:
+        # ``reaches_httpx`` is the evidence; the inheritance is not. Inheriting
+        # ``BaseHttpCrawler`` only makes a client available, which is why the
+        # test was written as "does it build one" in the first place -- and a
+        # crawler that builds one through the helper it imported builds one,
+        # whether or not the base it inherits is the one that supplies clients.
+        # Requiring both left ``congestion_crawler`` and ``transit_time_crawler``
+        # reported as reaching nothing while their helpers opened the client.
         found.add(Transport.RAW_HTTPX)
     if _inherits_any(crawler, _PLAYWRIGHT_BASES):
         found.add(Transport.PLAYWRIGHT)
@@ -1262,8 +1335,7 @@ def _delegated_write_tables(module: Path, body: str, depth: int) -> set[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        called = ast.unparse(node.func).rsplit(".", 1)[-1]
-        if not _is_write_call(called):
+        if not _is_a_writer(node):
             continue
         tables |= _models_written_by(module, node, depth=depth + 1)
     return tables
@@ -1363,7 +1435,7 @@ def _with_local_helpers(path: Path, function: ast.FunctionDef | ast.AsyncFunctio
             if isinstance(node, ast.Call):
                 callee = ast.unparse(node.func).rsplit(".", 1)[-1]
                 helper = helpers.get(callee)
-                if helper is None and _is_write_call(callee):
+                if helper is None and _is_a_writer(node):
                     # Only for a writer, and only one hop. Following any call out
                     # of the file pulled in whatever the delegate happened to
                     # touch: the preview writer's table set grew to include the
@@ -1470,7 +1542,7 @@ def _tables_named_as_arguments(tree: ast.Module, known: frozenset[str]) -> set[s
         if not isinstance(node, ast.Call):
             continue
         callee = ast.unparse(node.func).rsplit(".", 1)[-1]
-        if callee in known or not _is_write_call(callee):
+        if callee in known or not _is_a_writer(node):
             continue
         for argument in node.args:
             named |= {inner.id for inner in ast.walk(argument) if isinstance(inner, ast.Name) and inner.id in known}
@@ -1826,7 +1898,7 @@ def _models_written_via_helper(caller: Path, call: ast.Call, produced: set[str])
         if not isinstance(inner, ast.Call):
             continue
         name = ast.unparse(inner.func).rsplit(".", 1)[-1]
-        if not (name.endswith("Repository") or _is_write_call(name)):
+        if not (name.endswith("Repository") or _is_a_writer(inner)):
             continue
         if not _handed_result(inner, carried):
             continue
@@ -2008,7 +2080,7 @@ def _models_committed_beside(caller: Path, symbols: set[str]) -> set[str]:
         if not isinstance(node, ast.Call):
             continue
         name = ast.unparse(node.func).rsplit(".", 1)[-1]
-        if not (name.endswith("Repository") or _is_write_call(name)):
+        if not (name.endswith("Repository") or _is_a_writer(node)):
             continue
         if not _handed_result(node, produced):
             continue
@@ -2357,11 +2429,36 @@ def _crawler_instances(tree: ast.AST, symbols: set[str]) -> set[str]:
     performed for other crawlers in the same scope -- look like this crawler's
     output, and it is what made the schedule crawler claim tables filled by the
     relay fetch that happened to share its scope.
+
+    Walks the whole module, so the names are not tied to the scope that bound
+    them. That is right for asking *which* name a crawler answers to and wrong
+    for asking what it was asked to do -- see :func:`_crawler_instances_here`.
+    """
+    return _crawler_instances_here(tree, symbols, descend=True)
+
+
+def _crawler_instances_here(scope: ast.AST, symbols: set[str], *, descend: bool = False) -> set[str]:
+    """Return the crawler bindings made in one scope.
+
+    With ``descend`` the search leaves the scope, which answers "is this name a
+    crawler anywhere in this module". Without it the search stays inside, which
+    is what makes the answer usable: several of these callers bind ``crawler``
+    to a different crawler in each function, so a name collected module-wide
+    says a crawler was bound somewhere and nothing about the call under
+    examination.
+
+    Args:
+        scope: The scope to search.
+        symbols: Class names imported from the crawler module.
+        descend: Whether to leave the scope to find the binding.
+
+    Returns:
+        Variable names bound to a crawler object.
+
     """
     instances: set[str] = set()
-    # Walks the whole module: a crawler is bound inside a function, and looking
-    # only at the module's own statements would find no binding at all.
-    for node in ast.walk(tree):
+    nodes: list[ast.AST] = list(ast.walk(scope)) if descend else _own_statements(scope)
+    for node in nodes:
         if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -2405,7 +2502,6 @@ def _tables_from_write(caller: Path, call: ast.Call, carried: set[str]) -> set[s
     crediting the PBP crawler with those would put the most-read table in the
     file behind a crawler that does not own it.
     """
-    name = ast.unparse(call.func).rsplit(".", 1)[-1]
     repository = _repository_owning(call, carried, caller)
     method_tables = _repository_method_tables(repository, _method_called(call))
     if not method_tables:
@@ -2417,7 +2513,7 @@ def _tables_from_write(caller: Path, call: ast.Call, carried: set[str]) -> set[s
         via_helper = _models_written_via_helper(caller, call, carried)
         if via_helper:
             return via_helper
-        if not _is_write_call(name):
+        if not _is_a_writer(call):
             return set()
     if not _handed_result(call, carried):
         # The rows may reach the writer through a callback the caller supplies.
@@ -2470,7 +2566,7 @@ def _tables_in_callback(caller: Path, call: ast.Call) -> set[str]:
         # call and not the table, so the delegated write is followed the same way
         # a direct one would be.
         for inner in ast.walk(callback):
-            if isinstance(inner, ast.Call) and _is_write_call(ast.unparse(inner.func).rsplit(".", 1)[-1]):
+            if isinstance(inner, ast.Call) and _is_a_writer(inner):
                 tables |= _models_written_by(caller, inner)
     return tables
 
@@ -2649,12 +2745,26 @@ class Attribution:
     measurement, the other a gap in the analysis -- and they arrived here with
     the same value, so a roadmap could send an operator after a crawler whose
     readers were simply never found.
+
+    That first division is between crawlers. This one is between the callers of
+    a crawler that resolves no table, and they are the same mistake one level
+    down: a caller that hands its rows to a writer the analysis could not follow
+    and a caller that persists nothing both used to appear in one list. The first
+    is a gap in the attribution; the second is the crawler working as intended,
+    and answering them the same way sends an operator to a smoke check.
+
+    ``unresolved_callers`` does not say *why* the destination could not be
+    resolved. It could be a file, a table behind a dialect branch, or a writer
+    this scan cannot follow -- determining that is a separate question from
+    whether there is one, and the answer here is honest about stopping short of
+    it rather than guessing.
     """
 
     module: str
     models: frozenset[str]
     reader_files: frozenset[str]
     unresolved_callers: tuple[str, ...]
+    non_persisting_callers: tuple[str, ...] = ()
 
     @property
     def attributed(self) -> bool:
@@ -2675,47 +2785,46 @@ def attribution_of(module: str) -> Attribution:
         module: Crawler module name.
 
     Returns:
-        The resolved tables, the modules reading them, and the callers whose
-        write could not be resolved.
+        The resolved tables, the modules reading them, the callers whose write
+        could not be resolved, and the callers that persisted nothing.
 
     """
     models = written_models(module)
     readers = upstream_reader_files(module)
+    unresolved, non_persisting = _callers_by_intent(module)
     return Attribution(
         module=module,
         models=models,
         reader_files=readers,
-        unresolved_callers=tuple(sorted(_unresolved_callers(module) if models else _caller_paths(module))),
+        unresolved_callers=tuple(sorted(unresolved)),
+        non_persisting_callers=tuple(sorted(non_persisting)),
     )
 
 
-def _caller_paths(module: str) -> set[str]:
-    """Return the source files importing ``module``."""
-    callers: set[str] = set()
-    for path in _iter_source_files():
-        tree = _parse_or_none(path)
-        if tree is None:
-            continue
-        if any(isinstance(node, ast.ImportFrom) and node.module == f"src.crawlers.{module}" for node in ast.walk(tree)):
-            callers.add(str(path))
-    return callers
+def _callers_by_intent(module: str) -> tuple[set[str], set[str]]:
+    """Split the callers of a crawler by what they did with its rows.
 
+    The criterion is the handoff, not the import. A crawler whose own tables are
+    resolved elsewhere was previously reported against every module that merely
+    imports it, which produced a list of readers for a write nobody made -- and
+    for a crawler that persists nothing at all, it was the *only* list it had, so
+    a smoke check that fetches and asserts read the same as a pipeline that lost
+    its rows.
 
-def _unresolved_callers(module: str) -> set[str]:
-    """Return the callers holding a crawler result that reached no table.
+    A caller that asked the crawler to persist its own rows is excluded from
+    both lists. Those rows were not handed anywhere by the caller:
+    ``run_daily_update`` reads back the ticket prices it just saved only to count
+    them, and the table the rows reached is already attributed to the crawler
+    that filled it. Counting that as an untraced write claims a write was missed
+    when the write had in fact been resolved.
 
-    A caller that binds the crawler's output and hands it somewhere is evidence
-    of a write the analysis failed to follow. Leaving it out would report the
-    failure as a clean zero.
+    Returns:
+        The callers whose write could not be resolved, and the callers that
+        persisted nothing at all.
 
-    Excludes a caller that asked the crawler to persist its own rows. Those
-    rows were not handed anywhere by the caller: ``run_daily_update`` reads back
-    the ticket prices it just saved only to count them, and the table the rows
-    reached is already attributed to the crawler that filled it. Counting that
-    as an untraced write claims a write was missed when the write had in fact
-    been resolved, which buries the pairs where the analysis really did fail.
     """
     unresolved: set[str] = set()
+    non_persisting: set[str] = set()
     for path in _iter_source_files():
         tree = _parse_or_none(path)
         if tree is None:
@@ -2728,11 +2837,63 @@ def _unresolved_callers(module: str) -> set[str]:
         }
         if not symbols or not _produced_names(tree, symbols):
             continue
-        if _asked_crawler_to_save(tree, symbols):
+        if _asked_crawler_to_save(tree, symbols) or _models_owned_by(path, module):
             continue
-        if not _models_owned_by(path, module):
+        if _hands_rows_to_a_writer(tree, symbols):
             unresolved.add(str(path))
-    return unresolved
+        else:
+            non_persisting.add(str(path))
+    return unresolved, non_persisting
+
+
+def _hands_rows_to_a_writer(tree: ast.Module, symbols: set[str]) -> bool:
+    """Return whether a caller passes its rows to something that writes.
+
+    Uses the same scope walk and the same :func:`_is_a_writer` judgement that
+    :func:`_models_owned_by` applies, so the two cannot disagree about what a
+    write is: a caller this reports as untraced is one whose write the
+    attribution path also had the chance to resolve, and a writer to a file
+    rather than a table counts as a write whose destination is unknown.
+    """
+    instances = _crawler_instances(tree, symbols)
+    if not instances:
+        # The caller uses the crawler as a helper rather than a fetcher, so the
+        # rows it builds have no bound result name to follow.
+        return bool(_rows_built_with(tree, symbols))
+    for scope in _scopes(tree):
+        results = _crawler_results(scope, instances)
+        if not results:
+            continue
+        carried = _expanded_carried(scope, results)
+        if any(
+            isinstance(node, ast.Call) and _is_a_writer(node) and _handed_result(node, carried)
+            for node in ast.walk(scope)
+        ):
+            return True
+    return False
+
+
+def _is_a_writer(call: ast.Call) -> bool:
+    """Return whether a call reaches a function this repository uses to write.
+
+    The name has to read as a write, and the receiver has to be something that
+    can be one. ``_save_relay_csv(rows)``, ``crawler.save_to_db(records)`` and
+    ``self._replace_pregame_lineups(...)`` all reach a writer; ``replace`` on a
+    date string does not, and the live crawler narrows its schedule rows with
+    ``g.get("game_date", "").replace("-", "")``. Judged on the name alone that
+    comparison looked like the one caller handing its rows to something that
+    writes -- and the report then pointed at the live crawler, where the rows
+    never went anywhere.
+
+    An expression receiver is what separates them. A writer is reached through a
+    name or through an object; a method on a computed value operates on that
+    value and returns something else.
+    """
+    name = ast.unparse(call.func).rsplit(".", 1)[-1]
+    if not _is_write_call(name):
+        return False
+    receiver = call.func.value if isinstance(call.func, ast.Attribute) else None
+    return receiver is None or isinstance(receiver, ast.Name)
 
 
 def _asked_crawler_to_save(tree: ast.Module, symbols: set[str]) -> bool:
@@ -2742,48 +2903,48 @@ def _asked_crawler_to_save(tree: ast.Module, symbols: set[str]) -> bool:
     the flag is the caller's decision, and a crawler that supports saving is
     not thereby saving. A caller that sets it has already accounted for the
     write the rows will reach.
+
+    Asked per scope, because one name serves several crawlers in these callers.
+    ``crawl_p0_data`` binds ``crawler`` to the roster, event and ticket crawlers
+    in three functions, and a whole-file question is answered by whichever of
+    them set ``save`` -- so a crawler that was never asked to persist came away
+    exempt, and an exemption is precisely what must not be inherited.
     """
-    instances: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        names = {target.id for target in targets if isinstance(target, ast.Name)}
-        for inner in ast.walk(node.value):
-            if not isinstance(inner, ast.Call):
-                continue
-            if _call_constructs_crawler(inner, symbols):
-                instances |= names
+    return any(_scope_asked_to_save(scope, symbols) for scope in _scopes(tree))
+
+
+def _scope_asked_to_save(scope: ast.AST, symbols: set[str]) -> bool:
+    """Return whether one scope turned on the crawler's own persistence."""
+    instances = _crawler_instances_here(scope, symbols)
     if not instances:
         return False
-    # A caller that names the save decision -- whether a literal ``save=True``
-    # or the CLI flag it forwards -- has already accounted for the write, so it
-    # is not a path the analysis failed to follow. Reading only the literal
-    # treated ``save=args.save`` as if it were unknown, when the unknown is
-    # resolved the moment the flag is set.
-    save_requested = any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in instances
-        and any(keyword.arg == "save" for keyword in node.keywords)
-        for node in ast.walk(tree)
-    )
-    if save_requested:
-        return True
-    # An explicit write call on the crawler itself is the caller driving the
-    # crawler's persistence -- ``crawler.save_to_db(records)`` persists the rows
-    # it just crawled, through the crawler's own method. That is the same shape
-    # as a ``save=True`` argument: the caller decided where the write goes, so
-    # it is not an untraced path.
-    return any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in instances
-        and _is_write_call(node.func.attr)
-        for node in ast.walk(tree)
-    )
+
+    def calls_the_crawler(call: ast.AST) -> bool:
+        return (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id in instances
+        )
+
+    for node in ast.walk(scope):
+        if not calls_the_crawler(node):
+            continue
+        # A caller that names the save decision -- whether a literal ``save=True``
+        # or the CLI flag it forwards -- has already accounted for the write, so
+        # it is not a path the analysis failed to follow. Reading only the
+        # literal treated ``save=args.save`` as if it were unknown, when the
+        # unknown is resolved the moment the flag is set.
+        if any(keyword.arg == "save" for keyword in node.keywords):
+            return True
+        # An explicit write call on the crawler itself is the caller driving the
+        # crawler's persistence -- ``crawler.save_to_db(records)`` persists the
+        # rows it just crawled, through the crawler's own method. That is the
+        # same shape as a ``save=True`` argument: the caller decided where the
+        # write goes, so it is not an untraced path.
+        if _is_write_call(node.func.attr):
+            return True
+    return False
 
 
 def _is_literal_true(keyword: ast.keyword) -> bool:
@@ -2872,7 +3033,11 @@ def scan_module(module: str) -> ModuleFacts:
     tree = ast.parse(source)
     node = _crawler_class(tree)
     base_class = _base_name(node) if node is not None else ""
-    transports = _resolve_transports(tree, node, reaches_httpx=_reaches_httpx_itself(tree))
+    transports = _resolve_transports(
+        tree,
+        node,
+        reaches_httpx=_reaches_httpx_itself(tree) or _reaches_httpx_through_a_helper(module, tree),
+    )
 
     return ModuleFacts(
         module=module,
@@ -2889,8 +3054,43 @@ def scan_module(module: str) -> ModuleFacts:
         uses_crawl_result=_imports_result_vocabulary(tree) or _imports_page_outcome_vocabulary(tree),
         has_entrypoint=_has_entrypoint(tree),
         inherited_shared_http=_ancestor_uses_shared_client(node),
+        delegates_to=delegates_of(module, tree),
         upstream_dependents=upstream_dependents_of(module),
     )
+
+
+def delegates_of(module: str, tree: ast.Module) -> frozenset[str]:
+    """Return the crawler modules a module drives instead of fetching itself.
+
+    Read from the calls, not the imports. A crawler imported for a type
+    annotation is driven by nothing, and a class constructed inside its own
+    module -- the ``crawler = TransitTimeCrawler()`` at the bottom of ``main``
+    -- is the crawler itself, which would make every module its own delegate.
+
+    Args:
+        module: The module doing the delegating.
+        tree: Its parsed source.
+
+    Returns:
+        Names of the crawler modules whose classes it constructs or calls.
+
+    """
+    crawlers = set(discover_modules())
+    targets: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src.crawlers."):
+            name = node.module.rsplit(".", 1)[-1]
+            # ``src.crawlers.base`` holds the shared bases, not a crawler that
+            # could be driven. Only a module with crawlers in it can be one.
+            if name in crawlers and name != module:
+                targets.setdefault(name, set()).update(alias.name for alias in node.names)
+    driven: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called = ast.unparse(node.func).rsplit(".", 1)[-1]
+        driven.update(other for other, names in targets.items() if called in names)
+    return frozenset(driven)
 
 
 def _ancestor_uses_shared_client(node: ast.ClassDef | None) -> bool:
@@ -2951,8 +3151,16 @@ def advise_row(row: CrawlerRow) -> list[str]:
         notes.append(f"{row.module}: classifies outcomes but records no run, so failures leave no trace")
     if facts.has_entrypoint and not facts.has_transport:
         # A crawler with an entrypoint but no recognised transport is far more
-        # likely to be a gap in detection than a crawler that fetches nothing.
+        # likely to be a gap in detection than a crawler that fetches nothing --
+        # unless it drives another crawler, in which case the request is made
+        # and the classifier is right. One message covered both shapes and sent
+        # the operator to the classifier for five crawlers that had no gap in it.
         notes.append(f"{row.module}: has a crawl entrypoint but no transport was detected; check the classifier")
+    if facts.delegates_to and row.facts.has_transport and not row.facts.transports:
+        notes.append(
+            f"{row.module}: reaches its source by driving "
+            f"{', '.join(sorted(facts.delegates_to))}; it has no client of its own",
+        )
     return notes
 
 
