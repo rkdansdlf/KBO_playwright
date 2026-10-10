@@ -105,6 +105,15 @@ jobs:
         # in `src/crawlers/__init__.py`, which needs httpx, playwright and
         # sqlalchemy; the lint job installs ruff alone.
         run: python -m src.cli.reports.crawler_adoption_matrix --output reports/crawler_adoption_matrix.md
+      - name: Check the crawl source declarations
+        # What each crawler reads and writes, and whether the declarations still
+        # match reality. `--no-db` is deliberate: this job's database is SQLite,
+        # so measurements would all read UNKNOWN and the drift gate would fire on
+        # tables it simply cannot see. Table freshness is a production
+        # observation; what belongs here is the code contract -- that every
+        # declared table exists in the models, every declared crawler exists, and
+        # every blocked crawler records where else the data could come from.
+        run: python -m src.cli.reports.crawler_source_inventory --no-db --fail-on-drift
       - name: Check captured crawler selectors
         # Twelve captured KBO pages, held against the selectors the crawlers
         # actually read. This is the same chain as the adoption matrix a step
