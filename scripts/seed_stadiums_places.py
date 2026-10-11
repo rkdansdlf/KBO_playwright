@@ -21,6 +21,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.stadium_places_extra import EXTRA_PLACE_DATA, EXTRA_STADIUM_UPDATES
 from src.db.engine import SessionLocal
 from src.repositories.place_repository import PlaceRepository
 from src.repositories.stadium_repository import StadiumRepository
@@ -571,7 +572,9 @@ def run(dry_run: bool = False, park_factor_year: int | None = None, from_food: b
         place_repo = PlaceRepository(session)
 
         stadium_count = _seed_rows(stadium_repo, STADIUM_DATA, dry_run)
+        stadium_count += _seed_rows(stadium_repo, EXTRA_STADIUM_UPDATES, dry_run)
         place_count = _seed_rows(place_repo, PLACE_DATA, dry_run)
+        place_count += _seed_rows(place_repo, EXTRA_PLACE_DATA, dry_run)
 
         # The session runs with autoflush disabled, so flush explicitly: the
         # food import and park-factor backfill below resolve stadiums with

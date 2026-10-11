@@ -58,6 +58,14 @@ class TestSeedStadiumsPlaces:
             assert "트윈스 팀스토어 (외야 A23)" in jamsil_places
             assert "1층 화장실" in jamsil_places
             assert "출입 게이트" in jamsil_places
+            assert "GS25 (3층 D01)" in jamsil_places
+
+            gochok_places = {r.name for r in PlaceRepository(real_session).get_by_stadium("GOCHEOK")}
+            assert "BK버거 (내야2층 4번)" in gochok_places
+
+            changwon = StadiumRepository(real_session).get_by_id("CHANGWON")
+            assert changwon is not None
+            assert changwon.capacity == 18128
 
     def test_from_food_imports_vendor_with_pending_stadiums(self) -> None:
         engine = create_engine("sqlite:///:memory:")
