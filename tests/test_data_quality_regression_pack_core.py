@@ -272,6 +272,132 @@ def test_regression_pack_does_not_flag_a_row_whose_sacrifices_do_not_cover_the_g
     assert results["player_season_batting_unaccounted_pa"].violation_count == 0
 
 
+def test_regression_pack_flags_reconciliation_failure_when_a_sacrifice_was_recorded() -> None:
+    """The gap between the two checks that exist, in the rows it leaves behind.
+
+    ``player_season_batting_pa_formula`` reads only REGULAR/AGGREGATED rows and
+    found none. ``player_season_batting_unaccounted_pa`` reads rows whose
+    sacrifices are both zero and found 2,549. Together they covered 2,572 of the
+    2,603 violations and reported the pack as clean on the remaining 23.
+
+    Those 23 are the interesting ones: a sacrifice *was* recorded, so the
+    arithmetic could be done, and it does not balance. Most are the crawler's
+    layout merge having erased the walk counts beside a real sacrifice total --
+    ``walks`` NULL next to ``sacrifice_hits`` of 24 -- and a few have a plate
+    appearance figure that disagrees with its own columns by more than a stray
+    sacrifice would explain.
+
+    A check that only looks at unrecorded sacrifices cannot see any of them,
+    because the very thing that makes them legible is the sacrifice column.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    -- The crawler merge erased the walk counts; the sacrifices survived.
+                    (8001, 581, 487, NULL, NULL, 24, 2, 'REGULAR', 'CRAWLER'),
+                    -- Recorded sacrifices, but PA does not reach their sum.
+                    (8002, 18, 15, 1, 1, 2, 0, 'REGULAR', 'CRAWLER'),
+                    -- No sacrifice at all, yet the columns outrun PA. The 2001
+                    -- season row this mirrors carries an HBP of 400 against a PA
+                    -- of 490, so the columns were filled from the wrong reading.
+                    (8003, 490, 400, 125, 400, 0, 0, 'REGULAR', 'CRAWLER')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+    unreconciled = results["player_season_batting_unreconciled_pa"]
+
+    assert unreconciled.status == "fail"
+    assert unreconciled.violation_count == 3
+    assert unreconciled.sample_ids == ("8001", "8002", "8003")
+
+    # Neither of the two existing checks may claim these rows, or the new one
+    # would be reporting something already covered.
+    assert results["player_season_batting_pa_formula"].status == "pass"
+    assert results["player_season_batting_unaccounted_pa"].violation_count == 0
+
+
+def test_regression_pack_leaves_a_balanced_row_with_a_sacrifice_to_the_checks_that_have_it() -> None:
+    """Recording a sacrifice does not by itself make a row suspicious.
+
+    15,986 season rows balance as ``PA = AB + BB + HBP`` with no sacrifices, and
+    far more balance while carrying some. Reading "sacrifices are recorded" as
+    "check this row" would turn every completed season into a failure and bury
+    the rows that genuinely do not add up.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    (9001, 30, 26, 2, 1, 1, 0, 'REGULAR', 'CRAWLER'),
+                    (9002, 40, 35, 2, 1, 2, 0, 'REGULAR', 'CRAWLER'),
+                    (9003, 50, 44, 3, 1, 1, 1, 'REGULAR', 'CRAWLER')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+
+    assert results["player_season_batting_unreconciled_pa"].violation_count == 0
+
+
+def test_regression_pack_flags_a_season_row_that_records_batting_but_no_plate_appearances() -> None:
+    """A missing PA is not the same defect as an unreconciled one.
+
+    Seven 2026 ROLLUP rows carry at-bats, walks and HBP but no
+    ``plate_appearances``. ``COALESCE`` folds that NULL to zero, so the formula
+    check reads it as 0 against a non-zero sum and the unaccounted check cannot
+    see it at all -- there is nothing to compare against. Both report a
+    violation, neither says why, and the row reads as a number that was simply
+    never filled in.
+
+    The other reconciliation check excludes a NULL PA on purpose so this stays
+    the only place that reports it.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        _create_quality_tables(conn)
+        conn.execute(
+            text(
+                """
+                INSERT INTO player_season_batting
+                    (player_id, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies, league, source)
+                VALUES
+                    -- At-bats recorded, PA left empty: 0 out of 47, not a real season.
+                    (7001, NULL, 47, 0, 0, 0, 0, 'REGULAR', 'ROLLUP'),
+                    -- Nothing recorded at all: an empty row is not a defect.
+                    (7002, NULL, 0, 0, 0, 0, 0, 'REGULAR', 'ROLLUP')
+                """,
+            ),
+        )
+
+        report = run_regression_pack(conn)
+
+    results = {result.check_id: result for result in report.results}
+    missing = results["player_season_batting_missing_pa"]
+
+    assert missing.status == "fail"
+    assert missing.violation_count == 1
+    assert missing.sample_ids == ("7001",)
+    assert results["player_season_batting_unreconciled_pa"].violation_count == 0
+
+
 def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None:
     """CI scopes this pack to one season, so the new check has to honour it.
 

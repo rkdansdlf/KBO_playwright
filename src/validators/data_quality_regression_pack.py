@@ -225,6 +225,95 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    # The two checks above covered 2,572 of 2,603 season violations and reported
+    # the pack clean on the remaining 31 without naming them. This one and the
+    # next divide those 31 by what the row is actually missing, and together with
+    # unaccounted_pa the three split the whole 2,603 -- 2,549 / 23 / 31 -- so no
+    # row is counted twice and none goes unreported.
+    #
+    # PA <= AB+BB+HBP appears beside "a sacrifice was recorded" because both
+    # directions are defects. A check written only for "PA exceeds the columns"
+    # cannot see the 2001 row carrying an HBP of 400 against a PA of 490, which
+    # is a column filled from the wrong reading rather than a missing one.
+    #
+    # plate_appearances IS NOT NULL on purpose: a row with no PA is the next
+    # check's finding, so COALESCE folding NULL to zero cannot land it here too.
+    _SqlCheck(
+        check_id="player_season_batting_unreconciled_pa",
+        description="Season batting PA does not reconcile against a recorded row",
+        table="player_season_batting",
+        required_columns=(
+            "player_id",
+            "plate_appearances",
+            "at_bats",
+            "walks",
+            "hbp",
+            "sacrifice_hits",
+            "sacrifice_flies",
+        ),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM player_season_batting
+            WHERE plate_appearances IS NOT NULL
+              AND COALESCE(plate_appearances, 0) !=
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+              AND (
+                COALESCE(sacrifice_hits, 0) > 0
+                OR COALESCE(sacrifice_flies, 0) > 0
+                OR COALESCE(plate_appearances, 0)
+                   <= COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+              )
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
+            FROM player_season_batting
+            WHERE plate_appearances IS NOT NULL
+              AND COALESCE(plate_appearances, 0) !=
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+              AND (
+                COALESCE(sacrifice_hits, 0) > 0
+                OR COALESCE(sacrifice_flies, 0) > 0
+                OR COALESCE(plate_appearances, 0)
+                   <= COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+              )
+            LIMIT 5
+        """,
+    ),
+    # 31 rows carry a batting count but no plate_appearances: 18 PROFILE from
+    # 2025, 9 ROLLUP from 2026, 4 CRAWLER from 2001. COALESCE reads that NULL as
+    # zero, so the scoped formula check calls it a violation without saying why
+    # and unaccounted_pa cannot compare a missing figure against anything at all.
+    #
+    # An entirely empty row is excluded on purpose. Nothing recorded is not a
+    # defect, it is a row with nothing in it -- there are 30 of those, and
+    # reporting them would bury the 31.
+    _SqlCheck(
+        check_id="player_season_batting_missing_pa",
+        description="Season batting row records a batting count but no plate appearances",
+        table="player_season_batting",
+        required_columns=("player_id", "plate_appearances", "at_bats"),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM player_season_batting
+            WHERE plate_appearances IS NULL
+              AND (
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+              ) > 0
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
+            FROM player_season_batting
+            WHERE plate_appearances IS NULL
+              AND (
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+              ) > 0
+            LIMIT 5
+        """,
+    ),
     _SqlCheck(
         check_id="game_batting_hits_not_gt_at_bats",
         description="Game batting hits do not exceed at-bats",
