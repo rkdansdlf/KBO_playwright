@@ -358,6 +358,27 @@ looked identical to eight weeks of healthy collection. Fixed on 2026-10-10 by
 (see BUG-014 in `Docs/certification/bug-hunt/BH0_CONTRACTS.md` and
 §3.2e of `Docs/runbooks/DATA_RELIABILITY.md`).
 
+**Terms of service — unverified, and the date matters.** A KBO notice dated
+2026-09-15 was reported to announce a terms-of-service revision taking effect on
+**2026-10-14**, restricting bulk automated collection without prior written
+consent or an official API, and placing conditions on redistribution, third-party
+integration and secondary processing of collected data. **This paragraph records
+a second-hand report, not a verified fact.** The text could not be confirmed from
+this repository: `koreabaseball.com` answers `Disallow: /` for generic agents, so
+the one route that could confirm it is the route the policy refuses. Confirming
+it from here would have meant doing the thing the policy forbids and calling the
+result evidence.
+
+Until a person confirms it, treat three questions as open rather than answered:
+
+1. whether this repository's collection is "bulk automated" under the revision;
+2. whether serving the collected data through the API or the RAG index is
+   redistribution, third-party integration, or secondary processing;
+3. what consent or API access would be required, and from whom.
+
+If 2026-10-14 passes with those open, the exposure is not hypothetical — it is
+simply undecided.
+
 **The decision that is still open.** The alert now fires, which is the point —
 but whether the block is *acceptable* has not been decided:
 
