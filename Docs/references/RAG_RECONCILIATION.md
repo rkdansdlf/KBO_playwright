@@ -77,19 +77,28 @@ side 이름이 백엔드를 함의하지 않는다. 무엇을 비교하게 되�
 ## 절차
 
 1. primary/staging 각각 `export` (타깃 DB 쓰기 잠금 없음, read-only)
-2. `compare --left <a.ndjson> --right <b.ndjson>` — 컷오프는 사이드카에서 자동 적용된다(아래 "as-of 사용 가능")
+2. `compare --left <a.ndjson> --right <b.ndjson>` — 컷오프는 사이드카에서 자동 적용된다(아래 "컷오프가 산출물에 실리도록 한다")
 3. `unexplained_count == 0` 이면 PASS. 남으면 `*_keys.txt`의 키로 소스 테이블별 원인 조사
 4. 결과 요약 JSON은 `reports/rag_reconciliation/<실행시각>/comparison_summary.json`에 기록
    (`reports/`는 gitignore — 대용량 산출물 보관 규칙은 `Docs/runbooks/WORKSPACE_HYGIENE.md`)
 
-### as-of 사용 가능 (2026-10-11 구현)
+### 컷오프가 산출물에 실리도록 한다 (2026-10-11)
 
-**해결됐다.** 이전 판본이 지시한 `--as-of <min(left.exported_at, right.exported_at)>`은
-실행할 수 없었다 — 매니페스트에 `exported_at`이 없었기 때문이다(실측 필드 7개,
-코드베이스 전체에 그 이름 부재).
+**정정 — 이전 판본의 이 절은 "as-of가 실행 불가였다"고 적었는데 틀렸다.**
+`--as-of <ISO>`는 **항상 동작했다.** 실측 증거가 남았다:
+`data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/comparison_summary_asof_20260820T1630.json`
+이 `as_of: 2026-08-20T16:30:00+09:00`, `time_explainable_count: 193,545`로 이 도구의
+자체 리포트 형식이다. 8월 20일에 실제로 그렇게 썼다.
+
+없었던 것은 기능이 아니라 **자기 측정**이다. `export`가 자신이 언제 나간 시각을
+기록하지 않았으므로(매니페스트 필드 7개, 코드베이스 전체에 `exported_at` 부재)
+운영자가 컷오프를 **도구 밖에서 기억하거나 따로 손으로 넣어야** 했고, 보고서에도
+그 시각이 어디서 왔는지가 남지 않았다. 즉 이전 상태는 "죽은 기능"이 아니라
+**외부 입력에 의존하고 출처가 기록되지 않는 컷오프**였다.
 
 이제 `export`가 **사이드카 `<manifest>.meta.json`**에 `exported_at`·`side`·`rows`를
-기록한다. 매니페스트 안에 헤더 줄을 넣지 않은 이유는 계약이 "한 줄 = 청크 1개"이기
+기록하고, `compare`가 그 값에서 스스로 컷오프를 정하며, 무엇을 적용했는지를
+보고서에 밝힌다. 매니페스트 안에 헤더 줄을 넣지 않은 이유는 계약이 "한 줄 = 청크 1개"이기
 때문이다 — 헤더를 인식해야 하는 판독기는 그것을 청크로 읽거나, 청크를 헤더로 오인해
 버릴 수 있다. 별도 파일은 어느 쪽도 될 수 없다.
 
@@ -231,7 +240,10 @@ staging 빌드(08-20)는 역사 백필이 반영된 소스에서 전체 스코�
 3. `awards` 등 autoincrement 숫자 ID는 저장소 간 불안정 — 안정 키(year+award_type+player_name 등)로 전환 검토
 
 정합성 게이트(주간 권장): 양쪽 매니페스트를 export 후
-`python3 -m src.cli.rag.reconcile_rag_stores compare --as-of <공통 시점> --fail-on-unexplained`.
+`python3 -m src.cli.rag.reconcile_rag_stores compare --fail-on-unexplained`.
+`<공통 시점>`을 손으로 넣지 않는다 — 사이드카에서 스스로 정하고 어떤 규칙을
+적용했는지 `as_of_source`로 보고한다(양쪽 사이드카가 없을 때만 컷오프 없이 전부
+UNEXPLAINED로 계산된다).
 unexplained > 0이면 원인 조사, TIME_EXPLAINABLE만 증가하면 정상 증분.
 
 증거: `data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/gap_resolution_summary.json`, `exhaustive_resolution.json`
