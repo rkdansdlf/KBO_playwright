@@ -11,6 +11,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 
 ## Current Database Contract
 - **Primary operational database**: PostgreSQL, reached over Tailscale via `DATABASE_URL=postgresql://...`. It hosts all production baseball data and RAG.
+- **Prod/dev split**: `bega_prod` (100.81.73.13:5432) is primary; `bega_dev` (host 5435) is a weekly snapshot via `scripts/resync_bega_dev.py` (Sundays 04:30). Vector store `kbo_rag` lives alongside prod; nightly `rag_vector_backfill` (05:30) closes identity gaps. Nightly `KBO_PG_Backup` (04:00) dumps all three to `D:/kbo_backup` (keep 3).
 - **Keepalives are required, not optional**: the host is remote, so `DATABASE_URL` carries `keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`. Dropping them lets idle connections be reaped mid-transaction, which surfaces as a spurious `PERSIST_TIMEOUT` rather than as a connectivity complaint.
 - **Migration runners are per-dialect and hardcoded**: `python3 -m src.cli.apply_postgres_migrations` applies `migrations/postgresql/`; `python3 -m src.cli.apply_oracle_migrations` applies `migrations/oracle/`. Neither takes a `--dialect` switch, so the module you pick is what decides the chain. Both are idempotent; re-run to confirm, and `--check` exits non-zero while anything is pending.
 - **SQLite**: Local tests and scratch data only. `migrations/sqlite/` and `migrations/pgvector/` are separate chains. Never point a production write at SQLite.
