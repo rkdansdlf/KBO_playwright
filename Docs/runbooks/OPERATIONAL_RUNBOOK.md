@@ -245,3 +245,21 @@ venv/bin/python scripts/verification/verify_oci_live_sync.py --json
 [x] 전체 pytest PASS
 [x] Ruff 0 errors
 ```
+
+---
+
+## 7. Restart & Rebuild Discipline (2026-10-12 실측 반영)
+
+- RAG 벡터 백필 같은 대용량 I/O 작업 중에는 컨테이너 재시작을 피한다.
+  `docker stats` BlockIO가 수 GB대면 entrypoint의 `/ms-playwright` chown이
+  8분 이상 걸리고 헬스체크(10s 타임아웃)가 실패해 `unhealthy`로 보인다.
+  한산할 때(`docker stats` CPU≈0%) 재시작하면 1~2분이면 healthy가 된다.
+- `docker compose build`는 한 번에 하나씩, 포그라운드 타임아웃에 걸리면
+  detached로 띄우고 로그(`docker compose ... build` stdout)로 폴링한다.
+  강제 종료된 빌드는 데몬 측에 잔류해 공유 uv 캐시 마운트의 sdist lock을
+  잡고 있을 수 있다(300s lock timeout 실패의 원인). 이 경우 캐시 마운트
+  id를 바꿔(`id=uv-cache-v2` → 새 id) 우회하고, `docker builder prune`으로
+  뒤처리한다.
+- `Dockerfile` builder는 `postgres` extra를 반드시 포함한다(`--extra
+  postgres`). extra 없이 빌드하면 `No module named 'psycopg2'`로
+  스케줄러/API가 기동 실패한다.

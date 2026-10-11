@@ -28,3 +28,32 @@ services:
     image: prom/alertmanager:v0.33.1
   grafana:
     image: grafana/grafana:latest
+
+  # Local RAG vector store, promoted from a manual `docker run` on
+  # 2026-10-09 (container `kbo-pgvector`, data volume `kbo_pgvector`,
+  # host port 55433). It holds the backfilled `kbo_rag.rag_chunks`.
+  # The volume is external so adopting it never re-initializes the DB;
+  # `POSTGRES_PASSWORD` is only read on first init. The value lives in
+  # `.env` (`PGVECTOR_LOCAL_PASSWORD`) because this file must stay
+  # secret-free. Consumers keep using host port 55433 — no URL change.
+  rag-vectors:
+    image: pgvector/pgvector:pg16
+    restart: always
+    container_name: kbo-pgvector
+    environment:
+      POSTGRES_DB: kbo_rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PGVECTOR_LOCAL_PASSWORD:?PGVECTOR_LOCAL_PASSWORD must be set in .env}
+    ports:
+      - "55433:5432"
+    volumes:
+      - kbo_pgvector:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kbo_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kbo_pgvector:
+    external: true
