@@ -1062,7 +1062,9 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 | **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
-| **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 미배포** || **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 || BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
+| **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 배포 확인**(2026-10-12) — 존재 증거: 운영 원장에 `checkpoint.outcome='source_limited'` **82건**(2026-10 월), 최근 72h의 0건 `success` 런이 `preview` 61/61·`roster_transactions` 7/7·`player_movement` 4/4·`team_history` 1/1로 **전부** 표시됨. 회귀 `tests/crawlers/test_kbo_source_compliance.py` + 크롤러별 canary 5종 |
+| **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 |
+| BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 ### BUG-017 — 신선도 측정 부재
 
@@ -1140,14 +1142,49 @@ BUG-014가 "차단을 `success`로 기록해 liveness 경보가 무력화된다"
 
 #### 이번 조사에서 확인된 것 두 가지
 
-- **`source_limited` 런이 이력 전체에 0건입니다.** BUG-015가 미배포라는 직접 증거이며,
-  preview는 여전히 준법 차단을 `FETCH_HTTP_ERROR`로 기록합니다.
+- **~~`source_limited` 런이 이력 전체에 0건입니다.~~** **정정(2026-10-12): 이 문장은
+  조사 시점(10/11)에만 사실이었고, "BUG-015 미배포의 직접 증거"라는 결론은
+  틀렸다.** 운영 원장에 `checkpoint.outcome='source_limited'` **82건**(2026-10)이 있고,
+  최근 72h 기준 `preview` 61/61·`roster_transactions` 7/7·`player_movement` 4/4·
+  `team_history` 1/1로 **0건 성공 런이 전부** source-limited로 표시된다. 준법 차단도
+  더 이상 `FETCH_HTTP_ERROR`가 아니다.
+  **왜 틀렸나**: `log_source_limited()`가 `logger.warning`만 남기고 반환값을 버리는
+  코드를 읽고 "계약을 못 쓰는 크롤러가 있다"고 판단했다. 실제로는 `checkpoint={"outcome":
+  "source_limited"}`를 쓰는 크롤러 6개 이상(`kbo_event`·`player_movement`·`preview`·
+  `roster_transaction`·`season_series`·`team_history`)이 있고, 어휘는
+  `src/crawlers/source_limited.py`로 단일화돼 있다. **배포 판단은 코드가 아니라
+  운영 원장의 부재/존재 증거로 해야 한다** — 이 저장소에서 같은 착오를 여러 번 반복했다.
 - **최신 robots 스냅샷(`20261010_023101`)의 `User-agent: *` 그룹은 여전히
   `Disallow: /`입니다.** 차단이 해제된 것이 아닙니다 — 실패가 사라진 것은
   `preview`가 10-10 16:50 UTC 이후 더 이상 시도를 멈춘 것이고, 원장은 그것을
-  `success`로 기록합니다.
+  `success`로 기록합니다. **차단이 그대로인데 실패가 안 보이는 것은 계약이 작동해서다**:
+  못 물었다는 사실이 `source_limited`로 남고, 재시도 예산을 소모하지 않는다.
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
+
+#### `schedule` 0건-쓰기 1,021건 — 폴링 결함의 잔재로 종결 (2026-10-12)
+
+72시간 창에서 `schedule_month` 런이 561건, 전부 `status=success`인데 **`records_read=40`인데 `records_written=0`**이었다. 두 카운터가 모순돼 새 결함처럼 보였다. **결함은 아니었다.**
+
+원인은 `live_crawler`의 폴링 루프가 "오늘 어떤 경기인가"를 30초~2분마다 물으면서 그 답을
+`crawl_schedule(연도, 월)`로 구한 것이다(`caa527e2`가 `lookup_month`로 돌려 수정).
+`read=40, written=0`은 `crawl_schedule(save=False)`의 **문서화된 계약**이다 — 읽은 달을
+저장하지 않는 것이 요청한 일이다. 결함을 만든 것은 원장 기록이 아니라 **폴링이 월 단위
+작업을 반복해 호출한 것**이었다.
+
+종결 근거는 부재 증거로 잡았다 — 시각 경계가 정확히 갈린다:
+
+| 구분 | 건수 |
+|---|---|
+| `caa527e2` 배포 이전 (10-02 07:38 ~ 10-09 11:30:40) | **1,021** |
+| 배포 이후 (10-09 11:31:45 ~) | **0** |
+
+마지막 잔재 런이 `11:30:40`, `lookup_month` 도입이 `11:31:45`로 **65초 차이**이고,
+이후 0건이다. 배포 판단을 특정 순간의 스냅샷으로 하지 않고 **이후에 런이 생성되지 않는지**로
+확인했다(같은 착오를 이 저장소에서 반복했다).
+
+`lookup_month`은 원장 행도 DLQ 레터도 남기지 않는다 — 실패한 의존성 읽기가
+재처리 단위일 필요가 없고, 기록하면 라이브 루프가 실패하는 크롤러로 보이게 된다.
 
 ---
 
