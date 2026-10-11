@@ -348,6 +348,37 @@ def data_integrity_check_job() -> None:
             logger.exception("Data Integrity Check job failed")
 
 
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
+def source_coverage_job() -> None:
+    """Publish the blocked-source incident (daily at 05:10 KST).
+
+    Runs after ``data_integrity_check`` so a day whose integrity problems were
+    already explained does not also arrive as a source problem. The gap it
+    reports is not a fault: a robots policy refusing a crawler is the layer
+    working. What it reports is that the refusal has outlived any decision about
+    it, which nothing in the ledger or the queue can say on its own.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        try:
+            from src.cli.reports.source_coverage_incidents import build_source_coverage_incidents
+            from src.notifications.bridge import apply_incidents
+            from src.reporting.source_inventory import build_inventory
+
+            inventory = build_inventory(session_factory=SessionLocal)
+            events, resolve_keys = build_source_coverage_incidents(inventory)
+
+            if not events and not resolve_keys:
+                logger.info("=== Source Coverage: nothing blocked, nothing pending ===")
+                return
+
+            apply_incidents(events, resolve_keys=resolve_keys)
+            for event in events:
+                logger.warning("=== Source Coverage: %s ===", event.title)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Source coverage job failed")
+
+
 def _integrity_alert_event(result: object, target_date: str, key: str) -> AlertEvent:
     """Build an alert event for one failed integrity check."""
     name = str(getattr(result, "name", "unknown"))
