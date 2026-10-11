@@ -393,6 +393,66 @@ DECLARED: dict[str, SourceDeclaration] = {
         tables=("game_play_by_play",),
         alternative_source=PENDING_PERMISSION_REVIEW,
     ),
+    "baserunning_stats_crawler": SourceDeclaration(
+        tables=("player_season_baserunning",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "draft_wiki_crawler": SourceDeclaration(
+        tables=("player_draft_histories",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "dynamic_data_crawler": SourceDeclaration(
+        tables=("ticket_schedules",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "external_stats_crawler": SourceDeclaration(
+        tables=("external_season_stats",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "food_crawler": SourceDeclaration(
+        tables=("stadium_food_menu_items", "stadium_food_vendors"),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "historical_season_crawler": SourceDeclaration(
+        tables=("game",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "naver_relay_crawler": SourceDeclaration(
+        tables=("game_events",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "player_batting_all_series_crawler": SourceDeclaration(
+        tables=("player_season_batting",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "player_list_crawler": SourceDeclaration(
+        tables=("player_basic",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "player_splits_crawler": SourceDeclaration(
+        tables=("player_splits_stats",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "relay_crawler": SourceDeclaration(
+        tables=("game_events",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "team_info_crawler": SourceDeclaration(
+        tables=("team_franchises",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "realtime_issue_crawler": SourceDeclaration(
+        tables=(),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "static_text_crawler": SourceDeclaration(
+        tables=(),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "text_relay_crawler": SourceDeclaration(
+        tables=(),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
 }
 
 

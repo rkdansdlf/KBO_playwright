@@ -442,3 +442,42 @@ class TestCadence:
         declaration = inv.SourceDeclaration(tables=("awards",), job="job_that_was_renamed")
 
         assert inv._threshold_for(declaration, inv.scheduled_cadence(), 30) == 30
+
+
+class TestTheInventoryIsComplete:
+    """Coverage that is asserted, not hoped for.
+
+    When the report listed forty undeclared crawlers it was honest about it, but
+    an advisory nobody acts on is a to-do list, not a guarantee. The declarations
+    are filled in now, so a crawler added tomorrow fails this test until someone
+    says what it reads and writes.
+    """
+
+    def test_every_discovered_crawler_is_declared(self) -> None:
+        undeclared = [m for m in inv.discover_crawler_modules() if m not in inv.DECLARED]
+
+        assert not undeclared, f"crawlers with no declaration: {undeclared}"
+
+    def test_the_build_reports_no_coverage_gap(self) -> None:
+        report = inv.build_inventory()
+
+        assert not [line for line in report.advisories if "no declaration yet" in line]
+
+    def test_a_crawler_that_writes_no_table_is_still_declared(self) -> None:
+        """A pure reader is a fact worth stating, not a hole in the map.
+
+        Four crawlers produce no domain rows. Leaving them out would make the
+        inventory read as though they had not been looked at.
+        """
+        readers = [m for m, d in inv.DECLARED.items() if not d.tables]
+
+        assert readers, "the reader concept should be exercised by at least one crawler"
+        assert all(inv.DECLARED[m].alternative_source for m in readers)
+
+    def test_a_reader_has_no_measurements_to_misreport(self) -> None:
+        report = inv.build_inventory()
+
+        for row in report.rows:
+            if row.declaration and not row.declaration.tables:
+                assert row.measurements == ()
+                assert row.rag_chunks == 0
