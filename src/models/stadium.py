@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Float, Integer, String
+from sqlalchemy import Boolean, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -47,6 +47,14 @@ class Stadium(Base, TimestampMixin):
         Float, nullable=True, comment="Center-field fence distance (m)"
     )
     fence_height_m: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Outfield fence height (m)")
+    right_fence_m: Mapped[float | None] = mapped_column(Float, nullable=True, comment="Right-field fence distance (m)")
+    is_dome: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", comment="Is domed stadium")
+    valid_from_year: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="First season this geometry is valid"
+    )
+    valid_to_year: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="Last season this geometry is valid"
+    )
     turf_type: Mapped[str | None] = mapped_column(String(20), nullable=True, comment="Turf type (천연/인조)")
     bullpen_type: Mapped[str | None] = mapped_column(
         String(20), nullable=True, comment="Bullpen shape (외야/지하/덕아웃옆)"

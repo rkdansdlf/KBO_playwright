@@ -9,6 +9,10 @@ is filled by ``--park-factor-year`` via ParkFactorCalculator.
 Phone numbers are filled only where a published stadium contact exists;
 the rest stay NULL (most venues publish only the club front number).
 Places rows fall back to the stadium coordinates (lat/lng are NOT NULL).
+Known gap (verified 2026-10): per-game HR is absent for recent seasons in
+both ``game_batting_stats`` and ``game_play_by_play``, so the HR backfill
+writes nothing until the player-game HR backfill lands. Run-based proxies
+must NOT be stored in ``homerun_park_factor``.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.stadium_places_extra import EXTRA_PLACE_DATA, EXTRA_STADIUM_UPDATES
+from scripts.stadium_places_extra import EXTRA_PLACE_DATA, EXTRA_STADIUM_UPDATES, GEOMETRY_UPDATES
 from src.db.engine import SessionLocal
 from src.repositories.place_repository import PlaceRepository
 from src.repositories.stadium_repository import StadiumRepository
@@ -573,6 +577,7 @@ def run(dry_run: bool = False, park_factor_year: int | None = None, from_food: b
 
         stadium_count = _seed_rows(stadium_repo, STADIUM_DATA, dry_run)
         stadium_count += _seed_rows(stadium_repo, EXTRA_STADIUM_UPDATES, dry_run)
+        stadium_count += _seed_rows(stadium_repo, GEOMETRY_UPDATES, dry_run)
         place_count = _seed_rows(place_repo, PLACE_DATA, dry_run)
         place_count += _seed_rows(place_repo, EXTRA_PLACE_DATA, dry_run)
 

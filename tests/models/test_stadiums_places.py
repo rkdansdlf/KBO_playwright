@@ -45,6 +45,7 @@ def test_stadium_orm_crud(session) -> None:
     repo.update_park_factor("TST", 1.05)
     session.commit()
     assert repo.get_by_id("TST").homerun_park_factor == 1.05
+    assert repo.get_by_id("TST").is_dome is False
 
 
 def test_stadium_upsert_keeps_non_null(session) -> None:

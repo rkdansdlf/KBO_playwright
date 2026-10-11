@@ -35,6 +35,10 @@ EXPECTED_STADIUM_COLUMNS = {
     "updated_at",
 }
 
+SQLITE_DIM_MIGRATION = ROOT / "migrations/sqlite/068_stadiums_dimensions.sql"
+POSTGRES_DIM_MIGRATION = ROOT / "migrations/postgresql/063_stadiums_dimensions.sql"
+ORACLE_DIM_MIGRATION = ROOT / "migrations/oracle/080_stadiums_dimensions.sql"
+
 EXPECTED_PLACE_COLUMNS = {
     "stadium_id",
     "category",
@@ -104,6 +108,27 @@ def test_oracle_migration_is_idempotent_syntax() -> None:
     assert "HOMERUN_PARK_FACTOR" in sql
     assert "IDX_PLACES_STADIUM" in sql
     assert "DROP" not in sql
+
+
+def test_dimension_migrations_add_geometry_columns() -> None:
+    sqlite_sql = SQLITE_DIM_MIGRATION.read_text(encoding="utf-8")
+    pg_sql = POSTGRES_DIM_MIGRATION.read_text(encoding="utf-8")
+    oracle_sql = ORACLE_DIM_MIGRATION.read_text(encoding="utf-8")
+    assert "right_fence_m" in sqlite_sql
+    assert "is_dome" in sqlite_sql
+    assert "valid_to_year" in sqlite_sql
+    assert "ADD COLUMN IF NOT EXISTS right_fence_m" in pg_sql
+    assert "RIGHT_FENCE_M" in oracle_sql
+    assert "DROP" not in pg_sql
+    assert "DROP" not in oracle_sql
+
+    # ALTER TABLE ADD COLUMN applies once via version tracking (unlike
+    # CREATE TABLE IF NOT EXISTS), so a single application is asserted here.
+    with sqlite3.connect(":memory:") as connection:
+        connection.executescript(SQLITE_MIGRATION.read_text(encoding="utf-8"))
+        connection.executescript(sqlite_sql)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(stadiums)")}
+    assert {"right_fence_m", "is_dome", "valid_from_year", "valid_to_year"} <= columns
 
 
 if __name__ == "__main__":

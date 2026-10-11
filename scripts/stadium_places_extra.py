@@ -1277,6 +1277,25 @@ EXTRA_PLACE_DATA: list[dict[str, Any]] = [
     },
 ]
 
+#: Structured geometry promoted out of notes (migration 062/067/079 follow-up).
+GEOMETRY_UPDATES: list[dict[str, Any]] = [
+    {"stadium_id": "JAMSIL", "right_fence_m": 100.0, "is_dome": False, "valid_from_year": None, "valid_to_year": 2026},
+    {"stadium_id": "MUNHAK", "right_fence_m": 95.0, "is_dome": False, "valid_from_year": None, "valid_to_year": None},
+    {"stadium_id": "GOCHEOK", "right_fence_m": 99.0, "is_dome": True, "valid_from_year": None, "valid_to_year": None},
+    {"stadium_id": "SUWON", "right_fence_m": 98.0, "is_dome": False, "valid_from_year": None, "valid_to_year": None},
+    {"stadium_id": "SAJIK", "right_fence_m": 95.0, "is_dome": False, "valid_from_year": 2025, "valid_to_year": None},
+    {"stadium_id": "DAEGU", "right_fence_m": 99.5, "is_dome": False, "valid_from_year": None, "valid_to_year": None},
+    {
+        "stadium_id": "CHANGWON",
+        "right_fence_m": 101.0,
+        "is_dome": False,
+        "valid_from_year": None,
+        "valid_to_year": None,
+    },
+    {"stadium_id": "GWANGJU", "right_fence_m": 99.0, "is_dome": False, "valid_from_year": None, "valid_to_year": None},
+    {"stadium_id": "HANBAT", "right_fence_m": 95.0, "is_dome": False, "valid_from_year": 2025, "valid_to_year": None},
+]
+
 #: Stadium master corrections from official pages (applied as upserts).
 EXTRA_STADIUM_UPDATES: list[dict[str, Any]] = [
     {
