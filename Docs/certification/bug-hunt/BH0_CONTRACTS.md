@@ -1062,7 +1062,47 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 | **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
-| BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
+| **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 || BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
+
+### BUG-017 — 신선도 측정 부재
+
+크롤러가 성공했는지와 그 테이블이 최신인지는 **다른 사실**이다. `preview`가 8주간
+459런을 돌리고 한 건도 못 가져왔을 때 신선도 게이지가 계속 초록이었다(BUG-014가
+수집 단계를 고쳤다면, 이건 그 다음 단계다).
+
+런 상태로는 알 수 없었고, 기존 보고서 중 어느 것도 표를 읽지 않았다. 실측 결과
+**56개 측정 대상 중 16개가 stale**:
+
+| 테이블 | 나이 | RAG 청크 | 정책 |
+|---|---|---|---|
+| `team_franchises` | 152일 | 0 | blocked |
+| `team_history` | 138일 | 395 | blocked |
+| `player_season_baserunning` | 111일 | 0 | blocked |
+| `player_season_fielding` | 111일 | 0 | blocked |
+| `team_season_pitching` | 78일 | 0 | blocked |
+| `team_daily_roster`·`roster_transactions`·`player_movements` | 56일 | 0·0·**7,336** | blocked |
+| `futures_game_schedules`·`kbo_press_releases` | 49일 | 0 | blocked |
+| `team_season_batting` | 43일 | 0 | blocked |
+
+**노출과 신선도를 따로 낸 것이 핵심이다.** 16개 중 RAG에 색인된 것은 2개뿐이다.
+노출은 "누가 오답을 말하게 되나"를, 신선도는 "무엇을 수집해야 되나"를 답한다.
+`team_season_pitching`(78일)이 지금은 **노출은 0**이다 — 그 season 테이블이
+분석 경로에 쓰이는지는 다른 질문이다.
+
+#### 판정에 영향을 준 것 두 가지
+
+- **평평한 30일 임계값은 거짓 양성을 만든다.** `awards`는 시상이 연간이라 54일이
+  정상인데 stale로 표시됐다. 정상인 행을 표시하는 열은 읽는 사람이 무시하게 된다.
+  → cadence 파생 임계값(3회 결번, 최소 2일).
+- **`game`이 `-2d`로 보고됐다.** 최신 `game_date`가 예정 경기라 미래다. 음수 나이는
+  staleness의 사실이 아니며, "아주 신선"과 "고장" 중 어느 쪽인지 알 수 없다.
+  → 0으로 clamp. **읽어서가 아니라 돌려서 찾았다.**
+
+#### 가이드 추가 여부
+
+CI 스텝은 `--no-db`로 고정했다. 그 잡의 DB는 SQLite라 측정이 전부 UNKNOWN이 되고
+게이트가 **볼 수 없는 테이블로 실패**한다. 표 신선도는 운영 관측이고, CI에는 코드
+계약(선언된 테이블·크롤러 실존, 차단 크롤러의 대체 원천 기록)만 둔다.
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
 
