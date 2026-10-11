@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -21,9 +22,12 @@ from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.embedding_service import EmbeddingService
 from src.services.hybrid_retriever import HybridRetriever
 from src.services.rag_eval_corpus import DeterministicEmbeddingService
+from src.services.rag_golden_coverage import check_golden_set_coverage
 from src.services.rag_index_identity import current_index_version
 from src.services.rag_search_engine import RagSearchEngine
 from src.services.retrieval_evaluation import GoldenQuery, evaluate_variants, load_golden_queries
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -57,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "dataset": str(args.dataset),
             "embedding_mode": args.embedding_mode,
             "top_k": args.top_k,
+            "golden_coverage": _golden_coverage(queries),
             "metadata": {
                 "dataset_sha256": _file_sha256(args.dataset),
                 "corpus_sha256": _file_sha256(args.corpus) if args.corpus else None,
@@ -164,6 +169,37 @@ def _evaluate_queries(queries: list[GoldenQuery], args: argparse.Namespace) -> d
         )
         selected = variants if args.all_variants else {args.variant: variants[args.variant]}
         return evaluate_variants(queries, selected, top_k=args.top_k)
+
+
+def _golden_coverage(queries: list[GoldenQuery]) -> dict[str, object]:
+    """Resolve every expected id against the store and report the ones absent.
+
+    Reported on every run, not behind a flag. Recall cannot tell "the retriever
+    missed" from "the answer was renamed away", so a stale golden set looks like
+    a degraded index and gets debugged as one; when the ids themselves are gone,
+    the recall number is measuring the fixture.
+    """
+    expected = [chunk_id for query in queries for chunk_id in query.relevant_chunk_ids]
+    try:
+        with get_rag_index_session() as session:
+            coverage = check_golden_set_coverage(session, expected)
+    except SQLAlchemyError:
+        # A store that cannot be reached is an availability problem, reported by
+        # the retrieval path itself; this section must not mask it or claim the
+        # set is clean.
+        logger.warning("Golden set coverage skipped: store unreachable", exc_info=True)
+        return {"checked": False}
+    payload: dict[str, object] = {
+        "checked": True,
+        "expected_count": coverage.expected_count,
+        "missing_count": coverage.missing_count,
+        "clean": coverage.is_clean,
+    }
+    if coverage.missing_ids:
+        payload["missing_ids"] = list(coverage.missing_ids)
+    if coverage.unknown_sources:
+        payload["absent_source_tables"] = list(coverage.unknown_sources)
+    return payload
 
 
 def _build_variants(

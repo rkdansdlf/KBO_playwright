@@ -121,14 +121,14 @@
   {
     "id": "prod_award_018",
     "query": "2025년 KBO MVP 수상자는 누구야?",
-    "relevantChunkIds": ["awards:470"],
+    "relevantChunkIds": ["awards:2025_MVP_NONE_폰세"],
     "filters": {"source_table": "awards", "document_type": "award"},
     "tags": ["award"]
   },
   {
     "id": "prod_award_019",
     "query": "2025년 골든글러브 투수 수상자는?",
-    "relevantChunkIds": ["awards:433"],
+    "relevantChunkIds": ["awards:2025_골든글러브_투수_폰세"],
     "filters": {"source_table": "awards", "document_type": "award"},
     "tags": ["award"]
   },
@@ -156,14 +156,14 @@
   {
     "id": "prod_history_023",
     "query": "2003년 기아 타이거즈의 팀 역사는 어땠어?",
-    "relevantChunkIds": ["team_history:54"],
+    "relevantChunkIds": ["team_history:2003_KIA"],
     "filters": {"source_table": "team_history", "document_type": "team_history"},
     "tags": ["history"]
   },
   {
     "id": "prod_history_024",
     "query": "2003년 현대 유니콘스의 순위와 구장은?",
-    "relevantChunkIds": ["team_history:253"],
+    "relevantChunkIds": ["team_history:2003_HU"],
     "filters": {"source_table": "team_history", "document_type": "team_history"},
     "tags": ["history"]
   },
@@ -203,14 +203,14 @@
   {
     "id": "prod_pbp_028",
     "query": "2015년 10월 19일 경기에서 김현수의 타석 결과는?",
-    "relevantChunkIds": ["game_play_by_play:999993"],
+    "relevantChunkIds": ["game_play_by_play:20151019OBNC0_content_41f5591f0830ccf21c7ff611590e11b273645772300fb8043da338ba00467793"],
     "filters": {"source_table": "game_play_by_play", "document_type": "game_play_by_play", "game_date": "2015-10-19"},
     "tags": ["game"]
   },
   {
     "id": "prod_move_029",
     "query": "2018년 12월 김동엽 선수 트레이드 내용은?",
-    "relevantChunkIds": ["player_movements:996"],
+    "relevantChunkIds": ["player_movements:2018-12-07_삼성_김동엽(외야수)_트레이드_53ef4827f2294e4a"],
     "filters": {"source_table": "player_movements", "document_type": "player_movement"},
     "tags": ["player"]
   },
