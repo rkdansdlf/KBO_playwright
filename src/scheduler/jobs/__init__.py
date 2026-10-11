@@ -25,6 +25,7 @@ from src.scheduler.jobs.daily import (
     daily_gap_report_job,
     db_reachability_check_job,
     lock_health_check_job,
+    rag_vector_backfill_job,
 )
 from src.scheduler.jobs.live import (
     _analyze_game_rows,
@@ -125,6 +126,7 @@ __all__ = [
     "heal_unverified_pbp_job",
     "lock_health_check_job",
     "rag_audit_sentinel_job",
+    "rag_vector_backfill_job",
     "recalc_milestones_and_rag_job",
     "relay_state_cleanup_job",
     "selector_drift_sentinel_job",

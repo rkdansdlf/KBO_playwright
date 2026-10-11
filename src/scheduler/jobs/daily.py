@@ -736,6 +736,35 @@ def db_reachability_check_job() -> None:
     _update_job_status("db_reachability_check_job", JobStatus.SUCCESS, "Passed")
 
 
+def rag_vector_backfill_job() -> None:
+    """Embed sparse identities missing from the vector store (bounded nightly)."""
+    _register_job("rag_vector_backfill_job", dependencies=[])
+
+    can_run, reason = _can_run_job("rag_vector_backfill_job")
+    if not can_run:
+        _update_job_status("rag_vector_backfill_job", JobStatus.SKIPPED, f"Skipped: {reason}")
+        logger.warning("Skipping rag_vector_backfill_job: %s", reason)
+        return
+
+    logger.info("=== Starting RAG Vector Gap Backfill ===")
+    os.environ["KBO_ALLOW_RAG_VECTOR_MIGRATION"] = "1"
+    try:
+        from src.cli.rag.backfill_missing_vectors import main as backfill_main
+
+        exit_code = backfill_main(["--apply", "--limit", "2000"])
+    except Exception as exc:
+        logger.exception("RAG vector backfill failed to launch")
+        alert_warning("rag_vector_backfill", details=f"Could not run backfill: {exc}")
+        _update_job_status("rag_vector_backfill_job", JobStatus.FAILURE, f"Launch failed: {exc}")
+        return
+    if exit_code != 0:
+        alert_warning("rag_vector_backfill", details=f"Backfill exited with code {exit_code}.")
+        _update_job_status("rag_vector_backfill_job", JobStatus.FAILURE, f"Exit code {exit_code}")
+    else:
+        alert_success("rag_vector_backfill", "vector gap backfill passed")
+        _update_job_status("rag_vector_backfill_job", JobStatus.SUCCESS, "Passed")
+
+
 def lock_health_check_job() -> None:
     """Post-run lock-health verification for the 06:45 P1/P2 job."""
     _register_job("lock_health_check_job", dependencies=["crawl_p1p2_data_job"])

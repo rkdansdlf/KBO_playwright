@@ -40,6 +40,7 @@ from src.scheduler.jobs.daily import (
     daily_gap_report_job,
     db_reachability_check_job,
     lock_health_check_job,
+    rag_vector_backfill_job,
 )
 from src.scheduler.jobs.live import (
     crawl_live_refresh,
@@ -235,6 +236,13 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
             "db_reachability_check",
             "Primary Database Reachability Check",
             300,
+        ),
+        (
+            rag_vector_backfill_job,
+            trigger_cls(hour=5, minute=30),
+            "rag_vector_backfill",
+            "RAG Vector Gap Backfill (bounded nightly)",
+            3600,
         ),
         (
             crawl_p0_non_game_job,
