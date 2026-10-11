@@ -54,6 +54,19 @@ apply 게이트에서 수행한다.** id 체계 변경은 기존 chunk identity�
 | player_movements | `str(id)` (PK) | `{movement_date}_{team_code}_{player_name}_{section}_{fingerprint}` | 생성 경로 적용; legacy rekey pending |
 | game_play_by_play | `str(id)` (PK) | `{game_id}_{source_row_index}` 또는 content digest | 생성 경로 적용; legacy rekey pending |
 | game_highlights | `str(id)` (PK) | `{game_id}_{highlight_type}_{event_seq}` 또는 description digest | 생성 경로 적용; legacy rekey pending |
+| team_events | `str(id)` (PK) | `{scope}_{team}_{type}_{date}_{fingerprint}` | 2026-10-11 추가·적용 완료. `id`는 재수집 시 재번호되고, 제목만 쓰면 같은 프로모션의 날짜 변형이 충돌 |
+| press_release | `str(id)` (PK) | `{notice_id}` | 2026-10-11 추가·적용 완료. KBO 공지 번호는 공지 자체에 인쇄돼 재수집에도 불변. 날짜+제목은 제목 정정 시 청크가 개명됨 |
+| player_basic | `str(player_id)` (PK) | **변경 없음** | 숫자 ID가 곧 자연키. 복합키는 데이터가 거부한다(아래) |
+
+### player_basic을 재키하지 않는 이유
+
+`player_basic`의 청크 8,066건은 `player_id`와 이미 1:1이므로, 자연키를 `player_id`로 정하면 **같은 값을 쓰는 무의미한 이름 변경**이 된다. 읽기 쉬운 복합키 대안은 데이터가 허용하지 않는다:
+
+- `team`·`position`이 **85% NULL**(6,886/8,066)이라 4분의 3이 같은 키로 붕괴
+- 이름만 쓰면 동명이인이 충돌 — '이원석'이 서로 다른 id **125개**, '이상훈' 4행도 **SK·CB·SS·LG로 실제 다른 선수**
+- 동명이인이 125명인 사실 자체가 "이 id는 변할 수 없다"는 증거다
+
+따라서 이 테이블의 숫자 id는 드리프트가 아니라 자연키이며, 복합키를 만들어야 한다는 압박만 제거하는 것이 이 절의 목적이다. 후속 판단은 `R2_SOURCE_TABLES`를 확장해 이 판단을 명시적으로 고정하거나, 아예 제외 대상으로 두는 것이다.
 
 ## 마이그레이션 경로
 
