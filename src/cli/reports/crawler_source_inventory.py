@@ -65,6 +65,34 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _render_zero_yield(inventory: SourceInventory) -> list[str]:
+    """Render the crawlers whose reported successes collected nothing.
+
+    Args:
+        inventory: The inventory to render.
+
+    Returns:
+        The section's lines, heading included.
+
+    """
+    bare = inventory.zero_yield_runs()
+    corroborated = set(inventory.succeeding_and_stale())
+    lines = ["", f"Success that collected nothing ({len(bare)})"]
+    if not bare:
+        lines.append("  none")
+        return lines
+    for row in bare:
+        runs = row.runs
+        if runs is None:
+            continue
+        where = "table is old too" if row in corroborated else "no table of its own"
+        lines.append(
+            f"  {row.crawler}: {runs.succeeded} of {runs.total} runs succeeded in {runs.window_hours}h, "
+            f"reading and writing nothing ({where})"
+        )
+    return lines
+
+
 def _render_text(inventory: SourceInventory) -> str:
     """Render the report for a human.
 
@@ -79,6 +107,11 @@ def _render_text(inventory: SourceInventory) -> str:
     lines.append(f"  crawlers reported   {len(inventory.rows)}")
     lines.append(f"  declared            {sum(1 for r in inventory.rows if r.declared)}")
     lines.append(f"  blocked by policy   {sum(1 for r in inventory.rows if r.policy_status is PolicyStatus.BLOCKED)}")
+    # How many rows the ledger actually joined. Most crawlers are weekly or run on
+    # demand and simply did not run in the window, so this is a count rather than
+    # a list of names -- but a drop in it is how a rename in either vocabulary
+    # becomes visible instead of silent.
+    lines.append(f"  with run summary    {sum(1 for r in inventory.rows if r.runs is not None)}")
     lines.append("")
 
     header = f"  {'crawler':34} {'policy':8} {'table':26} {'age':>7}  {'state':7} {'rag':>7}"
@@ -97,6 +130,8 @@ def _render_text(inventory: SourceInventory) -> str:
                 f"  {name:34} {policy:8} {measurement.table:26} {measurement.render_age():>7}  "
                 f"{_FRESHNESS_MARK[measurement.freshness]:7} {row.rag_chunks if index == 0 else '':>7}",
             )
+
+    lines.extend(_render_zero_yield(inventory))
 
     exposed = inventory.ai_exposure()
     lines.extend(["", f"AI-visible stale data ({len(exposed)})"])

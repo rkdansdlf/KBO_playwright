@@ -177,6 +177,16 @@ class SourceDeclaration:
     because of when the transaction happened, not when the row was written.
     """
 
+    ledger_name: str | None = None
+    """The crawler's name in the run ledger, when it differs from its module.
+
+    The ledger and the filesystem use different vocabularies -- the ledger writes
+    ``roster_transactions`` where the module is ``roster_transaction_crawler`` --
+    so the default is a guess and this is its correction. Guessing was tried
+    first and matched seven of the eight crawlers observed; the eighth needed
+    this field, and without it the run measurement silently attached to nothing.
+    """
+
     job: str | None = None
     """The scheduler job that runs this crawler, for its expected cadence.
 
@@ -258,6 +268,7 @@ DECLARED: dict[str, SourceDeclaration] = {
         priority="high",
     ),
     "roster_transaction_crawler": SourceDeclaration(
+        ledger_name="roster_transactions",
         job="crawl_p0_non_game",
         tables=("roster_transactions",),
         repository="roster_transaction_repository",
@@ -456,6 +467,49 @@ DECLARED: dict[str, SourceDeclaration] = {
 }
 
 
+#: How far back to read the run ledger when judging whether a crawler yields.
+#:
+#: Three days rather than a day: a daily crawler that yields on the seventh day
+#: would look broken in a 24-hour window and healthy in a year, and neither
+#: window can tell those apart. Three days also spans a weekend, which is when a
+#: genuinely absent collection is most likely to be explained away.
+RUN_WINDOW_HOURS = 72
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    """What a crawler's recent runs actually did, as opposed to reported.
+
+    The ledger distinguishes a run that failed from a run that succeeded. It does
+    not distinguish a run that succeeded *and collected something* from one that
+    succeeded having fetched nothing at all, which is the difference between a
+    crawler working and a crawler blocked by a robots policy while reporting
+    `success`.
+    """
+
+    crawler: str
+    window_hours: int
+    total: int
+    succeeded: int
+    zero_yield: int
+    latest_at: datetime | None = None
+
+    @property
+    def yields(self) -> bool:
+        """Return whether any success in the window actually collected data.
+
+        False means every reported success handed back nothing. One such run can be
+        an off-day; a window of them is the signature of a source that is not
+        being consulted.
+
+        A crawler with no successes at all does not count. Every run failing is
+        already visible in the ledger, and folding it in here would report a
+        loud, already-known failure as if it were the quiet one this section
+        exists to find.
+        """
+        return self.succeeded == 0 or self.zero_yield < self.succeeded
+
+
 @dataclass(frozen=True)
 class TableMeasurement:
     """One table's real state, read from the database."""
@@ -487,6 +541,7 @@ class SourceRow:
     measurements: tuple[TableMeasurement, ...] = ()
     rag_chunks: int = 0
     consumers: tuple[str, ...] = ()
+    runs: RunSummary | None = None
 
     @property
     def declared(self) -> bool:
@@ -510,6 +565,17 @@ class SourceRow:
             "priority": (self.declaration.priority if self.declaration else None),
             "rag_chunks": self.rag_chunks,
             "consumers": list(self.consumers),
+            "runs": (
+                {
+                    "window_hours": self.runs.window_hours,
+                    "total": self.runs.total,
+                    "succeeded": self.runs.succeeded,
+                    "zero_yield": self.runs.zero_yield,
+                    "latest_at": (self.runs.latest_at.isoformat() if self.runs.latest_at else None),
+                }
+                if self.runs
+                else None
+            ),
             "tables": [
                 {
                     "table": m.table,
@@ -536,6 +602,34 @@ class SourceInventory:
     def rows_by_crawler(self) -> dict[str, SourceRow]:
         """Index the rows by crawler name."""
         return {row.crawler: row for row in self.rows}
+
+    def succeeding_and_stale(self) -> tuple[SourceRow, ...]:
+        """Return crawlers reporting success while their tables go empty.
+
+        The two facts are collected from different places and neither contradicts
+        the other on its own. A crawler that succeeded did what it was asked; a
+        table that is old was not updated. Put together they mean the run is not
+        evidence of collection at all -- which is how a blocked source stays
+        invisible: every run is `success`, and nothing in the ledger is wrong.
+        """
+        return tuple(
+            row
+            for row in self.rows
+            if row.runs is not None
+            and not row.runs.yields
+            and any(m.freshness is Freshness.STALE for m in row.measurements)
+        )
+
+    def zero_yield_runs(self) -> tuple[SourceRow, ...]:
+        """Return crawlers whose every recent success collected nothing.
+
+        Broader than :meth:`succeeding_and_stale`, which needs a stale table as
+        corroboration. A pure reader has no table of its own -- the preview
+        crawler is the clearest case, and it is the one that read nothing fifty
+        times in a row -- so for those the ledger is the only evidence there is,
+        and withholding it would hide the most alarming case in the report.
+        """
+        return tuple(row for row in self.rows if row.runs is not None and not row.runs.yields)
 
     def ai_exposure(self) -> tuple[SourceRow, ...]:
         """Return rows that feed answers *and* are not current.
@@ -732,6 +826,70 @@ def measure_table(
     return TableMeasurement(table, chosen, rows, latest, age_days, freshness)
 
 
+def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> dict[str, RunSummary]:
+    """Read the run ledger and count how many successes actually collected data.
+
+    A zero-yield success is one where neither a record was read nor a record was
+    written. Both columns are consulted because a crawler can read a page and
+    write nothing legitimately -- an unchanged page -- and counting only writes
+    would call that a failure.
+
+    Args:
+        session: An open session. Read-only.
+        window_hours: How far back to look.
+
+    Returns:
+        A summary per crawler that has runs in the window.
+
+    """
+    from datetime import UTC, timedelta
+    from datetime import datetime as _datetime
+
+    from sqlalchemy import text
+
+    since = _datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=window_hours)
+    try:
+        rows = session.execute(
+            text(
+                "SELECT crawler, status, records_read, records_written, started_at "
+                "FROM crawl_execution_runs WHERE started_at > :since"
+            ),
+            {"since": since},
+        ).all()
+    except Exception:
+        # A deployment without the reliability tables still deserves an inventory.
+        logger.info("crawl_execution_runs is not readable; skipping the run measurement", exc_info=True)
+        return {}
+
+    # Aggregated here rather than in SQL for the same reason the table age is:
+    # `count(*) FILTER (...)` and `make_interval` are PostgreSQL, and a
+    # measurement that cannot run against a test database is a measurement whose
+    # error handling silently replaces it with nothing.
+    summaries: dict[str, list[int]] = {}
+    latest_at: dict[str, datetime] = {}
+    for crawler, status, records_read, records_written, started_at in rows:
+        counts = summaries.setdefault(str(crawler), [0, 0, 0])
+        counts[0] += 1
+        if status == "success":
+            counts[1] += 1
+            if not (records_read or 0) and not (records_written or 0):
+                counts[2] += 1
+        if started_at is not None:
+            seen = latest_at.get(str(crawler))
+            latest_at[str(crawler)] = started_at if seen is None or started_at > seen else seen
+    return {
+        crawler: RunSummary(
+            crawler=crawler,
+            window_hours=window_hours,
+            total=counts[0],
+            succeeded=counts[1],
+            zero_yield=counts[2],
+            latest_at=latest_at.get(crawler),
+        )
+        for crawler, counts in summaries.items()
+    }
+
+
 def rag_chunk_counts(session: Session) -> dict[str, int]:
     """Return how many answer chunks each table contributes.
 
@@ -840,21 +998,24 @@ def _measure_declared(
     *,
     stale_after_days: int,
     cadence: dict[str, Cadence] | None = None,
-) -> tuple[dict[str, tuple[TableMeasurement, ...]], dict[str, int], list[str]]:
-    """Read every declared table once, returning measurements, chunks and drift.
+    window_hours: int = RUN_WINDOW_HOURS,
+) -> tuple[dict[str, tuple[TableMeasurement, ...]], dict[str, int], dict[str, RunSummary], list[str]]:
+    """Read every declared table once, returning measurements, chunks, runs and drift.
 
     One session for all of it: the readings are independent, and reconnecting per
     table would make the report's own runtime the dominant cost.
     """
     measurements: dict[str, tuple[TableMeasurement, ...]] = {}
     chunks: dict[str, int] = {}
+    runs: dict[str, RunSummary] = {}
     drift: list[str] = []
     if session_factory is None:
-        return measurements, chunks, drift
+        return measurements, chunks, runs, drift
 
     schedules = cadence if cadence is not None else scheduled_cadence()
     with session_factory() as session:
         chunks = rag_chunk_counts(session)
+        runs = run_summaries(session, window_hours=window_hours)
         for module, declaration in DECLARED.items():
             threshold = _threshold_for(declaration, schedules, stale_after_days)
             measurements[module] = tuple(
@@ -874,7 +1035,7 @@ def _measure_declared(
                 for m in measurements[module]
                 if m.freshness is Freshness.UNKNOWN and m.rows == 0
             )
-    return measurements, chunks, drift
+    return measurements, chunks, runs, drift
 
 
 def _build_rows(
@@ -882,6 +1043,7 @@ def _build_rows(
     blocked: frozenset[str],
     measurements: dict[str, tuple[TableMeasurement, ...]],
     chunks: dict[str, int],
+    runs: dict[str, RunSummary],
     crawler_dir: Path,
 ) -> list[SourceRow]:
     """Assemble one row per crawler, declared or not."""
@@ -897,6 +1059,7 @@ def _build_rows(
                 declaration=declaration,
                 measurements=table_measurements,
                 rag_chunks=sum(chunks.get(m.table, 0) for m in table_measurements),
+                runs=runs.get(declaration.ledger_name or module.removesuffix("_crawler")) if declaration else None,
                 consumers=(consumers_of(declaration.repository) if declaration and declaration.repository else ()),
             ),
         )
@@ -929,6 +1092,8 @@ def _collect_findings(
         if row.policy_status is PolicyStatus.BLOCKED and row.declaration and not row.declaration.alternative_source
     )
 
+    stale_tables = [row for row in rows if any(m.freshness is Freshness.STALE for m in row.measurements)]
+    bare = [row for row in rows if row.runs is not None and not row.runs.yields]
     undeclared = sorted(row.crawler for row in rows if not row.declared)
     if undeclared:
         named = ", ".join(undeclared[:ADVISORY_NAME_LIMIT])
@@ -939,6 +1104,18 @@ def _collect_findings(
         )
     advisories.append(
         f"robots policy read from {snapshot}" if snapshot else "no robots snapshot found; policy_status is UNKNOWN"
+    )
+    advisories.extend(
+        f"{row.crawler} reported {row.runs.succeeded} success"
+        f"{'' if row.runs.succeeded == 1 else 'es'} in {row.runs.window_hours}h, none of which read or "
+        f"wrote a record"
+        + (
+            f"; its table is {row.stalest.render_age()} old"
+            if row in stale_tables
+            else "; it writes no table of its own"
+        )
+        for row in bare
+        if row.runs is not None
     )
     advisories.extend(
         f"AI-visible stale data: {row.crawler} feeds {row.rag_chunks} chunks from a table "
@@ -955,6 +1132,7 @@ def build_inventory(
     crawler_dir: Path = CRAWLER_DIR,
     robots_dir: Path = ROBOTS_DIR,
     stale_after_days: int = 30,
+    window_hours: int = RUN_WINDOW_HOURS,
 ) -> SourceInventory:
     """Build the inventory, reading the database when one is reachable.
 
@@ -964,17 +1142,23 @@ def build_inventory(
         crawler_dir: Directory holding crawler modules (tests override this).
         robots_dir: Directory holding robots snapshots.
         stale_after_days: Default age at which a table is reported stale.
+        window_hours: How far back to read the run ledger.
 
     Returns:
         The inventory, with its own coverage gaps attached.
 
     """
     blocked, snapshot = blocked_hosts(robots_dir=robots_dir)
-    measurements, chunks, drift = _measure_declared(session_factory, stale_after_days=stale_after_days)
+    measurements, chunks, runs, drift = _measure_declared(
+        session_factory,
+        stale_after_days=stale_after_days,
+        window_hours=window_hours,
+    )
     rows = _build_rows(
         blocked=blocked,
         measurements=measurements,
         chunks=chunks,
+        runs=runs,
         crawler_dir=crawler_dir,
     )
     more_drift, advisories = _collect_findings(rows, snapshot=snapshot, crawler_dir=crawler_dir)
@@ -1002,6 +1186,7 @@ __all__ = [
     "measure_table",
     "policy_status_of",
     "rag_chunk_counts",
+    "run_summaries",
     "scheduled_cadence",
     "source_domains",
 ]

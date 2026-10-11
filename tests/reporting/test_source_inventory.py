@@ -59,6 +59,12 @@ def scratch_db() -> Iterator[sessionmaker]:
             {"t": (_REFERENCE + timedelta(days=3)).date()},
         )
         connection.execute(text("CREATE TABLE rag_chunks (id INTEGER PRIMARY KEY, source_table VARCHAR(64))"))
+        connection.execute(
+            text(
+                "CREATE TABLE crawl_execution_runs (id INTEGER PRIMARY KEY, crawler VARCHAR(64), "
+                "status VARCHAR(32), records_read INTEGER, records_written INTEGER, started_at TIMESTAMP)"
+            )
+        )
         connection.execute(text("INSERT INTO rag_chunks (source_table) VALUES ('old_table')"))
         connection.execute(text("INSERT INTO rag_chunks (source_table) VALUES ('old_table')"))
     factory = sessionmaker(bind=engine, expire_on_commit=False)
@@ -481,3 +487,176 @@ class TestTheInventoryIsComplete:
             if row.declaration and not row.declaration.tables:
                 assert row.measurements == ()
                 assert row.rag_chunks == 0
+
+
+def _seed_runs(factory, crawler: str, *, succeeded: int, zero_yield: int, total: int = 0) -> None:
+    """Write a ledger that reports `succeeded` successes, `zero_yield` of them empty."""
+    total = total or succeeded
+    empty = succeeded - zero_yield
+    # Committed explicitly: closing a session without one rolls the inserts back,
+    # which reads as "the ledger is empty" rather than as a broken fixture.
+    with factory() as session:
+        for index in range(empty):
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "started_at) VALUES (:c, 'success', 5, 5, :t)"
+                ),
+                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+            )
+        for index in range(zero_yield):
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "started_at) VALUES (:c, 'success', 0, 0, :t)"
+                ),
+                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+            )
+        for index in range(total - succeeded):
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "started_at) VALUES (:c, 'failed', 0, 0, :t)"
+                ),
+                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+            )
+        session.commit()
+
+
+class TestRunYields:
+    """A success that collected nothing is the quiet failure this exists to find.
+
+    Found in production: four crawlers reported `success` on every run in a
+    72-hour window while reading and writing nothing, and the tables three of
+    them own were 56 to 138 days old. Nothing in the ledger was wrong. The run
+    did what it was asked, and it collected no data.
+    """
+
+    def test_zero_yield_successes_are_counted(self, scratch_db: sessionmaker) -> None:
+        _seed_runs(scratch_db, "preview", succeeded=50, zero_yield=50)
+
+        with scratch_db() as session:
+            summary = inv.run_summaries(session)["preview"]
+
+        assert summary.succeeded == 50
+        assert summary.zero_yield == 50
+        assert summary.yields is False
+
+    def test_a_run_that_read_but_wrote_nothing_still_counts_as_yielding(self, scratch_db: sessionmaker) -> None:
+        """An unchanged page is a legitimate empty result, not a failure."""
+        with scratch_db() as session:
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "started_at) VALUES ('preview', 'success', 7, 0, :t)"
+                ),
+                {"t": _REFERENCE.replace(tzinfo=None)},
+            )
+            session.commit()
+
+        with scratch_db() as session:
+            summary = inv.run_summaries(session)["preview"]
+
+        assert summary.zero_yield == 0
+        assert summary.yields is True
+
+    def test_a_crawler_with_only_failures_is_not_reported_as_collecting_nothing(
+        self,
+        scratch_db: sessionmaker,
+    ) -> None:
+        """Every run failing is already visible; folding it in hides the quiet case."""
+        _seed_runs(scratch_db, "food", succeeded=0, zero_yield=0, total=3)
+
+        with scratch_db() as session:
+            summary = inv.run_summaries(session)["food"]
+
+        assert summary.succeeded == 0
+        assert summary.yields is True
+
+    def test_one_empty_run_among_yielding_ones_does_not_raise_the_section(
+        self,
+        scratch_db: sessionmaker,
+    ) -> None:
+        """A single quiet run can be an off-day."""
+        _seed_runs(scratch_db, "game_detail", succeeded=9, zero_yield=1)
+
+        with scratch_db() as session:
+            summary = inv.run_summaries(session)["game_detail"]
+
+        assert summary.yields is True
+
+    def test_the_ledger_name_overrides_the_module_name(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The ledger and the filesystem use different words for the same crawler.
+
+        The ledger writes `roster_transactions` where the module is
+        `roster_transaction_crawler`. Guessing the join silently attached the run
+        measurement to nothing, so the report looked complete while measuring
+        none -- which is the failure mode this whole module is about.
+        """
+        _seed_runs(scratch_db, "roster_transactions", succeeded=7, zero_yield=7)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "roster_transaction_crawler",
+            inv.SourceDeclaration(
+                tables=("roster_transactions",),
+                ledger_name="roster_transactions",
+                alternative_source="elsewhere",
+            ),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+        row = report.rows_by_crawler()["roster_transaction_crawler"]
+
+        assert row.runs is not None
+        assert row.runs.succeeded == 7
+
+    def test_a_success_with_nothing_collected_beside_a_stale_table_is_reported(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The two facts corroborate each other; neither does on its own."""
+        _seed_runs(scratch_db, "game_detail", succeeded=4, zero_yield=4)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "game_detail_crawler",
+            inv.SourceDeclaration(tables=("old_table",), alternative_source="elsewhere"),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        assert [row.crawler for row in report.succeeding_and_stale()] == ["game_detail_crawler"]
+        assert any("none of which read or wrote a record" in line for line in report.advisories)
+
+    def test_a_yielding_crawler_with_a_stale_table_is_not_in_that_section(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Otherwise a slow collector and a blocked one read identically."""
+        _seed_runs(scratch_db, "game_detail", succeeded=4, zero_yield=0)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "game_detail_crawler",
+            inv.SourceDeclaration(tables=("old_table",), alternative_source="elsewhere"),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        assert report.succeeding_and_stale() == ()
+
+    def test_a_pure_reader_is_still_reported_without_a_table(
+        self,
+        scratch_db: sessionmaker,
+    ) -> None:
+        """The preview crawler has no table of its own, and it is the worst case."""
+        _seed_runs(scratch_db, "preview", succeeded=50, zero_yield=50)
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        reported = {row.crawler for row in report.zero_yield_runs()}
+        assert "preview_crawler" in reported
