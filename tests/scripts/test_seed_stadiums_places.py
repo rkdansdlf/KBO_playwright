@@ -47,6 +47,18 @@ class TestSeedStadiumsPlaces:
             assert gochok.bullpen_type == "지하"
             assert gochok.homerun_park_factor is None
 
+            jamsil = StadiumRepository(real_session).get_by_id("JAMSIL")
+            assert jamsil is not None
+            assert jamsil.phone == "02-2202-3834"
+            assert jamsil.capacity == 25000
+
+            from src.repositories.place_repository import PlaceRepository
+
+            jamsil_places = {r.name for r in PlaceRepository(real_session).get_by_stadium("JAMSIL")}
+            assert "트윈스 팀스토어 (외야 A23)" in jamsil_places
+            assert "1층 화장실" in jamsil_places
+            assert "출입 게이트" in jamsil_places
+
     def test_from_food_imports_vendor_with_pending_stadiums(self) -> None:
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
