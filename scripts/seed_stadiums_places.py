@@ -544,7 +544,7 @@ def _backfill_park_factors(session: Any, stadium_repo: StadiumRepository, year: 
 
     calc = ParkFactorCalculator(session)
     updated = 0
-    for row in calc.calculate(year):
+    for row in calc.calculate_homerun(year):
         venue = str(row.get("stadium", ""))
         stadium_id = next(
             (sid for label, sid in VENUE_TO_STADIUM_ID.items() if label in venue),

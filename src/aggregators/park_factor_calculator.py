@@ -118,6 +118,85 @@ class ParkFactorCalculator:
 
         return results
 
+    def calculate_homerun(self, year: int) -> list[dict[str, Any]]:
+        """Calculate HR-only venue factor for one season.
+
+        Formula: (HR per game at venue) / (league HR per game).
+        HR totals come from ``game_batting_stats``; games without batting
+        rows count as 0 HR, so seasons with thin batting coverage read low.
+
+        Args:
+            year: Season year.
+
+        Returns:
+            List of results.
+
+        """
+        from sqlalchemy import func
+
+        from src.models.game import GameBattingStat
+
+        games = (
+            self.session.query(Game)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(
+                KboSeason.season_year == year,
+                KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
+                Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+            )
+            .all()
+        )
+
+        if not games:
+            logger.info("[ParkFactor] %s년 완료 경기 없음.", year)
+            return []
+
+        game_ids = [g.game_id for g in games]
+        hr_rows = (
+            self.session.query(GameBattingStat.game_id, func.sum(GameBattingStat.home_runs))
+            .filter(GameBattingStat.game_id.in_(game_ids))
+            .group_by(GameBattingStat.game_id)
+            .all()
+        )
+        hr_by_game = {game_id: int(total or 0) for game_id, total in hr_rows}
+
+        venue_games: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"home_runs": 0, "games": 0},
+        )
+        for g in games:
+            stadium = cast("str | None", g.stadium) or "UNKNOWN"
+            vg = venue_games[stadium]
+            vg["home_runs"] += hr_by_game.get(g.game_id, 0)
+            vg["games"] += 1
+
+        total_hr = sum(v["home_runs"] for v in venue_games.values())
+        total_games = sum(v["games"] for v in venue_games.values())
+        if total_hr == 0 or total_games == 0:
+            logger.info("[ParkFactor] %s년 홈런 기록 없음.", year)
+            return []
+        league_avg_hrpg = total_hr / total_games
+
+        results = []
+        for stadium, vg in sorted(venue_games.items()):
+            if vg["games"] == 0:
+                continue
+            hr_per_game = vg["home_runs"] / vg["games"]
+            pf = hr_per_game / league_avg_hrpg
+            results.append(
+                {
+                    "season": year,
+                    "stadium": stadium,
+                    "games": vg["games"],
+                    "home_runs": vg["home_runs"],
+                    "hr_per_game": round(hr_per_game, 3),
+                    "league_avg_hrpg": round(league_avg_hrpg, 3),
+                    "park_factor": round(pf, 3),
+                    "park_factor_label": self._label(pf),
+                },
+            )
+
+        return results
+
     def _label(self, pf: float) -> str:
         if pf > PARK_FACTOR_HITTER_FRIENDLY_THRESHOLD:
             return "타자친화"

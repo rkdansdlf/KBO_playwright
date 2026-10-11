@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.aggregators.park_factor_calculator import ParkFactorCalculator
-from src.models.game import Game
+from src.models.game import Game, GameBattingStat
 from src.models.season import KboSeason
 
 
@@ -16,6 +16,7 @@ def session():
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(bind=engine)
     KboSeason.__table__.create(bind=engine)
+    GameBattingStat.__table__.create(bind=engine)
     sess = sessionmaker(bind=engine)()
     yield sess
     sess.close()
@@ -154,6 +155,61 @@ class TestParkFactorEdgeCases:
         calc = ParkFactorCalculator(session)
         assert calc._label(1.04) == "중립"
         assert calc._label(0.96) == "약간 투수친화"
+
+
+def _add_hr(
+    session,
+    game_id="20250101",
+    home_runs=1,
+    team_side="home",
+    seq=1,
+):
+    session.add(
+        GameBattingStat(
+            game_id=game_id,
+            team_side=team_side,
+            player_name="테스트",
+            appearance_seq=seq,
+            home_runs=home_runs,
+        ),
+    )
+    session.commit()
+
+
+class TestHomerunFactor:
+    def test_returns_empty_when_no_games(self, session):
+        _add_season(session)
+        calc = ParkFactorCalculator(session)
+        assert calc.calculate_homerun(2025) == []
+
+    def test_returns_empty_when_no_homers(self, session):
+        _add_season(session)
+        _add_game(session)
+        calc = ParkFactorCalculator(session)
+        assert calc.calculate_homerun(2025) == []
+
+    def test_two_stadiums_ranked_by_hr(self, session):
+        _add_season(session)
+        # 잠실: 3 HR in 1 game; 사직: 1 HR in 1 game; league avg 2.0
+        _add_game(session, game_id="20250101", stadium="잠실")
+        _add_game(session, game_id="20250102", stadium="사직")
+        _add_hr(session, game_id="20250101", home_runs=2)
+        _add_hr(session, game_id="20250101", home_runs=1, seq=2)
+        _add_hr(session, game_id="20250102", home_runs=1)
+        calc = ParkFactorCalculator(session)
+        by_stadium = {r["stadium"]: r for r in calc.calculate_homerun(2025)}
+        assert by_stadium["잠실"]["park_factor"] == pytest.approx(1.5, abs=0.001)
+        assert by_stadium["사직"]["park_factor"] == pytest.approx(0.5, abs=0.001)
+        assert by_stadium["잠실"]["home_runs"] == 3
+
+    def test_null_stadium_grouped_as_unknown(self, session):
+        _add_season(session)
+        _add_game(session, game_id="20250101", stadium=None)
+        _add_hr(session, game_id="20250101", home_runs=2)
+        calc = ParkFactorCalculator(session)
+        results = calc.calculate_homerun(2025)
+        assert len(results) == 1
+        assert results[0]["stadium"] == "UNKNOWN"
 
 
 class TestPrintReport:
