@@ -1062,8 +1062,8 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 | **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
-| **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 배포 확인**(2026-10-12) — 존재 증거: 운영 원장에 `checkpoint.outcome='source_limited'` **82건**(2026-10 월), 최근 72h의 0건 `success` 런이 `preview` 61/61·`roster_transactions` 7/7·`player_movement` 4/4·`team_history` 1/1로 **전부** 표시됨. 회귀 `tests/crawlers/test_kbo_source_compliance.py` + 크롤러별 canary 5종 |
-| **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 |
+| **BUG-019** | **P1** | **reporting/metrics** | **`max(updated_at)`은 수집 시각이 아니라 *변화* 시각 — 매일 수집해도 내용이 같으면 표가 멈춰 보인다** | **미수정(계측기 결함)**. 근거: `parking` 4회 success·매번 3건(10-10까지)인데 `parking_lots.updated_at`은 2026-08-15 || **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 배포 확인**(2026-10-12) — 존재 증거: 운영 원장에 `checkpoint.outcome='source_limited'` **82건**(2026-10 월), 최근 72h의 0건 `success` 런이 `preview` 61/61·`roster_transactions` 7/7·`player_movement` 4/4·`team_history` 1/1로 **전부** 표시됨. 회귀 `tests/crawlers/test_kbo_source_compliance.py` + 크롤러별 canary 5종 |
+| **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 최대 152일 지난 테이블 unnoticed** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`). **숫자 정정**(BUG-019): 처음 적었던 "16개" 중 `parking_lots`·`parking_fee_rules`는 **오탐**(정상 수집 중). 수집이 실제로 멈춘 것이 확인된 건 4~5건 |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 ### BUG-017 — 신선도 측정 부재
@@ -1105,6 +1105,62 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 CI 스텝은 `--no-db`로 고정했다. 그 잡의 DB는 SQLite라 측정이 전부 UNKNOWN이 되고
 게이트가 **볼 수 없는 테이블로 실패**한다. 표 신선도는 운영 관측이고, CI에는 코드
 계약(선언된 테이블·크롤러 실존, 차단 크롤러의 대체 원천 기록)만 둔다.
+
+### BUG-019 — 신선도 계측기의 오탐
+
+U1a(호스트별 robots 기록)를 마치고 그 대가를 확인하던 중 계측기 자체의 결함이
+나왔다. **BUG-017이 처음 공개한 "stale 16건"은 숫자가 틀렸다.**
+
+`max(updated_at)`은 **데이터가 마지막으로 바뀐 시각**이지 **마지막 수집 시각**이
+아니다. `TimestampMixin.updated_at`은 `onupdate=func.now()`인데 SQLAlchemy는
+인스턴스가 dirty가 아닐 때 UPDATE를 내지 않는다. `ParkingLotRepository.save()`는
+기존 행을 SELECT한 뒤 `setattr(existing, key, value)`로 덮어쓰므로, 페이지 내용이
+같으면 net change가 0이고 **UPDATE 자체가 발생하지 않는다.**
+
+| 크롤러 | 최근 60일 런 | 마지막 쓰기 | `parking_lots.updated_at` |
+|---|---|---|---|
+| `parking` | 4회 **success**, 매번 `records_written=3` | 2026-10-10 | **2026-08-15** |
+
+어제까지 매일 3건씩 수집하는데 표는 56일 전으로 보인다. 이를 `STALE`로 적으면 읽는
+사람은 56일간 수집이 멈췄다고 읽는다 — 매일 하고 있는 일을 고장이라고 말하는 셈이다.
+
+#### 신선도 하나로는 구조적으로 "오래됨"을 "멈춤"으로 읽는다
+
+BUG-017은 **테이블만** 봤다. 원장을 함께 본 것은 U1a 이후의 작업이고, 둘을 나란히
+놓아야 이 결함이 보인다:
+
+| 원장 | 테이블 | 정답 |
+|---|---|---|
+| 0건 수집 | 오래됨 | **수집 안 됨** (차단) |
+| 정상 수집 | 오래됨 | **안정됨** — 오래된 게 아니라 변하지 않은 것 |
+| 0건 수집 | 최신 | 판단 보류 |
+
+#### BUG-017 정정
+
+16건 중 `parking_lots`·`parking_fee_rules`는 **오탐**입니다(정상 수집 중).
+`stadium_food_*`는 원장이 `FETCH_BLOCKED`·`PARSE_EMPTY`로 멈춰 있어 진짜입니다.
+`roster_transactions`(56일)·`player_movements`(56일)·`team_history`(139일)은 0건
+수집이면서 표도 오래된 진짜 건이며 BUG-018이 이미 따로 잡은 것과 일치합니다.
+`stadium_seat_sections`(57일)은 60일간 런 자체가 없습니다.
+**수집이 실제로 멈춘 것이 확인된 건 4~5건이고, 16이 아닙니다.**
+
+#### 부수 발견 — 호스트 추출의 한계가 실제로 피해를 냈다
+
+`food_crawler`를 인벤토리는 `ok`(giantsclub.com 허용)로 보고하는데 원장은 10-07~10-09
+`FETCH_BLOCKED`, 10-10 `PARSE_EMPTY`를 기록합니다. `FETCH_BLOCKED`는 준법 계층이
+KBO만 관장한다는 전제에서 나올 수 있으므로 **food가 KBO URL을 쓴다는 뜻**이고, 그
+URL이 런타임에 조립되어 `source_domains`(문자 리터럴 스캔)가 보지 못한 것입니다.
+
+모듈 docstring이 "런타임에 조립되는 호스트는 이 보고서가 확인할 수 없는 주장"이라고
+적어둔 한계를 실제로 무너뜨린 사례입니다. 다만 **원장이 틀렸다고 가정하고 그럴듯이
+넘기지도 않아야 합니다.** 둘이 어긋나는 사실 자체를 보고해야 하고, 어느 쪽이 옳은지는
+지금 알 수 없으므로 확인 대신 조용히 한쪽을 택하지 않는 편이 옳습니다.
+
+#### 다음
+
+- 계측기를 단일 신호에서 **원장 × 테이블** 교차 판정으로 변경(위 표)
+- 인벤토리와 원장이 어긋나는 경우를 drift로 보고
+- BUG-017의 숫자를 보고서 출력에서 재계산
 
 ### BUG-018 — 0건 수집이 `success`로 기록됨
 
