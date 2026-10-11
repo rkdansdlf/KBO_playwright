@@ -19,6 +19,7 @@ from src.constants import KST
 from src.models.award import Award
 from src.models.futures_schedule import FuturesGameSchedule
 from src.models.game import Game, GameHighlight, GamePlayByPlay
+from src.models.kbo_press_release import KboPressRelease
 from src.models.player import PlayerMovement
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
@@ -32,6 +33,7 @@ from src.services.rag_index_identity import (
     stable_milestone_source_row_id,
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
+    stable_press_release_source_row_id,
     stable_splits_source_row_id,
     stable_team_event_source_row_id,
     stable_team_history_source_row_id,
@@ -54,6 +56,7 @@ R2_SOURCE_TABLES = (
     "game_play_by_play",
     "game_highlights",
     "team_events",
+    "press_release",
 )
 R2_MANIFEST_VERSION = "r2-identity-census-v1"
 R2_INDEX_VERSION = "rag-v2"
@@ -447,6 +450,26 @@ def _team_event_records(session: Session, season: int | None) -> Iterator[Source
         )
 
 
+def _press_release_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield KBO press-release identities from the source table.
+
+    Keyed on KBO's notice number rather than the table's own ``id``: the crawler
+    re-inserts the list each run, so ``id`` is a sequence that shifts, while the
+    notice number is the identifier printed on the notice itself.
+
+    No season filter -- the table carries a published date, not a season, and the
+    releases spill across season boundaries.
+    """
+    del season
+    statement = select(KboPressRelease.id, KboPressRelease.notice_id)
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "press_release",
+            str(row[0]),
+            stable_press_release_source_row_id(row[1]),
+        )
+
+
 def iter_source_identity_records(
     session: Session,
     source_table: str,
@@ -463,6 +486,7 @@ def iter_source_identity_records(
         "game_play_by_play": _pbp_records,
         "game_highlights": _highlight_records,
         "team_events": _team_event_records,
+        "press_release": _press_release_records,
     }
     try:
         builder = record_builders[source_table]

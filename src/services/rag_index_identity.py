@@ -175,3 +175,15 @@ def stable_team_event_source_row_id(
     )
     readable = "_".join(parts)
     return f"{readable}_{_identity_digest((*parts, _identity_part(title)))[:16]}"
+
+
+def stable_press_release_source_row_id(notice_id: int | str | None) -> str:
+    """Build a deterministic natural key for a KBO press release chunk.
+
+    The source table's own ``id`` is a plain sequence that changes whenever the
+    crawler re-loads the list, but KBO's notice number is published business data
+    -- it appears in the title and URL of the actual notice -- so it survives a
+    re-crawl unchanged. Not a date+title composite, because the same notice can be
+    re-listed under a corrected title, and that would rename the chunk.
+    """
+    return str(notice_id).strip() if notice_id is not None else "UNKNOWN"
