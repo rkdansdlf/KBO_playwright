@@ -23,7 +23,7 @@ import argparse
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
@@ -64,6 +64,9 @@ def _find_stuck_games() -> list[Game]:
         stmt = select(Game).where(
             Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
             Game.game_date <= yesterday,
+            # 1982 inaugural-season boxscores were never published online and
+            # cannot be backfilled; they stay UNRESOLVED_MISSING by design.
+            Game.game_date >= date(2001, 1, 1),
         )
         return list(session.execute(stmt).scalars().all())
 
