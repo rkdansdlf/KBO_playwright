@@ -26,6 +26,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.stadium_places_extra import EXTRA_PLACE_DATA, EXTRA_STADIUM_UPDATES, GEOMETRY_UPDATES
+from src.constants import VENUE_TO_STADIUM_ID
 from src.db.engine import SessionLocal
 from src.repositories.place_repository import PlaceRepository
 from src.repositories.stadium_repository import StadiumRepository
@@ -451,23 +452,6 @@ PLACE_DATA: list[dict[str, Any]] = [
         "close_time": None,
     },
 ]
-
-#: Game.stadium venue label -> stadiums.stadium_id (best effort; labels vary).
-VENUE_TO_STADIUM_ID: dict[str, str] = {
-    "잠실": "JAMSIL",
-    "문학": "MUNHAK",
-    "인천": "MUNHAK",
-    "고척": "GOCHEOK",
-    "수원": "SUWON",
-    "사직": "SAJIK",
-    "부산": "SAJIK",
-    "대구": "DAEGU",
-    "창원": "CHANGWON",
-    "마산": "CHANGWON",
-    "광주": "GWANGJU",
-    "대전": "HANBAT",
-    "한화생명볼파크": "HANBAT",
-}
 
 
 def _seed_rows(repo: Any, rows: list[dict[str, Any]], dry_run: bool) -> int:

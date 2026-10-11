@@ -33,6 +33,8 @@ logger = logging.getLogger("src.scheduler.jobs.maintenance")
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.orm import Session
+
     from src.services.crawl_dead_letter_stats import DlqStats
 
 #: Runtime import: the sweep's empty result is constructed on the failure path,
@@ -492,6 +494,38 @@ def backup_db_job() -> None:
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
+def persist_homerun_factors(session: Session, year: int) -> int:
+    """Calculate HR park factors and persist them to stadiums.
+
+    Args:
+        session: Session.
+        year: Season year.
+
+    Returns:
+        Updated row count.
+
+    """
+    from src.aggregators.park_factor_calculator import ParkFactorCalculator
+    from src.constants import VENUE_TO_STADIUM_ID
+    from src.repositories.stadium_repository import StadiumRepository
+
+    stadium_repo = StadiumRepository(session)
+    calc = ParkFactorCalculator(session)
+    updated = 0
+    for row in calc.calculate_homerun(year):
+        venue = str(row.get("stadium", ""))
+        stadium_id = next(
+            (sid for label, sid in VENUE_TO_STADIUM_ID.items() if label in venue),
+            None,
+        )
+        if stadium_id is None:
+            logger.warning("[ParkFactor] Unmapped venue %r, skipped", venue)
+            continue
+        if stadium_repo.update_park_factor(stadium_id, float(row["park_factor"])):
+            updated += 1
+    return updated
+
+
 def compute_park_factor_job() -> None:
     """Compute park factor for all stadiums (Sunday 05:30 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -504,6 +538,9 @@ def compute_park_factor_job() -> None:
                 calc = ParkFactorCalculator(session)
                 results = calc.calculate(current_year)
                 logger.info("Park Factor computed for %d stadiums", len(results))
+                updated = persist_homerun_factors(session, current_year)
+                session.commit()
+                logger.info("HR Park Factor persisted for %d stadiums", updated)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Park Factor computation failed")
 

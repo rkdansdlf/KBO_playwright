@@ -47,6 +47,23 @@ BASE_STATE_FIRST = 1
 BASE_STATE_SECOND = 2
 BASE_STATE_THIRD = 4
 
+#: Game.stadium venue label -> stadiums.stadium_id (best effort; labels vary).
+VENUE_TO_STADIUM_ID: dict[str, str] = {
+    "잠실": "JAMSIL",
+    "문학": "MUNHAK",
+    "인천": "MUNHAK",
+    "고척": "GOCHEOK",
+    "수원": "SUWON",
+    "사직": "SAJIK",
+    "부산": "SAJIK",
+    "대구": "DAEGU",
+    "창원": "CHANGWON",
+    "마산": "CHANGWON",
+    "광주": "GWANGJU",
+    "대전": "HANBAT",
+    "한화생명볼파크": "HANBAT",
+}
+
 IP_FRAC_THIRD = 33
 IP_FRAC_TWO_THIRDS = 66
 # Test build cache
