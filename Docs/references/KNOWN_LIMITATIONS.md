@@ -371,3 +371,60 @@ but whether the block is *acceptable* has not been decided:
 
 Until one of those is recorded, treat the alert as unresolved rather than as
 noise.
+
+### Measured impact by crawler (2026-10-11)
+
+`python -m src.cli.reports.crawler_source_inventory` reports **51 crawlers, 36
+declared, 24 blocked by policy**. The age is the table's own latest row, and it
+is what separates the two cases that looked identical before:
+
+| Crawler | Policy | Table | Age |
+| --- | --- | --- | --- |
+| `team_history_crawler` | blocked | `team_history` | **138d** (2026-05-26) |
+| `fielding_stats_crawler` | blocked | `player_season_fielding` | **111d** (2026-06-22) |
+| `team_pitching_stats_crawler` | blocked | `team_season_pitching` | **78d** (2026-07-25) |
+| `daily_roster_crawler` | blocked | `team_daily_roster` | **56d** |
+| `player_movement_crawler` | blocked | `player_movements` | **56d** (2026-08-16) |
+| `roster_transaction_crawler` | blocked | `roster_transactions` | **56d** (2026-08-16) |
+| `futures_schedule_crawler` | blocked | `futures_game_schedules` | **49d** (2026-08-23) |
+| `press_release_crawler` | blocked | `kbo_press_releases` | **49d** |
+| `team_batting_stats_crawler` | blocked | `team_season_batting` | **42d** (2026-08-30) |
+| `parking_crawler` | **unknown** | `parking_lots` / `parking_fee_rules` | **56d / 57d** |
+| `seat_crawler` | **unknown** | `stadium_seat_sections` | **57d** |
+
+**The last two rows are not the block.** They never consult the policy, so
+robots cannot be the reason their tables stopped — they need their own
+investigation. (`parking_fee_kinds`, added 2026-10-04, is still `empty` even
+though the crawler has reported `success` four times since.)
+
+**Blocked is not the same as stale.** Nine blocked crawlers still produce
+current rows because a second path feeds the same table or the policy does not
+gate their host: `pbp_crawler` (`game_play_by_play`, 0d), `schedule_crawler`
+(`game`, 0d), `player_pitching_all_series_crawler` (`player_season_pitching`,
+0d), `draft_history_crawler` (3d), `milestone_crawler` (4d), `kbo_event_crawler`
+(1d), and `player_profile_crawler` / `player_search_crawler` /
+`staff_register_crawler` (`player_basic`, 24d). Reading the policy column alone
+would have declared all 24 lost; the age column shows which tables actually
+stopped.
+
+**The 56-day cluster is the block.** Three tables stopped on 2026-08-16, eleven
+days after the site-wide rule appeared on 2026-08-05 — the gap is the weekly and
+monthly cadence of the jobs, not a second cause.
+
+**RAG is serving the stale copies.** Two tables feed the vector store and both
+are behind:
+
+| Table | Chunks | Table age |
+| --- | --- | --- |
+| `player_movements` | 7,336 | 56d |
+| `team_history` | 395 | 138d |
+
+`crawler_source_inventory` prints these as *AI-visible stale data*, which is the
+distinction worth keeping: the retrieval layer answers from rows that stopped
+updating, so a query about a recent trade returns the pre-block state.
+
+**Declaration gaps hide four more blocked crawlers.** The header counts 24
+blocked but only 20 have rows, because 15 of the 51 crawlers declare nothing and
+`preview_crawler` reports `(no table declared)` while writing `game_summary` —
+its freshness is invisible here even though its ledger runs are the loudest
+signal in the system.
