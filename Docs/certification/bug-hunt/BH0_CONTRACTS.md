@@ -1062,7 +1062,7 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 | **BUG-015** | **P1** | **crawler/ledger** | **준법 차단이 `FETCH_HTTP_ERROR` + 재시도 가능 DLQ 레터로 기록됨 — 재시도로 절대 성공할 수 없는 레터 77건이 `exhausted`** | **수정 완료(10-10); `source_limited` 기록, DLQ 미적재** |
 | **BUG-014** | **P1** | **metrics/crawler** | **준법 차단 런이 `success`로 기록돼 liveness 경보가 영원히 조용함 — 8주간 데이터 0건을 아무도 몰랐다** | **수정 완료(10-10); `kbo_crawl_last_source_consulted_timestamp` + `KboCrawlerSourceNeverConsulted` + `kbo_crawl_source_limited_total`** |
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
-| **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 || BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
+| **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 미배포** || **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 16개 테이블이 stale unnoticed (최대 152일)** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`); `source_inventory`가 표를 직접 읽어 판정 || BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 ### BUG-017 — 신선도 측정 부재
 
@@ -1103,6 +1103,49 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 CI 스텝은 `--no-db`로 고정했다. 그 잡의 DB는 SQLite라 측정이 전부 UNKNOWN이 되고
 게이트가 **볼 수 없는 테이블로 실패**한다. 표 신선도는 운영 관측이고, CI에는 코드
 계약(선언된 테이블·크롤러 실존, 차단 크롤러의 대체 원천 기록)만 둔다.
+
+### BUG-018 — 0건 수집이 `success`로 기록됨
+
+BUG-014가 "차단을 `success`로 기록해 liveness 경보가 무력화된다"를 다뤘다면, 이건
+그보다 넓은 문장이다. **아무것도 수집하지 못한 런도 `success`다.** 원장은
+"실패한 런"과 "성공한 런"만 구분하고, 성공이면서 아무것도 못 가져온 경우는 구분하지
+않는다.
+
+72시간 창 실측 (`2026-10-11`):
+
+| 크롤러 | 성공 | 읽은 것 | 쓴 것 | 자기 테이블 |
+|---|---|---|---|---|
+| `preview` | **50** / 740 | 0 | 0 | 없음 (순수 리더) |
+| `roster_transactions` | 7 / 7 | 0 | 0 | 56일 |
+| `player_movement` | 4 / 4 | 0 | 0 | 56일 |
+| `team_history` | 1 / 1 | 0 | 0 | 138일 |
+| `game_detail` | 9 / 9 | 9 | 9 | 정상 |
+| `parking` | 2 / 2 | 2 | 2 | 정상 |
+
+**원장에 잘못된 값은 하나도 없다.** 각 런은 요청대로 성공했다. 그리고 세 테이블의
+나이는 56~138일이다 — BUG-017이 별개로 측정한 그 값과 정확히 일치한다. 두 사실은
+다른 곳에서 나오고 그 자체로는 모순이 아니며, **같이 놓으면 런이 수집의 증거가
+아님**이 드러난다.
+
+#### 왜 조용했나
+
+`preview`가 가장 나쁩니다. 자기 테이블이 없어(파이프라인이 저장), 그래서 신선도
+측정에도 표면에도 없습니다. **따라서 표가 없는 순수 리더는 원장이 유일한 증거**이고,
+그 크롤러들에 대해서는 원장을 숨기면 보고서에서 가장 큰 발견이 사라집니다. 그래서
+`succeeding_and_stale()`(stale 표로 보강)와 `zero_yield_runs()`(표 없이도 보고)를
+따로 뒀습니다.
+
+**전부 실패한 크롤러는 제외했습니다.** 그 실패는 원장에 이미 보이고, 여기에 섞으면
+이미 알려진 소음을 이 절이 찾는 조용한 실패로 위장합니다.
+
+#### 이번 조사에서 확인된 것 두 가지
+
+- **`source_limited` 런이 이력 전체에 0건입니다.** BUG-015가 미배포라는 직접 증거이며,
+  preview는 여전히 준법 차단을 `FETCH_HTTP_ERROR`로 기록합니다.
+- **최신 robots 스냅샷(`20261010_023101`)의 `User-agent: *` 그룹은 여전히
+  `Disallow: /`입니다.** 차단이 해제된 것이 아닙니다 — 실패가 사라진 것은
+  `preview`가 10-10 16:50 UTC 이후 더 이상 시도를 멈춘 것이고, 원장은 그것을
+  `success`로 기록합니다.
 
 **BUG-010은 수정 전 hunt에서 데이터 손실에 가장 가까운 발견이었습니다.** schedule replay가 이제 `save=True`를 명시하며, 재도입 시 회귀 테스트가 실패합니다. **BUG-011은 6개 handler의 성공 오판 경로를 5개 거부 가드로 닫았고, schedule은 기존 `missing` 실패 계약을 유지합니다.**
 
