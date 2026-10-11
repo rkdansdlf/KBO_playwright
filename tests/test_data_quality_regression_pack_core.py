@@ -13,8 +13,11 @@ from src.validators.data_quality_regression_pack import (
     _adapt_limit_clause,
     _adapt_schema_aliases,
     _CHECKS,
+    BaselineUnreadableError,
+    compare_against_baseline,
     render_regression_report,
     run_regression_pack,
+    write_baseline,
 )
 
 #: The three checks that between them account for every season PA violation.
@@ -478,6 +481,274 @@ def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None
     assert scoped_result.violation_count == 1
     assert scoped_result.sample_ids == ("7001",)
     assert unscoped_result.violation_count == 2
+
+
+class TestComparingAgainstABaseline:
+    """A count cannot tell a fixed backlog from a fresh break.
+
+    2,603 violations today and 2,603 tomorrow reads as "no change" whether a
+    player was repaired or a different one was damaged, and the pack reports
+    ``ok=False`` either way -- so the operator cannot tell a quiet backlog from a
+    bleeding one. This is why the whole season PA series is set, not summed:
+    what matters is which rows moved.
+
+    The backlog behind these rows is not repairable from here. The source is
+    blocked by robots.txt and the game-level rows these seasons would be
+    re-derived from are absent, so the rows stay. What can be stopped is the next
+    one, and only a per-row comparison notices that.
+    """
+
+    def _baseline_file(self, tmp_path: Path, body: dict) -> Path:
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        path = tmp_path / "pa_baseline.json"
+        path.write_text(json.dumps(body, ensure_ascii=False))
+        return path
+
+    def test_a_row_the_baseline_does_not_have_is_reported_as_new(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {"version": 1, "checks": {"player_season_batting_unaccounted_pa": {"player_ids": []}}},
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ("5001",)
+        assert verdict.baseline_violations == ()
+        assert verdict.is_new_damage is True
+
+    def test_a_backlog_that_stays_the_size_is_not_new_damage(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5001, 5002, 5003):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ()
+        assert verdict.baseline_violations == ("5001", "5002", "5003")
+        assert verdict.is_new_damage is False
+
+    def test_a_repair_and_a_break_in_one_run_are_told_apart(self) -> None:
+        """The case a count cannot express at all.
+
+        Three rows before, three rows after, and ``ok=False`` throughout -- but
+        one was repaired and one is new. Reporting only the total would show no
+        change and the new damage would ship.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5002, 5009):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ("5009",), "the new damage was not named"
+        assert verdict.resolved_violations == ("5001", "5003"), "the repairs were not named"
+
+    def test_a_violation_that_moved_between_checks_is_not_called_new(self) -> None:
+        """The rows can legitimately change bucket without changing hands.
+
+        ``unreconciled_pa`` and ``unaccounted_pa`` turn on whether a sacrifice was
+        recorded, so a row whose sacrifices get backfilled moves out of the
+        unaccounted bucket while still failing the formula. It is the same
+        defect on the same player and must not raise new damage.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 581, 487, 63, 4, 24, 2, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001"]},
+                        "player_season_batting_unreconciled_pa": {"player_ids": []},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ()
+        assert verdict.is_new_damage is False
+
+    def test_a_baseline_naming_a_check_that_no_longer_runs_is_reported(self) -> None:
+        """A retired check cannot silently retire its rows.
+
+        Without this, removing a check would read as "its violations are fixed"
+        and the verdict would claim the backlog shrank while nobody looked at
+        those players any more.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {"version": 1, "checks": {"player_season_batting_retired_check": {"player_ids": ["7001"]}}},
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert "player_season_batting_retired_check" in verdict.unknown_checks
+
+    def test_an_unreadable_baseline_is_an_error_rather_than_an_all_clear(self) -> None:
+        """A missing file must not read as "everything is new" or "nothing is".
+
+        Both readings are wrong in the direction that hides a break: an absent
+        baseline compared as empty reports the whole backlog as new damage,
+        while a corrupt one compared as empty in the other direction would report
+        nothing. The caller has to be told rather than handed a verdict.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            missing = Path(self._tmpdir.name) / "does_not_exist.json"
+            corrupt = self._baseline_file(Path(self._tmpdir.name) / "bad", {"version": 1})
+            corrupt.parent.mkdir(parents=True, exist_ok=True)
+            corrupt.write_text("{not json")
+
+        with pytest.raises(BaselineUnreadableError):
+            compare_against_baseline(engine.connect(), missing)
+        with pytest.raises(BaselineUnreadableError):
+            compare_against_baseline(engine.connect(), corrupt)
+
+    def test_the_baseline_records_the_rows_so_it_can_be_reused(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5001, 5002):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            path = Path(self._tmpdir.name) / "written.json"
+            written = write_baseline(conn, path)
+
+        assert written["version"] == 1
+        assert sorted(written["checks"]["player_season_batting_unaccounted_pa"]["player_ids"]) == ["5001", "5002"]
+        assert json.loads(path.read_text()) == written
+
+    def test_a_baseline_recorded_over_all_seasons_cannot_settle_a_scoped_run(self) -> None:
+        """A scoped run must not read a whole-history baseline as mass repair.
+
+        452 of the 760 recorded players fail in more than one season, so a
+        baseline written without a scope holds 780 entries while ``--year 2026``
+        sees 46. Reading the narrower run against the wider baseline would report
+        714 players as repaired on every single run -- a verdict that is wrong,
+        looks like progress, and would mask new damage arriving in a year that
+        has just been backfilled.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
+            for pid, season in ((5001, 2026), (5002, 2025), (5003, 2024)):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid, "season": season},
+                )
+            whole = self._baseline_file(
+                Path(self._tmpdir.name) / "whole",
+                {
+                    "version": 1,
+                    "checks": {"player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]}},
+                },
+            )
+            scoped = self._baseline_file(
+                Path(self._tmpdir.name) / "scoped",
+                {
+                    "version": 1,
+                    "scope": {"season": 2026},
+                    "checks": {"player_season_batting_unaccounted_pa": {"player_ids": ["5001"]}},
+                },
+            )
+
+            mismatch = compare_against_baseline(conn, whole, season=2026)
+            matched = compare_against_baseline(conn, scoped, season=2026)
+
+        assert mismatch.is_scope_mismatch is True, (
+            "a whole-history baseline was compared against a single season without "
+            "saying so, so the run would claim 2 players were repaired"
+        )
+        assert matched.is_scope_mismatch is False
+        assert matched.new_violations == ()
+        assert matched.resolved_violations == ()
+
+    @pytest.fixture(autouse=True)
+    def _tmpdir(self, tmp_path: Path):
+        self._tmpdir = tmp_path
 
 
 class TestTheSeasonPaChecksPartitionTheViolations:
