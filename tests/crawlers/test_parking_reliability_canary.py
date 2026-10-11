@@ -168,6 +168,75 @@ class TestHealthyAndFilteredRuns:
         assert run.source_url == TEAM_PARKING_SOURCES["LG"]["url"]
 
 
+class TestAPageThatAnswersWithoutAReadableFee:
+    """A 200 whose prices cannot be read is not a clean read.
+
+    The lot row is built from the stadium id rather than from the page, so it is
+    written whether or not the parse found anything. That part is deliberate --
+    a parking lot is real even without prices. What must not survive is the
+    silence: a page carrying no fee this pattern can read produced exactly the
+    same ``records_written=3, status=success`` report as a good sweep, while
+    ``parking_fee_kinds`` stayed empty. Four sweeps ran that way without a word.
+    """
+
+    #: The page is fine and it does price something -- just not under a label the
+    #: pattern reads (``잠시 주차`` is none of 기본/추가/일일/행사/경기/무료),
+    #: which is the realistic drift rather than a blank page.
+    NO_READABLE_FEE = "<html><body><p>잠시 주차 3,000원</p><p>주차장 운영 안내</p></body></html>"
+
+    def _fee_less_pages(self) -> ParkingCrawler:
+        crawler = ParkingCrawler()
+        crawler._http.fetch_text = AsyncMock(
+            side_effect=lambda url: CrawlResult.success(self.NO_READABLE_FEE, http_status=200, url=url),
+        )
+        return crawler
+
+    @pytest.mark.asyncio
+    async def test_no_readable_fee_is_recorded_against_the_team(self, session_factory: sessionmaker) -> None:
+        await self._fee_less_pages().run()
+
+        # The lot rows were read, so this lands as ``partial`` rather than
+        # ``failed`` -- unlike food, where the same check meets an empty read.
+        # What has to hold either way is that the gap is attributed and queued.
+        run = _only_run(session_factory)
+        assert run.status == "partial"
+        assert "SS" in (run.error_message or "")
+        assert {letter.error_code for letter in _letters(session_factory)} == {FailureCode.PARSE_EMPTY.value}
+
+    @pytest.mark.asyncio
+    async def test_the_queue_entry_is_not_retried(self, session_factory: sessionmaker) -> None:
+        """A page shape does not fix itself, so the letter spends nothing."""
+        await self._fee_less_pages().run()
+
+        assert {letter.status for letter in _letters(session_factory)} == {"ignored"}
+        assert all(letter.retry_count == 0 for letter in _letters(session_factory))
+
+    @pytest.mark.asyncio
+    async def test_the_lot_row_is_still_returned(self, session_factory: sessionmaker) -> None:
+        """Reporting the gap must not also discard the lot we did read."""
+        lots = await self._fee_less_pages().run()
+
+        assert len(lots) == len(TEAM_PARKING_SOURCES)
+        run = _only_run(session_factory)
+        assert run.records_read == len(TEAM_PARKING_SOURCES)
+
+    @pytest.mark.asyncio
+    async def test_every_team_is_named_in_the_queue(self, session_factory: sessionmaker) -> None:
+        await self._fee_less_pages().run()
+
+        assert sorted(letter.target_id for letter in _letters(session_factory)) == sorted(TEAM_PARKING_SOURCES)
+
+    @pytest.mark.asyncio
+    async def test_a_readable_fee_is_still_a_success(self, session_factory: sessionmaker) -> None:
+        """The control: the new check must not fire on a page it can read."""
+        lots = await _crawler().run()
+
+        run = _only_run(session_factory)
+        assert len(lots) == len(TEAM_PARKING_SOURCES)
+        assert run.status == "success"
+        assert _letters(session_factory) == []
+
+
 # ── the write side ──────────────────────────────────────────────────────────
 #
 # The lot repository flushes on insert, so one constraint violation used to leave

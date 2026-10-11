@@ -284,7 +284,23 @@ class ParkingCrawler(BaseHttpCrawler):
                 "status_code": result.http_status,
             },
         )
-        return self._parse_parking_page(html, info)
+        lots = self._parse_parking_page(html, info)
+        if not any(entry.get("fee_rules") for entry in lots):
+            # The lot row is kept on purpose -- a stadium that publishes its
+            # hours but not its prices is still a real parking lot, and
+            # `_parse_parking_page` builds that row from the stadium id rather
+            # than from the page. What must not survive is the silence: the
+            # parse returns an empty fee list whether the page carried no
+            # prices, changed shape, or was never the parking page at all, and
+            # the lot save succeeds regardless, so the sweep reported
+            # `success` with `records_written=3` while `parking_fee_kinds` stayed
+            # empty -- four sweeps in a row. Plain HTTP renders nothing late,
+            # so this is a non-retryable parse outcome rather than a fetch one.
+            self._team_failures.append(
+                (team_code, FailureCode.PARSE_EMPTY.value, f"no parking fee found at {info['url']}"),
+            )
+            logger.warning("[PARKING] %s returned no parking fee at %s", team_code, info["url"])
+        return lots
 
     def _parse_parking_page(self, html: str, info: dict) -> list[dict[str, Any]]:
         soup = BeautifulSoup(html, "html.parser")
