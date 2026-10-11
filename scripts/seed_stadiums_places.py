@@ -25,7 +25,12 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.stadium_places_extra import EXTRA_PLACE_DATA, EXTRA_STADIUM_UPDATES, GEOMETRY_UPDATES
+from scripts.stadium_places_extra import (
+    EXTRA_PLACE_DATA,
+    EXTRA_STADIUM_UPDATES,
+    GEOMETRY_UPDATES,
+    SECOND_DIVISION_STADIUMS,
+)
 from src.constants import VENUE_TO_STADIUM_ID
 from src.db.engine import SessionLocal
 from src.repositories.place_repository import PlaceRepository
@@ -562,6 +567,7 @@ def run(dry_run: bool = False, park_factor_year: int | None = None, from_food: b
         stadium_count = _seed_rows(stadium_repo, STADIUM_DATA, dry_run)
         stadium_count += _seed_rows(stadium_repo, EXTRA_STADIUM_UPDATES, dry_run)
         stadium_count += _seed_rows(stadium_repo, GEOMETRY_UPDATES, dry_run)
+        stadium_count += _seed_rows(stadium_repo, SECOND_DIVISION_STADIUMS, dry_run)
         place_count = _seed_rows(place_repo, PLACE_DATA, dry_run)
         place_count += _seed_rows(place_repo, EXTRA_PLACE_DATA, dry_run)
 
