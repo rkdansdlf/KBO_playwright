@@ -203,6 +203,13 @@ class SourceDeclaration:
     priority: str = "unset"
 
 
+#: The honest value while the permission review (6단계) has not happened.
+#:
+#: A specific string rather than an empty field so the report can count how many
+#: alternatives are actually known, and so a reader can tell "nobody has looked"
+#: from "someone looked and there is nowhere else".
+PENDING_PERMISSION_REVIEW = "pending: permission review (6단계)"
+
 #: Crawlers whose data reaches answers, plus every crawler a robots policy
 #: currently refuses. The rest are reported as undeclared.
 #:
@@ -277,6 +284,114 @@ DECLARED: dict[str, SourceDeclaration] = {
         expected_max_age_days=400,
         alternative_source="pending: permission review (6단계)",
         priority="normal",
+    ),
+    "broadcast_crawler": SourceDeclaration(
+        tables=("game_broadcasts",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "congestion_crawler": SourceDeclaration(
+        tables=("stadium_congestion",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "fan_culture_crawler": SourceDeclaration(
+        tables=(
+            "cheer_chants",
+            "cheer_songs",
+            "team_rivalries",
+        ),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "foreign_player_crawler": SourceDeclaration(
+        tables=("foreign_player_changes",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "game_mvp_crawler": SourceDeclaration(
+        tables=("game_mvps",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "injury_crawler": SourceDeclaration(
+        tables=("injury_entries",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "manager_change_crawler": SourceDeclaration(
+        tables=("manager_changes",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "operation_notice_doosan_crawler": SourceDeclaration(
+        tables=("stadium_operation_notices",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "operation_notice_lg_crawler": SourceDeclaration(
+        tables=("stadium_operation_notices",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "operation_notice_naver_crawler": SourceDeclaration(
+        tables=("stadium_operation_notices",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "parking_crawler": SourceDeclaration(
+        tables=(
+            "parking_lots",
+            "parking_fee_rules",
+            "parking_fee_kinds",
+        ),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "player_search_crawler": SourceDeclaration(
+        tables=("player_basic",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "seat_crawler": SourceDeclaration(
+        tables=("stadium_seat_sections",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "staff_register_crawler": SourceDeclaration(
+        tables=("player_basic",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "team_event_crawler": SourceDeclaration(
+        tables=("team_events",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "transit_time_crawler": SourceDeclaration(
+        tables=("stadium_transit_times",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "team_batting_stats_crawler": SourceDeclaration(
+        tables=("team_season_batting",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "team_pitching_stats_crawler": SourceDeclaration(
+        tables=("team_season_pitching",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "fielding_stats_crawler": SourceDeclaration(
+        tables=("player_season_fielding",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "player_pitching_all_series_crawler": SourceDeclaration(
+        tables=("player_season_pitching",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "futures_schedule_crawler": SourceDeclaration(
+        tables=("futures_game_schedules",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "daily_roster_crawler": SourceDeclaration(
+        tables=("team_daily_roster",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "draft_history_crawler": SourceDeclaration(
+        tables=("player_draft_histories",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "milestone_crawler": SourceDeclaration(
+        tables=("player_milestones",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
+    ),
+    "pbp_crawler": SourceDeclaration(
+        tables=("game_play_by_play",),
+        alternative_source=PENDING_PERMISSION_REVIEW,
     ),
 }
 
