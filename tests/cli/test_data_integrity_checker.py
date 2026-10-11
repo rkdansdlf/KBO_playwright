@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -516,6 +517,88 @@ class TestCheckSeasonStatTeamCode:
         assert result.passed is False
         assert result.message == "2 season stats have unresolved team_code gaps"
         assert result.details["unresolved"] == 2
+
+
+class TestCheckWinningTeamConsistency:
+    """The comparison goes through the team registry, not the raw strings.
+
+    ``home_team`` and ``winning_team`` are written by different paths and carry
+    different registry eras, so a game whose home side arrived as the legacy
+    ``HT`` and whose winner was stored under the canonical ``KIA`` is correct
+    data. Comparing the strings called it a defect and opened an ERROR incident
+    against a correct row.
+    """
+
+    @staticmethod
+    def _session(games: list[Any]) -> MagicMock:
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = games
+        return session
+
+    @staticmethod
+    def _game(**kwargs: Any) -> MagicMock:
+        game = MagicMock()
+        for field in ("game_id", "away_team", "home_team", "away_score", "home_score", "winning_team"):
+            setattr(game, field, kwargs.get(field))
+        return game
+
+    def test_the_same_code_passes(self) -> None:
+        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="HT")
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is True
+
+    def test_a_legacy_and_a_canonical_name_for_one_franchise_pass(self) -> None:
+        """The regression: ``HT`` home side, ``KIA`` winner, same team."""
+        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="KIA")
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is True
+
+    def test_a_canonical_winner_for_a_legacy_home_side_still_normalises(self) -> None:
+        """``OB`` and ``DB`` are the same franchise and the mapper only maps one way.
+
+        Passing a canonical code through the mapper returns None, so without the
+        fallback to the raw code this pair would have looked like a defect.
+        """
+        game = self._game(game_id="G1", away_team="NC", home_team="OB", away_score=2, home_score=9, winning_team="DB")
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is True
+
+    def test_a_different_team_still_fails(self) -> None:
+        """Normalising must not soften the check into accepting anything."""
+        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="LG")
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is False
+        assert result.message == "1 games have inconsistent winning_team"
+        assert result.details["mismatches"][0] == {
+            "game_id": "G1",
+            "winning_team": "LG",
+            "expected": "HT",
+            "home_score": 7,
+            "away_score": 2,
+        }
+
+    def test_a_draw_is_not_a_mismatch(self) -> None:
+        game = self._game(game_id="G1", away_team="HT", home_team="LG", away_score=3, home_score=3, winning_team="HT")
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is True
+
+    def test_a_missing_winner_is_not_a_mismatch(self) -> None:
+        """Filling the gap is another check's job; this one only compares."""
+        game = self._game(game_id="G1", away_team="HT", home_team="LG", away_score=3, home_score=5, winning_team=None)
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is True
 
 
 class TestMain:
