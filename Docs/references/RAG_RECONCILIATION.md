@@ -77,22 +77,39 @@ side 이름이 백엔드를 함의하지 않는다. 무엇을 비교하게 되�
 ## 절차
 
 1. primary/staging 각각 `export` (타깃 DB 쓰기 잠금 없음, read-only)
-2. `compare --left <a.ndjson> --right <b.ndjson>` — 아래 "as-of 사용 불가" 참고
+2. `compare --left <a.ndjson> --right <b.ndjson>` — 컷오프는 사이드카에서 자동 적용된다(아래 "as-of 사용 가능")
 3. `unexplained_count == 0` 이면 PASS. 남으면 `*_keys.txt`의 키로 소스 테이블별 원인 조사
 4. 결과 요약 JSON은 `reports/rag_reconciliation/<실행시각>/comparison_summary.json`에 기록
    (`reports/`는 gitignore — 대용량 산출물 보관 규칙은 `Docs/runbooks/WORKSPACE_HYGIENE.md`)
 
-### as-of 사용 불가 (2026-10-10 확인)
+### as-of 사용 가능 (2026-10-11 구현)
 
-**이 절차의 이전 판본이 지시한 `--as-of <min(left.exported_at, right.exported_at)>`은 실행할 수 없다.**
-**매니페스트에 `exported_at`이 없다.** 실측 필드는 `source_table`·`source_row_id`·
-`content_hash`·`index_version`·`index_status`·`embedding_present`·`updated_at` 일곱 개뿐이고
-(`ManifestEntry.to_manifest_dict`), 코드베이스 전체에 `exported_at`이라는 이름이 없다.
+**해결됐다.** 이전 판본이 지시한 `--as-of <min(left.exported_at, right.exported_at)>`은
+실행할 수 없었다 — 매니페스트에 `exported_at`이 없었기 때문이다(실측 필드 7개,
+코드베이스 전체에 그 이름 부재).
 
-`--as-of`를 생략하면 전부 UNEXPLAINED 규칙으로 계산되어 **보수적 방향으로 실패**하므로
-안전하지만, 그 상태로는 `TIME_EXPLAINABLE`이 영영 0이 되어 시점 드리프트를 걸러내려는
-이 계약의 목적이 달성되지 않는다. as-of를 쓰려면 **먼저 매니페스트에 내보낸 시각을
-기록해야 한다**(미구현).
+이제 `export`가 **사이드카 `<manifest>.meta.json`**에 `exported_at`·`side`·`rows`를
+기록한다. 매니페스트 안에 헤더 줄을 넣지 않은 이유는 계약이 "한 줄 = 청크 1개"이기
+때문이다 — 헤더를 인식해야 하는 판독기는 그것을 청크로 읽거나, 청크를 헤더로 오인해
+버릴 수 있다. 별도 파일은 어느 쪽도 될 수 없다.
+
+`compare`의 컷오프 결정 순서:
+
+1. `--as-of <ISO>` 명시 지정
+2. **양쪽 사이드카가 모두 있을 때만** 그중 이른 시각
+3. 그 외에는 컷오프 없음(전부 UNEXPLAINED — 보수적)
+
+**2번이 "양쪽 모두"를 요구하는 이유**: 한쪽 시각만으로 자르면 반대편을 그 시각에
+측정한 적이 없는데도 그 시각으로 묶는다. 오래 전에 export한 파일이 있으면 자기
+타임스탬프만 낡아 모든 차이가 배경 변경으로 분류된다 — 조용한 면제다.
+
+`--as-of`를 생략해 2번이 적용되면 출력에 `as_of_source: "manifest"`가 함께 나온다.
+**컷오프의 출처를 보고하는 이유**는 그것이 보고서의 **의미**를 바꾸기 때문이다 —
+컷오프가 있으면 그 이후 차이는 배경 변경이고, 없으면 같은 차이가 드리프트다.
+어느 규칙이 적용됐는지 모르면 어느 주장을 읽고 있는지도 모른다. 그래서 출처가
+호출 방식에 남지 않고 보고서에 실린다.
+
+실측(2026-10-11): 양쪽 228,681행, `unexplained=0`, `as_of_source=manifest`, `is_clean=true`.
 
 ## 2026-10-10 최초 교차 검증 실측
 

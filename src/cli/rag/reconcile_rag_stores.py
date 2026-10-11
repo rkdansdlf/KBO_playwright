@@ -17,6 +17,7 @@ from src.services.rag_reconciliation import (
     entry_from_manifest_row,
     parse_updated_at,
     read_manifest,
+    read_manifest_meta,
     reconcile_manifests,
     write_manifest,
 )
@@ -150,8 +151,19 @@ def cmd_export(args: argparse.Namespace) -> int:
         sys.stderr.write(f"export failed: {error}\n")
         return 1
 
-    written = write_manifest(entries, out_path)
-    sys.stdout.write(json.dumps({"side": args.side, "rows": written, "manifest": str(out_path)}) + "\n")
+    exported_at = datetime.now(KST)
+    written = write_manifest(entries, out_path, exported_at=exported_at, side=args.side)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "side": args.side,
+                "rows": written,
+                "manifest": str(out_path),
+                "exported_at": exported_at.isoformat(),
+            },
+        )
+        + "\n",
+    )
     return 0
 
 
@@ -195,16 +207,43 @@ def _with_role(entries: list[ManifestEntry], role: str) -> list[ManifestEntry]:
     ]
 
 
+def _resolve_as_of(left_path: Path, right_path: Path, explicit: str | None) -> tuple[datetime | None, str]:
+    """Return the cutoff to apply and where it came from.
+
+    The source is returned rather than implied because the cutoff changes what
+    the report *means*: with one, a difference recorded after it is background
+    churn; without one, the same difference is drift. A reader who cannot tell
+    which rule was applied cannot tell which claim they are reading, so the
+    source travels with the report instead of being left to the invocation.
+
+    Order: an explicit ``--as-of`` wins; otherwise the earlier of the two export
+    times, but only when **both** sidecars exist. A cutoff derived from one side
+    would bound the comparison by a moment the other side was never measured
+    against, which is how a file exported long ago quietly becomes "no drift".
+    """
+    if explicit:
+        return parse_updated_at(explicit), "explicit"
+
+    left_meta = read_manifest_meta(left_path)
+    right_meta = read_manifest_meta(right_path)
+    if left_meta is None or right_meta is None:
+        return None, "none"
+    return min(left_meta.exported_at, right_meta.exported_at), "manifest"
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     """Compare two exported manifests and persist a classification report."""
-    left_entries = list(read_manifest(Path(args.left)))
-    right_entries = list(read_manifest(Path(args.right)))
+    left_path = Path(args.left)
+    right_path = Path(args.right)
+    left_entries = list(read_manifest(left_path))
+    right_entries = list(read_manifest(right_path))
+    as_of, as_of_source = _resolve_as_of(left_path, right_path, args.as_of)
     report = reconcile_manifests(
         left_entries,
         right_entries,
-        left_label=Path(args.left).stem,
-        right_label=Path(args.right).stem,
-        as_of=parse_updated_at(args.as_of) if args.as_of else None,
+        left_label=left_path.stem,
+        right_label=right_path.stem,
+        as_of=as_of,
     )
 
     output_dir = Path(args.output_dir) if args.output_dir else _DEFAULT_OUTPUT_ROOT / f"compare_{_default_stamp()}"
@@ -213,8 +252,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
     left_map = {entry.key: entry for entry in left_entries}
     right_map = {entry.key: entry for entry in right_entries}
     summary_path = output_dir / "comparison_summary.json"
-    payload = json.dumps(report.to_summary_dict(left_map, right_map), indent=2) + "\n"
-    summary_path.write_text(payload, encoding="utf-8")
+    summary = report.to_summary_dict(left_map, right_map)
+    summary["as_of_source"] = as_of_source
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     unexplained_keys = sorted({key for keys in report.unexplained_issues.values() for key in keys})
     _write_key_lines(output_dir / "unexplained_keys.txt", unexplained_keys)
@@ -222,7 +262,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
     _write_key_lines(output_dir / "right_only_keys.txt", report.unexplained_issues.get("MISSING_IN_LEFT", ()))
     _write_key_lines(output_dir / "time_explainable_keys.txt", report.time_explainable_keys)
 
-    result = {"summary": str(summary_path), "unexplained": report.unexplained_count, "clean": report.is_clean}
+    result = {
+        "summary": str(summary_path),
+        "unexplained": report.unexplained_count,
+        "clean": report.is_clean,
+        "as_of_source": as_of_source,
+    }
     sys.stdout.write(json.dumps(result) + "\n")
     if args.fail_on_unexplained and not report.is_clean:
         return 1

@@ -28,6 +28,12 @@ UNEXPLAINED_ISSUES = (
 ROLE_SPARSE = "sparse"
 ROLE_DENSE = "dense"
 
+#: Sidecar suffix recording when a manifest was exported.
+#:
+#: The cutoff a comparison needs cannot live in the NDJSON itself without
+#: breaking "one line, one chunk", so it travels beside the file.
+MANIFEST_META_SUFFIX = ".meta.json"
+
 #: The roles a manifest may declare. An unrecognised role is refused rather than
 #: treated as exempt -- "unknown" must not become a synonym for "skip the check".
 MANIFEST_ROLES = frozenset({ROLE_SPARSE, ROLE_DENSE})
@@ -40,6 +46,27 @@ MANIFEST_ROLES = frozenset({ROLE_SPARSE, ROLE_DENSE})
 #: nothing reads. Oracle's single-store layout is the exception and is handled by
 #: declaring that store `dense`, which is what it is.
 _ROLES_REQUIRING_EMBEDDINGS = frozenset({ROLE_DENSE})
+
+
+@dataclass(frozen=True)
+class ManifestMeta:
+    """When one manifest was exported, and what it was.
+
+    ``rows`` is recorded so a sidecar cannot be paired with a manifest it does
+    not belong to -- a renamed file is the ordinary way that happens.
+    """
+
+    exported_at: datetime
+    side: str | None = None
+    rows: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize into a JSON-compatible mapping."""
+        return {
+            "exported_at": self.exported_at.isoformat(),
+            "side": self.side,
+            "rows": self.rows,
+        }
 
 
 @dataclass(frozen=True)
@@ -141,14 +168,71 @@ def read_manifest(path: Path) -> Iterator[ManifestEntry]:
                 yield entry_from_manifest_row(json.loads(stripped))
 
 
-def write_manifest(entries: Iterable[ManifestEntry], path: Path) -> int:
-    """Write entries as NDJSON and return the written row count."""
+def write_manifest(
+    entries: Iterable[ManifestEntry],
+    path: Path,
+    *,
+    exported_at: datetime | None = None,
+    side: str | None = None,
+) -> int:
+    """Write entries as NDJSON and return the written row count.
+
+    When ``exported_at`` is given, a sidecar ``<path>.meta.json`` records when the
+    export was taken and which side it came from. The sidecar exists because the
+    comparison needs a cutoff and the manifest format cannot carry one.
+
+    The alternative was a header line inside the NDJSON, and it was rejected: the
+    contract is "one line, one chunk", and a reader that has to know some lines
+    are not chunks is a reader that can silently treat a header as data -- or,
+    worse, skip a chunk it mistook for a header. A separate file cannot be
+    confused with a row.
+    """
     written = 0
     with path.open("w", encoding="utf-8") as handle:
         for entry in entries:
             handle.write(json.dumps(entry.to_manifest_dict(), ensure_ascii=False) + "\n")
             written += 1
+    if exported_at is not None:
+        meta = ManifestMeta(
+            exported_at=_normalize_timestamp(exported_at),
+            side=side,
+            rows=written,
+        )
+        meta_path(path).write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return written
+
+
+def meta_path(manifest_path: Path) -> Path:
+    """Return the sidecar path that records when a manifest was exported."""
+    return manifest_path.with_name(manifest_path.name + MANIFEST_META_SUFFIX)
+
+
+def read_manifest_meta(manifest_path: Path) -> ManifestMeta | None:
+    """Return the sidecar for a manifest, or ``None`` when there is not one.
+
+    ``None`` is kept distinct from a parsed metadata object on purpose. A caller
+    deciding a cutoff must be able to tell "the export did not record its time"
+    from "the export recorded a time", because treating the first as the second
+    would apply a cutoff nobody measured.
+    """
+    path = meta_path(manifest_path)
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    stamp = parse_updated_at(raw.get("exported_at"))
+    if stamp is None:
+        return None
+    rows = raw.get("rows")
+    return ManifestMeta(
+        exported_at=stamp,
+        side=_optional_str(raw, "side"),
+        rows=rows if isinstance(rows, int) else None,
+    )
 
 
 @dataclass(frozen=True)
