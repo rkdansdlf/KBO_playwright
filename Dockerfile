@@ -11,11 +11,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Dependencies come from pyproject.toml, the single source of truth.
-# The project source is removed again so the runtime stage can COPY its own
-# copy without shipping two divergent trees.
+# The dependency layer is split from the project build: `uv pip` cannot
+# read PEP 621 deps directly, so compile to requirements first. A
+# source-only change then reuses the cached dependency layer, and uv's
+# HTTP cache survives across builds via the cache mount.
 COPY pyproject.toml README.md ./
-COPY src/ ./src/
-RUN uv pip install --system --no-cache . && rm -rf /app/src
+# NOTE: `--extra postgres` is required, not optional, for this image. The
+# driver lives in `[project.optional-dependencies]` because a pure-SQLite
+# local run skips it, but every container here talks to PostgreSQL
+# (`src/db/engine.py`, `postgresql+psycopg2://` URLs). Omitting the extra
+# builds an image that crashes on startup with `No module named 'psycopg2'`.
+RUN --mount=type=cache,id=uv-cache-v2,target=/root/.cache/uv \
+    uv pip compile pyproject.toml --extra postgres -o /tmp/requirements.txt && \
+    uv pip install --system -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt && \
+    uv pip install --system setuptools wheel
+# NOTE: the `kbo-playwright` project itself is intentionally NOT installed
+# here. Its setuptools build hangs indefinitely under this host's buildkit
+# executor (reproduced 3x; the identical `uv pip install` finishes in ~30s
+# in `docker run`), while nothing at runtime needs its dist-info: there are
+# no `[project.scripts]` entry points and no `importlib.metadata` lookups.
+# The runtime stage COPYs a fresh `src/` anyway, so the builder never needs
+# the source tree at all.
 
 ###############################################################################
 # Stage 2: Runtime — lean image without build-essential (~250 MB smaller)
