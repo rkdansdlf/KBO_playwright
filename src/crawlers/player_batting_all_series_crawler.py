@@ -559,6 +559,52 @@ def _navigate_to_basic2(page: Page, policy: RequestPolicy | None) -> bool:
         return success
 
 
+#: Fields that identify a row rather than measure it. A later page restating
+#: these is the same player, so a differing value there is a disagreement to
+#: resolve elsewhere, not a reading to replace.
+_BATTING_IDENTITY_FIELDS = frozenset(
+    {
+        "player_id",
+        "player_name",
+        "team_code",
+        "season",
+        "league",
+        "level",
+        "source",
+    },
+)
+
+
+def merge_batting_layout_fields(target: dict, incoming: dict) -> None:
+    """Fold one layout's row into another without letting absence overwrite.
+
+    The batting table ships different columns per layout, and ``_build_batting_data``
+    indexes a fixed position per branch -- so a branch reads cells that belong to
+    the other layout's headers and gets ``None`` back from
+    ``safe_parse_number``. Those ``None`` entries are the absence of a reading,
+    not a reading, and a plain ``dict.update`` stored them as one.
+
+    The pager decides which layout lands last, so which half of a player's row
+    survived depended on it. Season rows exist with ``walks`` NULL beside a real
+    ``sacrifice_hits``, which is the basic2 walk counts being erased by the
+    regular layout that followed.
+
+    ``None`` therefore never overwrites, and a reported zero still does: zero is
+    a value the page reported, and keeping the earlier one would pin a stale
+    count for the rest of the crawl. Identity fields are left to the first row
+    that established them.
+
+    Args:
+        target: The accumulated row, modified in place.
+        incoming: The row read from the current page.
+
+    """
+    for key, value in incoming.items():
+        if value is None or key in _BATTING_IDENTITY_FIELDS:
+            continue
+        target[key] = value
+
+
 def _collect_basic2_pages(
     page: Page,
     year: int,
@@ -577,7 +623,7 @@ def _collect_basic2_pages(
             if pid not in all_player_data:
                 all_player_data[pid] = player_stat
             else:
-                all_player_data[pid].update(player_stat)
+                merge_batting_layout_fields(all_player_data[pid], player_stat)
 
         if not go_to_next_page(page, page_num, policy):
             break
@@ -1078,7 +1124,7 @@ def _process_current_page_batting(  # noqa: PLR0913
             else:
                 for existing in all_players_data:
                     if (existing["player_id"], existing.get("team_code")) == team_key:
-                        existing.update(player_stat)
+                        merge_batting_layout_fields(existing, player_stat)
                         break
         elif pid not in unique_players:
             unique_players.add(pid)
@@ -1086,7 +1132,7 @@ def _process_current_page_batting(  # noqa: PLR0913
         else:
             for p in all_players_data:
                 if p["player_id"] == pid:
-                    p.update(player_stat)
+                    merge_batting_layout_fields(p, player_stat)
                     break
     return len(current_page_data)
 

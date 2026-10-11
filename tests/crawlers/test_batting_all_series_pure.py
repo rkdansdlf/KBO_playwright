@@ -25,6 +25,7 @@ from src.crawlers.player_batting_all_series_crawler import (
     _save_batting_if_needed,
     _is_basic2_headers,
     _merge_basic2_data,
+    merge_batting_layout_fields,
     _parse_basic2_header_data_fast,
     parse_batting_stats_table,
     crawl_series_batting_stats,
@@ -642,6 +643,127 @@ class TestBattingPageParsers:
             2: {"player_id": 2, "avg": 0.2},
         }
 
+    def _merge_two_pages(self, rows):
+        players: dict = {}
+        page = MagicMock()
+        with (
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector",
+                side_effect=[True, True],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[[dict(row)] for row in rows],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.go_to_next_page",
+                side_effect=[True, False],
+            ),
+        ):
+            _collect_basic2_pages(page, 2004, players)
+        return players[91511]
+
+    def test_collect_basic2_pages_keeps_both_layouts_regardless_of_page_order(self):
+        """A layout's missing column is not a value, and must not overwrite one.
+
+        The batting page carries different columns depending on its layout, and
+        ``_build_batting_data`` reads a fixed index per branch. The basic2 branch
+        fills ``walks``/``hbp``; the regular branch fills ``plate_appearances``
+        and the sacrifices. Each names the other branch's columns anyway, and a
+        cell outside its own headers reads as ``None`` from
+        ``safe_parse_number``.
+
+        ``dict.update`` accepts that ``None`` as an answer, so when the regular
+        layout was paged in after basic2 the walk counts were erased while the
+        sacrifices stayed. That is not hypothetical: season rows exist with
+        ``walks`` NULL next to a real ``sacrifice_hits`` of 24.
+
+        Both orders are asserted because only one of them loses data, so a test
+        that happened to page basic2 last would have passed against the defect.
+        """
+        basic2_row = {"player_id": 91511, "walks": 63, "hbp": 4}
+        regular_row = {
+            "player_id": 91511,
+            "plate_appearances": 581,
+            "sacrifice_hits": 24,
+            "sacrifice_flies": 2,
+            "walks": None,
+            "hbp": None,
+        }
+
+        for label, rows in (
+            ("basic2 then regular", [basic2_row, regular_row]),
+            ("regular then basic2", [regular_row, basic2_row]),
+        ):
+            merged = self._merge_two_pages(rows)
+
+            assert merged["walks"] == 63, f"the basic2 walk count was lost, {label}"
+            assert merged["hbp"] == 4, f"the basic2 HBP was lost, {label}"
+            assert merged["sacrifice_hits"] == 24, f"the sacrifice hits were lost, {label}"
+            assert merged["sacrifice_flies"] == 2, f"the sacrifice flies were lost, {label}"
+            assert merged["plate_appearances"] == 581, f"the plate appearances were lost, {label}"
+
+    def test_collect_basic2_pages_still_overwrites_a_value_with_a_later_value(self):
+        """Skipping ``None`` must not mean keeping a stale reading.
+
+        Within one layout the pager repeats players and the later row is the
+        corrected one. Treating "absent" as "unchanged" would pin the first
+        page's numbers for the whole crawl.
+        """
+        players: dict = {}
+        page = MagicMock()
+
+        with (
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector",
+                side_effect=[True, True],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 1, "walks": 10, "hbp": 2}],
+                    [{"player_id": 1, "walks": 14, "hbp": 2}],
+                ],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.go_to_next_page",
+                side_effect=[True, False],
+            ),
+        ):
+            _collect_basic2_pages(page, 2025, players)
+
+        assert players[1]["walks"] == 14
+
+    def test_collect_basic2_pages_keeps_zero_distinct_from_absent(self):
+        """A reported zero is a result; only an absent cell is not.
+
+        Collapsing both into "unchanged" would pin the earlier reading for a
+        player whose later row genuinely reports zero walks.
+        """
+        players: dict = {}
+        page = MagicMock()
+
+        with (
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.retry_wait_for_selector",
+                side_effect=[True, True],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 1, "walks": 10}],
+                    [{"player_id": 1, "walks": 0}],
+                ],
+            ),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.go_to_next_page",
+                side_effect=[True, False],
+            ),
+        ):
+            _collect_basic2_pages(page, 2025, players)
+
+        assert players[1]["walks"] == 0
+
     def test_go_to_next_page_clicks_enabled_number_button(self):
         page = MagicMock()
         button = MagicMock()
@@ -814,6 +936,92 @@ class TestBattingPageParsers:
             _collect_batting_stats_loop(ctx)
 
         assert data == [{"player_id": 1, "avg": 0.3, "walks": 12}, {"player_id": 2, "avg": 0.2}]
+
+    def test_collect_batting_loop_does_not_lose_fields_to_a_later_absent_column(self):
+        """The duplicate-player fold carries the same layouts as the pager above.
+
+        ``_collect_batting_loop`` folds a player who appears on two pages into the
+        row already collected. The rows come from the same per-layout parsing, so
+        the second page can be the branch that does not own ``walks`` and reports
+        ``None`` for it -- which used to erase the count the first page supplied.
+        """
+        page = MagicMock()
+        policy = MagicMock()
+        data = []
+        ctx = BattingCrawlContext(
+            page=page,
+            year=2004,
+            series_key="regular",
+            iteration_targets=[{"value": "", "text": "전체"}],
+            by_team=False,
+            limit=None,
+            policy=policy,
+            unique_players=set(),
+            all_players_data=data,
+        )
+
+        with (
+            patch("src.crawlers.player_batting_all_series_crawler._apply_pa_sorting"),
+            patch(
+                "src.crawlers.player_batting_all_series_crawler.parse_batting_stats_table",
+                side_effect=[
+                    [{"player_id": 91511, "walks": 63, "hbp": 4}],
+                    [{"player_id": 91511, "sacrifice_hits": 24, "sacrifice_flies": 2, "walks": None, "hbp": None}],
+                ],
+            ),
+            patch("src.crawlers.player_batting_all_series_crawler.go_to_next_page", side_effect=[True, False]),
+        ):
+            _collect_batting_stats_loop(ctx)
+
+        assert data[0]["walks"] == 63
+        assert data[0]["hbp"] == 4
+        assert data[0]["sacrifice_hits"] == 24
+        assert data[0]["sacrifice_flies"] == 2
+
+
+class TestMergeBattingLayoutFields:
+    """The single place that decides which reading survives a fold."""
+
+    def test_an_absent_column_does_not_replace_a_value(self):
+        target = {"player_id": 1, "walks": 63, "sacrifice_hits": 24}
+
+        merge_batting_layout_fields(target, {"walks": None, "sacrifice_hits": None, "plate_appearances": 581})
+
+        assert target == {"player_id": 1, "walks": 63, "sacrifice_hits": 24, "plate_appearances": 581}
+
+    def test_a_reported_zero_does_replace_a_value(self):
+        target = {"player_id": 1, "walks": 63}
+
+        merge_batting_layout_fields(target, {"walks": 0})
+
+        assert target["walks"] == 0
+
+    def test_a_real_value_replaces_an_earlier_one(self):
+        target = {"player_id": 1, "walks": 10}
+
+        merge_batting_layout_fields(target, {"walks": 14})
+
+        assert target["walks"] == 14
+
+    def test_identity_fields_are_not_replaced_by_a_later_disagreement(self):
+        target = {"player_id": 1, "player_name": "홍길동", "team_code": "LG", "source": "CRAWLER"}
+
+        merge_batting_layout_fields(
+            target,
+            {"player_id": 2, "player_name": "다른 이름", "team_code": "SS", "season": 2025, "source": "FALLBACK"},
+        )
+
+        assert target == {"player_id": 1, "player_name": "홍길동", "team_code": "LG", "source": "CRAWLER"}
+
+    def test_the_target_is_edited_in_place(self):
+        """Callers hold this dict in a registry keyed by player id."""
+        target = {"player_id": 1}
+        registry = {1: target}
+
+        merge_batting_layout_fields(target, {"walks": 5})
+
+        assert registry[1] is target
+        assert registry[1]["walks"] == 5
 
     def test_collect_batting_loop_preserves_team_split_rows(self):
         page = MagicMock()
