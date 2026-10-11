@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from src.models.game import GameBattingStat
+from src.models.game import GameBattingStat, GamePitchingStat
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 
@@ -41,20 +41,37 @@ class StatRecalculator:
         for m in milestones:
             if not m.player_id:
                 continue
-
-            # Query season hits/wins depending on milestone category
-            if "안타" in m.milestone_category:
-                stat_stmt = select(GameBattingStat.hits).where(GameBattingStat.player_id == m.player_id)
-                hits_list = list(self.session.execute(stat_stmt).scalars().all())
-                added_hits = sum(h for h in hits_list if h)
-                if added_hits > 0:
-                    new_val = m.current_val + added_hits
-                    m.remaining_val = max(0, m.target_val - new_val)
-                    m.is_achieved = m.remaining_val == 0
-                    updated_count += 1
+            added = self._milestone_progress(m.milestone_category, m.player_id)
+            if added > 0:
+                new_val = m.current_val + added
+                m.current_val = new_val
+                m.remaining_val = max(0, m.target_val - new_val)
+                # NOTE: DDL stores is_achieved as integer; coerce the bool.
+                m.is_achieved = int(m.remaining_val == 0)
+                updated_count += 1
 
         logger.info("Recalculated %d player milestones for season %d.", updated_count, season)
         return updated_count
+
+    def _milestone_progress(self, category: str, player_id: str) -> int:
+        """Sum game-level stats feeding a milestone category."""
+        if "안타" in category:
+            return self._sum_column(GameBattingStat, "hits", player_id)
+        if "홈런" in category:
+            return self._sum_column(GameBattingStat, "home_runs", player_id)
+        if "탈삼진" in category:
+            return self._sum_column(GamePitchingStat, "strikeouts", player_id)
+        if "세이브" in category:
+            return self._sum_column(GamePitchingStat, "saves", player_id)
+        if "승" in category:
+            return self._sum_column(GamePitchingStat, "wins", player_id)
+        return 0
+
+    def _sum_column(self, model: object, column: str, player_id: str) -> int:
+        """Sum a nullable integer column over a player's game rows."""
+        stat_stmt = select(getattr(model, column)).where(model.player_id == player_id)
+        values = list(self.session.execute(stat_stmt).scalars().all())
+        return sum(v for v in values if v)
 
     def recalc_player_splits(self, season: int = 2026) -> int:
         """Recalculate situational splits stats for players.
