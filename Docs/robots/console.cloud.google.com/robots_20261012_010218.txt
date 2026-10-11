@@ -1,0 +1,79 @@
+# Source: https://console.cloud.google.com/robots.txt
+# Fetched at: 2026-10-12T01:02:18.767978+09:00
+
+User-agent: * # all robots
+Disallow: /
+Disallow: *login=true # Console urls with the "login=true" parameter.
+
+Allow: /pangolin/iframe
+
+# Allowlist of paths that will show content to a crawler.
+Allow: /agent-platform/agent-garden$
+Allow: /agent-platform/agent-garden/
+Allow: /agent-platform/agent-garden/samples/
+Allow: /agent-platform/agent-garden/tools/
+Allow: /agent-platform/model-garden$
+Allow: /agent-platform/model-garden/
+Allow: /agent-platform/publishers/
+Allow: /agent-platform/publishers/anthropic/model-garden/
+Allow: /agent-platform/publishers/google/model-garden/
+Allow: /agent-platform/studio$
+Allow: /agent-platform/studio/multimodal$
+Allow: /agent-platform/studio/multimodal/
+Allow: /agent-platform/studio/prompt-gallery/
+Allow: /agent-platform/studio/redirect$
+Allow: /agent-platform/studio/redirect/
+Allow: /apis/library$
+Allow: /apis/library/
+Allow: /bigquery/analytics-hub/discovery$
+Allow: /bigquery/analytics-hub/discovery/
+Allow: /getting-started$
+Allow: /getting-started/
+Allow: /iam-admin/essential-contacts/verify$
+Allow: /iam-admin/essential-contacts/verify/
+Allow: /launcher$
+Allow: /launcher/
+Allow: /marketplace$
+Allow: /marketplace/
+Allow: /marketplace/aisearch$
+Allow: /marketplace/aisearch/
+Allow: /marketplace/browse$
+Allow: /marketplace/browse/
+Allow: /marketplace/details/
+Allow: /marketplace/product/
+Allow: /monitoring/_reporting/scheduled-reports$
+Allow: /onboarding/auth-button$
+Allow: /onboarding/auth-button/
+Allow: /onboarding/auth_warmup$
+Allow: /onboarding/auth_warmup/
+Allow: /onboarding/orchestration$
+Allow: /onboarding/orchestration/
+Allow: /onboarding/warmup$
+Allow: /onboarding/warmup/
+Allow: /release-notes$
+Allow: /release-notes/
+Allow: /start$
+Allow: /start/
+Allow: /vertex-ai/agents/agent-garden$
+Allow: /vertex-ai/agents/agent-garden/
+Allow: /vertex-ai/agents/agent-garden/samples/
+Allow: /vertex-ai/agents/agent-garden/tools/
+Allow: /vertex-ai/generative/multimodal/create/text$
+Allow: /vertex-ai/generative/multimodal/create/text/
+Allow: /vertex-ai/generative/multimodal/demo/text$
+Allow: /vertex-ai/generative/multimodal/demo/text/
+Allow: /vertex-ai/model-garden$
+Allow: /vertex-ai/model-garden/
+Allow: /vertex-ai/publishers/
+Allow: /vertex-ai/publishers/anthropic/model-garden/
+Allow: /vertex-ai/publishers/google/model-garden/
+Allow: /vertex-ai/studio$
+Allow: /vertex-ai/studio/freeform$
+Allow: /vertex-ai/studio/freeform/
+Allow: /vertex-ai/studio/multimodal$
+Allow: /vertex-ai/studio/multimodal/
+Allow: /vertex-ai/studio/notebooklm$
+Allow: /vertex-ai/studio/notebooklm/
+Allow: /vertex-ai/studio/prompt-gallery/
+Allow: /vertex-ai/studio/redirect$
+Allow: /vertex-ai/studio/redirect/

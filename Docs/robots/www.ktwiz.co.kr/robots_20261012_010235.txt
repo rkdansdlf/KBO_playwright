@@ -1,0 +1,5 @@
+# Source: https://www.ktwiz.co.kr/robots.txt
+# Fetched at: 2026-10-12T01:02:35.670717+09:00
+
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *

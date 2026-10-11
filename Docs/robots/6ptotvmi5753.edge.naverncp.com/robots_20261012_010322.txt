@@ -1,0 +1,4 @@
+# Source: https://6ptotvmi5753.edge.naverncp.com/robots.txt
+# Fetched at: 2026-10-12T01:03:22.960098+09:00
+
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Resource>/kbo-sto/robots.txt</Resource><RequestId>e02aec96-4c60-442f-92a0-a71e10eb364e</RequestId><httpStatusCode>404</httpStatusCode></Error>

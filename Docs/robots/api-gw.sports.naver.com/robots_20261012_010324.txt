@@ -1,0 +1,4 @@
+# Source: https://api-gw.sports.naver.com/robots.txt
+# Fetched at: 2026-10-12T01:03:24.047470+09:00
+
+{"timestamp":"2026-10-11T16:03:24.044+00:00","path":"/robots.txt","status":404,"error":"Not Found","message":null,"requestId":"b66d34ea-88116251"}

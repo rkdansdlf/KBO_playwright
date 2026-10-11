@@ -1,0 +1,26 @@
+# Source: https://www.ssglanders.com/robots.txt
+# Fetched at: 2026-10-12T01:02:40.707365+09:00
+
+
+
+<!DOCTYPE html>
+<html>
+<style>
+	img {
+		position : fixed;
+		top : 0;
+		left : 0;
+		right : 0;
+		bottom : 0;
+		height : 800px;
+		margin : auto;
+	}
+</style>
+<head>
+<meta charset="EUC-KR">
+<title>SSG Landers</title>
+</head>
+<body>
+	<img src="/img/error/error_404.png;jsessionid=33E7280D0BD2CF2C667B89AC17211A21">
+</body>
+</html>

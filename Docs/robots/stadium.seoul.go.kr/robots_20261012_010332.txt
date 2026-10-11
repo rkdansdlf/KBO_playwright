@@ -1,0 +1,29 @@
+# Source: https://stadium.seoul.go.kr/robots.txt
+# Fetched at: 2026-10-12T01:03:32.357360+09:00
+
+User-agent: *
+Allow: /
+
+Disallow: /files
+Disallow: /*?s=
+Disallow: /*s=
+Disallow: /*?*doing_wp_cron
+Disallow: /*?*/page/
+Disallow: /*?*%2Fpage%2F
+
+Disallow: /traffic/files
+Disallow: /safe/files
+Disallow: /citybuild/files
+Disallow: /economy/files
+Disallow: /env/files
+Disallow: /culture/files
+Disallow: /welfare/files
+Disallow: /gov/files
+
+Disallow: /apc/files
+Disallow: /futurelab/files
+
+Disallow: /safe/accuse
+
+
+#DaumWebMasterTool:106e468eb4b5da5f837f084eedb158c9f716e6d5c1c6a40b538f5cbd6ce3059b:Z1sDHiFp/naRimWdsgS5Tg==

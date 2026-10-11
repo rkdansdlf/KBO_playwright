@@ -1,0 +1,19 @@
+# Source: https://www.koreabaseball.com/robots.txt
+# Fetched at: 2026-10-12T01:03:42.935757+09:00
+
+# �� ����Ʈ�� �����͸� ���� ���� ���� �ڵ� ������ũ�Ѹ��������ϴ� ������ �����մϴ�.
+
+User-agent: Googlebot
+Disallow: /ws/
+
+User-agent: Yeti
+Disallow: /ws/
+
+User-agent: Daumoa
+Disallow: /ws/
+
+User-agent: Bingbot
+Disallow: /ws/
+
+User-agent: *
+Disallow: /

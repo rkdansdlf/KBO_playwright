@@ -1,0 +1,12 @@
+# Source: https://sports.news.naver.com/robots.txt
+# Fetched at: 2026-10-12T01:03:31.170334+09:00
+
+User-agent: *
+Disallow: /
+Allow: /$
+Allow: /index
+
+User-agent: Yeti
+Allow: /
+Disallow: /article/
+Disallow: /*/article/

@@ -1,0 +1,4 @@
+# Source: https://www.hanwhaeagles.co.kr/robots.txt
+# Fetched at: 2026-10-12T01:03:37.259888+09:00
+
+{"redirectUrl":"/common/404.do"}

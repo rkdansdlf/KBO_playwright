@@ -1,0 +1,32 @@
+# Source: https://mlbpark.donga.com/robots.txt
+# Fetched at: 2026-10-12T01:02:23.590699+09:00
+
+User-agent: *
+Disallow: /
+
+User-agent: Googlebot
+Allow: /
+User-agent: Googlebot-News
+Allow: /
+User-agent: Googlebot-Image
+Allow: /
+User-agent: Googlebot-Mobile
+Allow: /
+User-agent: Mediapartners-Google
+Allow: /
+User-agent: Bingbot
+Allow: /
+User-agent: Naverbot
+Allow: /
+User-agent: Yeti
+Allow: /
+User-agent: Daumoa
+Allow: /
+User-agent: Daum
+Allow: /
+User-agent: facebookexternalhit
+Allow: /
+User-agent: Facebot
+Allow: /
+User-agent: KaBot
+Allow: /

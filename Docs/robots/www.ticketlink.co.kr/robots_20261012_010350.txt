@@ -1,0 +1,27 @@
+# Source: https://www.ticketlink.co.kr/robots.txt
+# Fetched at: 2026-10-12T01:03:50.196293+09:00
+
+## Naver
+User-agent: Yeti
+User-agent: NaverBot
+Allow: /
+Allow: /search
+Disallow: /reserve
+Disallow: /my
+Disallow: /ids
+Disallow: /facility
+Disallow: /global/*/reserve
+Disallow: /global/*/my
+
+## Others (모든 봇)
+User-agent: *
+Allow: /
+Disallow: /reserve
+Disallow: /my
+Disallow: /ids
+Disallow: /facility
+Disallow: /global/*/reserve
+Disallow: /global/*/my
+Disallow: /search
+
+Sitemap: https://www.ticketlink.co.kr/sitemap.xml

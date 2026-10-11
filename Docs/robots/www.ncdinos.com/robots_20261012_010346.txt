@@ -1,0 +1,452 @@
+# Source: https://www.ncdinos.com/robots.txt
+# Fetched at: 2026-10-12T01:03:46.336777+09:00
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NC Dinos</title>
+    <link rel="stylesheet" href="/assets/js/swiper5.3.8/swiper.min.css">
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <link rel=" shortcut icon" href="/assets/images/favicon.ico">
+    <link rel="icon" href="/assets/images/favicon.ico">
+    <script src="/assets/js/jquery.min.js"></script>
+    <script src="/assets/js/swiper5.3.8/swiper.min.js"></script>
+    <script src="/assets/js/script.js"></script>
+    <script src="/js/common.js"></script>
+</head>
+<body>
+<header class="index-header">
+
+
+
+<meta name="naver-site-verification" content="2028e0548ebc3fd80a9c35c9acf81746677945d3" />
+
+<script>
+  const ticket = () => {
+    window.open("/auth/ticket.do", "티켓", "width=480, height=650");
+      // window.open("/auth/ticket.do", "티켓", "width=1024, height=768");
+  }
+</script>
+
+<script>
+
+  (function () {
+    const ajax = $.ajax;
+    $.ajax = (args) => {
+      const err = args.error;
+      args.error = (xhr, status, error) => {
+        if (xhr.status === 401) {
+          refreshToken(() => {
+            ajax(args);
+          })
+        } else {
+          if (err) {
+            err(xhr, status, error);
+          }
+        }
+      }
+      return ajax(args);
+    }
+  })();
+
+  (() => {
+    const fetch = window.fetch;
+    window.fetch = (...args) => (async(args) => {
+      var result = await fetch(...args);
+      if (result.status === 401) {
+        await refreshTokenAsync();
+        result = await fetch(...args);
+        return result;
+      } else {
+        return result;
+      }
+    })(args);
+  })();
+
+  function refreshToken(callback) {
+    const refreshToken = getCookie("refreshToken");
+    if (!refreshToken) {
+      deleteCookie('token');
+      deleteCookie('refreshToken');
+      location.href = "/";
+    }
+
+    const data = {
+      refreshToken: refreshToken,
+    }
+    $.ajax({
+      url        : '/auth/refresh',
+      data       : JSON.stringify(data),
+      type       : 'post',
+      contentType: 'application/json',
+    }).done(function (res) {
+      setCookie('token', res.token, '30');
+      setCookie('refreshToken', res.refreshToken, '30');
+      try {
+        if (window.flutter_inappwebview &&
+                window.flutter_inappwebview.callHandler) {
+          window.flutter_inappwebview.callHandler('refresh', res.token, res.refreshToken).then(function(result) {
+            if (callback) {
+              callback();
+            }
+          });
+        } else {
+          if (callback) {
+            callback();
+          }
+        }
+      } catch (e) {
+
+      }
+    }).fail(function (xhr, status, errorThrown) {
+      alert(xhr.responseJSON.message);
+      deleteCookie('token');
+      deleteCookie('refreshToken');
+      location.href = "/";
+    })
+  }
+
+
+  async function refreshTokenAsync() {
+    const refreshToken = getCookie("refreshToken");
+    if (!refreshToken) {
+      deleteCookie('token');
+      deleteCookie('refreshToken');
+      location.href = "/";
+    }
+
+    const data = {
+      refreshToken: refreshToken,
+    }
+
+    const res = await fetch('/auth/refresh', {
+      method : 'post',
+      body   : JSON.stringify(data),
+      headers: {
+        'content-type': 'application/json'
+      }
+    });
+    if (res.status === 200) {
+      const json = await res.json();
+      setCookie('token', json.token, '30');
+      setCookie('refreshToken', json.refreshToken, '30');
+      try {
+        if (window.flutter_inappwebview &&
+                window.flutter_inappwebview.callHandler) {
+          await window.flutter_inappwebview.callHandler('refresh', json.token, json.refreshToken);
+        }
+      } catch (e) {
+
+      }
+    } else {
+      deleteCookie('token');
+      deleteCookie('refreshToken');
+      location.href = "/";
+    }
+  }
+</script>
+
+<nav class="top-nav">
+  <ul class="f-wrap">
+    <li><a onclick="ticket()" style="cursor: pointer;">티켓</a></li>
+    <li><a href="/auth/shop.do">팀스토어</a></li>
+    <li><a href="https://smartstore.naver.com/ncdinos">포토카드</a></li>
+
+
+    <li class="sns-wrap">
+
+
+
+          <a href="/auth/login.do" style="cursor:pointer">로그인</a>
+          <a href="/auth/join.do" style="cursor:pointer">회원가입</a>
+
+
+    </li>
+  </ul>
+</nav>
+<div class="header-wrap null">
+  <div>
+    <h1 class="logo"><a href="/homepage.do" class="hidden">NC Dinos</a></h1>
+    <nav class="menu-wrap">
+      <ul class="menu f-wrap" >
+          <li class="">
+              <a href="/dinos/intro.do">다이노스</a>
+              <ul class="s-menu">
+                  <li class=""><a href="/dinos/intro.do">구단소개</a></li>
+                  <li class=""><a href="/dinos/news.do">구단소식</a></li>
+                  <li class=""><a href="/dinos/vi.do">구단 VI</a></li>
+                  <li class=""><a href="/dinos/stadium.do">구장, 시설안내</a></li>
+
+                  <li class=""><a href="/dinos/socialcontribution.do">D-NATION</a></li>
+                  <li class=""><a href="/dinos/partner.do">후원, 제휴</a></li>
+                  <li class=""><a href="/archiving/view.do">어센틱스</a></li>
+
+              </ul>
+          </li>
+          <li class="">
+              <a href="/story/photo.do">스토리</a>
+              <ul class="s-menu">
+                  <li class=""><a href="/story/photo.do">포토</a></li>
+                  <li class=""><a href="/story/movie.do">영상</a></li>
+
+              </ul>
+          </li>
+          <li class="name-wrap ">
+              <a href="/game/majorSchedule.do">경기정보</a>
+              <ul class="s-menu">
+                  <li class="name">정규리그</li>
+                  <li class=""><a href="/game/majorSchedule.do">경기일정/결과</a></li>
+                  <li class=""><a href="/game/majorScore.do">박스 스코어</a></li>
+                  <li class=""><a href="/game/majorGameNote.do">게임노트</a></li>
+                  <li class="name">퓨처스</li>
+                  <li class=""><a href="/game/minorSchedule.do">경기 일정/결과</a></li>
+                  <li class=""><a href="/game/minorScore.do">박스 스코어</a></li>
+              </ul>
+          </li>
+          <li class="name-wrap ">
+              <a href="/record/majorRank.do">기록실</a>
+              <ul class="s-menu">
+                  <li class="name">정규리그</li>
+                  <li class=""><a href="/record/majorRank.do">팀기록</a></li>
+
+
+                  <li class="name">퓨처스</li>
+                  <li class=""><a href="/record/minorRank.do">팀기록</a></li>
+
+
+              </ul>
+          </li>
+          <li class="">
+              <a href="/player/all/list.do">선수단</a>
+              <ul class="s-menu">
+                  <li class=""><a href="/player/all/list.do">선수단 전체</a></li>
+                  <li class=""><a href="/player/staff/list.do">코칭스태프</a></li>
+                  <li class=""><a href="/player/trainer/list.do">트레이너</a></li>
+                  <li class=""><a href="/player/pitcher/list.do">투수</a></li>
+                  <li class=""><a href="/player/catcher/list.do">포수</a></li>
+                  <li class=""><a href="/player/infielder/list.do">내야수</a></li>
+                  <li class=""><a href="/player/outfielder/list.do">외야수</a></li>
+
+              </ul>
+          </li>
+          <li class="">
+
+              <a href="/fan/rally/list.do">팬</a>
+              <ul class="s-menu">
+                  <li class=""><a href="/fan/rally/list.do">랠리 다이노스</a></li>
+
+                  <li class=""><a href="/fan/music.do">다이노스 뮤직</a></li>
+                  <li class=""><a href="/fan/wallPaper.do">월페이퍼</a></li>
+                  <li class=""><a href="/term/contact.do">의견보내기</a></li>
+                  <li class=""><a href="/fan/groundPhoto.do">시즌회원 이벤트신청</a></li>
+
+                  <li class=""><a href="/fan/tourProgram.do">투어 프로그램</a></li>
+                  <li class=""><a href="/celebration/list.do">전광판 축하<br/>이벤트</a></li>
+
+              </ul>
+          </li>
+
+          <li class="">
+              <a href="/junior/index.do">주니어 다이노스</a>
+              <ul class="s-menu">
+                  <li class=""><a href="/junior/index.do">소개</a></li>
+                  <li class=""><a href="/junior/event.do?eventType=4">베이스볼 아카데미</a></li>
+                  <li class=""><a href="/junior/event.do?eventType=5">응원타임</a></li>
+                  <li class=""><a href="/junior/event.do?eventType=6">응원타임 클래스</a></li>
+                  <li class=""><a href="/junior/membershipEvent/stadiumAnnouncer.do">멤버십 이벤트 신청</a></li>
+
+
+
+              </ul>
+          </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<!-- 홈페이지 메인 헤더 E -->
+
+<!-- The core Firebase JS SDK is always required and must be listed first -->
+<script src="https://www.gstatic.com/firebasejs/8.7.1/firebase-app.js"></script>
+
+<!-- TODO: Add SDKs for Firebase products that you want to use
+     https://firebase.google.com/docs/web/setup#available-libraries -->
+<script src="https://www.gstatic.com/firebasejs/8.7.1/firebase-analytics.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.6.8/firebase-firestore.js"></script>
+
+<script>
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  var firebaseConfig = {
+    apiKey: "AIzaSyDhG3maCXe7tbFXq__CwtcZWSRfMiCh5Cc",
+    authDomain: "nc-dinos-homepage.firebaseapp.com",
+    projectId: "nc-dinos-homepage",
+    storageBucket: "nc-dinos-homepage.appspot.com",
+    messagingSenderId: "1037410650333",
+    appId: "1:1037410650333:web:b92f90d8490608cae93334",
+    measurementId: "G-BZZSH21F9E"
+  };
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  var link = window.location.pathname;
+  firebase.analytics().logEvent('homepage', {"view": link} );
+
+
+
+  const logout = () => {
+
+    var refreshToken = getCookie("refreshToken");
+
+    $.ajax({
+      url        : '/auth/logout',
+      data: JSON.stringify({
+        "refreshToken": refreshToken
+      }),
+      type       : 'post',
+      contentType: 'application/json',
+      success : function(data){
+        deleteCookie("token");
+        deleteCookie("refreshToken");
+        location.href = "/logout";
+      },
+      error : function(xhr, status, error){
+        alert(xhr.responseJSON.message);
+      }
+    });
+
+    // deleteCookie("token");
+    // deleteCookie("refreshToken");
+    // location.href = "/logout";
+  }
+</script>
+
+</header>
+
+<main>
+    <div class="page-empty">
+        <img src="/assets/images/sub/mascots01.png">
+        <p>페이지를 찾을 수 없습니다.</p>
+    </div>
+</main>
+
+<footer class="index-header">
+
+
+
+
+<script>
+    const chatbot = () => {
+        window.open('/auth/chatbot.do', 'nc-web', 'top=10, left=10, width=400, height=600, status=no, menubar=no, toolbar=no, resizable=no')
+    }
+</script>
+
+
+
+<div class="partner">
+    <div class="slider">
+        <div class="swiper-wrapper">
+            <a href="https://kr.ncsoft.com/kr/index.do" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_01_2024.jpg" alt="NC">
+            </a>
+            <a href="https://banking.nonghyup.com/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_02.jpg" alt="NH bank">
+            </a>
+            <a href="http://www.pkpork.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_03.jpg" alt="부경양돈농협">
+            </a>
+            <a href="http://brand.pkpork.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_04.jpg" alt="포크밸리">
+            </a>
+            <a href="https://www.hitejinro.com/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_16.jpg" alt="켈리">
+            </a>
+            <a href="https://www.knbank.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_06.jpg" alt="BNK 경남은행">
+            </a>
+            <a href="https://www.muhak.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_14.jpg" alt="무학">
+            </a>
+            <a href="https://www.tving.com/onboarding" class="swiper-slide" target="_blank">
+                <img src="/partner/png/partner_tving.png" alt="티빙">
+            </a>
+            <a href="https://www.tongyeong.go.kr/main.web" class="swiper-slide" target="_blank">
+                <img src="/partner/png/partner_tongyeong.png" alt="통영시">
+            </a>
+            <a href="https://smartstore.naver.com/busanmilk" class="swiper-slide" target="_blank">
+                <img src="/partner/png/partner_busanMilk.png" alt="부산우유">
+            </a>
+            <a href="http://www.camc.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_11.jpg" alt="청아병원">
+            </a>
+            <a href="http://www.muruphospital.com/" class="swiper-slide" target="_blank">
+                <img src="/partner/jpg/img_footerlogo_13.jpg" alt="무룹병원">
+            </a>
+            <a href="https://www.365plant.co.kr/" class="swiper-slide" target="_blank">
+                <img src="/partner/365dental.png" alt="365바른치과">
+            </a>
+        </div>
+        <!-- Add Arrows -->
+        <div class="ico ico-next"></div>
+        <div class="ico ico-prev"></div>
+    </div>
+</div>
+<div class="f-wrap">
+    <h1 class="f-logo"><img src="../../assets/images/f_logo.png" alt="nc dinos"></h1>
+    <div class="privacy"><a href="/term/privacy.do"
+                            style="font-size:1.1em;">개인정보처리방침</a></div>
+    <div class="info-wrap">
+        <ul class="f-menu">
+            <li><a href="/term/agree.do">이용약관</a></li>
+            <li><a href="/term/email.do">이메일무단수집거부</a></li>
+            <li><a href="/term/faq.do">이용안내</a></li>
+            <li><a href="/term/contact.do">CONTACT US</a></li>
+        </ul>
+            <p class="copy" style="line-height: 15px">
+              상호명 : (주)엔씨다이노스 | 대표자명 : 이진만 | 사업자등록번호 : 608-81-86121 <a target="_blank" href="http://www.ftc.go.kr/bizCommPop.do?wrkr_no=6088186121">[사업자정보확인]</a> | 통신판매업신고번호 : 2015-마산회원-0025<br>
+              E-MAIL : communication@ncdinos.com | 대표번호 : 1644-9112 | 주소 : 경상남도 창원시 마산회원구 상호로 63, 창원NC파크(양덕동)<br>
+            </p>
+
+
+
+
+
+        <p class="copy">
+            Copyright 2026 &copy; NC Dinos Baseball Club. All Right Reserved.
+        </p>
+        <ul class="sns-wrap">
+            <li><a href="http://www.youtube.com/user/ncdinos" target="_blank"><span
+                    class="ico ico-youtube">유투브</span></a></li>
+            <li><a href="http://www.instagram.com/ncdinos2011" target="_blank"><span class="ico ico-insta">인스타그램</span></a>
+            </li>
+            <li><a href="http://www.facebook.com/ncdinos" target="_blank"><span class="ico ico-facebook">페이스북</span></a>
+            </li>
+            <li><a href="https://twitter.com/ncdinos_fan" target="_blank"><span class="ico ico-twitter">트위터</span></a>
+            </li>
+        </ul>
+    </div>
+    <div class="family">
+        <a href="http://www.ncsoft.com" target="_blank"> <img src="../../assets/images/logo_footer_nc_2024.png"
+                                                              alt="NC"></a>
+        <a href="http://www.plaync.co.kr" target="_blank"><img src="../../assets/images/logo_footer_plaync_2024.png"
+                                                               alt="PLAY NC"></a>
+    </div>
+
+    <div class="family" style="display: flex; align-items: center; justify-content: center; gap:8px; padding-top: 12px">
+       <img src="../../assets/images/ico_isms.png" alt="ISMS인증">
+        <p style="font-size: 0.8rem; line-height: 1.2rem; color: rgba(255,255,255,0.5);">[인증 범위] NC 다이노스 온라인 서비스<br/>[유효기간] 2026.07.15 ~ 2029.07.14</p>
+    </div>
+    <span class="p-txt">이 홈페이지는 문화체육관광부와 국민체육진흥공단의 재정후원으로 제작되었습니다.</span>
+</div>
+
+</footer>
+
+</body>
+</html>

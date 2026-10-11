@@ -1,0 +1,12 @@
+# Source: https://www.samsunglions.com/robots.txt
+# Fetched at: 2026-10-12T01:02:39.234551+09:00
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: bingbot
+Disallow: /score
+
+User-agent: *
+Disallow: /score
+Disallow: /en

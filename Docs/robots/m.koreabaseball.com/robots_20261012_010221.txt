@@ -1,0 +1,5 @@
+# Source: https://m.koreabaseball.com/robots.txt
+# Fetched at: 2026-10-12T01:02:21.416537+09:00
+
+User-agent: *
+Disallow: /ws/

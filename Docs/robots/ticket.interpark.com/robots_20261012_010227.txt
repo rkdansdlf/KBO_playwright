@@ -1,0 +1,22 @@
+# Source: https://ticket.interpark.com/robots.txt
+# Fetched at: 2026-10-12T01:02:27.066204+09:00
+
+User-agent: Googlebot
+User-agent: Yeti
+User-agent: DAUM
+User-agent: Twitterbot
+User-agent: facebookexternalhit
+Disallow: /Gate/
+Disallow: /gate/
+Disallow: /Point/
+Disallow: /Cancel/
+Disallow: /Ticket/
+Disallow: /Ticket/
+Disallow:/HelpDesk
+Disallow:/PartnerSVC
+Disallow:/tm-ticket
+Disallow:/Global
+Disallow:/GLOBAL
+
+User-agent: *
+Disallow: /

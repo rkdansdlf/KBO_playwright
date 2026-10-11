@@ -37,10 +37,11 @@ from enum import StrEnum
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib import robotparser
+
+from src.utils.host_policy import HostVerdict, read_policy
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
     from sqlalchemy.orm import Session
@@ -537,7 +538,15 @@ class SourceRow:
     crawler: str
     source_domains: tuple[str, ...]
     policy_status: PolicyStatus
-    declaration: SourceDeclaration | None
+    enforced: bool = False
+    """Whether the crawler asks the compliance layer before fetching.
+
+    Separate from the status because the two answer different questions. A host
+    that permits reading while the crawler never asks is the state that turns a
+    policy change into a surprise.
+    """
+
+    declaration: SourceDeclaration | None = None
     measurements: tuple[TableMeasurement, ...] = ()
     rag_chunks: int = 0
     consumers: tuple[str, ...] = ()
@@ -560,6 +569,7 @@ class SourceRow:
             "crawler": self.crawler,
             "source_domains": list(self.source_domains),
             "policy_status": self.policy_status.value,
+            "enforced": self.enforced,
             "declared": self.declared,
             "alternative_source": (self.declaration.alternative_source if self.declaration else None),
             "priority": (self.declaration.priority if self.declaration else None),
@@ -700,46 +710,61 @@ def consults_policy(module: str, *, crawler_dir: Path = CRAWLER_DIR) -> bool:
     return "compliance.is_allowed" in source or "is_allowed_sync" in source
 
 
-def blocked_hosts(*, robots_dir: Path = ROBOTS_DIR) -> tuple[frozenset[str], str | None]:
-    """Return the hosts the newest robots snapshot refuses, and its filename.
+@cache
+def host_verdicts(*, policy_dir: Path = ROBOTS_DIR) -> dict[str, HostVerdict]:
+    """Return the recorded policy verdict for every host the crawlers use.
 
-    Parsed with the same stdlib parser the compliance layer uses, so this report
-    cannot disagree with the crawlers about what the policy says.
+    Cached because `policy_status_of` is called once per crawler and each call
+    otherwise re-reads the snapshot files; the archive holds thousands of them.
 
     Args:
-        robots_dir: Directory holding the saved robots.txt snapshots.
+        policy_dir: Where the per-host snapshots live.
 
     Returns:
-        The set of hosts whose policy refuses ``*``, and the snapshot's name.
+        Host to verdict. Hosts with no record are absent rather than permissive.
 
     """
-    snapshots = sorted(robots_dir.glob("robots_*.txt"))
-    if not snapshots:
-        return frozenset(), None
-    newest = snapshots[-1]
-    body = "\n".join(newest.read_text(encoding="utf-8", errors="replace").splitlines()[SNAPSHOT_HEADER_LINES:])
-
-    parser = robotparser.RobotFileParser()
-    parser.parse(body.splitlines())
-    refused = not parser.can_fetch("*", "/")
-    host = KBO_HOST
-    return (frozenset({host}) if refused else frozenset()), newest.name
+    verdicts: dict[str, HostVerdict] = {}
+    for module in discover_crawler_modules():
+        for domain in source_domains(module):
+            if domain in verdicts:
+                continue
+            verdicts[domain] = read_policy(domain, policy_dir=policy_dir).verdict
+    return verdicts
 
 
-def policy_status_of(module: str, blocked: frozenset[str], *, crawler_dir: Path = CRAWLER_DIR) -> PolicyStatus:
-    """Return whether a crawler can consult its source.
+def policy_status_of(
+    module: str,
+    verdicts: Mapping[str, HostVerdict],
+    *,
+    crawler_dir: Path = CRAWLER_DIR,
+) -> PolicyStatus:
+    """Return what a crawler's sources permit.
 
-    A crawler that never asks the policy gets ``UNKNOWN`` rather than ``OK``:
-    "allowed" is a claim someone has to make, and nothing here made it.
+    Judges the host's recorded policy, not whether the crawler asks about it.
+    Those are separate facts and conflating them is what made 27 crawlers read as
+    `unknown`: they were unknown because no policy existed for their host, and a
+    crawler that never consults a policy is a different problem from one whose
+    host has none.
+
+    Args:
+        module: Crawler module stem, without ``.py``.
+        verdicts: Recorded verdicts by host.
+        crawler_dir: Directory holding the crawler modules.
+
+    Returns:
+        The worst verdict among the crawler's hosts.
+
     """
     domains = source_domains(module, crawler_dir=crawler_dir)
     if not domains:
         return PolicyStatus.UNKNOWN
-    if not consults_policy(module, crawler_dir=crawler_dir):
-        return PolicyStatus.UNKNOWN
-    if any("koreabaseball.com" in host for host in domains) and blocked:
+    seen = [verdicts.get(domain) for domain in domains]
+    if any(verdict is HostVerdict.DISALLOWED for verdict in seen):
         return PolicyStatus.BLOCKED
-    return PolicyStatus.OK
+    if seen and all(verdict in (HostVerdict.ALLOWED, HostVerdict.NO_POLICY) for verdict in seen):
+        return PolicyStatus.OK
+    return PolicyStatus.UNKNOWN
 
 
 def _table_columns(session: Session, table: str) -> set[str] | None:
@@ -1040,7 +1065,7 @@ def _measure_declared(
 
 def _build_rows(
     *,
-    blocked: frozenset[str],
+    verdicts: Mapping[str, HostVerdict],
     measurements: dict[str, tuple[TableMeasurement, ...]],
     chunks: dict[str, int],
     runs: dict[str, RunSummary],
@@ -1055,7 +1080,8 @@ def _build_rows(
             SourceRow(
                 crawler=module,
                 source_domains=source_domains(module, crawler_dir=crawler_dir),
-                policy_status=policy_status_of(module, blocked, crawler_dir=crawler_dir),
+                policy_status=policy_status_of(module, verdicts, crawler_dir=crawler_dir),
+                enforced=consults_policy(module, crawler_dir=crawler_dir),
                 declaration=declaration,
                 measurements=table_measurements,
                 rag_chunks=sum(chunks.get(m.table, 0) for m in table_measurements),
@@ -1069,7 +1095,6 @@ def _build_rows(
 def _collect_findings(
     rows: Sequence[SourceRow],
     *,
-    snapshot: str | None,
     crawler_dir: Path,
 ) -> tuple[list[str], list[str]]:
     """Return the drift and advisories the rows imply.
@@ -1102,9 +1127,13 @@ def _collect_findings(
             f"{len(undeclared)} of {len(rows)} crawlers have no declaration yet, so their tables are "
             f"not measured: {named}{more}",
         )
-    advisories.append(
-        f"robots policy read from {snapshot}" if snapshot else "no robots snapshot found; policy_status is UNKNOWN"
-    )
+    unguarded = sorted(row.crawler for row in rows if row.policy_status is PolicyStatus.OK and not row.enforced)
+    if unguarded:
+        advisories.append(
+            f"{len(unguarded)} crawlers may read their source but never consult the policy, so a policy "
+            f"change would not stop them: {', '.join(unguarded[:ADVISORY_NAME_LIMIT])}"
+            f"{' ...' if len(unguarded) > ADVISORY_NAME_LIMIT else ''}"
+        )
     advisories.extend(
         f"{row.crawler} reported {row.runs.succeeded} success"
         f"{'' if row.runs.succeeded == 1 else 'es'} in {row.runs.window_hours}h, none of which read or "
@@ -1148,20 +1177,20 @@ def build_inventory(
         The inventory, with its own coverage gaps attached.
 
     """
-    blocked, snapshot = blocked_hosts(robots_dir=robots_dir)
+    verdicts = host_verdicts(policy_dir=robots_dir)
     measurements, chunks, runs, drift = _measure_declared(
         session_factory,
         stale_after_days=stale_after_days,
         window_hours=window_hours,
     )
     rows = _build_rows(
-        blocked=blocked,
+        verdicts=verdicts,
         measurements=measurements,
         chunks=chunks,
         runs=runs,
         crawler_dir=crawler_dir,
     )
-    more_drift, advisories = _collect_findings(rows, snapshot=snapshot, crawler_dir=crawler_dir)
+    more_drift, advisories = _collect_findings(rows, crawler_dir=crawler_dir)
     return SourceInventory(
         rows=tuple(rows),
         drift=tuple(drift + more_drift),
@@ -1179,7 +1208,6 @@ __all__ = [
     "SourceInventory",
     "SourceRow",
     "TableMeasurement",
-    "blocked_hosts",
     "build_inventory",
     "consumers_of",
     "discover_crawler_modules",

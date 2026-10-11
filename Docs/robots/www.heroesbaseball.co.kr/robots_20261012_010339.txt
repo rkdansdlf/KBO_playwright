@@ -1,0 +1,33 @@
+# Source: https://www.heroesbaseball.co.kr/robots.txt
+# Fetched at: 2026-10-12T01:03:39.468189+09:00
+
+User-agent: Yeti
+allow: /
+
+User-agent: Daumoa
+allow: /
+
+User-agent: Googlebot
+Disallow: /players/
+allow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: bingbot
+Disallow: /
+
+User-agent: ImagesiftBot
+Disallow: /
+
+User-agent: WRTNBot
+Disallow: /
+
+User-agent: AhrefsSiteAudit
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: *
+Disallow: /

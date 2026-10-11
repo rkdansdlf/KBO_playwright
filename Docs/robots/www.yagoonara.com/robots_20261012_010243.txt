@@ -1,0 +1,563 @@
+# Source: https://www.yagoonara.com/robots.txt
+# Fetched at: 2026-10-12T01:02:43.938043+09:00
+
+# KBO 야구나라 robots.txt
+
+# ────────────────────────────────────────────
+# AI 학습 전용 봇 차단 (인용 없이 모델 학습만 — 우리에게 트래픽 환원 0)
+# ────────────────────────────────────────────
+
+# OpenAI 학습 봇 (GPTBot 차단 = ChatGPT 답변 시 우리 사이트 인용에는 영향 없음.
+# ChatGPT-User / OAI-SearchBot은 별도 패턴이라 허용됨)
+User-agent: GPTBot
+Disallow: /
+
+# Anthropic 학습 봇 (Claude 답변/검색은 ClaudeBot이 아닌 별도 패턴 사용)
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+# Google-Extended — Gemini '학습'뿐 아니라 grounding(답변 내 인용·링크)까지 함께 제어(구글이 분리 미제공).
+# 2026-08-18 Gemini 인용 유입 위해 허용 전환(학습 차단보다 인용 유입 우선 — 사용자 결정).
+# 일반 Googlebot 검색 인덱싱·AI Overviews는 이 UA와 무관.
+User-agent: Google-Extended
+Allow: /
+
+# Apple Intelligence 학습 (Applebot 검색은 영향 없음)
+User-agent: Applebot-Extended
+Disallow: /
+
+# Common Crawl — AI 학습 데이터셋용
+User-agent: CCBot
+Disallow: /
+
+# Cohere AI 학습 봇
+User-agent: cohere-ai
+Disallow: /
+
+# 기타 학습 데이터 수집 봇
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: Timpibot
+Disallow: /
+
+User-agent: ImagesiftBot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+# Meta AI 학습 봇 (2026-09-04 — CF Managed robots.txt 를 끄면서 그쪽이 넣어 주던 항목을 이 파일로 가져옴)
+#   meta-externalfetcher(사용자 요청 시 실시간 fetch)는 ChatGPT-User 와 같은 부류라 별개 — 허용.
+User-agent: meta-externalagent
+Disallow: /
+
+# ────────────────────────────────────────────
+# AI 검색/답변 봇 허용 (사용자에게 우리 사이트 인용/링크 → 유입 발생)
+# ChatGPT-User: 사용자가 ChatGPT에서 질문 시 실시간 fetch
+# OAI-SearchBot: ChatGPT Search 기능
+# PerplexityBot: Perplexity 답변 인용
+# Claude-User / Claude-SearchBot: Claude의 사용자 질문 응답·검색 인덱싱용 fetch (Claude-Web은 구형 UA)
+# Bingbot/AppleBot/Amazonbot: 일반 검색 (이미 * 허용 적용됨)
+# ⚠️ robots 규칙상 전용 UA 그룹이 있으면 * 그룹을 무시하므로 공통 Disallow를 각 그룹에 복제해 둔다(bingbot 선례).
+# ────────────────────────────────────────────
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+User-agent: Claude-User
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+# ────────────────────────────────────────────
+# 링크 공유 미리보기 봇 — og:image 접근 허용 (2026-09-04 GSC 커버리지 감사)
+#
+# 왜 전용 그룹인가: 아래 `User-agent: *` 그룹의 `Disallow: /*/opengraph-image` 가 공유 카드 이미지까지
+#   막고 있었다. 선수·팀 상세의 og:image 는 **동적 OG 라우트 단 하나뿐**이고 /og-image.png 폴백조차
+#   없어서(파일 기반 OG 라우트가 config 지정을 이긴다), 차단되면 공유 카드에 이미지가 통째로 사라진다.
+#   실측(2026-09-03 nginx 로그): 카카오톡 스크랩 봇이 하루 4,809건 요청하는데 opengraph-image 요청은
+#   전 UA 합쳐 20건(카카오 4건)뿐이었다 — 차단이 실제로 먹고 있었다는 뜻.
+#   robots 규칙상 전용 UA 그룹이 있으면 * 그룹을 무시하므로(bingbot 선례) 여기서만 OG 를 허용한다.
+#
+# ⚠️ Googlebot/bingbot 에는 계속 차단을 유지한다 — og:image 는 순위 요소가 아닌데 잠재 URL 이
+#   약 27,000개(선수 6,747 + 팀 50, 4로케일)이고 렌더가 요청당 1.4초·최대 138KB 라 크롤 예산과
+#   해외 대역폭만 태운다. 공유 카드에 필요한 것은 아래 봇들뿐이다.
+# ⚠️ 연속 User-agent 줄은 RFC 9309 상 하나의 그룹이다(규칙이 아래 한 벌만 있으면 전부에 적용).
+# ────────────────────────────────────────────
+
+User-agent: facebookexternalhit
+User-agent: meta-externalfetcher
+User-agent: Twitterbot
+User-agent: kakaotalk-scrap
+User-agent: Slackbot-LinkExpanding
+User-agent: Slackbot
+User-agent: Discordbot
+User-agent: LinkedInBot
+User-agent: TelegramBot
+User-agent: WhatsApp
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+# ────────────────────────────────────────────
+# 네이버 Yeti — og:image 허용 (2026-09-05 사용자 결정: "노출이 더 잘 되는 방향으로")
+#
+# 왜 네이버만 여는가:
+#   ① 우리 검색 유입의 90%가 네이버다(2026-08 실측). 네이버 웹사이트 검색결과 카드의 썸네일이 og:image이고,
+#      Yeti가 이미지를 수집하지 못하면 카드가 텍스트만 남는다.
+#   ② 실측(2026-09-03 nginx): Yeti는 하루 8,543건을 크롤하면서 robots.txt를 읽고 og:image 요청은 **0건**이었다
+#      — 아래 `*` 그룹의 `Disallow: /*/opengraph-image` 가 실제로 먹고 있었다는 뜻.
+#   ③ 부하 상한이 작다: 동적 OG 라우트를 가진 페이지는 `/players/:id`·`/teams/:id` **루트뿐**이고
+#      하위 탭(/players/:id/stats 등)은 정적 `/og-image.png`를 쓴다. Yeti가 하루에 건드리는 고유 선수 2,272명
+#      + 팀 24개 = **최대 2,296 렌더/일**, 게다가 OG 라우트에 `revalidate=86400`이 걸려 있어 하루 1회로 캐시된다.
+#
+# ⚠️ Googlebot·bingbot에는 계속 차단한다(결정 불변):
+#   구글은 og:image를 검색 썸네일 신호로 쓰지 않는데 크롤 예산이 우리의 병목이고(하루 2천건 / 알려진 URL 81만),
+#   bingbot은 해외 대역폭 과금의 최대 단일 원인이라 유입 대비 비용이 맞지 않는다.
+# ⚠️ 전용 그룹이라 `*` 그룹을 통째로 무시한다 → 공통 Disallow를 **`/*/opengraph-image` 하나만 빼고 전부 복제**했다.
+#   (`*`에 새 Disallow를 추가하면 여기에도 추가할 것 — `npm run test:robots`가 누락을 잡는다.)
+# ────────────────────────────────────────────
+
+User-agent: Yeti
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+# ────────────────────────────────────────────
+# SEO 도구 / 부하만 큰 봇 차단 (우리 노출에 도움 안 되고 서버 부담만 큼)
+# ────────────────────────────────────────────
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: DataForSeoBot
+Disallow: /
+
+# ByteDance/PetalBot은 중국 시장 외 유입에 도움 안 되고 서버 부담만 큼
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+# ────────────────────────────────────────────
+# Bing 크롤 속도 제한 (2026-07-03)
+# bingbot이 일 3.5만 요청·6.2GB를 크롤링 — 해외 트래픽 과금의 최대 단일 원인.
+# Crawl-delay: 10 = 10초당 1요청(일 최대 ~8,600건)으로 상한. 색인 자체는 유지됨.
+# ⚠️ robots 규칙상 전용 UA 그룹이 있으면 * 그룹을 무시하므로 공통 Disallow를 복제해 둔다.
+# ────────────────────────────────────────────
+
+User-agent: bingbot
+Crawl-delay: 10
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+
+# 일반 검색엔진 / 소셜 크롤러는 허용 (사이트 노출에 필요)
+User-agent: *
+Allow: /
+
+# Sitemap 위치 (검색엔진별로 어느 쪽을 시도해도 모두 작동)
+Sitemap: https://www.yagoonara.com/sitemap.xml
+Sitemap: https://www.yagoonara.com/sitemap-index.xml
+
+# AI 봇 정책 (참고 — 별도 ai.txt 우선 적용)
+# AI-Policy: https://www.yagoonara.com/ai.txt
+# LLM 사이트 인덱스 (인용·요약용 권장 진입점)
+# LLMs-Index: https://www.yagoonara.com/llms.txt
+
+# 제외할 경로
+# ⚠️ 로케일 페이지를 차단할 땐 4개 로케일(무프리픽스 ko + /en·/ja·/zh)을 모두 나열할 것
+#    (ja/zh 누락으로 해당 변형만 크롤되던 사각지대가 있었음 — 2026-07-04 GSC 감사)
+Disallow: /api/
+Disallow: /admin/
+Disallow: /uploads/
+Disallow: /*/opengraph-image
+# 개인 영역(/my)·운영진 로그인(/staff) — 색인 가치 0 (2026-08-18)
+Disallow: /my/
+Disallow: /en/my/
+Disallow: /ja/my/
+Disallow: /zh/my/
+Disallow: /staff/
+Disallow: /en/staff/
+Disallow: /ja/staff/
+Disallow: /zh/staff/
+Disallow: /youtube-request
+Disallow: /en/youtube-request
+Disallow: /ja/youtube-request
+Disallow: /zh/youtube-request
+Disallow: /info-requests
+Disallow: /en/info-requests
+Disallow: /ja/info-requests
+Disallow: /zh/info-requests
+# 작성 폼·쿼리 변형 유틸 페이지 — 색인 가치 0인데 엔티티마다 링크돼 크롤 예산만 소모
+# (GSC '크롤링됨-미색인'에 다수 등장, 2026-07-04 감사. /quiz 허브 자체는 허용 — ?쿼리 변형만 차단)
+Disallow: /community/write
+Disallow: /en/community/write
+Disallow: /ja/community/write
+Disallow: /zh/community/write
+Disallow: /docs/new
+Disallow: /en/docs/new
+Disallow: /ja/docs/new
+Disallow: /zh/docs/new
+Disallow: /quiz?
+Disallow: /en/quiz?
+Disallow: /ja/quiz?
+Disallow: /zh/quiz?
+Disallow: /menu?
+Disallow: /en/menu?
+Disallow: /ja/menu?
+Disallow: /zh/menu?
+
+# Sitemap/RSS API + 정적 자산은 허용 (Google Image Search 노출용)
+Allow: /api/sitemap-index
+Allow: /api/sitemap/
+Allow: /api/rss
+Allow: /players/*.jpg
+Allow: /teams/*.png
+
+#DaumWebMasterTool:d36f919b8e795f8f3eeb265b8e7a740437ee85d2464c2c73b16e39c453a4fc63:O/ff1mXINsKB4rLGiuxM3g==

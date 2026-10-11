@@ -1,0 +1,7 @@
+# Source: https://www.kiatigers.com/robots.txt
+# Fetched at: 2026-10-12T01:03:41.729526+09:00
+
+User-agent: *
+Allow: /
+LLM-Policy: /llms.txt
+Sitemap: /sitemap.xml

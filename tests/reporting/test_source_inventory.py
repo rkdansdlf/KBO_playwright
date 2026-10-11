@@ -110,67 +110,102 @@ class TestEveryDeclaredTableIsReal:
 
 
 class TestPolicyStatus:
-    """A verdict has to be earned, and 'allowed' is a claim."""
+    """A verdict has to come from a recorded policy, and say whose.
+
+    These were rewritten when the inventory started reading each host's own
+    robots.txt instead of the KBO one. Before that, a crawler whose host had no
+    record read as `unknown`, and a crawler that never asked the compliance layer
+    read the same way -- two different problems collapsed into one word. The
+    verdict now comes from the host's policy and `enforced` says separately
+    whether the crawler consults it.
+    """
+
+    ALLOWED = {inv.HostVerdict.ALLOWED}
+    BLOCKED = {inv.HostVerdict.DISALLOWED}
+    UNREAD = {inv.HostVerdict.UNREACHABLE}
 
     def _crawler(self, tmp_path: Path, body: str) -> Path:
         (tmp_path / "probe_crawler.py").write_text(body, encoding="utf-8")
         return tmp_path
 
-    def test_a_blocked_host_is_reported_blocked(self, tmp_path: Path) -> None:
-        directory = self._crawler(
-            tmp_path,
-            'URL = "https://www.koreabaseball.com/Player/Trade.aspx"\n'
-            "async def go():\n    await compliance.is_allowed(URL)\n",
-        )
+    def _status(self, directory: Path, verdicts) -> inv.PolicyStatus:
+        return inv.policy_status_of("probe_crawler", verdicts, crawler_dir=directory)
 
-        status = inv.policy_status_of("probe_crawler", frozenset({inv.KBO_HOST}), crawler_dir=directory)
+    def test_a_disallowed_host_is_reported_blocked(self, tmp_path: Path) -> None:
+        directory = self._crawler(tmp_path, 'URL = "https://blocked.test/x"\n')
 
-        assert status is inv.PolicyStatus.BLOCKED
+        assert self._status(directory, {"blocked.test": inv.HostVerdict.DISALLOWED}) is inv.PolicyStatus.BLOCKED
 
     def test_an_allowed_host_is_ok(self, tmp_path: Path) -> None:
+        directory = self._crawler(tmp_path, 'URL = "https://open.test/x"\n')
+
+        assert self._status(directory, {"open.test": inv.HostVerdict.ALLOWED}) is inv.PolicyStatus.OK
+
+    def test_a_host_that_publishes_no_policy_is_allowed(self, tmp_path: Path) -> None:
+        """Absent policy is permission by default, and must not read as unknown."""
+        directory = self._crawler(tmp_path, 'URL = "https://open.test/x"\n')
+
+        assert self._status(directory, {"open.test": inv.HostVerdict.NO_POLICY}) is inv.PolicyStatus.OK
+
+    def test_a_host_with_no_record_is_unknown(self, tmp_path: Path) -> None:
+        """Not OK: nobody has looked, and absence of knowledge is not permission."""
+        directory = self._crawler(tmp_path, 'URL = "https://unasked.test/x"\n')
+
+        assert self._status(directory, {"unasked.test": inv.HostVerdict.UNREACHABLE}) is inv.PolicyStatus.UNKNOWN
+
+    def test_a_host_with_no_entry_at_all_is_unknown(self, tmp_path: Path) -> None:
+        """The mapping is allowed to be silent about a host."""
+        directory = self._crawler(tmp_path, 'URL = "https://absent.test/x"\n')
+
+        assert self._status(directory, {}) is inv.PolicyStatus.UNKNOWN
+
+    def test_one_blocked_host_among_allowed_ones_is_still_blocked(self, tmp_path: Path) -> None:
+        """A crawler with two sources is only as permitted as its worst one."""
         directory = self._crawler(
             tmp_path,
-            'URL = "https://api-gw.sports.naver.com/x"\nasync def go():\n    await compliance.is_allowed(URL)\n',
+            'A = "https://open.test/a"\nB = "https://blocked.test/b"\n',
         )
+        verdicts = {"open.test": inv.HostVerdict.ALLOWED, "blocked.test": inv.HostVerdict.DISALLOWED}
 
-        status = inv.policy_status_of("probe_crawler", frozenset({inv.KBO_HOST}), crawler_dir=directory)
+        assert self._status(directory, verdicts) is inv.PolicyStatus.BLOCKED
 
-        assert status is inv.PolicyStatus.OK
+    def test_a_partly_unread_host_set_is_unknown(self, tmp_path: Path) -> None:
+        """One unknown among known ones is not a permission."""
+        directory = self._crawler(
+            tmp_path,
+            'A = "https://open.test/a"\nB = "https://unasked.test/b"\n',
+        )
+        verdicts = {"open.test": inv.HostVerdict.ALLOWED, "unasked.test": inv.HostVerdict.UNREACHABLE}
 
-    def test_a_crawler_that_never_asks_is_unknown(self, tmp_path: Path) -> None:
-        """Not OK: nothing established that the source may be consulted.
-
-        Reporting OK here would be the report making a policy claim on behalf of
-        a crawler that never made one.
-        """
-        directory = self._crawler(tmp_path, 'URL = "https://www.koreabaseball.com/x"\n')
-
-        status = inv.policy_status_of("probe_crawler", frozenset({inv.KBO_HOST}), crawler_dir=directory)
-
-        assert status is inv.PolicyStatus.UNKNOWN
+        assert self._status(directory, verdicts) is inv.PolicyStatus.UNKNOWN
 
     def test_a_crawler_with_no_hosts_is_unknown(self, tmp_path: Path) -> None:
-        directory = self._crawler(tmp_path, "async def go():\n    await compliance.is_allowed('x')\n")
+        directory = self._crawler(tmp_path, "async def go():\n    pass\n")
 
-        status = inv.policy_status_of("probe_crawler", frozenset({inv.KBO_HOST}), crawler_dir=directory)
+        assert self._status(directory, {"any.test": inv.HostVerdict.ALLOWED}) is inv.PolicyStatus.UNKNOWN
 
-        assert status is inv.PolicyStatus.UNKNOWN
+    def test_consulting_the_policy_is_recorded_separately_from_the_verdict(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Allowed is not the same as guarded.
 
-    def test_the_subdomain_the_roster_crawler_uses_is_recognised(self, tmp_path: Path) -> None:
-        """`m.koreabaseball.com` is a different host with the same policy.
-
-        The real crawler's ledger rows record `compliance_blocked`, so the
-        compliance layer treats it as same-site; the report has to agree with the
-        crawlers about which URLs the policy covers.
+        The roster crawler's host was recorded as permitting `/Player/Trade.aspx`
+        while the compliance layer blocks it, because that layer treats the mobile
+        host as the same site as the blocked one. Recording `enforced` beside the
+        verdict is what makes that visible instead of something a reader has to
+        already know.
         """
         directory = self._crawler(
-            tmp_path,
-            'URL = "https://m.koreabaseball.com/x"\nasync def go():\n    await compliance.is_allowed(URL)\n',
+            tmp_path, 'URL = "https://open.test/x"\nasync def go():\n    await compliance.is_allowed(URL)\n'
         )
 
-        status = inv.policy_status_of("probe_crawler", frozenset({inv.KBO_HOST}), crawler_dir=directory)
+        assert inv.consults_policy("probe_crawler", crawler_dir=directory) is True
 
-        assert status is inv.PolicyStatus.BLOCKED
+        plain_dir = tmp_path / "plain"
+        plain_dir.mkdir()
+        self._crawler(plain_dir, 'URL = "https://open.test/x"\n')
+        assert inv.consults_policy("probe_crawler", crawler_dir=plain_dir) is False
 
 
 class TestSourceDomains:
@@ -305,17 +340,19 @@ class TestConsumers:
 
 
 class TestTheReportNamesItsOwnGaps:
-    def test_a_robots_snapshot_is_read(self) -> None:
-        blocked, snapshot = inv.blocked_hosts()
+    def test_the_recorded_kbo_policy_is_read(self) -> None:
+        """The archive still holds the site-wide block, which is the whole reason
+        the blocked crawlers are blocked.
+        """
+        policy = inv.read_policy("www.koreabaseball.com")
 
-        assert snapshot is not None
-        assert inv.KBO_HOST in blocked, "the site-wide Disallow should be detected"
+        assert policy.verdict is inv.HostVerdict.DISALLOWED, policy
+        assert policy.recorded is True
 
-    def test_a_missing_snapshot_directory_is_not_a_crash(self, tmp_path: Path) -> None:
-        blocked, snapshot = inv.blocked_hosts(robots_dir=tmp_path)
+    def test_a_missing_policy_directory_yields_no_verdicts(self, tmp_path: Path) -> None:
+        verdicts = inv.host_verdicts(policy_dir=tmp_path)
 
-        assert blocked == frozenset()
-        assert snapshot is None
+        assert set(verdicts.values()) <= {inv.HostVerdict.UNREACHABLE}
 
     def test_an_undeclared_crawler_is_reported_as_a_gap(self, tmp_path: Path) -> None:
         """Silence would read as coverage."""
@@ -325,10 +362,15 @@ class TestTheReportNamesItsOwnGaps:
 
         assert any("no declaration yet" in line for line in report.advisories)
 
-    def test_no_robots_snapshot_says_so(self, tmp_path: Path) -> None:
-        report = inv.build_inventory(crawler_dir=tmp_path, robots_dir=tmp_path)
+    def test_crawlers_that_may_read_but_never_ask_are_named(self) -> None:
+        """The state that turns a policy change into a surprise."""
+        report = inv.build_inventory()
 
-        assert any("no robots snapshot" in line for line in report.advisories)
+        guarded = [row for row in report.rows if row.policy_status is inv.PolicyStatus.OK and row.enforced]
+        unguarded = [row for row in report.rows if row.policy_status is inv.PolicyStatus.OK and not row.enforced]
+        assert guarded or unguarded, "some crawler should have a readable source"
+        if unguarded:
+            assert any("never consult the policy" in line for line in report.advisories)
 
     def test_the_ai_exposure_section_fires_on_a_stale_indexed_table(
         self,
@@ -490,7 +532,12 @@ class TestTheInventoryIsComplete:
 
 
 def _seed_runs(factory, crawler: str, *, succeeded: int, zero_yield: int, total: int = 0) -> None:
-    """Write a ledger that reports `succeeded` successes, `zero_yield` of them empty."""
+    """Write a ledger that reports `succeeded` successes, `zero_yield` of them empty.
+
+    Stamped relative to now rather than to a fixed instant. The measurement reads
+    a rolling window, so rows anchored to a fixed date fall out of it as time
+    passes -- the suite went from 50 rows to 44 without anything changing.
+    """
     total = total or succeeded
     empty = succeeded - zero_yield
     # Committed explicitly: closing a session without one rolls the inserts back,
@@ -502,7 +549,7 @@ def _seed_runs(factory, crawler: str, *, succeeded: int, zero_yield: int, total:
                     "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
                     "started_at) VALUES (:c, 'success', 5, 5, :t)"
                 ),
-                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+                {"c": crawler, "t": (datetime.now(UTC) - timedelta(hours=index)).replace(tzinfo=None)},
             )
         for index in range(zero_yield):
             session.execute(
@@ -510,7 +557,7 @@ def _seed_runs(factory, crawler: str, *, succeeded: int, zero_yield: int, total:
                     "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
                     "started_at) VALUES (:c, 'success', 0, 0, :t)"
                 ),
-                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+                {"c": crawler, "t": (datetime.now(UTC) - timedelta(hours=index)).replace(tzinfo=None)},
             )
         for index in range(total - succeeded):
             session.execute(
@@ -518,7 +565,7 @@ def _seed_runs(factory, crawler: str, *, succeeded: int, zero_yield: int, total:
                     "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
                     "started_at) VALUES (:c, 'failed', 0, 0, :t)"
                 ),
-                {"c": crawler, "t": (_REFERENCE - timedelta(hours=index)).replace(tzinfo=None)},
+                {"c": crawler, "t": (datetime.now(UTC) - timedelta(hours=index)).replace(tzinfo=None)},
             )
         session.commit()
 
@@ -550,7 +597,7 @@ class TestRunYields:
                     "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
                     "started_at) VALUES ('preview', 'success', 7, 0, :t)"
                 ),
-                {"t": _REFERENCE.replace(tzinfo=None)},
+                {"t": datetime.now(UTC).replace(tzinfo=None)},
             )
             session.commit()
 
