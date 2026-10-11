@@ -149,3 +149,29 @@ def stable_highlight_source_row_id(
         return f"{clean_game_id}_{clean_type}_{event_seq}"
     parts = (clean_game_id, clean_type, _identity_part(description))
     return f"{clean_game_id}_{clean_type}_summary_{_identity_digest(parts)}"
+
+
+def stable_team_event_source_row_id(
+    event_scope: str | None,
+    team_code: str | None,
+    event_type: str | None,
+    title: str | None,
+    published_at: date | str | None,
+) -> str:
+    """Build a deterministic natural key for a team event chunk.
+
+    Team events are the one source whose own ``id`` is a plain sequence that a
+    re-crawl can renumber, and whose title carries the distinguishing detail --
+    "엘린이 하이파이브 (7월 5일)" and "(7월 4일)" are the same promotion on
+    different days, and an id-derived key would merge them while a title-only key
+    would collide on a re-published notice. Scope, team, type and publication
+    date keep those apart.
+    """
+    parts = (
+        _identity_part(event_scope),
+        _identity_part(team_code),
+        _identity_part(event_type),
+        _identity_part(published_at),
+    )
+    readable = "_".join(parts)
+    return f"{readable}_{_identity_digest((*parts, _identity_part(title)))[:16]}"

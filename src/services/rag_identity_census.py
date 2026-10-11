@@ -22,6 +22,7 @@ from src.models.game import Game, GameHighlight, GamePlayByPlay
 from src.models.player import PlayerMovement
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
+from src.models.team_event import TeamEvent
 from src.models.team_history import TeamHistory
 from src.services.rag_index_identity import (
     PbpSourceIdentity,
@@ -32,6 +33,7 @@ from src.services.rag_index_identity import (
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
     stable_splits_source_row_id,
+    stable_team_event_source_row_id,
     stable_team_history_source_row_id,
 )
 
@@ -51,6 +53,7 @@ R2_SOURCE_TABLES = (
     "player_movements",
     "game_play_by_play",
     "game_highlights",
+    "team_events",
 )
 R2_MANIFEST_VERSION = "r2-identity-census-v1"
 R2_INDEX_VERSION = "rag-v2"
@@ -420,6 +423,30 @@ def _highlight_records(session: Session, season: int | None) -> Iterator[SourceI
         )
 
 
+def _team_event_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield team-event identities from the source table.
+
+    No season filter: a team event carries no season column, and the ones that
+    reference a game do so through ``game_id``. Filtering on it would drop the
+    standalone promotions, which are most of the table.
+    """
+    del season
+    statement = select(
+        TeamEvent.id,
+        TeamEvent.event_scope,
+        TeamEvent.team_id,
+        TeamEvent.event_type,
+        TeamEvent.title,
+        TeamEvent.published_at,
+    )
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "team_events",
+            str(row[0]),
+            stable_team_event_source_row_id(row[1], row[2], row[3], row[4], row[5]),
+        )
+
+
 def iter_source_identity_records(
     session: Session,
     source_table: str,
@@ -435,6 +462,7 @@ def iter_source_identity_records(
         "player_movements": _movement_records,
         "game_play_by_play": _pbp_records,
         "game_highlights": _highlight_records,
+        "team_events": _team_event_records,
     }
     try:
         builder = record_builders[source_table]

@@ -14,6 +14,7 @@ from src.services.rag_index_identity import (
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
     stable_splits_source_row_id,
+    stable_team_event_source_row_id,
     stable_team_history_source_row_id,
 )
 
@@ -91,6 +92,35 @@ def test_stable_team_history_source_row_id() -> None:
     """Team history natural key combines season and team code."""
     assert stable_team_history_source_row_id(1990, "LG") == "1990_LG"
     assert stable_team_history_source_row_id(1982, "OB ") == "1982_OB"
+
+
+def test_stable_team_event_source_row_id_is_deterministic() -> None:
+    """The same event yields the same key on every run."""
+    first = stable_team_event_source_row_id("team", "LG", "promotion", "하이파이브", "2026-06-27")
+    second = stable_team_event_source_row_id("team", "LG", "promotion", "하이파이브", "2026-06-27")
+    assert first == second
+    assert first.startswith("team_LG_promotion_2026-06-27_")
+
+
+def test_stable_team_event_source_row_id_separates_same_promotion_on_different_days() -> None:
+    """Two daily variants of one promotion must not collapse into one key."""
+    day_four = stable_team_event_source_row_id("team", "LG", "promotion", "엘린이 하이파이브 (7월 4일)", "2026-06-27")
+    day_five = stable_team_event_source_row_id("team", "LG", "promotion", "엘린이 하이파이브 (7월 5일)", "2026-06-27")
+    assert day_four != day_five
+
+
+def test_stable_team_event_source_row_id_keeps_teams_apart() -> None:
+    """Identical wording under two teams stays two events."""
+    lg = stable_team_event_source_row_id("team", "LG", "promotion", "학생 프로모션", "2026-06-27")
+    ob = stable_team_event_source_row_id("team", "OB", "promotion", "학생 프로모션", "2026-06-27")
+    assert lg != ob
+
+
+def test_stable_team_event_source_row_id_tolerates_missing_fields() -> None:
+    """A sparse event still produces a usable key."""
+    key = stable_team_event_source_row_id(None, None, None, "행사", None)
+    assert key.startswith("___")
+    assert stable_team_event_source_row_id(None, None, None, "행사", None) == key
 
 
 def test_stable_milestone_source_row_id() -> None:
