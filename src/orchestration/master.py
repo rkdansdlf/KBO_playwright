@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.orchestration.dto import (
@@ -22,6 +23,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 YEAR_PREFIX_LEN = 4
+
+#: Where the season PA baseline lives. A directory is accepted as well so the
+#: first record can be written without knowing the file name up front.
+PA_BASELINE_DIR = "data"
+PA_BASELINE_FILENAME = "pa_violations_baseline.json"
+PA_BASELINE_ENV = "KBO_PA_BASELINE_PATH"
+
+
+def _pa_baseline_path() -> Path:
+    """Resolve where the daily quality gate should look for its baseline.
+
+    Returning a path that does not exist yet is deliberate. The gate treats a
+    missing file as "not compared" and says so in its remediation hints, which is
+    how an operator learns the baseline needs recording -- a default of ``None``
+    would leave the comparison switched off with nothing to indicate it.
+    """
+    configured = os.getenv(PA_BASELINE_ENV)
+    if configured:
+        target = Path(configured)
+        return target if target.suffix == ".json" else target / PA_BASELINE_FILENAME
+    return Path(PA_BASELINE_DIR) / PA_BASELINE_FILENAME
 
 
 def _extract_target_year(ctx: dict[str, Any]) -> int:
@@ -129,7 +151,7 @@ def _run_quality_gate(ctx: dict[str, Any]) -> StageExecutionResult:
         from src.services.quality_hub import QualityHub
 
         with get_db_session() as session:
-            hub = QualityHub(session)
+            hub = QualityHub(session, baseline_path=_pa_baseline_path())
             report = hub.run_full_audit(season=year)
             is_valid = report.overall_status in ("PASS", "WARN")
             return StageExecutionResult(

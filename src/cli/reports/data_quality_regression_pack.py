@@ -11,10 +11,13 @@ from typing import TYPE_CHECKING
 from src.constants import DATE_STR_LEN
 from src.db.engine import DATABASE_URL
 from src.db.engine import create_engine_for_url as create_engine
+from src.orchestration.master import PA_BASELINE_FILENAME
 from src.validators.data_quality_regression_pack import (
     render_regression_report,
     report_to_json,
     run_regression_pack,
+    write_baseline,
+    write_unrecoverable,
 )
 
 if TYPE_CHECKING:
@@ -44,6 +47,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Fail when required tables or columns are missing",
     )
     parser.add_argument("--output", type=Path, help="Write the JSON report to this file")
+    parser.add_argument(
+        "--write-baseline",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Record the season rows currently failing so a later run can report new damage separately "
+            "from the standing backlog. Accepts a file or the directory to write it into."
+        ),
+    )
     args = parser.parse_args(argv)
 
     target_date = args.date.replace("-", "") if args.date else None
@@ -63,6 +75,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             season=season,
             require_schema=args.require_schema,
         )
+        if args.write_baseline is not None:
+            baseline_path = args.write_baseline
+            if baseline_path.suffix != ".json":
+                baseline_path = baseline_path / PA_BASELINE_FILENAME
+            body = write_baseline(conn, baseline_path, season=season)
+            write_unrecoverable(conn, baseline_path.with_name("unrecoverable.json"))
+            sys.stdout.write(
+                f"recorded {sum(len(v['player_ids']) for v in body['checks'].values())} violating row(s) "
+                f"across {len(body['checks'])} check(s) in {baseline_path}\n"
+            )
 
     if args.output:
         json_report = report_to_json(report)

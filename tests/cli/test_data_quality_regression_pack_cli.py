@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine, text
 
 from src.cli.data_quality_regression_pack import main
+
+
+def _create_quality_tables(conn) -> None:
+    """A season table with the shape the pack queries, nothing else."""
+    conn.execute(
+        text(
+            """
+            CREATE TABLE player_season_batting (
+                player_id INTEGER,
+                season INTEGER,
+                plate_appearances INTEGER,
+                at_bats INTEGER,
+                walks INTEGER,
+                hbp INTEGER,
+                sacrifice_hits INTEGER,
+                sacrifice_flies INTEGER,
+                league TEXT,
+                level TEXT,
+                source TEXT
+            )
+            """,
+        ),
+    )
 
 
 def _make_report(*, ok: bool = True) -> MagicMock:
@@ -170,3 +196,76 @@ class TestDataQualityRegressionPackCLI:
             require_schema=True,
         )
         assert output_path.read_text(encoding="utf-8") == '{"ok": true}\n'
+
+
+class TestRecordingABaselineFromTheCommandLine:
+    """The daily gate's remediation hint names this command, so it has to exist.
+
+    A hint telling an operator to run a flag the tool does not have is worse than
+    no hint: it reads as an instruction and produces nothing. Writing is also the
+    only step between "the gate compares against nothing" and "the gate can say
+    whether the backlog grew".
+    """
+
+    def test_writing_a_baseline_creates_the_file_the_gate_reads(self, tmp_path, capsys) -> None:
+        db_path = tmp_path / "pa.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, level, source)
+                    VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+        baseline = tmp_path / "baseline.json"
+
+        exit_code = main(
+            [
+                "--database-url",
+                f"sqlite:///{db_path}",
+                "--year",
+                "2026",
+                "--write-baseline",
+                str(baseline),
+            ],
+        )
+
+        out = capsys.readouterr().out
+        assert baseline.exists(), "the command wrote no file"
+        body = json.loads(baseline.read_text())
+        assert body["checks"]["player_season_batting_unaccounted_pa"]["player_ids"] == ["5001"]
+        assert "recorded 1 violating row(s)" in out
+        # The exit code still reports the pack's own verdict. Recording a baseline
+        # is extra work done alongside the run, not a reason to call a failing
+        # pack a success -- the whole point is that the backlog stays visible.
+        assert exit_code == 1
+
+    def test_writing_records_the_scope_so_a_season_run_can_read_it(self, tmp_path, capsys) -> None:
+        db_path = tmp_path / "pa.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+        baseline = tmp_path / "baseline.json"
+
+        main(["--database-url", f"sqlite:///{db_path}", "--year", "2026", "--write-baseline", str(baseline)])
+
+        capsys.readouterr()
+        assert json.loads(baseline.read_text())["scope"] == {"season": 2026}
+
+    def test_the_unfixable_record_is_written_alongside_it(self, tmp_path, capsys) -> None:
+        """The two files are read together, so one without the other is a half answer."""
+        db_path = tmp_path / "pa.db"
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+        baseline = tmp_path / "baseline.json"
+
+        main(["--database-url", f"sqlite:///{db_path}", "--write-baseline", str(baseline)])
+
+        capsys.readouterr()
+        assert (tmp_path / "unrecoverable.json").exists()
