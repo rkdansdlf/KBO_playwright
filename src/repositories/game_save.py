@@ -506,6 +506,72 @@ def _update_detail_core_fields(
     return changed
 
 
+def _score_from_innings(inning_rows: list[dict[str, Any]], side: str) -> int | None:
+    """Sum a side's inning runs, or None when that side has no innings at all.
+
+    None rather than 0 because 0 is a score a team actually posts. A side with
+    no inning lines is a half-read game, and scoring it 0 would invent a shutout
+    for the side that was never read.
+    """
+    runs = [row.get("runs") for row in inning_rows if row.get("team_side") == side]
+    numeric = [value for value in runs if isinstance(value, (int, float))]
+    return int(sum(numeric)) if numeric else None
+
+
+def _fill_missing_scores_from_innings(
+    game: Game,
+    ctx: DetailSaveContext,
+    inning_rows: list[dict[str, Any]],
+) -> bool:
+    """Fill a missing score from the innings already written for that side.
+
+    A partial render of the detail page produces the inning lines and the box
+    score but not the two team totals. The totals are then never filled: the
+    status derivation falls back to "there is progress evidence", which is
+    correct, so the row is stored COMPLETED with no score and nothing looks
+    wrong. 369 stored games are in that state.
+
+    Only a missing side is filled. A score the page reported is the source's
+    own statement; overwriting it with a sum would erase the only trace of a
+    disagreement between the two parts of the page, which the consistency check
+    above already warns about.
+
+    Both sides must have inning lines before either is filled. One side alone is
+    a half-read game, and summing it would leave the other side looking like it
+    was shut out. Of the stored games with inning lines, one has only one side --
+    so this is the rare case, and it is exactly the one where a wrong guess is
+    least detectable.
+    """
+    if not inning_rows:
+        return False
+    sides_with_innings = {row.get("team_side") for row in inning_rows}
+    if sides_with_innings != {"home", "away"}:
+        return False
+    changed = False
+    for side in ("home", "away"):
+        field = f"{side}_score"
+        if getattr(game, field) is not None:
+            continue
+        total = _score_from_innings(inning_rows, side)
+        if total is None:
+            continue
+        changed |= _assign_field_if_changed(
+            game,
+            field,
+            total,
+            game_id=ctx.game_id,
+            source=ctx.source,
+            write_contract=ctx.write_contract,
+        )
+        logger.warning(
+            "[InningScore] %s %s was missing and was filled from the inning lines: %d",
+            ctx.game_id,
+            field,
+            total,
+        )
+    return changed
+
+
 def _update_detail_status(
     game: Game,
     ctx: DetailSaveContext,
@@ -517,6 +583,7 @@ def _update_detail_status(
         consistency_warnings = _validate_inning_score_consistency(teams, inning_rows, ctx.game_id)
         for warning in consistency_warnings:
             logger.warning("[InningScore] %s", warning)
+    _fill_missing_scores_from_innings(game, ctx, inning_rows)
     has_progress = bool(inning_rows) or game.home_score is not None or game.away_score is not None
     new_status = derive_stable_game_status(
         GameStatusEvidence(
