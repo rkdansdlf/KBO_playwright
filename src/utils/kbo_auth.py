@@ -7,8 +7,10 @@ Handle automated login and session persistence.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import time
 from pathlib import Path
 
 from playwright.async_api import Error as PlaywrightError
@@ -17,6 +19,11 @@ from playwright.async_api import async_playwright
 from src.config.env_loader import load_project_env
 from src.urls import GAME_CENTER
 from src.utils.playwright_retry import SEL_TIMEOUT
+
+#: Google Analytics cookies, which outlive a login by months. A state file holding
+#: nothing but these is what a login that failed to persist a session leaves
+#: behind, so treating one as a session skips the login that would fix it.
+ANALYTICS_COOKIE_PREFIXES = ("_ga", "_gid", "_gat")
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +132,45 @@ class KboAuthenticator:
 
     @classmethod
     def is_authenticated(cls) -> bool:
-        """Check if auth state file exists."""
-        return Path(cls.AUTH_STATE_PATH).exists()
+        """Whether the saved state still carries a session worth reusing.
+
+        Existence is not the question. ``playwright_pool`` skips the login when
+        this says yes, so a file left behind by a login that failed to persist a
+        session -- or one the server has since ended -- is carried indefinitely:
+        nothing on disk expires, nothing re-checks, and the only symptom is a
+        crawler quietly returning less than it used to.
+
+        The file in this repository is the case. It was written on 11 May, its
+        only session cookie ``ASP.NET_SessionId`` carries no expiry, and the
+        cookies that do expire around it lapsed in May. An existence check read
+        that as valid for the 154 days it sat there.
+
+        Analytics cookies are excluded because they outlive a session by months;
+        a file holding only those is what a login that persisted nothing looks
+        like. An expired cookie is the one deadline the file records, so it is
+        honoured. A session cookie with no expiry is accepted -- its lifetime is
+        the server's to decide, and rejecting it would log in on every crawl.
+        """
+        path = Path(cls.AUTH_STATE_PATH)
+        if not path.exists():
+            return False
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(body, dict):
+            return False
+
+        now = time.time()
+        for cookie in body.get("cookies") or ():
+            if not isinstance(cookie, dict):
+                continue
+            name = str(cookie.get("name") or "")
+            if name.startswith(ANALYTICS_COOKIE_PREFIXES):
+                continue
+            expires = cookie.get("expires")
+            return not (isinstance(expires, (int, float)) and expires > 0 and expires <= now)
+        return False
 
     @classmethod
     def get_auth_state_path(cls) -> str:
