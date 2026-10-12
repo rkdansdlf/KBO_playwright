@@ -12,9 +12,58 @@ from src.validators.data_quality_regression_pack import (
     QualityRegressionResult,
     _adapt_limit_clause,
     _adapt_schema_aliases,
+    _CHECKS,
+    BaselineUnreadableError,
+    compare_against_baseline,
     render_regression_report,
     run_regression_pack,
+    write_baseline,
 )
+
+#: The three checks that between them account for every season PA violation.
+_PA_CHECK_IDS = (
+    "player_season_batting_unaccounted_pa",
+    "player_season_batting_unreconciled_pa",
+    "player_season_batting_missing_pa",
+)
+
+
+def _count_sql_for(check_id: str) -> str:
+    return next(check.count_sql for check in _CHECKS if check.check_id == check_id)
+
+
+def _rows_matching(conn, check_id: str) -> set[str]:
+    """Return the full set of player ids a check reports.
+
+    ``run_regression_pack`` exposes a count and five samples, which cannot
+    distinguish "these three rows" from "those three rows" and therefore cannot
+    show that two checks are not claiming the same one. These assertions are
+    about which rows land where, so they need the rows themselves.
+    """
+    sql = _count_sql_for(check_id).replace("SELECT COUNT(*)", "SELECT player_id")
+    return {str(row[0]) for row in conn.execute(text(sql))}
+
+
+def _season_rows(conn) -> set[str]:
+    """Every season row whose PA fails the formula, under COALESCE.
+
+    This is the defect the three checks exist to describe. It is written out here
+    rather than imported so the checks are measured against the rule itself: a
+    helper that drifted with the checks would let them agree on the wrong thing.
+    """
+    return {
+        str(row[0])
+        for row in conn.execute(
+            text(
+                """
+                SELECT player_id FROM player_season_batting
+                WHERE COALESCE(plate_appearances, 0) !=
+                    COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                    + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+                """,
+            ),
+        )
+    }
 
 
 def test_adapt_limit_clause_uses_oracle_fetch_first() -> None:
@@ -432,6 +481,520 @@ def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None
     assert scoped_result.violation_count == 1
     assert scoped_result.sample_ids == ("7001",)
     assert unscoped_result.violation_count == 2
+
+
+class TestComparingAgainstABaseline:
+    """A count cannot tell a fixed backlog from a fresh break.
+
+    2,603 violations today and 2,603 tomorrow reads as "no change" whether a
+    player was repaired or a different one was damaged, and the pack reports
+    ``ok=False`` either way -- so the operator cannot tell a quiet backlog from a
+    bleeding one. This is why the whole season PA series is set, not summed:
+    what matters is which rows moved.
+
+    The backlog behind these rows is not repairable from here. The source is
+    blocked by robots.txt and the game-level rows these seasons would be
+    re-derived from are absent, so the rows stay. What can be stopped is the next
+    one, and only a per-row comparison notices that.
+    """
+
+    def _baseline_file(self, tmp_path: Path, body: dict) -> Path:
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        path = tmp_path / "pa_baseline.json"
+        path.write_text(json.dumps(body, ensure_ascii=False))
+        return path
+
+    def test_a_row_the_baseline_does_not_have_is_reported_as_new(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {"version": 1, "checks": {"player_season_batting_unaccounted_pa": {"player_ids": []}}},
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ("5001",)
+        assert verdict.baseline_violations == ()
+        assert verdict.is_new_damage is True
+
+    def test_a_backlog_that_stays_the_size_is_not_new_damage(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5001, 5002, 5003):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ()
+        assert verdict.baseline_violations == ("5001", "5002", "5003")
+        assert verdict.is_new_damage is False
+
+    def test_a_repair_and_a_break_in_one_run_are_told_apart(self) -> None:
+        """The case a count cannot express at all.
+
+        Three rows before, three rows after, and ``ok=False`` throughout -- but
+        one was repaired and one is new. Reporting only the total would show no
+        change and the new damage would ship.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5002, 5009):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ("5009",), "the new damage was not named"
+        assert verdict.resolved_violations == ("5001", "5003"), "the repairs were not named"
+
+    def test_a_violation_that_moved_between_checks_is_not_called_new(self) -> None:
+        """The rows can legitimately change bucket without changing hands.
+
+        ``unreconciled_pa`` and ``unaccounted_pa`` turn on whether a sacrifice was
+        recorded, so a row whose sacrifices get backfilled moves out of the
+        unaccounted bucket while still failing the formula. It is the same
+        defect on the same player and must not raise new damage.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 581, 487, 63, 4, 24, 2, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {
+                    "version": 1,
+                    "checks": {
+                        "player_season_batting_unaccounted_pa": {"player_ids": ["5001"]},
+                        "player_season_batting_unreconciled_pa": {"player_ids": []},
+                    },
+                },
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert verdict.new_violations == ()
+        assert verdict.is_new_damage is False
+
+    def test_a_baseline_naming_a_check_that_no_longer_runs_is_reported(self) -> None:
+        """A retired check cannot silently retire its rows.
+
+        Without this, removing a check would read as "its violations are fixed"
+        and the verdict would claim the backlog shrank while nobody looked at
+        those players any more.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            baseline = self._baseline_file(
+                Path(self._tmpdir.name),
+                {"version": 1, "checks": {"player_season_batting_retired_check": {"player_ids": ["7001"]}}},
+            )
+            verdict = compare_against_baseline(conn, baseline)
+
+        assert "player_season_batting_retired_check" in verdict.unknown_checks
+
+    def test_an_unreadable_baseline_is_an_error_rather_than_an_all_clear(self) -> None:
+        """A missing file must not read as "everything is new" or "nothing is".
+
+        Both readings are wrong in the direction that hides a break: an absent
+        baseline compared as empty reports the whole backlog as new damage,
+        while a corrupt one compared as empty in the other direction would report
+        nothing. The caller has to be told rather than handed a verdict.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            missing = Path(self._tmpdir.name) / "does_not_exist.json"
+            corrupt = self._baseline_file(Path(self._tmpdir.name) / "bad", {"version": 1})
+            corrupt.parent.mkdir(parents=True, exist_ok=True)
+            corrupt.write_text("{not json")
+
+        with pytest.raises(BaselineUnreadableError):
+            compare_against_baseline(engine.connect(), missing)
+        with pytest.raises(BaselineUnreadableError):
+            compare_against_baseline(engine.connect(), corrupt)
+
+    def test_the_baseline_records_the_rows_so_it_can_be_reused(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for pid in (5001, 5002):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            path = Path(self._tmpdir.name) / "written.json"
+            written = write_baseline(conn, path)
+
+        assert written["version"] == 1
+        assert sorted(written["checks"]["player_season_batting_unaccounted_pa"]["player_ids"]) == ["5001", "5002"]
+        assert json.loads(path.read_text()) == written
+
+    def test_a_baseline_recorded_over_all_seasons_cannot_settle_a_scoped_run(self) -> None:
+        """A scoped run must not read a whole-history baseline as mass repair.
+
+        452 of the 760 recorded players fail in more than one season, so a
+        baseline written without a scope holds 780 entries while ``--year 2026``
+        sees 46. Reading the narrower run against the wider baseline would report
+        714 players as repaired on every single run -- a verdict that is wrong,
+        looks like progress, and would mask new damage arriving in a year that
+        has just been backfilled.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
+            for pid, season in ((5001, 2026), (5002, 2025), (5003, 2024)):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid, "season": season},
+                )
+            whole = self._baseline_file(
+                Path(self._tmpdir.name) / "whole",
+                {
+                    "version": 1,
+                    "checks": {"player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]}},
+                },
+            )
+            scoped = self._baseline_file(
+                Path(self._tmpdir.name) / "scoped",
+                {
+                    "version": 1,
+                    "scope": {"season": 2026},
+                    "checks": {"player_season_batting_unaccounted_pa": {"player_ids": ["5001"]}},
+                },
+            )
+
+            mismatch = compare_against_baseline(conn, whole, season=2026)
+            matched = compare_against_baseline(conn, scoped, season=2026)
+
+        assert mismatch.is_scope_mismatch is True, (
+            "a whole-history baseline was compared against a single season without "
+            "saying so, so the run would claim 2 players were repaired"
+        )
+        assert matched.is_scope_mismatch is False
+        assert matched.new_violations == ()
+        assert matched.resolved_violations == ()
+
+    @pytest.fixture(autouse=True)
+    def _tmpdir(self, tmp_path: Path):
+        self._tmpdir = tmp_path
+
+
+class TestTheSeasonPaChecksPartitionTheViolations:
+    """Adding up to the right number is not the same as dividing correctly.
+
+    Reporting 2,549 + 23 + 31 = 2,603 against a measured 2,603 is consistent with
+    a partition and also with one check reporting a row twice while another
+    misses a different one. Only the rows themselves settle it, and these
+    assertions exist because the sum matched while nothing held the partition in
+    place -- a future edit that tightened one condition could have moved rows
+    between the buckets and kept the total intact.
+
+    The rows below are the shapes that matter rather than the rows that happen to
+    be in the database: the three buckets, a healthy row in each, and the empty
+    row that must not be reported at all.
+    """
+
+    def _load(self, rows: list[tuple]) -> object:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                        -- unaccounted: PA exceeds the columns, no sacrifice recorded
+                        (1, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
+                        -- unreconciled: a sacrifice was recorded and PA still misses
+                        (2, 581, 487, NULL, NULL, 24, 2, 'REGULAR', 'CRAWLER'),
+                        -- unreconciled: columns outrun PA with no sacrifice at all
+                        (3, 490, 400, 125, 400, 0, 0, 'REGULAR', 'CRAWLER'),
+                        -- missing_pa: a batting count with no PA to place it in
+                        (4, NULL, 47, 0, 0, 0, 0, 'REGULAR', 'ROLLUP'),
+                        -- healthy in each direction
+                        (5, 16, 13, 1, 1, 1, 0, 'REGULAR', 'CRAWLER'),
+                        (6, 10, 10, 0, 0, 0, 0, 'REGULAR', 'CRAWLER'),
+                        -- nothing recorded: not a defect
+                        (7, NULL, 0, 0, 0, 0, 0, 'REGULAR', 'ROLLUP')
+                    """,
+                ),
+            )
+        return engine
+
+    def test_the_three_checks_cover_every_violation_and_nothing_else(self) -> None:
+        engine = self._load([])
+        with engine.connect() as conn:
+            reported = {check_id: _rows_matching(conn, check_id) for check_id in _PA_CHECK_IDS}
+            violations = _season_rows(conn)
+
+        union = set().union(*reported.values())
+        overlap = (
+            (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[1]])
+            | (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[2]])
+            | (reported[_PA_CHECK_IDS[1]] & reported[_PA_CHECK_IDS[2]])
+        )
+
+        assert reported["player_season_batting_unaccounted_pa"] == {"1"}
+        assert reported["player_season_batting_unreconciled_pa"] == {"2", "3"}
+        assert reported["player_season_batting_missing_pa"] == {"4"}
+        assert overlap == set(), f"two checks claimed the same row: {sorted(overlap)}"
+        assert union == violations, (
+            f"the buckets and the formula disagree: only the checks {sorted(union - violations)}, "
+            f"only the formula {sorted(violations - union)}"
+        )
+        assert "5" not in union and "6" not in union, "a reconciled row was reported"
+        assert "7" not in union, "a row with nothing in it was reported"
+
+    def test_a_row_with_no_pa_cannot_reach_the_unaccounted_bucket(self) -> None:
+        """Why the buckets stay apart even where the formula itself is degenerate.
+
+        ``COALESCE(plate_appearances, 0) > AB + BB + HBP`` folds an absent PA
+        into zero, so an absent PA reaches that check only if the sum is
+        negative. On any row with non-negative counts -- every row a crawler
+        writes -- the sum is at or above zero and zero is never greater than it,
+        so a missing PA lands in ``missing_pa`` and nowhere else.
+
+        This is why adding ``plate_appearances IS NOT NULL`` to that check would
+        change nothing rather than fix an overlap: the disjointness is
+        arithmetic, not a guard, and this pins the arithmetic down. The negative
+        row is included to show where the reasoning stops, since a corrupted
+        count is the one shape that could carry a missing PA into both buckets.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                        (1, NULL, 0, 0, 0, 0, 0, 'REGULAR', 'CRAWLER'),
+                        (2, NULL, 47, 0, 0, 0, 0, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            ordinary = {
+                cid: _rows_matching(conn, cid)
+                for cid in ("player_season_batting_unaccounted_pa", "player_season_batting_missing_pa")
+            }
+
+            # Added afterwards so the reading above is not contaminated by it.
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (3, NULL, -5, 0, 0, 0, 0, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            degraded = {cid: _rows_matching(conn, cid) for cid in _PA_CHECK_IDS}
+
+        assert ordinary["player_season_batting_unaccounted_pa"] == set(), (
+            "a missing PA reached the unaccounted check, so the buckets are not "
+            "disjoint by arithmetic and a guard would be load-bearing"
+        )
+        # Row 1 is empty, so it belongs to no check at all; row 2 has counts to
+        # place and so reaches missing_pa.
+        assert ordinary["player_season_batting_missing_pa"] == {"2"}
+
+        # The negative row is the one shape that breaks the argument, and it
+        # breaks it visibly rather than silently.
+        assert degraded["player_season_batting_unaccounted_pa"] == {"3"}
+        assert degraded["player_season_batting_missing_pa"] == {"2"}
+
+    def test_a_row_lands_in_one_bucket_or_another_as_its_shape_changes(self) -> None:
+        """Moving a single value across a boundary moves the row, not the count.
+
+        Each pair below is one row differing only in the field the buckets turn
+        on. If any two buckets ever claimed the same row, or a row moved out of
+        every bucket, the partition would be wrong in the way a total cannot
+        detect.
+        """
+        shapes = [
+            # (description, row, the check that must claim it)
+            (
+                "PA over the columns with a sacrifice recorded",
+                (2, 581, 487, 5, 5, 24, 2),
+                "player_season_batting_unreconciled_pa",
+            ),
+            (
+                "PA over the columns with none recorded",
+                (2, 581, 487, 5, 5, 0, 0),
+                "player_season_batting_unaccounted_pa",
+            ),
+            ("PA under the columns", (2, 100, 200, 5, 5, 0, 0), "player_season_batting_unreconciled_pa"),
+            ("PA exactly on the columns", (2, 219, 200, 5, 5, 5, 4), None),
+            ("PA absent from an otherwise full row", (2, None, 200, 5, 5, 5, 4), "player_season_batting_missing_pa"),
+            ("PA absent from an empty row", (2, None, 0, 0, 0, 0, 0), None),
+            (
+                "a reported zero still counts toward the sum",
+                (2, 207, 200, 0, 0, 5, 0),
+                "player_season_batting_unreconciled_pa",
+            ),
+        ]
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            for label, row, expected in shapes:
+                player_id, pa, ab, bb, hbp, sh, sf = row
+                conn.execute(text("DELETE FROM player_season_batting"))
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :pa, :ab, :bb, :hbp, :sh, :sf, 'REGULAR', 'CRAWLER')
+                        """,
+                    ),
+                    {"pid": player_id, "pa": pa, "ab": ab, "bb": bb, "hbp": hbp, "sh": sh, "sf": sf},
+                )
+                claimed = [cid for cid in _PA_CHECK_IDS if _rows_matching(conn, cid)]
+                if expected is None:
+                    assert claimed == [], f"a clean row was reported by {claimed}: {label}"
+                else:
+                    assert claimed == [expected], f"{label} went to {claimed or ['nothing']}, expected {expected}"
+
+    def test_the_partition_survives_a_scale_the_database_actually_reaches(self) -> None:
+        """One row per bucket is not evidence the conditions cannot overlap.
+
+        The real table holds 2,603 violations across 19 seasons and every source
+        the crawlers write, including rows where PA is absent and rows that are
+        otherwise empty. Building that mix and asserting the partition over it
+        exercises the conditions against combinations the hand-picked rows above
+        do not reach.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
+            sources = ("CRAWLER", "LEGACY_CRAWLER", "ROLLUP", "PROFILE", "AGGREGATED", "OFFICIAL_ARCHIVE")
+            row = 0
+            for season in range(2002, 2026):
+                for source in sources:
+                    for shape in range(4):
+                        row += 1
+                        pa, ab, bb, hbp, sh, sf = (
+                            (15, 13, 1, 0, 0, 0),
+                            (581, 487, None, None, 24, 2),
+                            (490, 400, 125, 400, 0, 0),
+                            (None, 47, 0, 0, 0, 0),
+                        )[shape]
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO player_season_batting
+                                    (player_id, season, plate_appearances, at_bats, walks, hbp,
+                                     sacrifice_hits, sacrifice_flies, league, source)
+                                VALUES (:pid, :season, :pa, :ab, :bb, :hbp, :sh, :sf, 'REGULAR', :source)
+                                """,
+                            ),
+                            {
+                                "pid": row,
+                                "season": season,
+                                "pa": pa,
+                                "ab": ab,
+                                "bb": bb,
+                                "hbp": hbp,
+                                "sh": sh,
+                                "sf": sf,
+                                "source": source,
+                            },
+                        )
+
+            reported = {cid: _rows_matching(conn, cid) for cid in _PA_CHECK_IDS}
+            violations = _season_rows(conn)
+
+        union = set().union(*reported.values())
+        overlap = (
+            (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[1]])
+            | (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[2]])
+            | (reported[_PA_CHECK_IDS[1]] & reported[_PA_CHECK_IDS[2]])
+        )
+
+        assert overlap == set(), f"two checks claimed {len(overlap)} row(s): {sorted(overlap)[:5]}"
+        assert union == violations, (
+            f"unreported {len(violations - union)}, unexpected {len(union - violations)} "
+            f"out of {len(violations)} violations"
+        )
 
 
 def test_regression_pack_skips_missing_optional_tables() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003 - a runtime dependency: read_text/write_text/mkdir
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, text
@@ -92,6 +93,147 @@ class QualityRegressionReport:
             "failure_count": self.failure_count,
             "results": [result.to_dict() for result in self.results],
         }
+
+
+@dataclass(frozen=True)
+class BaselineVerdict:
+    """What changed since a recorded baseline, by row rather than by total.
+
+    A total answers "is anything wrong" and both a steady backlog and a bleeding
+    one answer yes. Naming the rows answers "is this getting worse", which is
+    the only question a backlog nobody can repair can still act on.
+    """
+
+    #: Rows failing now that no baseline entry claimed.
+    new_violations: tuple[str, ...]
+    #: Rows failing now that a baseline entry already claimed.
+    baseline_violations: tuple[str, ...]
+    #: Baseline rows that no longer fail.
+    resolved_violations: tuple[str, ...]
+    #: Checks the baseline names that this pack does not run.
+    unknown_checks: tuple[str, ...]
+    #: The baseline was recorded over a different scope than this run.
+    is_scope_mismatch: bool = False
+
+    @property
+    def is_new_damage(self) -> bool:
+        """Whether anything failed that was not already known to fail."""
+        return bool(self.new_violations) or bool(self.unknown_checks) or self.is_scope_mismatch
+
+
+class BaselineUnreadableError(RuntimeError):
+    """Raised when a baseline cannot be read, rather than being treated as empty.
+
+    An absent or corrupt baseline compared against nothing reports the entire
+    backlog as new damage, and compared the other way reports none of it. Both
+    readings hide a real break in opposite directions, so the caller is told
+    instead of being handed a verdict.
+    """
+
+
+def _violated_player_ids(conn: Connection, check_id: str, *, season: int | None = None) -> tuple[str, ...]:
+    """Return every player id a check reports, not a sample of them.
+
+    The pack's own result carries a count and five samples, which cannot say
+    *which* rows are at fault, and a baseline comparison is entirely about which
+    rows those are.
+
+    The season scope is applied here for the same reason the pack applies it
+    through ``_scope_predicate``: a check's own SQL has no notion of which run it
+    belongs to, so a caller that filtered the result but not the query would be
+    comparing a narrow run against a wide baseline.
+    """
+    check = next((item for item in _CHECKS if item.check_id == check_id), None)
+    if check is None:
+        return ()
+    sql = check.count_sql.replace("SELECT COUNT(*)", "SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')")
+    predicate, params, _ = _scope_predicate(check.table, target_date=None, season=season)
+    sql = _append_scope_predicate(sql, predicate)
+    return tuple(sorted({str(row[0]) for row in conn.execute(text(sql), params)}))
+
+
+def _load_baseline(path: Path) -> dict[str, Any]:
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        msg = f"baseline is unreadable: {path}"
+        raise BaselineUnreadableError(msg) from exc
+    if not isinstance(body, dict) or not isinstance(body.get("checks"), dict):
+        msg = f"baseline has no checks section: {path}"
+        raise BaselineUnreadableError(msg)
+    return body
+
+
+def write_baseline(conn: Connection, path: Path, *, season: int | None = None) -> dict[str, Any]:
+    """Record the rows currently failing so a later run can diff against them.
+
+    Only the season PA checks are recorded. The others report game-level rows
+    keyed by game id and are compared by count elsewhere, and mixing them in
+    would make a game's absence look like a player being repaired.
+
+    The scope is written into the file rather than left implicit. 452 of the 760
+    players in the current set fail in more than one season, so a baseline
+    recorded over all seasons and read by a ``--year`` run would call most of
+    them repaired every time.
+    """
+    body: dict[str, Any] = {
+        "version": 1,
+        "scope": {"season": season},
+        "checks": {
+            check_id: {"player_ids": list(_violated_player_ids(conn, check_id, season=season))}
+            for check_id in sorted(_BASELINE_CHECK_IDS)
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    return body
+
+
+def compare_against_baseline(conn: Connection, path: Path, *, season: int | None = None) -> BaselineVerdict:
+    """Diff the current violations against a baseline, row by row.
+
+    A row is compared by player id across all recorded checks rather than per
+    check, because a row legitimately changes bucket: the unaccounted and
+    unreconciled checks turn on whether a sacrifice was recorded, so backfilling
+    one moves a failing row between them while the defect is unchanged. Keying on
+    the check would report that move as new damage.
+
+    A scope disagreement is reported rather than resolved. Reading a whole-history
+    baseline from a single-season run would mark hundreds of players repaired, and
+    that verdict reads like progress.
+    """
+    baseline = _load_baseline(path)
+    recorded = baseline["checks"]
+    recorded_season = (baseline.get("scope") or {}).get("season")
+
+    now: set[str] = set()
+    for check_id in sorted(set(recorded) | set(_BASELINE_CHECK_IDS)):
+        now.update(_violated_player_ids(conn, check_id, season=season))
+
+    before: set[str] = set()
+    for entry in recorded.values():
+        ids = entry.get("player_ids") if isinstance(entry, dict) else None
+        if isinstance(ids, list):
+            before.update(str(value) for value in ids)
+
+    return BaselineVerdict(
+        new_violations=tuple(sorted(now - before)),
+        baseline_violations=tuple(sorted(now & before)),
+        resolved_violations=tuple(sorted(before - now)),
+        unknown_checks=tuple(sorted(set(recorded) - set(_BASELINE_CHECK_IDS))),
+        is_scope_mismatch=recorded_season != season,
+    )
+
+
+#: The season PA checks a baseline is recorded for, named explicitly so that
+#: retiring one is visible in ``unknown_checks`` rather than silent.
+_BASELINE_CHECK_IDS = frozenset(
+    {
+        "player_season_batting_unaccounted_pa",
+        "player_season_batting_unreconciled_pa",
+        "player_season_batting_missing_pa",
+    },
+)
 
 
 @dataclass(frozen=True)
