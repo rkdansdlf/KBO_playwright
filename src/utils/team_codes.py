@@ -3,9 +3,50 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
+
+from sqlalchemy import func, or_
 
 from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN
+from src.models.franchise import Franchise
 from src.utils.team_history import resolve_team_code_for_season
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+
+def franchise_ids_for_code(session: Session, code: str) -> tuple[int, ...]:
+    """Return every franchise a team code can name, across eras.
+
+    A stored team code is not a stable identifier. ``OB`` and ``DB`` are the
+    same franchise, ``WO`` and ``KH`` are the same franchise, and ``SK`` and
+    ``SSG`` are the same franchise -- while ``SS`` is a *different* one, because
+    Samsung Lions and SSG Landers are different clubs that inherited the same
+    slot in 2025. ``team_franchises`` records both ends of that history
+    (``original_code`` and ``current_code``) and is the only table that states
+    it; matching on the string column cannot tell those two apart.
+
+    Args:
+        session: Open session, used to read ``team_franchises``.
+        code: A team code as a user or a caller would type it.
+
+    Returns:
+        Franchise ids for the code, or an empty tuple when no franchise claims
+        it -- which is the caller's cue to fall back to a literal string match
+        rather than to return nothing.
+
+    """
+    if not code or not str(code).strip():
+        return ()
+    normalized = str(code).strip().upper()
+    rows = session.query(Franchise).filter(
+        or_(
+            func.upper(Franchise.current_code) == normalized,
+            func.upper(Franchise.original_code) == normalized,
+        ),
+    )
+    return tuple(row.id for row in rows)
+
 
 # Canonical KBO short codes (aligned with modern franchise IDs)
 TEAM_NAME_TO_CODE = {

@@ -6,10 +6,10 @@ import csv
 import io
 import logging
 from datetime import datetime
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from src.api.auth import get_api_key
 from src.api.cache import api_cache, cached_api
@@ -38,8 +38,13 @@ from src.models.game import (
 )
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 from src.utils.job_tracker import job_tracker
 from src.utils.lock import ProcessLock
+from src.utils.team_codes import franchise_ids_for_code
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +73,43 @@ def _async_run_daily_update(job_id: str) -> None:
         logger.exception("[API] Background daily update crawl failed for job %s", job_id)
 
 
+def _team_matches(team: str, session: Session) -> ColumnElement[bool]:
+    """Return the predicate for "a game involving this team, in any era".
+
+    Matching the stored string is not enough, because the registry changed the
+    code a franchise is filed under part-way through the record: two Lotte rows
+    carry ``OB`` and ``DB``, two Doosan rows carry ``DB`` and ``KH``'s sibling
+    ``WO``. Reading one code therefore returns an arbitrary slice of a team's
+    history.
+
+    The franchise id is the honest identity, and it is also the only thing that
+    keeps the wrong two apart: ``SK`` and ``SSG`` are one franchise while ``SS``
+    is a different one, so a blanket "normalise the string" would merge Samsung
+    Lions with SSG Landers. The literal comparison is kept only for rows that
+    carry no franchise id at all, and it is guarded on that null so it can never
+    override a row that was identified.
+
+    Args:
+        team: A team code as a caller would type it.
+        session: Open session, used to read ``team_franchises``.
+
+    Returns:
+        A predicate for the caller's query.
+
+    """
+    franchise_ids = franchise_ids_for_code(session, team)
+    if not franchise_ids:
+        # No franchise claims it. Matching the literal string still returns the
+        # rows for an unrecognised code instead of silently returning nothing.
+        return or_(Game.home_team == team, Game.away_team == team)
+    return or_(
+        Game.home_franchise_id.in_(franchise_ids),
+        Game.away_franchise_id.in_(franchise_ids),
+        and_(Game.home_franchise_id.is_(None), Game.home_team == team),
+        and_(Game.away_franchise_id.is_(None), Game.away_team == team),
+    )
+
+
 @router.get("/api/games", dependencies=[Depends(get_api_key)])
 @router.get("/api/v1/games", dependencies=[Depends(get_api_key)])
 def get_games(
@@ -89,7 +131,7 @@ def get_games(
                     d_obj = datetime.strptime(clean_date, "%Y%m%d").replace(tzinfo=KST).date()
                     query = query.filter(Game.game_date == d_obj)
             if team:
-                query = query.filter((Game.home_team == team) | (Game.away_team == team))
+                query = query.filter(_team_matches(team, session))
 
             total_count = query.count()
             games = query.order_by(Game.game_date.desc(), Game.game_id).offset(offset).limit(limit).all()
