@@ -16,6 +16,7 @@ from src.services.embedding_service import EmbeddingService
 from src.services.rag_index_identity import (
     stable_futures_source_row_id,
     stable_milestone_source_row_id,
+    stable_press_release_source_row_id,
     stable_splits_source_row_id,
 )
 
@@ -71,7 +72,15 @@ class RagKnowledgeIndexer:
                     "content": content,
                     "meta": {
                         "category": "press_release",
-                        "source_row_id": str(r.id),
+                        # The notice number, not the table's own id. The
+                        # repository falls back to meta.source_row_id as the chunk
+                        # identity, so writing str(r.id) here made every run of
+                        # this indexer create a second copy of the same releases
+                        # under the legacy key, next to the notice-keyed chunks
+                        # the census expects -- 80 rows for 40 releases, and the
+                        # nightly backfill then copying the duplicates into the
+                        # vector store too.
+                        "source_row_id": stable_press_release_source_row_id(r.notice_id),
                         "notice_id": r.notice_id,
                     },
                 }
