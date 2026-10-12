@@ -71,6 +71,7 @@ from src.scheduler.jobs.maintenance import (
     sparse_terms_catchup_job,
     sync_rag_incremental_job,
     trim_scheduler_logs_job,
+    verify_stadiums_places_job,
     weekly_sla_report_job,
 )
 from src.scheduler.jobs.sentinel import rag_audit_sentinel_job, selector_drift_sentinel_job
@@ -305,6 +306,13 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
             trigger_cls(day_of_week="sun", hour=5, minute=30),
             "compute_park_factor",
             "Weekly Park Factor Computation",
+            7200,
+        ),
+        (
+            verify_stadiums_places_job,
+            trigger_cls(day_of_week="sun", hour=5, minute=45),
+            "verify_stadiums_places",
+            "Weekly Stadiums/Places Drift Check",
             7200,
         ),
     ]

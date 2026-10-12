@@ -40,7 +40,8 @@ class TestSeedStadiumsPlaces:
 
             run(dry_run=False)
             rows = StadiumRepository(real_session).get_all()
-            assert len(rows) == len(STADIUM_DATA) + 4 == 13
+            assert len(rows) == len(STADIUM_DATA) + 4 + 9 == 22
+            assert StadiumRepository(real_session).get_by_id("MOKDONG") is not None
             gochok = StadiumRepository(real_session).get_by_id("GOCHEOK")
             assert gochok is not None
             assert gochok.turf_type == "인조"

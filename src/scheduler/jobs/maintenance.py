@@ -563,6 +563,24 @@ def compute_park_factor_job() -> None:
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
+def verify_stadiums_places_job() -> None:
+    """Verify stadiums/places master data (Sunday 05:45 KST)."""
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting Stadiums/Places Verification ===")
+        try:
+            from scripts.verify_stadiums_places import run as verify_run
+
+            code = verify_run()
+            if code != 0:
+                alert_warning("verify_stadiums_places", "Stadiums/places drift check failed")
+            else:
+                logger.info("Stadiums/places verification passed")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("Stadiums/places verification failed")
+
+
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
 def recalc_milestones_and_rag_job() -> None:
     """Recalculate player milestones and index RAG knowledge chunks."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
