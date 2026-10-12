@@ -237,6 +237,105 @@ _BASELINE_CHECK_IDS = frozenset(
 
 
 @dataclass(frozen=True)
+class UnrecoverableVerdict:
+    """How the unfixable rows stand against what was recorded before.
+
+    Separate from ``BaselineVerdict`` because the question is different. A
+    baseline asks whether the defect is growing; this asks whether the rows nobody
+    can repair are still the same ones, which is the only thing left to check
+    about a permanent backlog.
+    """
+
+    #: Rows now unfixable that the record did not name.
+    newly_unrecoverable: tuple[str, ...]
+    #: Rows the record named that are still unfixable.
+    still_unrecoverable: tuple[str, ...]
+
+
+#: Season rows whose counting columns are absent *and* whose totals no longer
+#: reconcile. A NULL where a zero belongs is excluded: reading it as zero
+#: satisfies the formula, so no queried number is wrong and there is nothing lost.
+#:
+#: A recorded sacrifice is also required, which separates this from the
+#: unaccounted shape. When both sacrifice columns are zero the formula failing
+#: only says the sacrifices were never written -- the identity holds once they are
+#: filled in, and no value is missing. Where a sacrifice *was* recorded the
+#: arithmetic was possible and still came out short, so a count really is gone.
+_UNRECOVERABLE_SQL = """
+    SELECT COALESCE(CAST(player_id AS TEXT), 'NULL'), season, league, source
+    FROM player_season_batting
+    WHERE (walks IS NULL OR hbp IS NULL)
+      AND (COALESCE(sacrifice_hits, 0) > 0 OR COALESCE(sacrifice_flies, 0) > 0)
+      AND COALESCE(plate_appearances, 0) !=
+        COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+        + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+"""
+
+#: Why these rows are not repaired, stated so a reader does not assume they were.
+#: The source page is disallowed by robots.txt, and the game-level rows these
+#: seasons would be re-derived from are absent, so there is no lawful path back to
+#: the values. Recomputing them from the PA identity would fabricate statistics.
+_UNRECOVERABLE_REASON = "SOURCE_UNAVAILABLE"
+_UNRECOVERABLE_DETAIL = (
+    "walk/HBP columns lost to the crawler's per-layout merge; cannot be re-collected (source disallowed by robots.txt)"
+)
+
+
+def _unrecoverable_rows(conn: Connection) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "player_id": str(row[0]),
+            "season": row[1],
+            "league": row[2],
+            "source": row[3],
+            "reason": _UNRECOVERABLE_REASON,
+            "detail": _UNRECOVERABLE_DETAIL,
+        }
+        for row in conn.execute(text(_UNRECOVERABLE_SQL))
+    )
+
+
+def write_unrecoverable(conn: Connection, path: Path) -> dict[str, Any]:
+    """Record the season rows that cannot be repaired, and why.
+
+    The rows are left exactly as they are. This writes a record beside them, not
+    a correction over them: the missing values came from a source that is now
+    disallowed and from game-level rows that are not there, so any number derived
+    from the PA identity would be an invention rather than a recovery.
+    """
+    body: dict[str, Any] = {
+        "version": 1,
+        "note": "recorded, not repaired: these values cannot be recovered from any lawful source",
+        "rows": [dict(row) for row in _unrecoverable_rows(conn)],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    return body
+
+
+def compare_unrecoverable(conn: Connection, path: Path) -> UnrecoverableVerdict:
+    """Report rows that became unfixable since the record was written.
+
+    A row that can no longer be repaired is a different event from one that never
+    could be. A crawler that starts losing values is still running and still
+    writing, so this is where new damage of that shape surfaces.
+    """
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        msg = f"unrecoverable record is unreadable: {path}"
+        raise BaselineUnreadableError(msg) from exc
+
+    recorded = {str(entry.get("player_id")) for entry in body.get("rows", []) if isinstance(entry, dict)}
+    now = {str(entry["player_id"]) for entry in _unrecoverable_rows(conn)}
+
+    return UnrecoverableVerdict(
+        newly_unrecoverable=tuple(sorted(now - recorded)),
+        still_unrecoverable=tuple(sorted(now & recorded)),
+    )
+
+
+@dataclass(frozen=True)
 class _SqlCheck:
     check_id: str
     description: str

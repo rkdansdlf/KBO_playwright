@@ -15,9 +15,11 @@ from src.validators.data_quality_regression_pack import (
     _CHECKS,
     BaselineUnreadableError,
     compare_against_baseline,
+    compare_unrecoverable,
     render_regression_report,
     run_regression_pack,
     write_baseline,
+    write_unrecoverable,
 )
 
 #: The three checks that between them account for every season PA violation.
@@ -749,6 +751,180 @@ class TestComparingAgainstABaseline:
     @pytest.fixture(autouse=True)
     def _tmpdir(self, tmp_path: Path):
         self._tmpdir = tmp_path
+
+
+class TestRecordingRowsThatCannotBeRepaired:
+    """A backlog nobody can fix still has to be distinguishable from a new break.
+
+    Seventeen rows lost their walk and HBP counts to the crawler's per-layout
+    merge. The values are not recoverable from here: the page they came from is
+    blocked by robots.txt and the game-level rows these seasons would be
+    re-derived from are absent, so `player_id` 51417's 2024 line has no
+    `game_batting_stats` row behind it at all. Recomputing the missing columns
+    from the PA identity would invent baseball statistics, which is the one
+    outcome worse than a known gap.
+
+    So they stay as they are and are recorded, because the only question that
+    matters about a permanent backlog is whether it is still the same one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _tmpdir(self, tmp_path: Path):
+        self._tmpdir = tmp_path
+
+    def _engine(self) -> object:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
+        return engine
+
+    def test_a_row_missing_a_walk_count_is_recorded_with_its_reason(self) -> None:
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (51417, 2024, 205, 183, NULL, NULL, 4, 3, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "unrecoverable.json")
+
+        entries = body["rows"]
+        assert len(entries) == 1
+        assert entries[0]["player_id"] == "51417"
+        assert entries[0]["season"] == 2024
+        assert entries[0]["reason"] == "SOURCE_UNAVAILABLE"
+        assert "robots" in entries[0]["detail"].lower() or "re-collect" in entries[0]["detail"].lower()
+
+    def test_a_row_that_is_only_null_written_is_not_recorded(self) -> None:
+        """A NULL where a zero belongs costs nothing and should not be labelled lost.
+
+        Of the rows the crawler merge touched, most reconcile once the absent
+        column is read as zero. Recording those would describe a defect that
+        changes no number anyone queries.
+        """
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                        (1, 17, 16, NULL, NULL, 0, 0, 'REGULAR', 'CRAWLER'),
+                        (2, 205, 183, NULL, NULL, 4, 3, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+
+        assert [entry["player_id"] for entry in body["rows"]] == ["2"]
+
+    def test_a_row_with_its_count_present_is_never_recorded(self) -> None:
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (51302, 5, 5, 0, 0, 0, 0, 'REGULAR', 'ROLLUP')
+                    """,
+                ),
+            )
+            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+
+        assert body["rows"] == []
+
+    def test_a_row_whose_absent_column_reads_as_zero_is_not_lost_counts(self) -> None:
+        """A NULL beside a recorded sacrifice can still be a plain zero.
+
+        The two shapes are indistinguishable from the missing column alone: a
+        player who walked zero times has a NULL in the same place a lost count
+        does. Only the formula separates them -- if folding the absent column to
+        zero makes PA reconcile, nothing is missing and nothing was lost.
+
+        This is the case a "walks IS NULL" test would wrongly claim. It carries a
+        sacrifice, so it passes every condition the unfixable query has except
+        the one that decides whether a value is actually gone.
+        """
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                        -- walks/hbp absent but PA reconciles once read as zero
+                        (1, 187, 183, NULL, NULL, 3, 1, 'REGULAR', 'CRAWLER'),
+                        -- walks/hbp absent and PA still short: a count is gone
+                        (2, 205, 183, NULL, NULL, 3, 1, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+
+        assert [entry["player_id"] for entry in body["rows"]] == ["2"], (
+            "a zero that reconciles was recorded as a lost count"
+        )
+
+    def test_the_record_distinguishes_a_growing_backlog_from_a_steady_one(self) -> None:
+        engine = self._engine()
+        with engine.begin() as conn:
+            for pid in (51417, 72154):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 205, 183, NULL, NULL, 4, 3, 'REGULAR', 'CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            path = Path(self._tmpdir.name) / "u.json"
+            first = write_unrecoverable(conn, path)
+            steady = compare_unrecoverable(conn, path)
+
+            # One row recovers while another is lost, so the total holds still.
+            # A count-based comparison sees no change and reports nothing.
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (78413, 34, 28, NULL, NULL, 1, 1, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE player_season_batting SET walks = 0, hbp = 0
+                    WHERE player_id = 51417
+                    """,
+                ),
+            )
+            grown = compare_unrecoverable(conn, path)
+
+        assert len(first["rows"]) == 2
+        assert steady.newly_unrecoverable == ()
+        assert steady.still_unrecoverable == ("51417", "72154")
+        assert grown.newly_unrecoverable == ("78413",), (
+            "a newly lost row was not named; the total was unchanged, which is exactly the case a count cannot express"
+        )
+        assert grown.still_unrecoverable == ("72154",)
 
 
 class TestTheSeasonPaChecksPartitionTheViolations:
