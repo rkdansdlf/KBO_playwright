@@ -147,25 +147,56 @@ class BaselineUnreadableError(RuntimeError):
     """
 
 
-def _violated_player_ids(conn: Connection, check_id: str, *, season: int | None = None) -> tuple[str, ...]:
-    """Return every player id a check reports, not a sample of them.
+def _violated_rows(conn: Connection, check_id: str, *, season: int | None = None) -> tuple[tuple[int, str], ...]:
+    """Return every ``(season, player_id)`` a check reports, not a sample of them.
 
     The pack's own result carries a count and five samples, which cannot say
     *which* rows are at fault, and a baseline comparison is entirely about which
     rows those are.
 
-    The season scope is applied here for the same reason the pack applies it
-    through ``_scope_predicate``: a check's own SQL has no notion of which run it
-    belongs to, so a caller that filtered the result but not the query would be
-    comparing a narrow run against a wide baseline.
+    The season comes back with each row rather than being applied to the query.
+    452 of the 760 recorded players fail in more than one season, so a bare set
+    of player ids cannot answer "is 2026 getting worse" -- the other seasons'
+    rows are indistinguishable from repairs. Selecting the season here lets the
+    comparison narrow both sides to the same set of rows.
+
+    A run with no season filter reads every season, and each row keeps its own.
     """
     check = next((item for item in _CHECKS if item.check_id == check_id), None)
     if check is None:
         return ()
-    sql = check.count_sql.replace("SELECT COUNT(*)", "SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')")
+    # A table with no season column cannot say which run its rows belong to, so
+    # the season falls back to the one the caller asked about. Only the season
+    # tables carry one, and those are the ones being compared.
+    has_season = season is not None or _table_has_column(conn, check.table, "season")
+    if has_season:
+        sql = check.count_sql.replace(
+            "SELECT COUNT(*)",
+            "SELECT COALESCE(CAST(season AS TEXT), '0'), COALESCE(CAST(player_id AS TEXT), 'NULL')",
+        )
+    else:
+        sql = check.count_sql.replace(
+            "SELECT COUNT(*)",
+            "SELECT '0', COALESCE(CAST(player_id AS TEXT), 'NULL')",
+        )
     predicate, params, _ = _scope_predicate(check.table, target_date=None, season=season)
     sql = _append_scope_predicate(sql, predicate)
-    return tuple(sorted({str(row[0]) for row in conn.execute(text(sql), params)}))
+    found = {(str(row[0]), str(row[1])) for row in conn.execute(text(sql), params).all()}
+    if season is not None:
+        # The predicate already narrowed the query, so the season it filtered on
+        # is the season every row belongs to.
+        return tuple(sorted((season, player_id) for _, player_id in found))
+    return tuple(sorted((int(row_season), player_id) for row_season, player_id in found if row_season.isdigit()))
+
+
+def _violated_player_ids(conn: Connection, check_id: str, *, season: int | None = None) -> tuple[str, ...]:
+    """Return the player ids a check reports, without their seasons.
+
+    Used where only membership matters. The comparison itself uses
+    ``_violated_rows``, because dropping the season is what makes a record look
+    like repairs.
+    """
+    return tuple(sorted({player_id for _, player_id in _violated_rows(conn, check_id, season=season)}))
 
 
 def _load_baseline(path: Path) -> dict[str, Any]:
@@ -368,6 +399,11 @@ UNRECOVERABLE_TABLE = "pa_unrecoverable"
 BASELINE_TABLE_MISSING = f"{BASELINE_TABLE} is absent; run the migrations"
 
 
+def _table_has_column(conn: Connection, table: str, column: str) -> bool:
+    """Return whether a column exists, without raising on a missing table."""
+    return column in {col["name"] for col in inspect(conn).get_columns(table)}
+
+
 def _table_exists(conn: Connection, table: str) -> bool:
     """Return whether a record table is present.
 
@@ -379,8 +415,20 @@ def _table_exists(conn: Connection, table: str) -> bool:
     return table in set(inspect(conn).get_table_names())
 
 
-def _scope_key(season: int | None) -> int:
-    return ALL_SEASONS_SCOPE if season is None else season
+def _delete_baseline_scope(conn: Connection, *, season: int | None) -> None:
+    """Remove a record so a later one can be written in its place.
+
+    A season-scoped write removes only that season's rows; a whole-history write
+    removes every row. Merging instead would keep naming rows that have been
+    repaired, which makes the comparison unable to notice repairs at all.
+    """
+    if season is None:
+        conn.execute(text("DELETE FROM pa_violation_baseline"))
+        return
+    conn.execute(
+        text("DELETE FROM pa_violation_baseline WHERE scope_season = :scope"),
+        {"scope": season},
+    )
 
 
 def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict[str, Any]:
@@ -390,6 +438,12 @@ def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict
     smaller; a merge would keep reporting rows that have been repaired and make
     the comparison incapable of noticing the other direction either.
 
+    Each row keeps the season it was found in. Recording a scope and storing a
+    bare player id inside it cannot answer a narrower question: 452 of the 760
+    players fail in more than one season, so a ``--year`` run would see every
+    other season's row as a repair. The season is what lets a season run select
+    exactly the rows it is being compared against.
+
     Storing the record rather than writing a file is what makes this usable: the
     scheduler runs on a different host from the one holding the repository, so a
     repository-relative file would leave the daily gate permanently uncompared.
@@ -397,22 +451,20 @@ def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict
     if not _table_exists(conn, BASELINE_TABLE):
         raise BaselineUnreadableError(BASELINE_TABLE_MISSING)
     stamp = datetime.now(KST)
-    scope = _scope_key(season)
     recorded: dict[str, Any] = {
-        "version": 1,
+        "version": 2,
         "scope": {"season": season},
         "recorded_at": stamp.isoformat(),
         "checks": {},
     }
 
-    conn.execute(
-        text("DELETE FROM pa_violation_baseline WHERE scope_season = :scope"),
-        {"scope": scope},
-    )
+    _delete_baseline_scope(conn, season=season)
     for check_id in sorted(_BASELINE_CHECK_IDS):
-        player_ids = _violated_player_ids(conn, check_id, season=season)
-        recorded["checks"][check_id] = {"player_ids": list(player_ids)}
-        for player_id in player_ids:
+        rows = _violated_rows(conn, check_id, season=season)
+        recorded["checks"][check_id] = {
+            "rows": [{"season": row_season, "player_id": player_id} for row_season, player_id in rows],
+        }
+        for row_season, player_id in rows:
             conn.execute(
                 text(
                     """
@@ -420,7 +472,12 @@ def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict
                     VALUES (:check_id, :scope, :player_id, :recorded_at)
                     """,
                 ),
-                {"check_id": check_id, "scope": scope, "player_id": int(player_id), "recorded_at": stamp},
+                {
+                    "check_id": check_id,
+                    "scope": row_season,
+                    "player_id": int(player_id),
+                    "recorded_at": stamp,
+                },
             )
     return recorded
 
@@ -434,21 +491,22 @@ def compare_against_baseline_db(conn: Connection, *, season: int | None = None) 
     """
     if not _table_exists(conn, BASELINE_TABLE):
         return BaselineVerdict((), (), (), unknown_checks=(), baseline_available=False)
+
+    current: dict[str, set[int]] = {}
     now: set[str] = set()
     for check_id in sorted(_BASELINE_CHECK_IDS):
-        now.update(_violated_player_ids(conn, check_id, season=season))
+        rows_for_check = _violated_rows(conn, check_id, season=season)
+        current[check_id] = {row_season for row_season, _ in rows_for_check}
+        now.update(player_id for _, player_id in rows_for_check)
 
-    scope = _scope_key(season)
-    rows: list[Any] = []
+    recorded: list[tuple[str, int, int]] = []
     with contextlib.suppress(Exception):  # a missing table means not compared
-        rows = list(
-            conn.execute(
-                text("SELECT check_id, player_id FROM pa_violation_baseline WHERE scope_season = :scope"),
-                {"scope": scope},
-            ).all(),
-        )
+        recorded = [
+            (str(row[0]), int(row[1]), int(row[2]))
+            for row in conn.execute(text("SELECT check_id, scope_season, player_id FROM pa_violation_baseline")).all()
+        ]
 
-    if not rows:
+    if not recorded:
         # No rows is an absent record, not an empty one. Reading it as empty
         # would report every historical violation as new damage on the first run,
         # and these counts are subtracted from a score.
@@ -460,12 +518,28 @@ def compare_against_baseline_db(conn: Connection, *, season: int | None = None) 
             baseline_available=False,
         )
 
-    before = {str(row[1]) for row in rows}
-    recorded_checks = {str(row[0]) for row in rows}
+    if season is None:
+        # A record taken for one season cannot answer a whole-history run: every
+        # other season's violations would read as new damage, and those counts are
+        # deducted from the quality score.
+        recorded_seasons = {row_season for _, row_season, _ in recorded}
+        failing_now = set().union(*current.values()) if current else set()
+        if not failing_now <= recorded_seasons:
+            return BaselineVerdict(
+                new_violations=(),
+                baseline_violations=(),
+                resolved_violations=(),
+                unknown_checks=(),
+                is_scope_mismatch=True,
+                baseline_available=False,
+            )
+
+    before_rows = {str(player_id) for _, row_season, player_id in recorded if season is None or row_season == season}
+    recorded_checks = {check_id for check_id, _, _ in recorded}
     return BaselineVerdict(
-        new_violations=tuple(sorted(now - before)),
-        baseline_violations=tuple(sorted(now & before)),
-        resolved_violations=tuple(sorted(before - now)),
+        new_violations=tuple(sorted(now - before_rows)),
+        baseline_violations=tuple(sorted(now & before_rows)),
+        resolved_violations=tuple(sorted(before_rows - now)),
         unknown_checks=tuple(sorted(recorded_checks - set(_BASELINE_CHECK_IDS))),
     )
 

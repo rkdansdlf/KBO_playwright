@@ -166,3 +166,46 @@ def test_crawl_uses_in_memory_aggregation_when_site_collection_fails(
     assert result == [{"team_id": "LG", "team_name": "LG Twins"}]
     getattr(aggregator, aggregate_method).assert_called_once()
     standings_calculator.return_value.calculate_year.assert_called_once_with(2026)
+
+
+@pytest.mark.parametrize(
+    ("module", "crawler_cls", "aggregate_method"),
+    [
+        (batting_module, TeamBattingStatsCrawler, "aggregate_batting"),
+        (pitching_module, TeamPitchingStatsCrawler, "aggregate_pitching"),
+    ],
+)
+def test_robots_blocking_still_aggregates_instead_of_freezing_the_season(
+    monkeypatch, module, crawler_cls, aggregate_method
+) -> None:
+    """A robots-blocked site must reach the aggregation fallback, not ``return []``.
+
+    Returning an empty list here is what froze ``team_season_*`` in July: the
+    pipeline logged "refreshed (0 records)" and moved on, so the quality gate
+    kept comparing against stale July totals. An unreachable page and a page we
+    are forbidden to read are the same operational state -- neither can refresh
+    the aggregates -- so both have to land on the same fallback.
+    """
+    crawler = crawler_cls()
+    aggregator = MagicMock()
+    getattr(aggregator, aggregate_method).return_value = [{"team_id": "LG"}]
+    session_local = MagicMock()
+    monkeypatch.setattr(module, "SessionLocal", session_local)
+    monkeypatch.setattr(module, "TeamStatAggregator", MagicMock(return_value=aggregator))
+    monkeypatch.setattr(module, "get_team_mapping_for_year", MagicMock(return_value={"LG Twins": "LG"}))
+    monkeypatch.setattr("src.cli.calculate_standings.StandingsCalculator", MagicMock())
+    crawler._collect_from_site = MagicMock(return_value=[])
+    # ``crawl`` clears the reason before collecting, so the blocked state has to
+    # be produced by the collection itself rather than pre-set on the instance.
+    crawler._collect_from_site = MagicMock(side_effect=lambda *args, **kwargs: crawler._block_robots())
+    monkeypatch.setattr(
+        crawler,
+        "_block_robots",
+        lambda: setattr(crawler, "_last_failure_reason", "kbo_robots_blocked") or [],
+        raising=False,
+    )
+
+    result = crawler.crawl(2026, persist=False)
+
+    getattr(aggregator, aggregate_method).assert_called_once()
+    assert result == [{"team_id": "LG", "team_name": "LG Twins"}]

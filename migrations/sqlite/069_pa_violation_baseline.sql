@@ -5,7 +5,7 @@
 
 CREATE TABLE IF NOT EXISTS pa_violation_baseline (
     check_id TEXT NOT NULL,
-    scope_season INTEGER NOT NULL DEFAULT 0,
+    scope_season INTEGER NOT NULL,
     player_id INTEGER NOT NULL,
     recorded_at TIMESTAMP NOT NULL,
     CONSTRAINT pk_pa_violation_baseline PRIMARY KEY (check_id, scope_season, player_id)

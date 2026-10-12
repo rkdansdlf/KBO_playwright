@@ -157,10 +157,12 @@ class TeamBattingStatsCrawler(BaseCrawler):
         except TEAM_BATTING_CRAWL_EXCEPTIONS as crawl_err:
             logger.warning("Team batting crawl failed: %s. Falling back...", crawl_err)
 
-        if self._last_failure_reason == "kbo_robots_blocked":
-            return []
-
         if not stats:
+            # A robots-blocked page and a broken one are the same operational state:
+            # the aggregates cannot be refreshed from the site. Returning early on the
+            # blocked case skipped the fallback below, which is what froze
+            # ``team_season_batting`` while the pipeline still logged a successful
+            # refresh of zero records.
             logger.warning("⚠️ KBO 팀 타격 페이지 오류. DB에서 폴백 집계를 시작합니다 (시즌: %s)...", season)
             try:
                 with SessionLocal() as session:

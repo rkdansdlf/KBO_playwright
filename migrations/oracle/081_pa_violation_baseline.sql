@@ -11,7 +11,7 @@ BEGIN
         EXECUTE IMMEDIATE '
             CREATE TABLE pa_violation_baseline (
                 check_id     VARCHAR2(64) NOT NULL,
-                scope_season NUMBER       DEFAULT 0 NOT NULL,
+                scope_season NUMBER       NOT NULL,
                 player_id    NUMBER       NOT NULL,
                 recorded_at  TIMESTAMP    NOT NULL,
                 CONSTRAINT pk_pa_violation_baseline

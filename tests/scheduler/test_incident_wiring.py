@@ -94,6 +94,23 @@ class TestQualityIncident:
             _publish_quality_incident(_workflow_report([]))
         mock.assert_not_called()
 
+    def test_absent_quality_stage_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A silent no-op is how an incident sits stale for days.
+
+        ``execute_workflow`` appends a result for every registered stage --
+        skipped ones become SKIPPED rather than vanishing -- so on daily_sync this
+        branch cannot be routine. The incident must stay untouched (there is
+        nothing to describe), but the run must leave a trace saying the quality
+        verdict was never refreshed.
+        """
+        with caplog.at_level("WARNING", logger="src.scheduler.jobs.daily"):
+            with patch("src.notifications.bridge.apply_incidents") as mock:
+                _publish_quality_incident(_workflow_report([_stage("ingestion", StageExecutionStatus.FAILED)]))
+        mock.assert_not_called()
+        assert "no quality_gate stage" in caplog.text
+        # The stage list is what makes the run reconstructable after the fact.
+        assert "ingestion" in caplog.text
+
 
 class TestFailedStageIds:
     def test_collects_failed_stage_ids(self) -> None:

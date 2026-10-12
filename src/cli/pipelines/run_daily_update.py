@@ -994,7 +994,18 @@ async def _step_6_1_team_season_stats(ctx: _RunContext) -> None:
         except CRAWLER_STEP_EXCEPTIONS:
             logger.exception("   \u274c Error refreshing team %s stats", label)
         else:
-            logger.info("   \u2705 Team %s stats refreshed (%s records)", label, len(stats))
+            if not stats:
+                # An empty result is not a refresh. Reporting it with the success mark is
+                # how ``team_season_*`` froze in July while every log line and the job
+                # status afterwards said the refresh had run.
+                reason = crawler.get_last_failure_reason()
+                logger.warning(
+                    "   \u26a0\ufe0f Team %s stats NOT refreshed (0 records)%s. Season totals may be stale.",
+                    label,
+                    f" [source_limited: {reason}]" if reason else "",
+                )
+            else:
+                logger.info("   \u2705 Team %s stats refreshed (%s records)", label, len(stats))
 
 
 async def _step_6_2_fielding_baserunning(ctx: _RunContext) -> None:

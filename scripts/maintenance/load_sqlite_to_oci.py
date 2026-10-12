@@ -149,7 +149,7 @@ def _load_env() -> dict[str, str]:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            env[k] = v
+            env[k] = v.strip().strip('"').strip("'")
     return env
 
 

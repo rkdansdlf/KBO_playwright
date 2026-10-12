@@ -1458,6 +1458,84 @@ class TestTheBaselineLivesInTheDatabase:
 
         assert rows == [5001], "the second recording did not replace the first"
 
+    def test_a_season_run_reads_only_its_own_season_of_the_record(self) -> None:
+        """A whole-history record must not answer a one-season question.
+
+        452 of the 780 recorded players fail in more than one season. A record
+        holding a bare set of player ids cannot tell a season run which rows are
+        its own, so every row it does not name looks repaired -- 714 of them, on
+        every run, and 2025's rows would be counted as this season's repairs.
+
+        Storing the season with each row is what makes both sides of the
+        comparison the same set of questions. Removing either the season from the
+        query or the season filter from the comparison makes this fail, which is
+        how the gap was found: both mutations passed the suite as it stood.
+        """
+        from src.validators.data_quality_regression_pack import (
+            compare_against_baseline_db,
+            write_baseline_to_db,
+        )
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            for pid, season in ((5001, 2026), (5002, 2025), (5003, 2024)):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid, "season": season},
+                )
+            write_baseline_to_db(conn)
+            verdict = compare_against_baseline_db(conn, season=2026)
+            conn.commit()
+
+        assert verdict.baseline_available is True
+        assert verdict.new_violations == ()
+        assert verdict.baseline_violations == ("5001",)
+        assert verdict.resolved_violations == (), "another season's rows were counted as repairs"
+
+    def test_a_record_covering_only_some_seasons_is_not_compared_over_all(self) -> None:
+        """The one mismatch left, and it is the one that subtracts from the score.
+
+        A record taken for one season cannot answer a whole-history run: every
+        other season's violations would read as new damage. Those counts are
+        deducted from the quality score, so the failure would be silent and the
+        score would drop for no reason anyone can name.
+        """
+        from src.validators.data_quality_regression_pack import (
+            compare_against_baseline_db,
+            write_baseline_to_db,
+        )
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            for pid, season in ((5001, 2026), (5002, 2025)):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid, "season": season},
+                )
+            write_baseline_to_db(conn, season=2026)
+            verdict = compare_against_baseline_db(conn)
+            conn.commit()
+
+        assert verdict.is_scope_mismatch is True
+        assert verdict.new_violations == ()
+        assert verdict.baseline_violations == ()
+
     def test_a_season_scope_does_not_disturb_another_season(self) -> None:
         from src.validators.data_quality_regression_pack import write_baseline_to_db
 

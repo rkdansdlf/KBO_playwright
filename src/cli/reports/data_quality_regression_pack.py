@@ -78,7 +78,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             unfixable = write_unrecoverable_to_db(conn)
             conn.commit()
             sys.stdout.write(
-                f"recorded {sum(len(v['player_ids']) for v in body['checks'].values())} violating row(s) "
+                f"recorded {sum(len(v['rows']) for v in body['checks'].values())} violating row(s) "
                 f"across {len(body['checks'])} check(s), and {len(unfixable['rows'])} unfixable row(s), "
                 f"in the database\n"
             )
