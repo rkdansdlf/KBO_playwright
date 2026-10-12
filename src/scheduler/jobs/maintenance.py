@@ -526,8 +526,16 @@ def persist_homerun_factors(session: Session, year: int) -> int:
     return updated
 
 
+@_with_db_fail_fast_guard
 def compute_park_factor_job() -> None:
-    """Compute park factor for all stadiums (Sunday 05:30 KST)."""
+    """Compute park factor for all stadiums (Sunday 05:30 KST).
+
+    Gated like its neighbours. The job holds `MAINTENANCE_LOCK` and commits, so a
+    database outage would otherwise spend the tier's time budget connecting --
+    the 2026-10-03 shape, where maintenance jobs starved each other for about 150
+    seconds apiece. It went unnoticed because the gate census covered one tier and
+    only names ending in `_job`, so this job was never examined.
+    """
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Park Factor Computation ===")
         try:
@@ -539,6 +547,14 @@ def compute_park_factor_job() -> None:
                 results = calc.calculate(current_year)
                 logger.info("Park Factor computed for %d stadiums", len(results))
                 updated = persist_homerun_factors(session, current_year)
+                if updated is None:
+                    # The inner gate returns None when the database is unreachable,
+                    # though its annotation promises an int. Committing anyway would
+                    # be an empty transaction and the log line would raise inside the
+                    # logging handler -- printing a traceback to stderr and losing the
+                    # message, so the skip read as an unrelated fault.
+                    logger.info("HR Park Factor not persisted: database unreachable")
+                    return
                 session.commit()
                 logger.info("HR Park Factor persisted for %d stadiums", updated)
         except SCHEDULER_JOB_EXCEPTIONS:
