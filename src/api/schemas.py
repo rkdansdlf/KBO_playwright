@@ -166,6 +166,49 @@ class StadiumItemSchema(BaseModel):
     address: str | None = Field(None, examples=["서울특별시 송파구 올림픽로 25"])
 
 
+class StadiumMasterSchema(BaseModel):
+    """Stadium master row: dimensions, turf, bullpen, park factor, validity, contact."""
+
+    stadium_id: str = Field(..., examples=["JAMSIL"])
+    stadium_name: str | None = Field(None, examples=["잠실야구장"])
+    city: str | None = Field(None, examples=["서울특별시 송파구"])
+    team: str | None = Field(None, examples=["LG,OB"])
+    capacity: int | None = Field(None, examples=[25000])
+    open_year: int | None = Field(None, examples=[1982])
+    left_fence_m: float | None = Field(None, examples=[100.0])
+    center_fence_m: float | None = Field(None, examples=[125.0])
+    right_fence_m: float | None = Field(None, examples=[100.0])
+    fence_height_m: float | None = Field(None, examples=[2.6])
+    turf_type: str | None = Field(None, examples=["천연"])
+    bullpen_type: str | None = Field(None, examples=["외야"])
+    homerun_park_factor: float | None = Field(None, examples=[1.05])
+    is_dome: bool | None = Field(None, examples=[False])
+    valid_from_year: int | None = Field(None, examples=[2025])
+    valid_to_year: int | None = Field(None, examples=[2026])
+    lat: float | None = Field(None, examples=[37.5114])
+    lng: float | None = Field(None, examples=[127.0734])
+    address: str | None = Field(None, examples=["서울특별시 송파구 올림픽로 25"])
+    phone: str | None = Field(None, examples=["02-2202-3834"])
+    notes: str | None = Field(None, examples=["우측 100m(대칭)"])
+
+
+class PlaceSchema(BaseModel):
+    """In-stadium amenity row."""
+
+    id: int = Field(..., examples=[1])
+    stadium_id: str = Field(..., examples=["JAMSIL"])
+    category: str = Field(..., examples=["음식점"])
+    name: str = Field(..., examples=["BHC (1층 333)"])
+    description: str | None = Field(None, examples=["1층 333섹션 근처"])
+    lat: float = Field(..., examples=[37.5114])
+    lng: float = Field(..., examples=[127.0734])
+    address: str | None = Field(None, examples=[None])
+    phone: str | None = Field(None, examples=[None])
+    rating: float | None = Field(None, examples=[None])
+    open_time: str | None = Field(None, examples=[None])
+    close_time: str | None = Field(None, examples=[None])
+
+
 class StadiumParkingSchema(BaseModel):
     """Schema for stadium parking facility."""
 

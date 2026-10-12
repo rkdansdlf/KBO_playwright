@@ -14,9 +14,11 @@ if TYPE_CHECKING:
 from src.api.auth import get_api_key
 from src.api.cache import cached_api
 from src.api.schemas import (
+    PlaceSchema,
     StadiumFacilitiesResponse,
     StadiumFoodSchema,
     StadiumItemSchema,
+    StadiumMasterSchema,
     StadiumParkingSchema,
     StadiumSeatSectionSchema,
     StadiumTicketOpenRuleSchema,
@@ -25,6 +27,8 @@ from src.api.schemas import (
 )
 from src.db.engine import get_db_session
 from src.models.parking_lot import ParkingLot
+from src.models.place import Place
+from src.models.stadium import Stadium
 from src.models.stadium_food_menu_item import StadiumFoodMenuItem
 from src.models.stadium_food_vendor import StadiumFoodVendor
 from src.models.stadium_info import StadiumInfo
@@ -270,4 +274,42 @@ def get_stadium_facilities(stadium_code: str) -> dict[str, Any]:
         raise
     except Exception as e:
         logger.exception("Failed to query stadium facilities for %s", stadium_code)
+        raise HTTPException(status_code=500, detail="Database query failure") from e
+
+
+@router.get(
+    "/api/v1/stadiums/master",
+    dependencies=[Depends(get_api_key)],
+    response_model=list[StadiumMasterSchema],
+    summary="구장 마스터 조회(제원·파크팩터·유효기간 포함)",
+)
+@cached_api(ttl_seconds=3600.0, key_prefix="stadiums_master")
+def get_stadiums_master() -> list[dict[str, Any]]:
+    """Query all rows of the stadiums master table."""
+    try:
+        with get_db_session() as session:
+            stmt = select(Stadium).order_by(Stadium.stadium_id)
+            stadiums = list(session.execute(stmt).scalars().all())
+            return [StadiumMasterSchema.model_validate(s, from_attributes=True).model_dump() for s in stadiums]
+    except Exception as e:
+        logger.exception("Failed to query stadiums master")
+        raise HTTPException(status_code=500, detail="Database query failure") from e
+
+
+@router.get(
+    "/api/v1/stadiums/{stadium_id}/places",
+    dependencies=[Depends(get_api_key)],
+    response_model=list[PlaceSchema],
+    summary="구장 편의시설 조회",
+)
+@cached_api(ttl_seconds=3600.0, key_prefix="stadium_places")
+def get_stadium_places(stadium_id: str) -> list[dict[str, Any]]:
+    """Query amenities for one stadium ordered by category and name."""
+    try:
+        with get_db_session() as session:
+            stmt = select(Place).where(Place.stadium_id == stadium_id).order_by(Place.category, Place.name)
+            places = list(session.execute(stmt).scalars().all())
+            return [PlaceSchema.model_validate(p, from_attributes=True).model_dump() for p in places]
+    except Exception as e:
+        logger.exception("Failed to query places for %s", stadium_id)
         raise HTTPException(status_code=500, detail="Database query failure") from e
