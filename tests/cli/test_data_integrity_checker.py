@@ -538,40 +538,91 @@ class TestCheckWinningTeamConsistency:
     @staticmethod
     def _game(**kwargs: Any) -> MagicMock:
         game = MagicMock()
-        for field in ("game_id", "away_team", "home_team", "away_score", "home_score", "winning_team"):
+        for field in (
+            "game_id",
+            "away_team",
+            "home_team",
+            "away_score",
+            "home_score",
+            "winning_team",
+            "away_franchise_id",
+            "home_franchise_id",
+            "winning_franchise_id",
+        ):
             setattr(game, field, kwargs.get(field))
         return game
 
     def test_the_same_code_passes(self) -> None:
-        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="HT")
+        game = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="HT",
+            home_franchise_id=5,
+            winning_franchise_id=5,
+        )
 
         result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
 
         assert result.passed is True
 
-    def test_a_legacy_and_a_canonical_name_for_one_franchise_pass(self) -> None:
-        """The regression: ``HT`` home side, ``KIA`` winner, same team."""
-        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="KIA")
+    def test_two_eras_of_one_franchise_pass(self) -> None:
+        """The regression: ``HT`` home side, ``KIA`` winner, one franchise.
 
-        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
-
-        assert result.passed is True
-
-    def test_a_canonical_winner_for_a_legacy_home_side_still_normalises(self) -> None:
-        """``OB`` and ``DB`` are the same franchise and the mapper only maps one way.
-
-        Passing a canonical code through the mapper returns None, so without the
-        fallback to the raw code this pair would have looked like a defect.
+        The strings differ, the franchise does not, and only the second of those
+        is the question the check is actually asking.
         """
-        game = self._game(game_id="G1", away_team="NC", home_team="OB", away_score=2, home_score=9, winning_team="DB")
+        game = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="KIA",
+            home_franchise_id=5,
+            winning_franchise_id=5,
+        )
 
         result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
 
         assert result.passed is True
+
+    def test_two_franchises_are_not_merged_into_one(self) -> None:
+        """The failure a string normaliser would introduce.
+
+        ``SSG`` inherited the ``SK`` slot; ``SS`` is a different club created in
+        2025. A mapping that folds them together reports Samsung Lions' games as
+        SSG Landers', which is the opposite of what this check exists to catch.
+        """
+        game = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="SS",
+            away_score=2,
+            home_score=7,
+            winning_team="SSG",
+            home_franchise_id=1,
+            winning_franchise_id=8,
+        )
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is False
+        assert result.details["mismatches"][0]["winning_team"] == "SSG"
 
     def test_a_different_team_still_fails(self) -> None:
-        """Normalising must not soften the check into accepting anything."""
-        game = self._game(game_id="G1", away_team="NC", home_team="HT", away_score=2, home_score=7, winning_team="LG")
+        game = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="LG",
+            home_franchise_id=5,
+            winning_franchise_id=3,
+        )
 
         result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
 
@@ -585,8 +636,63 @@ class TestCheckWinningTeamConsistency:
             "away_score": 2,
         }
 
+    def test_an_unidentified_row_falls_back_to_the_string(self) -> None:
+        """Some rows were never given a franchise id; the string is then all there is."""
+        same = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="HT",
+            home_franchise_id=None,
+            winning_franchise_id=None,
+        )
+        other = self._game(
+            game_id="G2",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="LG",
+            home_franchise_id=None,
+            winning_franchise_id=None,
+        )
+
+        result = checker_module.check_winning_team_consistency(self._session([same, other]), date(2026, 9, 29))
+
+        assert result.passed is False
+        assert [m["game_id"] for m in result.details["mismatches"]] == ["G2"]
+
+    def test_an_id_outranks_a_matching_string(self) -> None:
+        """A row that was identified is judged by the id, not by the label it carries."""
+        game = self._game(
+            game_id="G1",
+            away_team="NC",
+            home_team="HT",
+            away_score=2,
+            home_score=7,
+            winning_team="HT",
+            home_franchise_id=5,
+            winning_franchise_id=8,
+        )
+
+        result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
+
+        assert result.passed is False
+
     def test_a_draw_is_not_a_mismatch(self) -> None:
-        game = self._game(game_id="G1", away_team="HT", home_team="LG", away_score=3, home_score=3, winning_team="HT")
+        game = self._game(
+            game_id="G1",
+            away_team="HT",
+            home_team="LG",
+            away_score=3,
+            home_score=3,
+            winning_team="HT",
+            away_franchise_id=5,
+            home_franchise_id=3,
+            winning_franchise_id=5,
+        )
 
         result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
 
@@ -594,7 +700,16 @@ class TestCheckWinningTeamConsistency:
 
     def test_a_missing_winner_is_not_a_mismatch(self) -> None:
         """Filling the gap is another check's job; this one only compares."""
-        game = self._game(game_id="G1", away_team="HT", home_team="LG", away_score=3, home_score=5, winning_team=None)
+        game = self._game(
+            game_id="G1",
+            away_team="HT",
+            home_team="LG",
+            away_score=3,
+            home_score=5,
+            winning_team=None,
+            home_franchise_id=3,
+            winning_franchise_id=None,
+        )
 
         result = checker_module.check_winning_team_consistency(self._session([game]), date(2026, 9, 29))
 

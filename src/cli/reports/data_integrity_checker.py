@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import InstrumentedAttribute
 
+    from src.models.game import Game
+
 from sqlalchemy import func
 
 from src.constants import DATE_STR_LEN, KST
@@ -42,7 +44,6 @@ from src.utils.game_status import (
     is_terminal_status,
 )
 from src.utils.team_codes import normalize_kbo_game_id
-from src.utils.team_mapping import TeamMapper, get_team_mapper
 from src.validators.season_team_code import audit_season_team_codes
 
 FUTURES_BATTING_TOLERANCE = 0.005
@@ -462,43 +463,43 @@ def check_scores_populated(session: Session, target: date) -> CheckResult:
     )
 
 
-def _canonical_team_code(code: str | None, *, year: int, mapper: TeamMapper | None = None) -> str | None:
-    """Return one name for a team code, or None when there is nothing to compare.
+def _winner_matches(game: Game, *, expected_team: str, expected_franchise_id: int | None) -> bool:
+    """Return whether the recorded winner is the side the score says won.
 
-    ``TeamMapper`` translates the legacy codes into the canonical ones
-    (``OB`` -> ``DB``, ``HT`` -> ``KIA``, ``SS``/``SK`` -> ``SSG``) but only in
-    that direction: handing it a canonical code returns None, so mapping a
-    canonical name through it turns ``DB`` into nothing. Falling back to the code
-    itself is what makes the comparison symmetric -- a game whose
-    ``winning_team`` was stored as ``KIA`` and whose ``home_team`` was stored as
-    ``HT`` is the same team seen through two eras of the registry.
+    The franchise id is the comparison, not the team code. A code is a label
+    that changed hands mid-record -- ``SSG`` inherited the ``SK`` slot and
+    ``SS`` is a different club created in 2025 -- so any mapping that folds
+    those together reports Samsung Lions' games as SSG Landers'. ``game`` rows
+    already carry ``home_franchise_id`` / ``away_franchise_id`` /
+    ``winning_franchise_id`` for exactly this reason.
+
+    The string comparison is the fallback for rows that were never identified,
+    and only for those. Running both unconditionally would let a stale string
+    override an id that already said otherwise.
 
     Args:
-        code: Stored team code or name.
-        year: Season year, which decides the code a franchise uses that year.
-        mapper: A loaded mapper to reuse. Building one reloads the mapping, so a
-            caller comparing many codes passes the same instance instead of
-            paying for it per row.
+        game: The game row being judged.
+        expected_team: The team code of the side the score says won.
+        expected_franchise_id: That side's franchise id, when it is known.
 
     Returns:
-        The canonical code, or None when no code was supplied.
+        True when the recorded winner is the expected side.
 
     """
-    if not code or not str(code).strip():
-        return None
-    text = str(code).strip()
-    loaded = mapper if mapper is not None else get_team_mapper()
-    return loaded.get_team_code(text, year) or text
+    winning_franchise_id = game.winning_franchise_id
+    if expected_franchise_id is not None and winning_franchise_id is not None:
+        return int(winning_franchise_id) == int(expected_franchise_id)
+    return bool(game.winning_team) and game.winning_team == expected_team
 
 
 def check_winning_team_consistency(session: Session, target: date) -> CheckResult:
     """Verify winning_team matches home_score vs away_score.
 
-    The two are compared through :func:`_canonical_team_code` rather than as raw
-    strings. ``home_team`` and ``winning_team`` are written by different paths
-    and carry different registry eras -- a game whose home side arrived as the
+    ``home_team`` and ``winning_team`` are written by different paths and can
+    carry different registry eras -- a game whose home side arrived as the
     legacy ``HT`` and whose winner was stored under the canonical ``KIA`` is
-    correct data, and comparing the strings reported it as a defect.
+    correct data, and comparing the strings called it a defect. The comparison
+    is on the franchise id, which holds for both.
 
     Args:
         session: Session.
@@ -517,23 +518,22 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
         .all()
     )
 
-    mapper = get_team_mapper()
     mismatches = []
     for game in games:
         if game.home_score is None or game.away_score is None:
             continue
         if game.home_score > game.away_score:
             expected = game.home_team
+            expected_franchise_id = game.home_franchise_id
         elif game.away_score > game.home_score:
             expected = game.away_team
+            expected_franchise_id = game.away_franchise_id
         else:
             continue
 
         if not game.winning_team:
             continue
-        expected_code = _canonical_team_code(expected, year=target.year, mapper=mapper)
-        winner_code = _canonical_team_code(game.winning_team, year=target.year, mapper=mapper)
-        if expected_code is None or winner_code == expected_code:
+        if _winner_matches(game, expected_team=expected, expected_franchise_id=expected_franchise_id):
             continue
 
         mismatches.append(
