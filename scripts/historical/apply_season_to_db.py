@@ -29,6 +29,13 @@ from pathlib import Path
 ANSWER_DIR = Path("data/archives")
 
 # DB game_id 세그먼트 계약: 2자리 고정. MBC만 3자리라 MB로 축약 (1982 백업 관례).
+#
+# 이 축약이 1982년의 중복을 만든 것으로 보인다. 이 스크립트가 쓰는 game_id
+# (`19820327SSMB0`, 홈 SS 원정 MB)와 KBO 스케줄 크롤이 만든 것
+# (`19820327MBSS0`, 홈 MB 원정 SS)이 서로 다른 경기 ID로 같은 경기를
+# 가리키고, `delete_existing`이 한쪽만 지워 241경기가 두 행씩 남았다
+# (CANCELLED 241 + UNRESOLVED_MISSING 241, 1983년 이후는 중복 0건).
+# 재적용 전에 두 경로의 game_id를 대조할 것.
 SEGMENT_BY_TEAM = {"MBC": "MB"}
 EXPECTED_FIELDS = ("game_id", "game_date", "stadium", "home_team", "away_team", "home_score", "away_score")
 

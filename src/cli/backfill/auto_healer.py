@@ -64,8 +64,21 @@ def _find_stuck_games() -> list[Game]:
         stmt = select(Game).where(
             Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
             Game.game_date <= yesterday,
-            # 1982 inaugural-season boxscores were never published online and
-            # cannot be backfilled; they stay UNRESOLVED_MISSING by design.
+            # 1982 is excluded because it was *collected as scores only*, not
+            # because the season was never published. The raw namu.wiki scrape
+            # and its answer set are both in `data/archives/`
+            # (`1982_namu_raw.json`, `1982_answer_set_final.json`): 241 games
+            # with home/away score and nothing else. No batter, pitcher or
+            # play-by-play row exists to backfill, so a re-crawl has nothing to
+            # find and the rows keep whatever status they were given.
+            #
+            # The 241 games are also stored twice -- the KBO schedule crawl and
+            # the answer-set apply wrote opposite home/away rows under different
+            # game ids, so 241 rows read CANCELLED and 241 read
+            # UNRESOLVED_MISSING. Half of each pair is the same game. That
+            # duplication is a separate cleanup and is not what this filter is
+            # for; it is recorded here because the two are easy to confuse and
+            # the duplication is what makes the status look wrong.
             Game.game_date >= date(2001, 1, 1),
         )
         return list(session.execute(stmt).scalars().all())
