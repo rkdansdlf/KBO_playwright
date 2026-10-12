@@ -11,6 +11,7 @@ a background thread.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -23,17 +24,56 @@ if TYPE_CHECKING:
 
     from sqlalchemy.engine import Engine
 
+logger = logging.getLogger(__name__)
+
 #: Failures a probe treats as "database unavailable" rather than propagating.
+#:
+#: Deliberately broad: any of these means the probe did not get an answer, and
+#: the gate's job is to not run the job. What the tuple does **not** say is
+#: *why*, which is why the reason is logged rather than returned -- see
+#: :func:`probe_engine`.
 PROBE_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError)
 
 
+def _target_label(engine: Engine) -> str:
+    """Return ``host:port/db`` for the probe target, without credentials."""
+    try:
+        url = engine.url
+    except AttributeError:  # pragma: no cover - a stubbed engine in tests
+        return "unknown"
+    host = url.host or "?"
+    port = f":{url.port}" if url.port else ""
+    return f"{host}{port}/{url.database or '?'}"
+
+
 def probe_engine(engine: Engine) -> tuple[bool, float]:
-    """Return ``(available, latency_seconds)`` for a single ``SELECT 1`` ping."""
+    """Return ``(available, latency_seconds)`` for a single ``SELECT 1`` ping.
+
+    A failure returns ``False`` and nothing else, which is the right shape for a
+    boolean gate and the wrong shape for an operator. ``SQLAlchemyError`` covers
+    a refused connection, a three-second connect timeout, and "too many clients
+    already" alike, and the caller logs a single fixed sentence -- "database
+    unreachable" -- for all three. On 2026-10-12 that left two consecutive gate
+    rejections undiagnosable from the log: the surrounding job had queried the
+    same database successfully milliseconds earlier, so the only honest reading
+    was a false negative, and nothing recorded which cause it was.
+
+    So the boolean is unchanged and the cause stops being discarded. This is the
+    same lesson as the incident ledger: a state nobody can explain is
+    indistinguishable from a state nobody understands.
+    """
     start = time.monotonic()
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-    except PROBE_EXCEPTIONS:
+    except PROBE_EXCEPTIONS as exc:
+        logger.warning(
+            "DB probe failed for %s after %.3fs: %s: %s",
+            _target_label(engine),
+            time.monotonic() - start,
+            type(exc).__name__,
+            str(exc).replace("\n", " ")[:300],
+        )
         return False, time.monotonic() - start
     return True, time.monotonic() - start
 
