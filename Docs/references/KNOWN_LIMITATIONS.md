@@ -73,11 +73,24 @@ an `r_mismatch` marker for R-column errors) but still no individual records.
 | 1983–2000 | 7,996 | **0** | 0 |
 | 2001–2026 | 18,915 | 12,005 | 11,984 |
 
-**The 1983–2000 gap is the wider one.** Inning lines were parsed for eleven of
-those seasons (1983–1988, 1991, 1996–1999 — roughly 900 games each; 1999 has
-949 of 1,004) and those results were never applied: `game_inning_scores` starts
-at 2001. The raw files are still in `data/archives/`. Re-collecting 1982 would
-add nothing, because its raw has no inning field.
+**The 1983–2000 gap is the wider one.** `game_inning_scores` holds nothing
+before 2001, while 7,996 games sit in that era. Re-collecting 1982 would add
+nothing — its raw has no inning field at all.
+
+The 1983–2000 raw files are more promising but **not usable as they stand**.
+Eleven of those seasons (1983–1988, 1991, 1996–1999; 8,987 boxes) carry an
+`inning_sum1/2` field, but that is the **team's run total**, not the inning
+line: it equals `score1/2` in 8,886 of 8,987 boxes (98.9%), and the remaining
+101 are the `r_mismatch` cases the parser flags when the R column disagrees with
+the summed innings. `namu_season_boxscores.py:529-533` does read the per-inning
+cells (`for cell in r[1:r_idx]`), sums them, and then **discards the individual
+values**, keeping only the total.
+
+So `game_inning_scores` cannot be backfilled from the archived raw files — the
+per-inning numbers it needs were never saved. Filling it requires re-collecting
+the source pages and changing the parser to keep `cell` rather than just its
+sum. Both need a source-availability decision first (namu.wiki robots/ToS),
+which this document does not presume.
 
 ---
 
