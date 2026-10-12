@@ -6,6 +6,81 @@ This document tracks known data quality issues and their current status.
 
 ---
 
+## 1982 Season: scores restored, but 482 rows held every game twice (2026-10-12)
+
+**Status**: Duplication merged — 241 canonical games with scores, winners and
+stadiums. The per-player bodies are absent and stay reported as absent.
+
+### What was wrong
+
+1982 held **482 rows for 241 games**. Every game appeared twice, as opposite
+home/away rows under different game ids:
+
+```
+19820327MBSS0  UNRESOLVED_MISSING  away=SS home=MB  winner —    metadata —
+19820327SSMB0  CANCELLED           away=SS home=MB  winner=MB   metadata —
+```
+
+`game_id` encodes the home team first, so `MBSS0` says home is MBC and `SSMB0`
+says home is Samsung. The KBO schedule crawl and the namu.wiki answer-set apply
+each contributed one row, and `apply_season_to_db.py` `delete_existing` removed
+only one of the pair. The segment rule in that script is the likely cause — MBC
+is the only three-letter team and gets shortened to `MB` (line 31 comment).
+**1983 onward has zero such duplicates.**
+
+### What was done
+
+Merged rather than deleted, so the collected data followed the id that follows
+the convention:
+
+| Step | Rows |
+|---|---|
+| `game_metadata` moved to the canonical id | 241 |
+| `winning_team` moved to the canonical id | 240 |
+| duplicate rows set `is_primary = false` | 241 |
+
+**No row was deleted.** The canonical set is identified by
+`data/archives/1982_answer_set_final.json`; its 241 game ids match the database
+exactly on date, teams and score. Pre-change snapshot:
+`data/archive/1982_dedup_backup_20261012_124010.json`. To reverse:
+
+```sql
+UPDATE game SET is_primary = true
+WHERE NOT is_primary
+  AND REPLACE(CAST(game_date AS TEXT), '-', '') LIKE '1982%';
+```
+
+1982 is now `241 games, 241 scores, 240 winners (one 7-7 draw), 241 stadiums`.
+`UNRESOLVED_MISSING` is kept deliberately: the bodies are still missing and
+reporting the season as complete would hide that.
+
+### Why the bodies cannot be collected
+
+`scripts/historical/1982_namu_boxscores.py:155-192` reads the `R` (runs) column
+of the score table and nothing else. Its own saved output confirms it —
+`1982_namu_raw.json` carries exactly `date, month_doc, score1, score2, stadium,
+team1, team2, team_doc`. No batter, pitcher or inning line was ever read, and
+the same holds for the raw files of 1990, 1992–1995 and 2000, so this is a limit
+of the collection path rather than of the 1982 season.
+`namu_season_boxscores.py` reads one step further (team-level inning lines, with
+an `r_mismatch` marker for R-column errors) but still no individual records.
+
+### Coverage by era (measured 2026-10-12)
+
+| Season | Games | Innings | Batter records |
+|---|---|---|---|
+| 1982 | 482 rows / 241 games | 0 | 0 |
+| 1983–2000 | 7,996 | **0** | 0 |
+| 2001–2026 | 18,915 | 12,005 | 11,984 |
+
+**The 1983–2000 gap is the wider one.** Inning lines were parsed for eleven of
+those seasons (1983–1988, 1991, 1996–1999 — roughly 900 games each; 1999 has
+949 of 1,004) and those results were never applied: `game_inning_scores` starts
+at 2001. The raw files are still in `data/archives/`. Re-collecting 1982 would
+add nothing, because its raw has no inning field.
+
+---
+
 ## 1982–2000 Historical Seasons: Synthetic → Measured (namu.wiki boxscores) Replacement (2026-08-28)
 
 **Status**: ✅ Resolved — 1982~2000 과거 19개 전 시즌 정규시즌 경기결과(8,237경기)를 합성 데이터에서 실측으로 100% 교체 완료.
