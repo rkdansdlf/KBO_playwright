@@ -18,7 +18,7 @@ class StadiumFoodVendor(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     stadium_id: Mapped[str] = mapped_column(
         String(10),
-        ForeignKey("stadium_info.stadium_code", ondelete="CASCADE"),
+        ForeignKey("stadiums.stadium_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         comment="Stadium code",
