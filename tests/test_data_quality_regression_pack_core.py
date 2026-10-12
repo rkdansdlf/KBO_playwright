@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -1352,3 +1353,43 @@ def test_render_regression_report_includes_messages_and_samples() -> None:
     assert "- sample_check: fail (2 violation(s))" in rendered
     assert "  sample message" in rendered
     assert "  Samples: A, B" in rendered
+
+
+class TestTheBaselineSaysWhenItWasTaken:
+    """A record with no timestamp cannot be read later.
+
+    The backlog is still growing, and the whole measure is "what changed since
+    this". Without a time on the file, a reader has two possible explanations for
+    any new row -- it appeared after the baseline, or the baseline was taken after
+    it -- and nothing in the file distinguishes them. The scope field settles the
+    season question; nothing settles this one.
+    """
+
+    def test_the_record_carries_when_it_was_written(self, tmp_path: Path) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            body = write_baseline(conn, tmp_path / "b.json")
+
+        assert "recorded_at" in body, sorted(body)
+        # ISO-8601 with an offset, so it is not read as naive UTC and compared
+        # against KST-stamped rows the way a bare timestamp would be.
+        parsed = datetime.fromisoformat(body["recorded_at"])
+        assert parsed.tzinfo is not None
+
+    def test_re_recording_replaces_the_stamp_so_the_newer_reads_as_newer(self, tmp_path: Path) -> None:
+        """Re-recording is the honest way to stop a backlog from reading as new.
+
+        The season values carry no timestamp of their own, so the file's own is the
+        only evidence available. Two records must not claim the same moment, or
+        there is no way to tell which side of a comparison each one came from.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            path = tmp_path / "b.json"
+            first = write_baseline(conn, path)
+            later = write_baseline(conn, path)
+
+        assert datetime.fromisoformat(later["recorded_at"]) >= datetime.fromisoformat(first["recorded_at"])
+        assert json.loads(path.read_text())["recorded_at"] == later["recorded_at"]

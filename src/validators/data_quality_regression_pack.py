@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path  # noqa: TC003 - a runtime dependency: read_text/write_text/mkdir
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, text
+
+from src.constants import KST
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -178,6 +181,11 @@ def write_baseline(conn: Connection, path: Path, *, season: int | None = None) -
     """
     body: dict[str, Any] = {
         "version": 1,
+        # The season rows carry no timestamp of their own, so this is the only
+        # evidence of when the snapshot was taken. Without it a later reader
+        # cannot tell whether a new row appeared after this or whether the file
+        # was taken after it, and the comparison it enables has no anchor.
+        "recorded_at": datetime.now(KST).isoformat(),
         "scope": {"season": season},
         "checks": {
             check_id: {"player_ids": list(_violated_player_ids(conn, check_id, season=season))}
