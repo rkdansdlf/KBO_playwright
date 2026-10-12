@@ -29,3 +29,22 @@ CREATE INDEX IF NOT EXISTS idx_pa_violation_baseline_recorded
 
 COMMENT ON TABLE pa_violation_baseline IS
     'Season PA violations recorded as a known backlog, so a later run can report new damage separately';
+
+-- Rows whose counting columns were lost and cannot be recovered. Kept apart from
+-- the baseline above because the question asked of them is different: not "did
+-- this get worse" but "is this still the same set of rows nobody can fix".
+CREATE TABLE IF NOT EXISTS pa_unrecoverable (
+    player_id INTEGER NOT NULL,
+    season INTEGER,
+    league VARCHAR(16),
+    source VARCHAR(20),
+    reason VARCHAR(32) NOT NULL,
+    detail VARCHAR(400),
+    recorded_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pa_unrecoverable_recorded
+    ON pa_unrecoverable (recorded_at);
+
+COMMENT ON TABLE pa_unrecoverable IS
+    'Season rows missing a count that no lawful source can supply; recorded so they are not mistaken for repaired';

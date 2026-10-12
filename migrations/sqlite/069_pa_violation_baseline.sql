@@ -13,3 +13,18 @@ CREATE TABLE IF NOT EXISTS pa_violation_baseline (
 
 CREATE INDEX IF NOT EXISTS idx_pa_violation_baseline_recorded
     ON pa_violation_baseline (recorded_at);
+
+-- Rows whose counting columns were lost and cannot be recovered. Kept apart from
+-- the baseline above because the question asked of them is different.
+CREATE TABLE IF NOT EXISTS pa_unrecoverable (
+    player_id INTEGER NOT NULL,
+    season INTEGER,
+    league TEXT,
+    source TEXT,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    recorded_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pa_unrecoverable_recorded
+    ON pa_unrecoverable (recorded_at);

@@ -20,5 +20,22 @@ BEGIN
         EXECUTE IMMEDIATE
             'CREATE INDEX idx_pa_violation_baseline_recorded ON pa_violation_baseline (recorded_at)';
     END IF;
+
+    SELECT COUNT(*) INTO v_exists FROM user_tables WHERE table_name = 'PA_UNRECOVERABLE';
+
+    IF v_exists = 0 THEN
+        EXECUTE IMMEDIATE '
+            CREATE TABLE pa_unrecoverable (
+                player_id   NUMBER       NOT NULL,
+                season      NUMBER,
+                league      VARCHAR2(16),
+                source      VARCHAR2(20),
+                reason      VARCHAR2(32) NOT NULL,
+                detail      VARCHAR2(400),
+                recorded_at TIMESTAMP    NOT NULL
+            )';
+        EXECUTE IMMEDIATE
+            'CREATE INDEX idx_pa_unrecoverable_recorded ON pa_unrecoverable (recorded_at)';
+    END IF;
 END;
 /
