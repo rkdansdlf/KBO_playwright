@@ -106,6 +106,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.crawler_selector_gate --config Docs/references/crawler_selector_gate.json --json`: Validate crawler selector contracts against fixture/live targets.
 - `python3 -m src.cli.diagnose_crawler_failure --json logs/<logfile>.log`: Classify crawler failure logs and suggest targeted recovery commands.
 - `python3 -m src.cli.data_quality_regression_pack --json`: Run compact DB invariants for PA formula, impossible stats, and NULL player IDs.
+- `python3 -m src.cli.data_quality_regression_pack --write-baseline`: Record the season PA rows currently failing into `pa_violation_baseline` / `pa_unrecoverable` so a later run can report new damage separately from the standing backlog. Stored in the **database**, not a file: the scheduler runs on a different host from the one holding the repository, so a repository-relative file would leave the daily gate permanently uncompared. See `Docs/runbooks/PA_BASELINE.md`.
 - `python3 -m src.cli.live_crawler [--mode ...]`: Run live data crawler during game hours.
 - `python3 -m src.cli.recalc_player_game_stats --year YYYY`: Recalculate player game-level batting/pitching stats.
 - `python3 -m src.cli.recalc_season_stats --year YYYY`: Recalculate season-level player/team stats.
