@@ -205,67 +205,75 @@ class TestRecordingABaselineFromTheCommandLine:
     no hint: it reads as an instruction and produces nothing. Writing is also the
     only step between "the gate compares against nothing" and "the gate can say
     whether the backlog grew".
+
+    The record goes into the database rather than a file because the scheduler
+    does not run where this repository is checked out -- a file would leave the
+    daily gate permanently uncompared on the host that actually runs it.
     """
 
-    def test_writing_a_baseline_creates_the_file_the_gate_reads(self, tmp_path, capsys) -> None:
-        db_path = tmp_path / "pa.db"
-        engine = create_engine(f"sqlite:///{db_path}")
+    @staticmethod
+    def _file_db(path, rows: list[tuple] = ()) -> object:
+        """A file-backed database, because the CLI opens its own engine."""
+        engine = create_engine(f"sqlite:///{path}")
         with engine.begin() as conn:
             _create_quality_tables(conn)
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO player_season_batting
-                        (player_id, season, plate_appearances, at_bats, walks, hbp,
-                         sacrifice_hits, sacrifice_flies, league, level, source)
-                    VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
-                    """,
-                ),
-            )
-        baseline = tmp_path / "baseline.json"
+            for row in rows:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 2026, :pa, :ab, :bb, :hbp, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": row[0], "pa": row[1], "ab": row[2], "bb": row[3], "hbp": row[4]},
+                )
+        return engine
+
+    def test_writing_a_baseline_creates_the_record_the_gate_reads(self, tmp_path, capsys) -> None:
+        db_path = tmp_path / "pa.db"
+        file_engine = self._file_db(db_path, [(5001, 15, 13, 1, 0)])
 
         exit_code = main(
-            [
-                "--database-url",
-                f"sqlite:///{db_path}",
-                "--year",
-                "2026",
-                "--write-baseline",
-                str(baseline),
-            ],
+            ["--database-url", f"sqlite:///{db_path}", "--year", "2026", "--write-baseline"],
         )
 
         out = capsys.readouterr().out
-        assert baseline.exists(), "the command wrote no file"
-        body = json.loads(baseline.read_text())
-        assert body["checks"]["player_season_batting_unaccounted_pa"]["player_ids"] == ["5001"]
         assert "recorded 1 violating row(s)" in out
+
+        with file_engine.connect() as conn:
+            rows = conn.execute(text("SELECT player_id FROM pa_violation_baseline")).all()
+        assert [row[0] for row in rows] == [5001]
+
         # The exit code still reports the pack's own verdict. Recording a baseline
         # is extra work done alongside the run, not a reason to call a failing
         # pack a success -- the whole point is that the backlog stays visible.
         assert exit_code == 1
 
-    def test_writing_records_the_scope_so_a_season_run_can_read_it(self, tmp_path, capsys) -> None:
+    def test_the_record_carries_the_scope_so_a_season_run_can_read_it(self, tmp_path, capsys) -> None:
         db_path = tmp_path / "pa.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-        with engine.begin() as conn:
-            _create_quality_tables(conn)
-        baseline = tmp_path / "baseline.json"
+        engine = self._file_db(db_path, [(5001, 15, 13, 1, 0)])
 
-        main(["--database-url", f"sqlite:///{db_path}", "--year", "2026", "--write-baseline", str(baseline)])
+        main(["--database-url", f"sqlite:///{db_path}", "--year", "2026", "--write-baseline"])
 
         capsys.readouterr()
-        assert json.loads(baseline.read_text())["scope"] == {"season": 2026}
+        with engine.connect() as conn:
+            scopes = {
+                row[0] for row in conn.execute(text("SELECT DISTINCT scope_season FROM pa_violation_baseline")).all()
+            }
+        assert scopes == {2026}
 
-    def test_the_unfixable_record_is_written_alongside_it(self, tmp_path, capsys) -> None:
-        """The two files are read together, so one without the other is a half answer."""
+    def test_the_unfixable_record_is_written_beside_it(self, tmp_path, capsys) -> None:
+        """The two records are read together, so one without the other is half an answer."""
         db_path = tmp_path / "pa.db"
-        engine = create_engine(f"sqlite:///{db_path}")
-        with engine.begin() as conn:
-            _create_quality_tables(conn)
-        baseline = tmp_path / "baseline.json"
+        engine = self._file_db(db_path)
 
-        main(["--database-url", f"sqlite:///{db_path}", "--write-baseline", str(baseline)])
+        main(["--database-url", f"sqlite:///{db_path}", "--write-baseline"])
 
         capsys.readouterr()
-        assert (tmp_path / "unrecoverable.json").exists()
+        with engine.connect() as conn:
+            names = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'pa_%'"),
+            ).all()
+        assert {row[0] for row in names} == {"pa_violation_baseline", "pa_unrecoverable"}

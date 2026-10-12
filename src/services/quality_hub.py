@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
-from pathlib import Path  # noqa: TC003 - a runtime dependency for path construction
 from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
 from src.validators.data_quality_regression_pack import (
-    BaselineUnreadableError,
-    compare_against_baseline,
-    compare_unrecoverable,
+    compare_against_baseline_db,
+    compare_unrecoverable_db,
     run_regression_pack,
 )
 from src.validators.quality_gate import QualityGate
@@ -133,16 +131,14 @@ NEW_DAMAGE_MAX_DEDUCTION = 20.0
 class QualityHub:
     """Central service orchestrating all KBO data quality, regression, and freshness gates."""
 
-    def __init__(self, session: Session, *, baseline_path: Path | None = None) -> None:
+    def __init__(self, session: Session) -> None:
         """Initialize QualityHub with an active database session.
 
         Args:
             session: Open database session.
-            baseline_path: Recorded season-PA violations to compare against.
 
         """
         self.session = session
-        self.baseline_path = baseline_path
 
     def run_quality_gate(self, season: int, league: str = "REGULAR") -> QualityGateSummary:  # noqa: C901
         """Execute statistical quality gate checks for a given season.
@@ -282,22 +278,11 @@ class QualityHub:
         report = run_regression_pack(conn, target_date=target_date, season=season)
         failures = [res.to_dict() for res in report.results if res.status == "fail"]
 
-        available = False
-        new_violations = 0
-        baseline_violations = 0
-        newly_unrecoverable = 0
-        if self.baseline_path is not None:
-            try:
-                verdict = compare_against_baseline(conn, self.baseline_path, season=season)
-                unrecoverable = compare_unrecoverable(conn, self.baseline_path.with_name("unrecoverable.json"))
-            except BaselineUnreadableError:
-                verdict = None
-                unrecoverable = None
-            if verdict is not None and not verdict.is_scope_mismatch:
-                available = True
-                new_violations = len(verdict.new_violations)
-                baseline_violations = len(verdict.baseline_violations)
-                newly_unrecoverable = len(unrecoverable.newly_unrecoverable) if unrecoverable is not None else 0
+        verdict = compare_against_baseline_db(conn, season=season)
+        available = verdict.baseline_available
+        new_violations = len(verdict.new_violations)
+        baseline_violations = len(verdict.baseline_violations)
+        newly_unrecoverable = len(compare_unrecoverable_db(conn).newly_unrecoverable) if available else 0
 
         return RegressionPackSummary(
             ok=report.ok,
@@ -418,7 +403,7 @@ class QualityHub:
                     r_summary,
                     target_season,
                     remediations,
-                    asked_for_comparison=self.baseline_path is not None,
+                    asked_for_comparison=True,
                 )
             else:
                 deduction = min(35.0, r_summary.failure_count * 7.0)
@@ -436,7 +421,7 @@ class QualityHub:
                         r_summary,
                         target_season,
                         remediations,
-                        asked_for_comparison=self.baseline_path is not None,
+                        asked_for_comparison=True,
                     ),
                 )
 

@@ -11,13 +11,12 @@ from typing import TYPE_CHECKING
 from src.constants import DATE_STR_LEN
 from src.db.engine import DATABASE_URL
 from src.db.engine import create_engine_for_url as create_engine
-from src.orchestration.master import PA_BASELINE_FILENAME
 from src.validators.data_quality_regression_pack import (
     render_regression_report,
     report_to_json,
     run_regression_pack,
-    write_baseline,
-    write_unrecoverable,
+    write_baseline_to_db,
+    write_unrecoverable_to_db,
 )
 
 if TYPE_CHECKING:
@@ -49,11 +48,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, help="Write the JSON report to this file")
     parser.add_argument(
         "--write-baseline",
-        type=Path,
-        metavar="PATH",
+        action="store_true",
         help=(
             "Record the season rows currently failing so a later run can report new damage separately "
-            "from the standing backlog. Accepts a file or the directory to write it into."
+            "from the standing backlog. Stored in the database, which is where the daily gate reads it."
         ),
     )
     args = parser.parse_args(argv)
@@ -75,15 +73,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             season=season,
             require_schema=args.require_schema,
         )
-        if args.write_baseline is not None:
-            baseline_path = args.write_baseline
-            if baseline_path.suffix != ".json":
-                baseline_path = baseline_path / PA_BASELINE_FILENAME
-            body = write_baseline(conn, baseline_path, season=season)
-            write_unrecoverable(conn, baseline_path.with_name("unrecoverable.json"))
+        if args.write_baseline:
+            body = write_baseline_to_db(conn, season=season)
+            unfixable = write_unrecoverable_to_db(conn)
+            conn.commit()
             sys.stdout.write(
                 f"recorded {sum(len(v['player_ids']) for v in body['checks'].values())} violating row(s) "
-                f"across {len(body['checks'])} check(s) in {baseline_path}\n"
+                f"across {len(body['checks'])} check(s), and {len(unfixable['rows'])} unfixable row(s), "
+                f"in the database\n"
             )
 
     if args.output:

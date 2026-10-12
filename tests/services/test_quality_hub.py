@@ -93,10 +93,15 @@ class TestQualityHub:
             patch.object(
                 hub,
                 "run_regression_pack",
+                # A recorded baseline with nothing failing: the clean run this
+                # test describes. Without one the hub cannot distinguish it from
+                # a run that has never been measured, and says so in its hints.
                 return_value=RegressionPackSummary(
                     ok=True,
                     check_count=10,
                     failure_count=0,
+                    baseline_available=True,
+                    baseline_violation_count=0,
                 ),
             ),
             patch.object(
@@ -285,8 +290,6 @@ class TestTheScoreDistinguishesNewDamageFromKnownBacklog:
         asked to compare -- the API and the CLI construct one without a path and
         have no use for the advice.
         """
-        if asked:
-            hub.baseline_path = Path("recorded.json")
         gate = QualityGateSummary(
             season=2025,
             league="REGULAR",
@@ -427,231 +430,3 @@ class TestTheScoreDistinguishesNewDamageFromKnownBacklog:
         assert legacy.baseline_available is False
         assert legacy.new_violation_count == 0
         assert legacy.baseline_violation_count == 0
-
-
-class TestTheHubReadsABaselineWhenGivenOne:
-    """The score rules are inert unless something fills in the counts.
-
-    ``_new_damage_deduction`` reads ``new_violation_count``, which stays zero
-    unless ``run_regression_pack`` actually compares against a file. These tests
-    cover that plumbing rather than the arithmetic, which the class above pins.
-    """
-
-    def test_a_row_absent_from_the_recorded_baseline_is_counted_as_new(self, session: Session, tmp_path) -> None:
-        from src.validators.data_quality_regression_pack import write_baseline
-
-        session.execute(
-            text(
-                """
-                INSERT INTO player_season_batting
-                    (player_id, season, plate_appearances, at_bats, walks, hbp,
-                     sacrifice_hits, sacrifice_flies, league, level, source)
-                VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
-                """,
-            ),
-        )
-        session.commit()
-        baseline = tmp_path / "baseline.json"
-        write_baseline(session.connection(), baseline, season=2026)
-        (tmp_path / "unrecoverable.json").write_text('{"version": 1, "rows": []}')
-
-        recorded = QualityHub(session, baseline_path=baseline).run_regression_pack(season=2026)
-        assert recorded.baseline_available is True
-        assert recorded.new_violation_count == 0
-        assert recorded.baseline_violation_count == 1
-
-        session.execute(
-            text(
-                """
-                INSERT INTO player_season_batting
-                    (player_id, season, plate_appearances, at_bats, walks, hbp,
-                     sacrifice_hits, sacrifice_flies, league, level, source)
-                VALUES (5009, 2026, 20, 16, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
-                """,
-            ),
-        )
-        session.commit()
-
-        after = QualityHub(session, baseline_path=baseline).run_regression_pack(season=2026)
-        assert after.new_violation_count == 1, "a row the baseline never named was not counted"
-        assert after.baseline_violation_count == 1
-
-    def test_a_hub_without_a_baseline_path_leaves_the_comparison_off(self, session: Session) -> None:
-        """Existing callers pass a session alone and must keep working unchanged."""
-        summary = QualityHub(session).run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False
-        assert summary.new_violation_count == 0
-
-    def test_a_baseline_file_that_cannot_be_read_does_not_reprice_the_run(self, session: Session, tmp_path) -> None:
-        """A corrupt file is not an empty one.
-
-        Treating it as empty would make every historical row look new, and those
-        numbers are subtracted from a score.
-        """
-        missing = tmp_path / "absent.json"
-        summary = QualityHub(session, baseline_path=missing).run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False
-        assert summary.new_violation_count == 0
-
-
-class TestTheBaselineScopeIsEnforcedBeforeItIsTrusted:
-    """A comparison across different scopes is not a small discrepancy.
-
-    452 of the 760 players in the current season PA set fail in more than one
-    season, so a baseline recorded over all of history read by a ``--year`` run
-    would mark 714 of them repaired on every single night. That verdict reads as
-    progress, which is why the mismatch is refused rather than reported.
-    """
-
-    def test_a_baseline_recorded_over_other_seasons_is_not_read_as_a_verdict(self, session: Session, tmp_path) -> None:
-        from src.validators.data_quality_regression_pack import compare_against_baseline, write_baseline
-
-        for pid, season in ((5001, 2026), (5002, 2025), (5003, 2024)):
-            session.execute(
-                text(
-                    """
-                    INSERT INTO player_season_batting
-                        (player_id, season, plate_appearances, at_bats, walks, hbp,
-                         sacrifice_hits, sacrifice_flies, league, level, source)
-                    VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
-                    """,
-                ),
-                {"pid": pid, "season": season},
-            )
-        session.commit()
-        whole_history = tmp_path / "whole.json"
-        write_baseline(session.connection(), whole_history)
-        (tmp_path / "unrecoverable.json").write_text('{"version": 1, "rows": []}')
-
-        verdict = compare_against_baseline(session.connection(), whole_history, season=2026)
-        assert verdict.is_scope_mismatch is True
-
-        summary = QualityHub(session, baseline_path=whole_history).run_regression_pack(season=2026)
-        assert summary.baseline_available is False, (
-            "a whole-history baseline was accepted by a single-season run, which "
-            "reports most of the backlog as repaired"
-        )
-        assert summary.new_violation_count == 0
-
-    def test_a_baseline_recorded_for_the_same_season_is_accepted(self, session: Session, tmp_path) -> None:
-        from src.validators.data_quality_regression_pack import write_baseline
-
-        session.execute(
-            text(
-                """
-                INSERT INTO player_season_batting
-                    (player_id, season, plate_appearances, at_bats, walks, hbp,
-                     sacrifice_hits, sacrifice_flies, league, level, source)
-                VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'KBO1', 'LEGACY_CRAWLER')
-                """,
-            ),
-        )
-        session.commit()
-        same_season = tmp_path / "scoped.json"
-        write_baseline(session.connection(), same_season, season=2026)
-        (tmp_path / "unrecoverable.json").write_text('{"version": 1, "rows": []}')
-
-        summary = QualityHub(session, baseline_path=same_season).run_regression_pack(season=2026)
-        assert summary.baseline_available is True
-        assert summary.new_violation_count == 0
-        assert summary.baseline_violation_count == 1
-
-
-class TestAnUnreadableBaselineIsNotSilent:
-    """A file that cannot be read is a fact, not a guess.
-
-    ``compare_against_baseline`` raises rather than returning an empty verdict
-    because both possible guesses hide a real break: read as empty, the entire
-    historical backlog becomes fresh damage and the score collapses on the first
-    night; swallowed, a truncated file looks like a quiet one. The hub turns the
-    error into "not compared", and this holds it to that rather than to whatever
-    happens to be the broad ``except`` clause it is written under.
-    """
-
-    def test_a_corrupt_baseline_is_reported_as_not_compared(self, session: Session, tmp_path) -> None:
-        corrupt = tmp_path / "baseline.json"
-        corrupt.write_text("{ not json")
-
-        summary = QualityHub(session, baseline_path=corrupt).run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False
-        assert summary.new_violation_count == 0
-        assert summary.baseline_violation_count == 0
-
-    def test_a_baseline_without_a_checks_section_is_also_not_compared(self, session: Session, tmp_path) -> None:
-        """A well-formed file with the wrong shape is as unusable as a broken one."""
-        wrong_shape = tmp_path / "baseline.json"
-        wrong_shape.write_text('{"version": 1}')
-
-        summary = QualityHub(session, baseline_path=wrong_shape).run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False
-
-    def test_a_missing_file_is_not_compared_rather_than_treated_as_empty(self, session: Session, tmp_path) -> None:
-        """The first-run case, and the one that would invent 2,603 rows."""
-        summary = QualityHub(session, baseline_path=tmp_path / "never_recorded.json").run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False
-        assert summary.new_violation_count == 0
-
-    def test_an_unreadable_baseline_still_reaches_the_operator_as_a_hint(self, session: Session, tmp_path) -> None:
-        """The run proceeds, but the operator is told the comparison did not happen."""
-        from src.services.quality_hub import QualityGateSummary
-
-        hub = QualityHub(session, baseline_path=tmp_path / "absent.json")
-        gate = QualityGateSummary(
-            season=2025,
-            league="REGULAR",
-            batting_ok=True,
-            pitching_ok=True,
-            pa_formula_ok=True,
-            team_batting_ok=True,
-            team_pitching_ok=True,
-            mismatch_count=0,
-        )
-        with (
-            patch.object(hub, "run_quality_gate", return_value=gate),
-            patch.object(
-                hub,
-                "run_standings_check",
-                return_value=StandingsSummary(target_date="2025-06-01", ok=True, checked_teams=10),
-            ),
-            patch.object(hub, "run_freshness_check", return_value=FreshnessSummary(ok=True, issue_count=0)),
-        ):
-            report = hub.run_full_audit(season=2025, target_date=date(2025, 6, 1))
-
-        assert any("baseline" in hint.lower() for hint in report.remediation_hints), report.remediation_hints
-
-
-class TestABrokenBaselineIsDistinguishedFromABrokenDatabase:
-    """The comparison is wrapped in a narrow catch on purpose.
-
-    ``except Exception`` would also swallow a dead connection and turn a gate
-    that cannot read its own database into a gate that reports nothing wrong.
-    The difference is invisible in the output -- both leave the counts at zero --
-    so it is asserted here rather than left to the exception class staying
-    correct.
-    """
-
-    def test_a_database_error_is_not_reported_as_a_missing_baseline(self, session: Session, tmp_path) -> None:
-        """A failing query must surface, not resolve to "not compared"."""
-        with patch(
-            "src.services.quality_hub.compare_against_baseline",
-            side_effect=OperationalError("SELECT 1", {}, Exception("server closed the connection unexpectedly")),
-        ):
-            with pytest.raises(OperationalError):
-                QualityHub(session, baseline_path=tmp_path / "baseline.json").run_regression_pack(season=2026)
-
-    def test_a_baseline_error_is_absorbed_as_not_compared(self, session: Session, tmp_path) -> None:
-        """The one error class this path may swallow, because it has a meaning."""
-        from src.validators.data_quality_regression_pack import BaselineUnreadableError
-
-        with patch(
-            "src.services.quality_hub.compare_against_baseline",
-            side_effect=BaselineUnreadableError("baseline is unreadable"),
-        ):
-            summary = QualityHub(session, baseline_path=tmp_path / "baseline.json").run_regression_pack(season=2026)
-
-        assert summary.baseline_available is False

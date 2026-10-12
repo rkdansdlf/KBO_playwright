@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -117,11 +118,23 @@ class BaselineVerdict:
     unknown_checks: tuple[str, ...]
     #: The baseline was recorded over a different scope than this run.
     is_scope_mismatch: bool = False
+    #: Whether a record for this scope was found at all.
+    #:
+    #: The file-backed reader raises instead, because a missing path there means
+    #: the operator has not run the command yet. In the database, absence is a
+    #: normal state a fresh install is in, so it has to be representable without
+    #: being an error and without being mistaken for an empty record.
+    baseline_available: bool = True
 
     @property
     def is_new_damage(self) -> bool:
         """Whether anything failed that was not already known to fail."""
-        return bool(self.new_violations) or bool(self.unknown_checks) or self.is_scope_mismatch
+        return (
+            bool(self.new_violations)
+            or bool(self.unknown_checks)
+            or self.is_scope_mismatch
+            or not self.baseline_available
+        )
 
 
 class BaselineUnreadableError(RuntimeError):
@@ -337,6 +350,211 @@ def compare_unrecoverable(conn: Connection, path: Path) -> UnrecoverableVerdict:
     recorded = {str(entry.get("player_id")) for entry in body.get("rows", []) if isinstance(entry, dict)}
     now = {str(entry["player_id"]) for entry in _unrecoverable_rows(conn)}
 
+    return UnrecoverableVerdict(
+        newly_unrecoverable=tuple(sorted(now - recorded)),
+        still_unrecoverable=tuple(sorted(now & recorded)),
+    )
+
+
+#: Season scope written into the record when a run covers every season. Zero
+#: rather than NULL because the scope is part of the primary key, and no KBO
+#: season is shorter than four digits.
+ALL_SEASONS_SCOPE = 0
+
+_BASELINE_COLUMNS = (
+    "scope_season INTEGER NOT NULL DEFAULT {scope}, player_id INTEGER NOT NULL, "
+    "recorded_at {stamp} NOT NULL, PRIMARY KEY (check_id, scope_season, player_id)"
+)
+_BASELINE_CHECK_ID = {"postgresql": "VARCHAR(64)", "sqlite": "TEXT", "oracle": "VARCHAR2(64)"}
+_BASELINE_STAMP = {"postgresql": "TIMESTAMP", "sqlite": "TIMESTAMP", "oracle": "TIMESTAMP"}
+
+_BASELINE_ENSURE = {
+    dialect: (
+        f"CREATE TABLE IF NOT EXISTS pa_violation_baseline "
+        f"(check_id {check_id_type} NOT NULL, "
+        + _BASELINE_COLUMNS.format(scope=ALL_SEASONS_SCOPE, stamp=_BASELINE_STAMP[dialect])
+        + ")"
+    )
+    for dialect, check_id_type in _BASELINE_CHECK_ID.items()
+}
+_BASELINE_ENSURE["oracle"] = (
+    "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE pa_violation_baseline "
+    "(check_id VARCHAR2(64) NOT NULL, "
+    + _BASELINE_COLUMNS.format(scope=ALL_SEASONS_SCOPE, stamp="TIMESTAMP")
+    + "CONSTRAINT pk_pa_violation_baseline PRIMARY KEY (check_id, scope_season, player_id))'; END;"
+)
+
+
+_UNRECOVERABLE_ENSURE = {
+    "postgresql": (
+        "CREATE TABLE IF NOT EXISTS pa_unrecoverable ("
+        "player_id INTEGER NOT NULL, season INTEGER, league VARCHAR(16), source VARCHAR(20), "
+        "reason VARCHAR(32) NOT NULL, detail VARCHAR(400), recorded_at TIMESTAMP NOT NULL)"
+    ),
+    "sqlite": (
+        "CREATE TABLE IF NOT EXISTS pa_unrecoverable ("
+        "player_id INTEGER NOT NULL, season INTEGER, league TEXT, source TEXT, "
+        "reason TEXT NOT NULL, detail TEXT, recorded_at TIMESTAMP NOT NULL)"
+    ),
+}
+_UNRECOVERABLE_ENSURE["oracle"] = (
+    "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE pa_unrecoverable ("
+    "player_id NUMBER NOT NULL, season NUMBER, league VARCHAR2(16), source VARCHAR2(20), "
+    "reason VARCHAR2(32) NOT NULL, detail VARCHAR2(400), recorded_at TIMESTAMP NOT NULL)'; END;"
+)
+
+
+def _ensure_baseline_table(conn: Connection) -> None:
+    """Create the record table if the migrations have not run yet.
+
+    A read-only connection cannot create it, and a read on a missing table has to
+    come back as "not compared" rather than as an error that fails the daily
+    stage. Callers that want the table present run the migration.
+    """
+    dialect = conn.dialect.name
+    if dialect not in _BASELINE_ENSURE:
+        return
+    # No commit: the caller owns the transaction, and committing here would end
+    # a unit of work that is still in progress on the same connection.
+    with contextlib.suppress(Exception):  # absence is reported, not raised
+        conn.execute(text(_BASELINE_ENSURE[dialect]))
+    with contextlib.suppress(Exception):
+        conn.execute(text(_UNRECOVERABLE_ENSURE[dialect]))
+
+
+def _scope_key(season: int | None) -> int:
+    return ALL_SEASONS_SCOPE if season is None else season
+
+
+def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict[str, Any]:
+    """Record the rows currently failing, replacing any record for this scope.
+
+    The write replaces rather than merges so a backlog that shrank reads as
+    smaller; a merge would keep reporting rows that have been repaired and make
+    the comparison incapable of noticing the other direction either.
+
+    Storing the record rather than writing a file is what makes this usable: the
+    scheduler runs on a different host from the one holding the repository, so a
+    repository-relative file would leave the daily gate permanently uncompared.
+    """
+    _ensure_baseline_table(conn)
+    stamp = datetime.now(KST)
+    scope = _scope_key(season)
+    recorded: dict[str, Any] = {
+        "version": 1,
+        "scope": {"season": season},
+        "recorded_at": stamp.isoformat(),
+        "checks": {},
+    }
+
+    conn.execute(
+        text("DELETE FROM pa_violation_baseline WHERE scope_season = :scope"),
+        {"scope": scope},
+    )
+    for check_id in sorted(_BASELINE_CHECK_IDS):
+        player_ids = _violated_player_ids(conn, check_id, season=season)
+        recorded["checks"][check_id] = {"player_ids": list(player_ids)}
+        for player_id in player_ids:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO pa_violation_baseline (check_id, scope_season, player_id, recorded_at)
+                    VALUES (:check_id, :scope, :player_id, :recorded_at)
+                    """,
+                ),
+                {"check_id": check_id, "scope": scope, "player_id": int(player_id), "recorded_at": stamp},
+            )
+    return recorded
+
+
+def compare_against_baseline_db(conn: Connection, *, season: int | None = None) -> BaselineVerdict:
+    """Diff the current violations against the recorded ones, in the database.
+
+    An absent table or an absent scope is reported as "not compared". Reading a
+    missing record as an empty one would report the whole historical backlog as
+    new damage on the first night, and those counts are subtracted from a score.
+    """
+    _ensure_baseline_table(conn)
+    now: set[str] = set()
+    for check_id in sorted(_BASELINE_CHECK_IDS):
+        now.update(_violated_player_ids(conn, check_id, season=season))
+
+    scope = _scope_key(season)
+    rows: list[Any] = []
+    with contextlib.suppress(Exception):  # a missing table means not compared
+        rows = list(
+            conn.execute(
+                text("SELECT check_id, player_id FROM pa_violation_baseline WHERE scope_season = :scope"),
+                {"scope": scope},
+            ).all(),
+        )
+
+    if not rows:
+        # No rows is an absent record, not an empty one. Reading it as empty
+        # would report every historical violation as new damage on the first run,
+        # and these counts are subtracted from a score.
+        return BaselineVerdict(
+            new_violations=(),
+            baseline_violations=(),
+            resolved_violations=(),
+            unknown_checks=(),
+            baseline_available=False,
+        )
+
+    before = {str(row[1]) for row in rows}
+    recorded_checks = {str(row[0]) for row in rows}
+    return BaselineVerdict(
+        new_violations=tuple(sorted(now - before)),
+        baseline_violations=tuple(sorted(now & before)),
+        resolved_violations=tuple(sorted(before - now)),
+        unknown_checks=tuple(sorted(recorded_checks - set(_BASELINE_CHECK_IDS))),
+    )
+
+
+def write_unrecoverable_to_db(conn: Connection) -> dict[str, Any]:
+    """Record the season rows that cannot be repaired, in the database.
+
+    Stored beside the baseline for the same reason: the scheduler does not run
+    where the repository is checked out, so a file would make the record exist on
+    the machine that wrote it and nowhere else.
+    """
+    _ensure_baseline_table(conn)
+    rows = _unrecoverable_rows(conn)
+    conn.execute(text("DELETE FROM pa_unrecoverable"))
+    for row in rows:
+        conn.execute(
+            text(
+                """
+                INSERT INTO pa_unrecoverable
+                    (player_id, season, league, source, reason, detail, recorded_at)
+                VALUES (:player_id, :season, :league, :source, :reason, :detail, :recorded_at)
+                """,
+            ),
+            {
+                "player_id": int(row["player_id"]),
+                "season": row["season"],
+                "league": row["league"],
+                "source": row["source"],
+                "reason": row["reason"],
+                "detail": row["detail"],
+                "recorded_at": datetime.now(KST),
+            },
+        )
+    return {"version": 1, "rows": [dict(row) for row in rows]}
+
+
+def compare_unrecoverable_db(conn: Connection) -> UnrecoverableVerdict:
+    """Report rows that became unrecoverable since the last record.
+
+    A row that can no longer be repaired is a different event from one that never
+    could be, and the crawler that loses counts is still running, so this is where
+    damage of that shape surfaces.
+    """
+    _ensure_baseline_table(conn)
+    recorded: set[str] = set()
+    with contextlib.suppress(Exception):  # a missing table means nothing was recorded
+        recorded = {str(row[0]) for row in conn.execute(text("SELECT player_id FROM pa_unrecoverable")).all()}
+    now = {str(entry["player_id"]) for entry in _unrecoverable_rows(conn)}
     return UnrecoverableVerdict(
         newly_unrecoverable=tuple(sorted(now - recorded)),
         still_unrecoverable=tuple(sorted(now & recorded)),

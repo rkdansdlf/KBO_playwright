@@ -1393,3 +1393,193 @@ class TestTheBaselineSaysWhenItWasTaken:
 
         assert datetime.fromisoformat(later["recorded_at"]) >= datetime.fromisoformat(first["recorded_at"])
         assert json.loads(path.read_text())["recorded_at"] == later["recorded_at"]
+
+
+class TestTheBaselineLivesInTheDatabase:
+    """A file makes the comparison inert on the host that runs the gate.
+
+    The scheduler does not run where this repository is checked out. Its last
+    crawl landed twelve minutes before a local log stopped moving, so the daily
+    workflow executes elsewhere -- a repository-relative file would exist on the
+    machine that recorded it and nowhere else, and the gate would read "not
+    compared" forever without anything failing to explain why.
+
+    These keep the row-set contract and drop the path. The scope stays part of the
+    key: a whole-history record read by a single-season run reports most of the
+    backlog as repaired every night.
+    """
+
+    @staticmethod
+    def _conn() -> object:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as setup:
+            setup.execute(
+                text(
+                    """
+                    CREATE TABLE pa_violation_baseline (
+                        check_id TEXT NOT NULL,
+                        scope_season INTEGER NOT NULL DEFAULT 0,
+                        player_id INTEGER NOT NULL,
+                        recorded_at TIMESTAMP NOT NULL,
+                        PRIMARY KEY (check_id, scope_season, player_id)
+                    )
+                    """,
+                ),
+            )
+        # A connection with no transaction already open, so the tests can take one.
+        conn = engine.connect()
+        _create_quality_tables(conn)
+        conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
+        conn.rollback()
+        return conn
+
+    def test_recording_replaces_the_previous_record_for_the_same_scope(self) -> None:
+        """A backlog that shrank must read as smaller, so the write is a replace."""
+        from src.validators.data_quality_regression_pack import write_baseline_to_db
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            for pid in (5001, 5002):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid},
+                )
+            write_baseline_to_db(conn, season=2026)
+
+            conn.execute(text("DELETE FROM player_season_batting WHERE player_id = 5002"))
+            write_baseline_to_db(conn, season=2026)
+
+            rows = [
+                row[0]
+                for row in conn.execute(text("SELECT player_id FROM pa_violation_baseline ORDER BY player_id")).all()
+            ]
+            conn.commit()
+
+        assert rows == [5001], "the second recording did not replace the first"
+
+    def test_a_season_scope_does_not_disturb_another_season(self) -> None:
+        from src.validators.data_quality_regression_pack import write_baseline_to_db
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            for pid, season in ((5001, 2026), (5002, 2025)):
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO player_season_batting
+                            (player_id, season, plate_appearances, at_bats, walks, hbp,
+                             sacrifice_hits, sacrifice_flies, league, source)
+                        VALUES (:pid, :season, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                        """,
+                    ),
+                    {"pid": pid, "season": season},
+                )
+            write_baseline_to_db(conn, season=2026)
+            write_baseline_to_db(conn, season=2025)
+
+            seasons = [
+                row[0]
+                for row in conn.execute(
+                    text("SELECT DISTINCT scope_season FROM pa_violation_baseline ORDER BY 1")
+                ).all()
+            ]
+            conn.commit()
+
+        assert seasons == [2025, 2026]
+
+    def test_reading_back_names_rows_the_record_did_not(self) -> None:
+        from src.validators.data_quality_regression_pack import compare_against_baseline_db, write_baseline_to_db
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            write_baseline_to_db(conn, season=2026)
+
+            quiet = compare_against_baseline_db(conn, season=2026)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5009, 2026, 20, 16, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            grown = compare_against_baseline_db(conn, season=2026)
+            conn.commit()
+
+        assert quiet.baseline_available is True
+        assert quiet.new_violations == ()
+        assert grown.new_violations == ("5009",)
+
+    def test_no_record_at_all_is_reported_as_not_compared(self) -> None:
+        from src.validators.data_quality_regression_pack import compare_against_baseline_db
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            verdict = compare_against_baseline_db(conn, season=2026)
+            conn.commit()
+
+        assert verdict.baseline_available is False
+        assert verdict.new_violations == ()
+
+    def test_recording_stamps_when_it_was_taken(self) -> None:
+        """A record with no time cannot be read later.
+
+        The season rows carry no timestamp of their own, so this column is the
+        only evidence of when the snapshot was taken -- without it, a row seen in
+        a later run has two equally plausible explanations.
+        """
+        from src.validators.data_quality_regression_pack import write_baseline_to_db
+
+        with self._conn() as conn:
+            conn.rollback()
+            conn.begin()
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES (5001, 2026, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')
+                    """,
+                ),
+            )
+            write_baseline_to_db(conn, season=2026)
+
+            rows = conn.execute(text("SELECT recorded_at FROM pa_violation_baseline")).all()
+            conn.commit()
+
+        assert rows, "nothing was recorded"
+        assert rows[0][0] is not None
