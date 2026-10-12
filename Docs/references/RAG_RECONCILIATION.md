@@ -311,3 +311,62 @@ automatically an identity rekey.
   restore, purge, or reindex rows.
 - Do not add the fail flag to the daily sentinel until approved intentional
   deletion identities have a documented allowlist or source-level reason.
+## 2026-10-12 진행 중인 백필 갭 실측 — `unexplained=393`은 결함이 아니다
+
+첫 실전 조건이 왔다. 양쪽 export 시각이 갈리고 그 사이에 데이터가 추가됐다.
+
+| 항목 | 값 |
+| --- | --- |
+| left / right 행 수 | 229,124 / 228,731 |
+| 공통 키 | 228,731 |
+| `unexplained_count` | **393** |
+| 종류 | `MISSING_IN_RIGHT` 393 |
+| 출처별 | `milestone` 353 + `press_release` 40 |
+| `time_explainable_count` | **0** |
+| `as_of_source` | `manifest` (컷오프 적용) |
+| `is_clean` | false |
+
+### 판정: 대기 중인 백필 — 조치하지 않는다
+
+`MISSING_IN_RIGHT` 393건은 **모두 primary에만 있고 pgvector에는 없다.** 두 저장소의
+타임라인을 보면 성격이 분명하다:
+
+| 시점 | primary(`DATABASE_URL`) | pgvector(`PGVECTOR_URL`) |
+| --- | --- | --- |
+| 10/11 15:57 | `press_release` 40 | `press_release` 40 — **같은 스냅샷** |
+| 10/11 22:15 | `press_release` 80, **`milestone` 353** 추가 | 변화 없음 |
+| 10/12 10:47 (실측) | 80 + 353 | 40 |
+
+identity 대조가 이를 확정한다 — **pgvector의 `press_release` 40건은 primary 80건의 부분집합**
+(교집합 40, pgvector만 0). 마지막 수정 시각도 정확히 일치한다(양쪽 모두 10-11 15:57).
+즉 **pgvector는 10/11 15:57 시점에 박힌 스냅샷이고**, 이후 추가분 40건과 `milestone` 353건은
+`milestone`가 pgvector에 **0건**인 것까지 포함해 **아직 백필이 돌지 않았다.**
+
+야간 `rag_vector_backfill`(05:30)이 이 갭을 닫는 정상 진행 중 상태다. **게이트가 드리프트를
+발견한 게 아니라, 진행 중을 올바르게 드러낸 것이다.**
+
+### 왜 `TIME_EXPLAINABLE`이 0인가 — 그리고 왜 그래야 하는가
+
+컷오프는 적용됐는데(`as_of_source=manifest`) 0건만 분류했다. 이건 **맞는 동작**이다.
+`TIME_EXPLAINABLE`의 정의는 "기준 시각 **이후에** 쓰여 상대편 export에 아직 안 비친 행"이고,
+이 393건은 컷오프(10:47)보다 **앞선** 10/11 15:57~22:15에 쓰였다. 시점 차이가 아니라
+**백필 대기**이므로 그 범주가 아니다.
+
+여기서 한 가지 정직한 한계를 남긴다. 컷오프를 staging 스냅샷 시각인 10/11 15:57로
+**명시**했다면 `press_release` 40건은 `TIME_EXPLAINABLE`로, `milestone` 353건은
+`UNEXPLAINED`로 갈려 **대기 중과 실제 누락을 구분해줬을 것**이다. 현재는 둘 다
+`MISSING_IN_RIGHT` 393으로 뭉뚱그려진다.
+
+**그래도 세분화하지 않는다.** 두 가지 때문이다.
+(1) 백필이 정상적으로 05:30에 돌아가면 이 분기는 **영영 실행되지 않는다** — 절대 실패할
+수 없는 로직을 게이트에 넣는 것은 게이트가 아니다(이 저장소의 다른 지점에서도 같은 논리로
+차원 게이트를 만들지 않았다).
+(2) 이 개선이 필요하다는 판단 자체가 **실측으로 검증되지 않은 상태**다. 지금 보이는 숫자가
+393으로 곧 닫힐 값인데, 그때를 거쳐도 목적이 없다고 확인된 뒤에야 설계할 대상이 생긴다.
+
+### 남는 실측 공백
+
+이 절은 `TIME_EXPLAINABLE`이 0이 아닌 사례를 아직 **보여주지 못했다.** 위 393건도
+분류가 0이었으므로, 컷오프가 실전에서 값을 하는 순간은 아직 오지 않았다. 무관해 보이지만
+아니며 — 10/11의 28,000건 PBP 차이는 이 기능이 없었으면 하드 드리프트로 보고됐을 차다.
+데이터가 실제로 두 저장소에서 서로 다른 시점에 쓰이는 재색인 상황이 있어야 발동한다.
