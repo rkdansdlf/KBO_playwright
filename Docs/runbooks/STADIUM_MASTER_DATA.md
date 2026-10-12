@@ -31,6 +31,13 @@
 - `compute_park_factor_job` (일 05:30): 득점 팩터 로그 + HR 팩터 계산·저장.
 - `verify_stadiums_places_job` (일 05:45): 검증 실패 시 warning 알림.
 
+## 수렴 방향 (결정됨)
+
+- 정본은 `stadiums`. 1단계 완료: 구 구장 9행 이관으로 `stadium_info` 21코드 전부 커버.
+- 2단계 (미실행): `parking_lots`·`stadium_food_vendors`·`stadium_seat_sections` 등 6개 FK를
+  `stadium_info` → `stadiums`로 전환 후 `stadium_info` 동결. SQLite는 FK ALTER 미지원이라
+  테이블 재건이 필요하고, 주차·음식·좌석 크롤러 소유자와 조율이 선행돼야 함.
+
 ## 알려진 한계
 
 - 2025년 경기 HR이 `game_batting_stats`·PBP에 없어 HR 백필은 빈손 복귀가 정상.
