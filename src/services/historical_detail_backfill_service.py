@@ -105,10 +105,17 @@ class HistoricalDetailBackfillService:
             .where(Game.game_status.in_(["COMPLETED", "FINAL", "DRAW", "TERMINAL", "종료", "콜드게임"]))
             .where((KboSeason.league_type_name.is_(None)) | (KboSeason.league_type_name != "시범경기"))
             .where(
+                # Both halves absent, not either. "Lacks batting or lacks
+                # pitching" also matches a game that has one of the two, and such
+                # a game cannot be completed from what is stored -- the run would
+                # re-crawl it on every invocation and report a recovery that never
+                # finishes. No such game exists in the current data, so the count
+                # is unchanged today and the defect only appears when a partial
+                # save lands.
                 ~Game.game_id.in_(
                     select(GameBattingStat.game_id).where(GameBattingStat.game_id.like(year_prefix)).distinct()
                 )
-                | ~Game.game_id.in_(
+                & ~Game.game_id.in_(
                     select(GamePitchingStat.game_id).where(GamePitchingStat.game_id.like(year_prefix)).distinct()
                 )
             )
