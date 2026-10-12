@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.api.routers.games import _team_matches
+from src.api.routers.games import _is_team1_home, _team_matches, _team_pair_matches
 from src.models.franchise import Franchise
 from src.models.game import Game
 from src.utils.team_codes import franchise_ids_for_code
@@ -38,6 +38,8 @@ def session() -> sessionmaker:
                 Franchise(id=8, name="SSG 랜더스", original_code="SK", current_code="SSG"),
                 Franchise(id=11, name="키움 히어로즈", original_code="WO", current_code="KH"),
                 Franchise(id=4, name="두산 베어스", original_code="OB", current_code="DB"),
+                Franchise(id=2, name="롯데 자이언츠", original_code="LT", current_code="LT"),
+                Franchise(id=3, name="LG 트윈스", original_code="MBC", current_code="LG"),
             ],
         )
         s.commit()
@@ -113,6 +115,66 @@ class TestOneQueryReturnsTheWholeHistory:
         # `G_OTHER_FID` is identified as Samsung Lions, so a SSG query must not
         # take its string at face value; the unguarded fallback would.
         assert _ids(session, "SSG") == {"G_NO_FID"}
+
+
+class TestHeadToHeadSpansTheSameHistory:
+    def test_both_eras_of_either_side_come_back(self, session: sessionmaker) -> None:
+        """A pair of era-codes is not a pair of clubs.
+
+        ``?team1=WO&team2=LT`` matched 41 of 490 Kiwoom--Lotte games, because
+        almost every Kiwoom row carries ``KH``.
+        """
+        with session() as s:
+            s.add_all(
+                [
+                    _game("G_OLD", "WO", "LT", 11, 2),
+                    _game("G_NEW", "KH", "LT", 11, 2),
+                    _game("G_REV", "LT", "KH", 2, 11),
+                ],
+            )
+            s.commit()
+
+        matched = _pair_ids(session, "WO", "LT")
+
+        assert matched == {"G_OLD", "G_NEW", "G_REV"}
+
+    def test_the_franchise_pair_never_matches_a_third_club(self, session: sessionmaker) -> None:
+        """SSG Landers inherits the SK slot; SS is a different club from 2025."""
+        with session() as s:
+            s.add_all(
+                [
+                    _game("G_SS_SSG", "SS", "SSG", 1, 8),
+                    _game("G_SS_LT", "SS", "LT", 1, 2),
+                    _game("G_SSG_LT", "SSG", "LT", 8, 2),
+                ],
+            )
+            s.commit()
+
+        assert _pair_ids(session, "SS", "SSG") == {"G_SS_SSG"}
+
+    def test_a_summarised_score_is_attributed_to_the_right_club(self, session: sessionmaker) -> None:
+        """The side detection swaps both columns, so it must not rest on the string.
+
+        ``KH`` at home belongs to the club the caller asked about as ``WO``; the
+        old comparison called it an away game and reversed every count.
+        """
+        home_for_wo = _game("G_HOME", "KH", "LT", 11, 2)
+        home_for_wo.home_score, home_for_wo.away_score = 7, 2
+        away_for_wo = _game("G_AWAY", "LT", "KH", 2, 11)
+        away_for_wo.home_score, away_for_wo.away_score = 5, 3
+
+        with session() as s:
+            assert _is_team1_home(home_for_wo, "WO", (11,)) is True
+            assert _is_team1_home(away_for_wo, "WO", (11,)) is False
+            # An unidentified row still answers from the string it carries.
+            unidentified = _game("G_NO_FID", "WO", "LT", None, 2)
+            assert _is_team1_home(unidentified, "WO", (11,)) is True
+            assert s is not None
+
+
+def _pair_ids(session: sessionmaker, team1: str, team2: str) -> set[str]:
+    with session() as s:
+        return {g.game_id for g in s.query(Game).filter(_team_pair_matches(team1, team2, s)).all()}
 
 
 class TestDifferentFranchisesStayDifferent:

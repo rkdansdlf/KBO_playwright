@@ -381,16 +381,72 @@ def get_game_boxscore(game_id: str) -> dict[str, Any]:
         return result
 
 
+def _team_pair_matches(team1: str, team2: str, session: Session) -> ColumnElement[bool]:
+    """Return the predicate for "a game between these two teams, in any era".
+
+    Both sides go through the franchise, for the same reason
+    :func:`_team_matches` does and with the same guard: a pair of era-codes is
+    not a pair of clubs, and matching the literal pair means ``?team1=WO`` finds
+    only the 15 Kiwoom rows that happen to carry the legacy code. The literal
+    comparison survives only for rows carrying no franchise id, so it can never
+    pull in a game the ids already excluded.
+
+    Args:
+        team1: First team code as a caller would type it.
+        team2: Second team code.
+        session: Open session, used to read ``team_franchises``.
+
+    Returns:
+        A predicate for the caller's query.
+
+    """
+    ids1 = franchise_ids_for_code(session, team1)
+    ids2 = franchise_ids_for_code(session, team2)
+    literal = or_(
+        (Game.home_team == team1) & (Game.away_team == team2),
+        (Game.home_team == team2) & (Game.away_team == team1),
+    )
+    if not ids1 or not ids2:
+        return literal
+    return or_(
+        (Game.home_franchise_id.in_(ids1)) & (Game.away_franchise_id.in_(ids2)),
+        (Game.home_franchise_id.in_(ids2)) & (Game.away_franchise_id.in_(ids1)),
+        and_(or_(Game.home_franchise_id.is_(None), Game.away_franchise_id.is_(None)), literal),
+    )
+
+
+def _is_team1_home(g: Game, team1: str, team1_ids: tuple[int, ...]) -> bool:
+    """Return whether team1 is the home side of this game.
+
+    Getting this wrong does not merely miss a game -- it swaps the two columns
+    of every score it reads, so one misidentified row reverses both win counts
+    and both run averages.
+
+    Args:
+        g: The game row.
+        team1: The team code as the caller typed it.
+        team1_ids: Its franchise ids, empty when no franchise claims the code.
+
+    Returns:
+        True when team1 is playing at home.
+
+    """
+    if team1_ids and g.home_franchise_id is not None:
+        return int(g.home_franchise_id) in team1_ids
+    return g.home_team == team1
+
+
 def _summarize_h2h_game(
     g: Game,
     team1: str,
+    team1_ids: tuple[int, ...],
     limit: int,
     recent_items: list[dict[str, Any]],
 ) -> tuple[int, int, int, int, int, int]:
     """Summarize a single game record for head-to-head aggregation."""
     h_score = int(g.home_score) if g.home_score is not None else 0
     a_score = int(g.away_score) if g.away_score is not None else 0
-    t1_score, t2_score = (h_score, a_score) if g.home_team == team1 else (a_score, h_score)
+    t1_score, t2_score = (h_score, a_score) if _is_team1_home(g, team1, team1_ids) else (a_score, h_score)
 
     t1_w, t2_w, draw, valid_cnt = 0, 0, 0, 0
     if g.home_score is not None and g.away_score is not None:
@@ -438,12 +494,8 @@ def get_head_to_head(
     """Query head-to-head matchups, win-loss records, and recent games between two teams."""
     try:
         with get_db_session() as session:
-            stmt = select(Game).where(
-                or_(
-                    (Game.home_team == team1) & (Game.away_team == team2),
-                    (Game.home_team == team2) & (Game.away_team == team1),
-                )
-            )
+            stmt = select(Game).where(_team_pair_matches(team1, team2, session))
+            team1_ids = franchise_ids_for_code(session, team1)
             if season is not None:
                 season_ids = list(
                     session.execute(select(KboSeason.season_id).where(KboSeason.season_year == season)).scalars().all()
@@ -461,7 +513,7 @@ def get_head_to_head(
             recent_items: list[dict[str, Any]] = []
 
             for g in games:
-                w1, w2, d, r1, r2, v = _summarize_h2h_game(g, team1, limit, recent_items)
+                w1, w2, d, r1, r2, v = _summarize_h2h_game(g, team1, team1_ids, limit, recent_items)
                 t1_wins += w1
                 t2_wins += w2
                 draws += d
