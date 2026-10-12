@@ -969,16 +969,41 @@ class GameDetailCrawler:
             name = str(entry.get("name") or "").strip()
             if label and name:
                 rows.append({"summary_type": label, "detail_text": name})
-        if not rows:
-            away_code = team_info.get("away", {}).get("code")
-            home_code = team_info.get("home", {}).get("code")
-            away_score = team_info.get("away", {}).get("score")
-            home_score = team_info.get("home", {}).get("score")
-            if away_score is not None and home_score is not None:
-                winner = home_code if home_score > away_score else away_code if away_score > home_score else None
-                if winner:
-                    rows.append({"summary_type": "경기결과", "detail_text": f"{winner} 승"})
+        # A draw is a result, and saying so is the whole point of this fallback.
+        # Leaving it out makes a draw and a crawl that failed to read the page
+        # the same rows, and 493 of the stored games are draws.
+        #
+        # The fallback is skipped when the page did give summaries, because those
+        # already describe the game; the result line is derived only when there
+        # is nothing to describe it with. That is why a drawn game carrying an
+        # umpire call never reached this code before: the absence was correct
+        # for the table and wrong for the result, and one condition cannot be
+        # both.
+        result = self._score_result_row(team_info)
+        if result is not None:
+            rows.append(result)
         return rows
+
+    @staticmethod
+    def _score_result_row(team_info: dict[str, dict[str, Any]]) -> dict[str, str] | None:
+        """Return the result line the scores state, or None when they do not.
+
+        None means one side is unscored, which is an unfinished crawl rather than
+        a game: writing a result from half a score line would put a claim in a
+        column that later reports read as fact.
+        """
+        away_score = team_info.get("away", {}).get("score")
+        home_score = team_info.get("home", {}).get("score")
+        if away_score is None or home_score is None:
+            return None
+        if home_score == away_score:
+            return {"summary_type": "경기결과", "detail_text": "무승부"}
+        away_code = team_info.get("away", {}).get("code")
+        home_code = team_info.get("home", {}).get("code")
+        winner = home_code if home_score > away_score else away_code
+        if not winner:
+            return None
+        return {"summary_type": "경기결과", "detail_text": f"{winner} 승"}
 
     async def _crawl_game_worker(
         self,
