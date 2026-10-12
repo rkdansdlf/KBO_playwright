@@ -580,6 +580,15 @@ class CollectionState(StrEnum):
     The quiet failure: the run did what it was asked and handed back no data.
     """
 
+    PARTIALLY_EMPTY = "partially_empty"
+    """Runs collect data, but a table this crawler is declared to write has no rows.
+
+    Distinct from `stable` because the empty table is the strongest evidence there
+    is that something is wrong: parking reported `success` every day and wrote
+    three lots a run for four days, and its fee table stayed at zero rows. Buried
+    in a column, that reads as a detail; as the verdict it is the finding.
+    """
+
     FAILING = "failing"
     """Runs exist and none succeeded. Loud, and already visible in the ledger."""
 
@@ -690,16 +699,33 @@ class SourceRow:
 
         """
         runs = self.runs
-        if runs is not None and runs.total:
-            if runs.succeeded == 0:
-                return CollectionState.FAILING
-            if not runs.yields:
-                # Zero-yield successes, stale tables or not: the source was
-                # consulted and produced nothing, and that is the finding whether
-                # or not a table happens to corroborate it.
-                return CollectionState.NOT_COLLECTED
-            return CollectionState.STABLE if self.stale else CollectionState.COLLECTING
+        if runs is None or not runs.total:
+            return self._state_without_runs()
+        if runs.succeeded == 0:
+            # Every run failing is already visible in the ledger, and folding it
+            # into `not_collected` would report a loud known problem as the quiet
+            # one this verdict exists to find.
+            return CollectionState.FAILING
+        if not runs.yields:
+            # Zero-yield successes, stale tables or not: the source was consulted
+            # and produced nothing, and that is the finding whether or not a table
+            # happens to corroborate it.
+            return CollectionState.NOT_COLLECTED
+        if any(m.freshness is Freshness.EMPTY for m in self.measurements):
+            return CollectionState.PARTIALLY_EMPTY
+        return CollectionState.STABLE if self.stale else CollectionState.COLLECTING
+
+    def _state_without_runs(self) -> CollectionState:
+        """Return the verdict when no run in the window can corroborate either way.
+
+        Returns:
+            The verdict.
+
+        """
         if self.stale:
+            # Most crawlers are weekly or on demand and simply did not run.
+            # Naming this state is what keeps it from being read as either of the
+            # two states a run would have produced.
             return CollectionState.UNEPLAINED
         if any(m.freshness is Freshness.EMPTY for m in self.measurements):
             return CollectionState.EMPTY
@@ -1414,6 +1440,12 @@ def _collect_findings(
         f"recorded as refused -- the URL is probably built at runtime, which this report cannot see"
         for row in rows
         if row.policy_status is PolicyStatus.OK and row.runs is not None and row.runs.policy_blocked
+    )
+    advisories.extend(
+        f"{row.crawler}: {sum(1 for m in row.measurements if m.freshness is Freshness.EMPTY)} of "
+        f"{len(row.measurements)} declared tables have no rows, while its recent runs report collecting"
+        for row in rows
+        if row.collection_state is CollectionState.PARTIALLY_EMPTY
     )
     advisories.extend(
         f"AI-visible stale data: {row.crawler} feeds {row.rag_chunks} chunks from a table "

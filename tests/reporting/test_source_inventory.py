@@ -1009,3 +1009,81 @@ class TestObservationBeatsInference:
 
     def test_a_url_without_a_host_is_unknown(self) -> None:
         assert inv.verdict_for_url("not a url") is inv.HostVerdict.UNREACHABLE
+
+
+class TestPartiallyEmptyIsAFinding:
+    """An empty table while the runs report collecting is the strongest evidence
+    there is that something is wrong, and it was buried in a column.
+
+    `parking_crawler` reported `success` every day and wrote three lots a run for
+    four days while `parking_fee_kinds` stayed at zero rows. The row-level detail
+    showed `empty`; the verdict said `stable`. A reader scanning verdicts saw a
+    healthy crawler.
+    """
+
+    def _row(self, factory, monkeypatch, *, tables, succeeded, zero_yield):
+        _seed_runs(factory, "parking", succeeded=succeeded, zero_yield=zero_yield)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "parking_crawler",
+            inv.SourceDeclaration(tables=tables, alternative_source="elsewhere"),
+        )
+        return inv.build_inventory(session_factory=factory).rows_by_crawler()["parking_crawler"]
+
+    def test_a_yielding_crawler_with_an_empty_table_is_not_stable(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        row = self._row(scratch_db, monkeypatch, tables=("fresh_table", "empty_table"), succeeded=4, zero_yield=0)
+
+        assert row.collection_state is inv.CollectionState.PARTIALLY_EMPTY
+
+    def test_the_empty_table_is_named_in_the_report(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._row(scratch_db, monkeypatch, tables=("fresh_table", "empty_table"), succeeded=4, zero_yield=0)
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        assert any("declared tables have no rows" in line for line in report.advisories)
+
+    def test_a_crawler_with_every_table_populated_is_unaffected(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        row = self._row(scratch_db, monkeypatch, tables=("fresh_table",), succeeded=4, zero_yield=0)
+
+        assert row.collection_state is inv.CollectionState.COLLECTING
+
+    def test_a_stale_crawler_with_an_empty_table_is_partially_empty_not_stable(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Stale says the data is old; empty says a declared output has nothing in
+        it at all. The second is the stronger claim and must not be hidden by the
+        first.
+        """
+        row = self._row(scratch_db, monkeypatch, tables=("old_table", "empty_table"), succeeded=4, zero_yield=0)
+
+        assert row.collection_state is inv.CollectionState.PARTIALLY_EMPTY
+
+    def test_an_empty_table_without_runs_is_still_just_empty(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Nothing ran, so there is no collection to have failed."""
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "parking_crawler",
+            inv.SourceDeclaration(tables=("empty_table",), alternative_source="elsewhere"),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        assert report.rows_by_crawler()["parking_crawler"].collection_state is inv.CollectionState.EMPTY
