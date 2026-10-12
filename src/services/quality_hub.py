@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
+from pathlib import Path  # noqa: TC003 - a runtime dependency for path construction
 from typing import TYPE_CHECKING, Any
 
 from src.constants import KST
-from src.validators.data_quality_regression_pack import run_regression_pack
+from src.validators.data_quality_regression_pack import (
+    BaselineUnreadableError,
+    compare_against_baseline,
+    compare_unrecoverable,
+    run_regression_pack,
+)
 from src.validators.quality_gate import QualityGate
 from src.validators.standings_integrity import validate_standings_integrity
 
@@ -44,12 +50,28 @@ class QualityGateSummary:
 
 @dataclass(frozen=True)
 class RegressionPackSummary:
-    """Summary of database regression invariants."""
+    """Summary of database regression invariants.
+
+    ``ok`` and ``failure_count`` count *checks*. That is the wrong unit for damage
+    that accrues one row at a time: a player newly losing their walk counts fails
+    a check that was already failing, so neither number moves. The three fields
+    below carry the per-row comparison that does move, and they default so that
+    callers written before them keep working unchanged.
+    """
 
     ok: bool
     check_count: int
     failure_count: int
     failures: list[dict[str, Any]] = field(default_factory=list)
+    #: Whether a recorded baseline was found. False means "not compared", which
+    #: is not the same as "compared against nothing and found no damage".
+    baseline_available: bool = False
+    #: Rows failing now that the baseline did not already name.
+    new_violation_count: int = 0
+    #: Rows failing now that the baseline already named.
+    baseline_violation_count: int = 0
+    #: Rows that became unrecoverable since the record was written.
+    newly_unrecoverable_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,13 +124,25 @@ class UnifiedQualityReport:
 PASS_SCORE_THRESHOLD = 95
 WARN_SCORE_THRESHOLD = 80
 
+#: What newly damaged rows may take off the regression pack's 35 points, at one
+#: point per row. The cap sits below the full weight so a runaway row count cannot
+#: zero the gate and leave it indistinguishable from a total absence of checks.
+NEW_DAMAGE_MAX_DEDUCTION = 20.0
+
 
 class QualityHub:
     """Central service orchestrating all KBO data quality, regression, and freshness gates."""
 
-    def __init__(self, session: Session) -> None:
-        """Initialize QualityHub with an active database session."""
+    def __init__(self, session: Session, *, baseline_path: Path | None = None) -> None:
+        """Initialize QualityHub with an active database session.
+
+        Args:
+            session: Open database session.
+            baseline_path: Recorded season-PA violations to compare against.
+
+        """
         self.session = session
+        self.baseline_path = baseline_path
 
     def run_quality_gate(self, season: int, league: str = "REGULAR") -> QualityGateSummary:  # noqa: C901
         """Execute statistical quality gate checks for a given season.
@@ -167,12 +201,74 @@ class QualityHub:
             errors=errors,
         )
 
+    @staticmethod
+    def _new_damage_deduction(
+        summary: RegressionPackSummary,
+        season: int,
+        remediations: list[str],
+        *,
+        asked_for_comparison: bool = False,
+    ) -> float:
+        """Return what to take off the score for rows the baseline did not name.
+
+        Only rows absent from the baseline count. A backlog is already priced by
+        ``failure_count``, and these season violations cannot be repaired from
+        here, so charging them again would move the score every night without
+        describing anything new.
+
+        The cap is below the 35 the gate is worth so a large backlog and a small
+        one cannot both reach zero and become indistinguishable. The per-row rate
+        is what makes the measure useful: one newly damaged player moves a score
+        that a hundred backlogged rows cannot move on their own.
+
+        A missing baseline is the one case that charges nothing, and says so. With
+        no file every historical row is unknown to it, so scoring it as empty
+        would report the whole backlog as fresh damage on the first night.
+
+        The instruction is only offered when a comparison was actually asked for.
+        A hub constructed without a baseline path is a caller that never wanted
+        one -- the API and the CLI both do this -- and telling those runs to record
+        a file would be advice about a workflow they are not in.
+        """
+        if not summary.baseline_available:
+            if asked_for_comparison:
+                hint = f"python3 -m src.cli.data_quality_regression_pack --write-baseline --season {season}"
+                if hint not in remediations:
+                    remediations.append(hint)
+            return 0.0
+
+        if summary.new_violation_count > 0:
+            hint = (
+                f"{summary.new_violation_count} season row(s) failing that the baseline does not name "
+                f"(python3 -m src.cli.data_quality_regression_pack --write-baseline --season {season} after review)"
+            )
+            if hint not in remediations:
+                remediations.append(hint)
+
+        if summary.newly_unrecoverable_count > 0:
+            hint = f"{summary.newly_unrecoverable_count} row(s) lost counts that cannot be re-collected"
+            if hint not in remediations:
+                remediations.append(hint)
+
+        newly_damaged = summary.new_violation_count + summary.newly_unrecoverable_count
+        return min(NEW_DAMAGE_MAX_DEDUCTION, float(newly_damaged))
+
     def run_regression_pack(
         self,
         season: int | None = None,
         target_date: str | None = None,
     ) -> RegressionPackSummary:
         """Execute database invariant checks.
+
+        The baseline comparison is what turns a constant ``ok=False`` into a
+        moving signal. Without it the summary reports the same three failing
+        checks every night whether a player was repaired or another one was
+        damaged.
+
+        A missing or unreadable baseline leaves the comparison off rather than
+        treating the file as empty. Reading it as empty would report the entire
+        historical backlog as damage on the first night, and the counts feed a
+        score, so a guess in either direction would move a real verdict.
 
         Args:
             season: Optional season filter.
@@ -185,11 +281,33 @@ class QualityHub:
         conn = self.session.connection()
         report = run_regression_pack(conn, target_date=target_date, season=season)
         failures = [res.to_dict() for res in report.results if res.status == "fail"]
+
+        available = False
+        new_violations = 0
+        baseline_violations = 0
+        newly_unrecoverable = 0
+        if self.baseline_path is not None:
+            try:
+                verdict = compare_against_baseline(conn, self.baseline_path, season=season)
+                unrecoverable = compare_unrecoverable(conn, self.baseline_path.with_name("unrecoverable.json"))
+            except BaselineUnreadableError:
+                verdict = None
+                unrecoverable = None
+            if verdict is not None and not verdict.is_scope_mismatch:
+                available = True
+                new_violations = len(verdict.new_violations)
+                baseline_violations = len(verdict.baseline_violations)
+                newly_unrecoverable = len(unrecoverable.newly_unrecoverable) if unrecoverable is not None else 0
+
         return RegressionPackSummary(
             ok=report.ok,
             check_count=report.check_count,
             failure_count=report.failure_count,
             failures=failures,
+            baseline_available=available,
+            new_violation_count=new_violations,
+            baseline_violation_count=baseline_violations,
+            newly_unrecoverable_count=newly_unrecoverable,
         )
 
     def run_standings_check(self, target_date: date) -> StandingsSummary:
@@ -292,10 +410,35 @@ class QualityHub:
             r_summary = self.run_regression_pack(season=target_season)
             if r_summary.ok:
                 earned_score += 35.0
+                # A missing baseline is worth saying out loud even on a clean run.
+                # Silence here reads as "compared and found nothing", which is
+                # how a gate that has never been measured gets mistaken for one
+                # that is holding steady.
+                self._new_damage_deduction(
+                    r_summary,
+                    target_season,
+                    remediations,
+                    asked_for_comparison=self.baseline_path is not None,
+                )
             else:
                 deduction = min(35.0, r_summary.failure_count * 7.0)
                 earned_score += max(0.0, 35.0 - deduction)
                 remediations.append(f"python3 -m scripts.maintenance.backfill_player_ids --year {target_season}")
+                # New damage is taken off what the check-count rule left, so a
+                # run that grows while failing the same checks still moves. The
+                # backlog is deliberately not charged again: ``failure_count``
+                # already carries it, and charging it twice would lower the score
+                # every day for a situation nobody can act on.
+                earned_score = max(
+                    0.0,
+                    earned_score
+                    - self._new_damage_deduction(
+                        r_summary,
+                        target_season,
+                        remediations,
+                        asked_for_comparison=self.baseline_path is not None,
+                    ),
+                )
 
         if include_standings:
             total_weight += 15

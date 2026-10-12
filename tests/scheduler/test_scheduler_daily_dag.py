@@ -129,3 +129,100 @@ def test_quality_gate_plus_other_failure_stays_failure(
         mock_alert.assert_called_once()
     finally:
         clear_job_registry()
+
+
+class TestTheDailyQualityIncidentNamesWhatChanged:
+    """The incident is the only place this report reaches an operator.
+
+    A score cannot distinguish a gate that has been sitting on the same backlog
+    for a month from one that gained a damaged player overnight, and those season
+    violations cannot be repaired from here. The counts are what makes the
+    message actionable, so they are asserted rather than left to a format string.
+    """
+
+    @staticmethod
+    def _publish(report) -> object:
+        from src.scheduler.jobs.daily import _publish_quality_incident
+
+        with patch("src.notifications.bridge.apply_incidents") as applied:
+            _publish_quality_incident(report)
+        return applied.call_args
+
+    @staticmethod
+    def _report(pack):
+        """Wrap the audit the way the DAG does.
+
+        ``_publish_quality_incident`` reads ``stage_results`` and digs the audit
+        out of the stage's ``artifacts``, so handing it the audit directly would
+        return before reaching any of this.
+        """
+        from src.services.quality_hub import UnifiedQualityReport
+
+        audit = UnifiedQualityReport(
+            timestamp="2026-10-12T03:00:00+09:00",
+            overall_status="WARN",
+            quality_score=79,
+            regression_pack=pack,
+        )
+        stage = MagicMock()
+        stage.stage_id = "quality_gate"
+        stage.artifacts = {"quality_report": audit}
+        stage.error_message = None
+        report = MagicMock()
+        report.stage_results = [stage]
+        return report
+
+    def test_the_message_separates_new_damage_from_the_backlog(self) -> None:
+        from src.services.quality_hub import RegressionPackSummary
+
+        report = self._report(
+            RegressionPackSummary(
+                ok=False,
+                check_count=13,
+                failure_count=3,
+                baseline_available=True,
+                new_violation_count=46,
+                baseline_violation_count=760,
+            ),
+        )
+
+        event = self._publish(report).args[0][0]
+
+        assert "79/100" in event.message
+        assert "신규 46" in event.message
+        assert "백로그 760" in event.message
+        assert event.metadata["new_violation_count"] == 46
+        assert event.metadata["baseline_violation_count"] == 760
+
+    def test_no_breakdown_is_invented_without_a_baseline(self) -> None:
+        """With nothing to compare against, counts would read as measurements."""
+        from src.services.quality_hub import RegressionPackSummary
+
+        report = self._report(RegressionPackSummary(ok=False, check_count=13, failure_count=3))
+
+        event = self._publish(report).args[0][0]
+
+        assert event.message == "quality score 79/100"
+        assert "신규" not in event.message
+        assert "baseline_available" not in event.metadata
+
+    def test_a_row_that_can_never_be_recovered_is_named_separately(self) -> None:
+        """It is not new damage and not a backlog item; it is a third thing."""
+        from src.services.quality_hub import RegressionPackSummary
+
+        report = self._report(
+            RegressionPackSummary(
+                ok=False,
+                check_count=13,
+                failure_count=3,
+                baseline_available=True,
+                new_violation_count=0,
+                baseline_violation_count=760,
+                newly_unrecoverable_count=20,
+            ),
+        )
+
+        event = self._publish(report).args[0][0]
+
+        assert "복구불가 20" in event.message
+        assert event.metadata["newly_unrecoverable_count"] == 20

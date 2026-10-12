@@ -264,13 +264,60 @@ def _publish_quality_incident(report: object) -> None:
                 component="daily",
                 severity=severity,
                 title=f"데이터 품질 게이트 {status}",
-                message=f"quality score {score}/100",
+                message=f"quality score {score}/100{_damage_breakdown(quality_report)}",
                 incident_key=key,
                 remediation=hints,
-                metadata={"overall_status": status, "quality_score": score},
+                metadata={
+                    "overall_status": status,
+                    "quality_score": score,
+                    **_damage_metadata(quality_report),
+                },
             ),
         ],
     )
+
+
+def _regression_pack(quality_report: object) -> object | None:
+    """Return the pack summary, or None when the run did not include it."""
+    return getattr(quality_report, "regression_pack", None)
+
+
+def _damage_breakdown(quality_report: object) -> str:
+    """Phrase the score with what is new beside what is known.
+
+    A score alone cannot say whether the gate is sitting on an old backlog or
+    losing ground, and these season violations cannot be repaired from here --
+    the source is blocked and the rows behind them are absent. The counts are the
+    only part of this report that changes when a crawler starts losing data
+    again, so the message carries them.
+
+    Returns an empty string when no baseline was available, because there is
+    nothing to compare against and a breakdown would imply there were.
+    """
+    pack = _regression_pack(quality_report)
+    if pack is None or not getattr(pack, "baseline_available", False):
+        return ""
+    parts = [
+        f"신규 {getattr(pack, 'new_violation_count', 0)}",
+        f"백로그 {getattr(pack, 'baseline_violation_count', 0)}",
+    ]
+    unrecoverable = getattr(pack, "newly_unrecoverable_count", 0)
+    if unrecoverable:
+        parts.append(f"복구불가 {unrecoverable}")
+    return f" ({' / '.join(parts)})"
+
+
+def _damage_metadata(quality_report: object) -> dict[str, int | bool | None]:
+    """Return the same figures for the incident ledger, or nothing without a baseline."""
+    pack = _regression_pack(quality_report)
+    if pack is None or not getattr(pack, "baseline_available", False):
+        return {}
+    return {
+        "baseline_available": True,
+        "new_violation_count": getattr(pack, "new_violation_count", 0),
+        "baseline_violation_count": getattr(pack, "baseline_violation_count", 0),
+        "newly_unrecoverable_count": getattr(pack, "newly_unrecoverable_count", 0),
+    }
 
 
 @_with_db_fail_fast_guard
