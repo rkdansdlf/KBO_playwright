@@ -62,8 +62,8 @@ def scratch_db() -> Iterator[sessionmaker]:
         connection.execute(
             text(
                 "CREATE TABLE crawl_execution_runs (id INTEGER PRIMARY KEY, crawler VARCHAR(64), "
-                "status VARCHAR(32), error_code VARCHAR(32), records_read INTEGER, records_written INTEGER, "
-                "started_at TIMESTAMP)"
+                "status VARCHAR(32), error_code VARCHAR(32), checkpoint TEXT, records_read INTEGER, "
+                "records_written INTEGER, started_at TIMESTAMP)"
             )
         )
         connection.execute(text("INSERT INTO rag_chunks (source_table) VALUES ('old_table')"))

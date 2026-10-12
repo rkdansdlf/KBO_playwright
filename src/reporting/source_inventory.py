@@ -38,6 +38,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.crawlers.run_vocabulary import is_refusal
 from src.utils.host_policy import HostVerdict, read_policy
 
 if TYPE_CHECKING:
@@ -495,7 +496,14 @@ class RunSummary:
     zero_yield: int
     latest_at: datetime | None = None
     policy_blocked: int = 0
-    """Runs whose outcome was a refusal rather than an unreachable host."""
+    """Runs whose outcome was a refusal rather than an unreachable host.
+
+    Read through `src.crawlers.run_vocabulary` rather than a local set. The
+    refusal is recorded two ways -- `checkpoint.outcome = source_limited` for
+    current code, `error_code = FETCH_BLOCKED` for the food crawler's older path
+    -- and hardcoding one of them made the other invisible, which is how a
+    report ends up disagreeing with a ledger that agrees with it.
+    """
 
     @property
     def yields(self) -> bool:
@@ -557,16 +565,6 @@ class CollectionState(StrEnum):
 
     UNKNOWN = "unknown"
     """Nothing was measured."""
-
-
-#: Run outcomes that mean a source was refused rather than unreachable.
-#:
-#: Named here because the disagreement between this module's own verdict and the
-#: ledger is worth reporting: the inventory judges the hosts it can see in the
-#: source, and a runtime-assembled URL is invisible to it, so `ok` and
-#: `FETCH_BLOCKED` can coexist. Reporting the disagreement is honest; deciding
-#: which side is right without evidence is not.
-POLICY_OUTCOME_CODES = frozenset({"FETCH_BLOCKED"})
 
 
 @dataclass(frozen=True)
@@ -1003,7 +1001,7 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     try:
         rows = session.execute(
             text(
-                "SELECT crawler, status, records_read, records_written, started_at, error_code "
+                "SELECT crawler, status, records_read, records_written, started_at, error_code, checkpoint "
                 "FROM crawl_execution_runs WHERE started_at > :since"
             ),
             {"since": since},
@@ -1019,14 +1017,14 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     # error handling silently replaces it with nothing.
     summaries: dict[str, list[int]] = {}
     latest_at: dict[str, datetime] = {}
-    for crawler, status, records_read, records_written, started_at, error_code in rows:
+    for crawler, status, records_read, records_written, started_at, error_code, checkpoint in rows:
         counts = summaries.setdefault(str(crawler), [0, 0, 0, 0])
         counts[0] += 1
         if status == "success":
             counts[1] += 1
             if not (records_read or 0) and not (records_written or 0):
                 counts[2] += 1
-        if error_code in POLICY_OUTCOME_CODES:
+        if is_refusal(error_code=error_code, checkpoint=checkpoint):
             counts[3] += 1
         if started_at is not None:
             seen = latest_at.get(str(crawler))
