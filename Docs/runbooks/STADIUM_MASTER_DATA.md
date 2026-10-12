@@ -34,9 +34,10 @@
 ## 수렴 방향 (결정됨)
 
 - 정본은 `stadiums`. 1단계 완료: 구 구장 9행 이관으로 `stadium_info` 21코드 전부 커버.
-- 2단계 (미실행): `parking_lots`·`stadium_food_vendors`·`stadium_seat_sections` 등 6개 FK를
-  `stadium_info` → `stadiums`로 전환 후 `stadium_info` 동결. SQLite는 FK ALTER 미지원이라
-  테이블 재건이 필요하고, 주차·음식·좌석 크롤러 소유자와 조율이 선행돼야 함.
+- 2단계 완료: 6개 자식 FK를 `stadium_info` → `stadiums`로 전환
+  (PG `065`·SQLite `070`·Oracle `082`, 고아 0건 사전 확인).
+  `stadium_info` 테이블·시더·구 API는 동결 유지 (삭제하지 않음).
+  값(코드)이 그대로라 크롤러·리포지토리 코드 변경 없음.
 
 ## 알려진 한계
 
