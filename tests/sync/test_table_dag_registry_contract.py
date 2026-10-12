@@ -22,6 +22,17 @@ EXPECTED_LEDGER_KEYS = {
     "notification_incidents": "incident_key",
 }
 
+#: The quality gate's record of what was already failing, keyed the way its own
+#: primary key is.
+EXPECTED_SNAPSHOT_KEYS = {
+    "pa_violation_baseline": ["check_id", "scope_season", "player_id"],
+    # A player is unrecoverable or they are not; the reason and the season are
+    # attributes of that fact, not part of what makes it the same fact. Keying on
+    # the reason instead would let one player hold several rows and a delete of
+    # the whole table to be the only way to clear them.
+    "pa_unrecoverable": ["player_id"],
+}
+
 
 def _unique_column_names(table: sa.Table) -> set[str]:
     names: set[str] = set()
@@ -44,6 +55,28 @@ def test_registry_has_no_duplicate_names() -> None:
 def test_every_registered_table_exists_in_orm_metadata() -> None:
     missing = [meta.name for meta in TABLE_REGISTRY if meta.name not in Base.metadata.tables]
     assert not missing, f"registry entries with no ORM model: {missing}"
+
+
+@pytest.mark.parametrize("table", sorted(EXPECTED_SNAPSHOT_KEYS))
+def test_a_snapshot_table_is_appended_and_keyed_by_its_primary_key(table: str) -> None:
+    """An upsert here would destroy what the table exists to hold.
+
+    Both tables record something a later run compares against. Their primary key
+    is the row being recorded, so an incremental strategy lets one recording
+    overwrite another and leaves the comparison with nothing to compare -- which
+    reads as "no backlog" rather than as an error.
+
+    The key is checked against the model's primary key rather than stated here, so
+    a model that gains or loses a key column cannot leave this asserting a set of
+    columns that no longer exists.
+    """
+    meta = TABLE_META_BY_NAME[table]
+
+    assert meta.strategy is SyncStrategy.APPEND_ONLY, (
+        f"{table} records what a later run compares against; an upsert erases it"
+    )
+    assert meta.natural_keys == [column.name for column in Base.metadata.tables[table].primary_key.columns]
+    assert meta.level == 3, f"{table} is operational telemetry, not domain data"
 
 
 @pytest.mark.parametrize("table", sorted(EXPECTED_LEDGER_KEYS))

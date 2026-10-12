@@ -254,6 +254,19 @@ TABLE_REGISTRY: list[TableMeta] = [
     # identifier so a run's status transition upserts instead of duplicating.
     TableMeta("crawl_execution_runs", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["run_id"]),
     TableMeta("crawl_dead_letters", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["dlq_id"]),
+    # The quality gate's record of what was already failing, and of the rows it
+    # cannot repair. Append-only rather than incremental: the primary key is the
+    # row being recorded, so an upsert would let a later recording overwrite an
+    # earlier one and leave a comparison with nothing to compare against. Synced
+    # at level 3 so a rebuilt target inherits the record instead of reporting the
+    # whole historical backlog as new damage on its first night.
+    TableMeta(
+        "pa_violation_baseline",
+        level=3,
+        strategy=SyncStrategy.APPEND_ONLY,
+        natural_keys=["check_id", "scope_season", "player_id"],
+    ),
+    TableMeta("pa_unrecoverable", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["player_id"]),
     TableMeta("notification_incidents", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["incident_key"]),
     TableMeta("notification_deliveries", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["id"]),
     TableMeta("matchup_batter_home_away", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
