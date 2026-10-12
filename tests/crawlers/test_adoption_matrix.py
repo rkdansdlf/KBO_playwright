@@ -1343,6 +1343,7 @@ FULLY_ADOPTED = (
     "game_detail_crawler",
     "kbo_event_crawler",
     "parking_crawler",
+    "seat_crawler",
     "pbp_crawler",
     "player_movement_crawler",
     "player_pitching_all_series_crawler",
@@ -1486,16 +1487,28 @@ class TestRemainingAxesNameTheGap:
             assert row.remaining_axes == ()
 
     def test_an_untouched_crawler_names_every_missing_axis(self) -> None:
-        """``seat_crawler`` drives nothing governed and records nothing.
+        """A crawler that reaches its source through a raw client it built itself
+        and records nothing has the widest gap, so it exercises every axis at once.
 
-        A crawler that reaches its source through a raw client it built itself
-        has the widest gap, so it exercises every axis at once.
+        This used to name ``seat_crawler``, which stopped being an example when it
+        was adopted: it now records runs, dead letters and replays. An example that
+        stops being true is worse than no example, because the test keeps passing
+        for the wrong reason until someone reads the name. ``static_text_crawler``
+        still reaches nothing through the shared client and still records nothing.
         """
-        row = _row("seat_crawler")
+        row = _row("static_text_crawler")
 
         assert "run ledger" in row.remaining_axes
         assert "dead letter queue" in row.remaining_axes
         assert "replay handler" in row.remaining_axes
+
+    def test_a_crawler_adopted_one_axis_at_a_time_keeps_naming_the_rest(self) -> None:
+        """``seat_crawler`` is mid-adoption: the ledger, the queue and the handler
+        are in, the typed outcome is not. Narrowing the gap must not hide the rest.
+        """
+        row = _row("seat_crawler")
+
+        assert row.remaining_axes == (), "seat now closes the whole reliability chain"
 
     def test_the_transport_axis_is_named_before_the_reliability_chain(self) -> None:
         """Order carries meaning: the transport is what blocks the rest.

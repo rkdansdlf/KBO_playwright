@@ -82,6 +82,7 @@ from src.crawlers.schedule_crawler import (
     SCHEDULE_TARGET_TYPE,
     ScheduleCrawler,
 )
+from src.crawlers.seat_crawler import SEAT_CRAWLER_NAME, SEAT_TARGET_TYPE, SeatCrawler
 from src.crawlers.source_limited import SOURCE_LIMITED_OUTCOME, source_limited_reason
 from src.crawlers.team_history_crawler import (
     TEAM_HISTORY_CRAWLER_NAME,
@@ -136,6 +137,7 @@ _EXPECTED_TARGET_TYPES: dict[str, str] = {
     RELAY_CRAWLER_NAME: RELAY_TARGET_TYPE,
     FOOD_CRAWLER_NAME: FOOD_TARGET_TYPE,
     PARKING_CRAWLER_NAME: PARKING_TARGET_TYPE,
+    SEAT_CRAWLER_NAME: SEAT_TARGET_TYPE,
     KBO_EVENT_CRAWLER_NAME: KBO_EVENT_TARGET_TYPE,
     PLAYER_MOVEMENT_CRAWLER_NAME: PLAYER_MOVEMENT_TARGET_TYPE,
     TEAM_HISTORY_CRAWLER_NAME: TEAM_HISTORY_TARGET_TYPE,
@@ -683,6 +685,17 @@ def _replay_parking(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayO
     )
 
 
+def _replay_seat(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
+    """Replay the one team's seat page the letter names."""
+    return _replay_team_page(
+        SeatCrawler(),
+        dead_letter,
+        replay_run_id,
+        crawler_name=SEAT_CRAWLER_NAME,
+        target_type=SEAT_TARGET_TYPE,
+    )
+
+
 def _replay_kbo_event(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
     """Replay the one event page the letter names.
 
@@ -1076,6 +1089,7 @@ def build_default_dispatcher() -> ReplayDispatcher:
     dispatcher.register(RELAY_CRAWLER_NAME, _replay_relay)
     dispatcher.register(FOOD_CRAWLER_NAME, _replay_food)
     dispatcher.register(PARKING_CRAWLER_NAME, _replay_parking)
+    dispatcher.register(SEAT_CRAWLER_NAME, _replay_seat)
     dispatcher.register(KBO_EVENT_CRAWLER_NAME, _replay_kbo_event)
     dispatcher.register(PLAYER_MOVEMENT_CRAWLER_NAME, _replay_player_movement)
     dispatcher.register(TEAM_HISTORY_CRAWLER_NAME, _replay_team_history)

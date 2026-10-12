@@ -12,19 +12,27 @@ from bs4 import BeautifulSoup
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.crawlers.base import BaseHttpCrawler
+from src.crawlers.failure_taxonomy import FailureCode, classify_failure, stage_for_code
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
+from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
+from src.services.crawl_dead_letter_service import enqueue_failure
+from src.services.crawl_run_service import track_crawl_run
 from src.utils.http_client import DEFAULT_HEADERS as HEADERS
 
 if TYPE_CHECKING:
     from src.crawlers.result import CrawlResult
+    from src.models.crawl_execution import CrawlExecutionRun
     from src.utils.request_policy import RequestPolicy
 
 logger = logging.getLogger(__name__)
 
-SEAT_CRAWLER_NAME = "seat_crawler"
+SEAT_CRAWLER_NAME = "seat"
+SEAT_TARGET_TYPE = "seat_section"
 SEAT_CRAWL_EXCEPTIONS = (httpx.HTTPError, RuntimeError, ValueError, TypeError, OSError)
 SEAT_SAVE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError)
 MIN_SEAT_SECTION_NAME_LENGTH = 2
@@ -77,41 +85,126 @@ class SeatCrawler(BaseHttpCrawler):
             headers=HEADERS,
         )
         self._raw_pages: list[dict] = []
+        # Initialised here as well as in `run()` because a test or a replay may
+        # call `_crawl_team_seats` directly, and a failure that raises
+        # AttributeError there is a failure that cannot be reported at all.
+        self._team_failures: list[tuple[str, str, str]] = []
 
-    async def run(self, *, save: bool = False, team_filter: str | None = None) -> list[dict[str, Any]]:
-        """Run run.
+    async def run(
+        self,
+        *,
+        save: bool = False,
+        team_filter: str | None = None,
+        run_spec: CrawlRunSpec | None = None,
+        record_dead_letters: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Crawl every team's seat sections.
 
         Args:
             save: Whether to persist the results.
-            team_filter: Team Filter.
-            save: Whether to persist the results.
-            team_filter: Team Filter.
+            team_filter: Crawl only this team code.
+            run_spec: Ledger entry to write under. A default is built when omitted.
+            record_dead_letters: Whether a team failure becomes a dead letter.
 
         Returns:
-            List of results.
+            The sections found.
 
         """
-        all_sections = []
+        selected = {code: info for code, info in TEAM_SEAT_SOURCES.items() if not team_filter or code == team_filter}
+        spec = run_spec or CrawlRunSpec(
+            crawler=SEAT_CRAWLER_NAME,
+            target_type=SEAT_TARGET_TYPE,
+            target_id=team_filter or "all",
+            source_url=next(iter(selected.values()))["url"] if len(selected) == 1 else None,
+        )
 
-        for team_code, info in TEAM_SEAT_SOURCES.items():
-            if team_filter and team_code != team_filter:
-                continue
-            try:
-                sections = await self._crawl_team_seats(team_code, info)
+        # Every team failing used to leave no trace at all: the exception was
+        # logged and `[]` came back, which is the same result as a page with no
+        # seats on it. The scheduler calls this daily and nothing in the ledger
+        # recorded it, so the table simply aged and the reason was unknowable.
+        with track_crawl_run(spec) as run:
+            self._team_failures: list[tuple[str, str, str]] = []
+            all_sections: list[dict[str, Any]] = []
+            for team_code, info in selected.items():
+                try:
+                    sections = await self._crawl_team_seats(team_code, info)
+                except SEAT_CRAWL_EXCEPTIONS as exc:
+                    logger.exception("Failed to crawl seats for %s", team_code)
+                    code = getattr(exc, "error_code", None) or FailureCode.UNKNOWN.value
+                    self._team_failures.append((team_code, code, str(exc)))
+                    continue
+                for entry in sections:
+                    entry["team_code"] = team_code
                 all_sections.extend(sections)
                 logger.info("[SEAT] %s: %s sections found", team_code, len(sections))
-            except SEAT_CRAWL_EXCEPTIONS:
-                logger.exception("Failed to crawl seats for %s", team_code)
 
-        logger.info("[SEAT] Total: %s sections", len(all_sections))
+            logger.info("[SEAT] Total: %s sections", len(all_sections))
+            run.records_read = len(all_sections)
+            if save:
+                written, failed = await asyncio.to_thread(self._save_to_db, all_sections)
+                run.records_written = written
+                run.records_failed = failed
+            else:
+                for section in all_sections[:5]:
+                    logger.info(section)
 
-        if save:
-            await asyncio.to_thread(self._save_to_db, all_sections)
+            self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            return all_sections
+
+    def _record_team_failures(
+        self,
+        run: CrawlExecutionRun,
+        selected: dict[str, dict[str, Any]],
+        *,
+        record_dead_letters: bool,
+    ) -> None:
+        """Attribute each team failure to the run and to a dead letter.
+
+        Args:
+            run: The ledger entry for this run.
+            selected: The teams this run covered, for the source URL.
+            record_dead_letters: Whether to enqueue.
+
+        """
+        if not self._team_failures:
+            return
+        failed_teams = [team_code for team_code, _, _ in self._team_failures]
+        wrote_nothing = run.records_failed and not run.records_written
+        run.records_failed += len(self._team_failures)
+        run.error_message = (
+            "teams failed: "
+            + ", ".join(sorted(set(failed_teams)))
+            + (" (nothing was written)" if wrote_nothing else "")
+        )
+        # The status is set here rather than left to the tracker. A run whose teams
+        # all failed is not a success, and deriving that from the record counts
+        # alone would call every failed sweep a success -- which is what the seat
+        # table did for weeks.
+        if run.records_read and not wrote_nothing:
+            run.status = RUN_STATUS_PARTIAL
         else:
-            for s in all_sections[:5]:
-                logger.info(s)
-
-        return all_sections
+            run.status = RUN_STATUS_FAILED
+            run.error_code = self._team_failures[0][1]
+        logger.warning("[SEAT] teams failed: %s", failed_teams)
+        for team_code, code, message in self._team_failures:
+            logger.warning("[SEAT] team %s failed: %s (%s)", team_code, code, message)
+            if not record_dead_letters:
+                continue
+            enqueue_failure(
+                DeadLetterSpec(
+                    original_run_id=run.run_id,
+                    crawler=SEAT_CRAWLER_NAME,
+                    target_type=SEAT_TARGET_TYPE,
+                    target_id=team_code,
+                    # Derived from the code, never supplied beside it: a stage and a
+                    # code that disagree are two claims about one failure, and the
+                    # retry budget is spent on the stage.
+                    failure_stage=stage_for_code(code).value,
+                    error_code=code,
+                    error_message=message,
+                    source_url=selected.get(team_code, {}).get("url"),
+                ),
+            )
 
     async def _fetch_seat_page(self, url: str) -> CrawlResult[str]:
         """Fetch one seat page, classifying the outcome.
@@ -131,16 +224,27 @@ class SeatCrawler(BaseHttpCrawler):
                 # The taxonomy code is already attached, so a failure carries one
                 # name from here into the ledger and the metric rather than being
                 # re-derived from a message later.
+                # No code came back from the transport. The taxonomy has no
+                # generic fetch failure because the transport is expected to name
+                # one, so `UNKNOWN` is the honest record rather than an invented
+                # code that would read as a specific diagnosis.
+                code = result.error_code or FailureCode.UNKNOWN.value
                 logger.warning(
                     "Seat page fetch failed for %s: %s (%s)",
                     team_code,
-                    result.error_code or result.outcome.value,
+                    code,
                     result.url or info["url"],
                 )
+                # Recorded, not raised. An empty list was returning from every
+                # failure -- a 404, a timeout and a page with no seat names were
+                # the same result -- and only one of those is a reason to look
+                # again. Raising here would abandon the other nine teams.
+                self._team_failures.append((team_code, code, "seat page fetch failed"))
                 return []
             html = result.data
             self._raw_pages.append(
                 {
+                    "team_code": team_code,
                     "source_key": info["source_key"],
                     "url": info["url"],
                     "html": html,
@@ -148,8 +252,16 @@ class SeatCrawler(BaseHttpCrawler):
                 },
             )
             sections = self._parse_seat_page(html, team_code, info)
-        except SEAT_CRAWL_EXCEPTIONS:
+            if not sections:
+                # A stadium that publishes no seat names is not the same answer as
+                # one we failed to read, and reporting them alike is how a table
+                # ages with nothing in the ledger to explain it.
+                self._team_failures.append((team_code, FailureCode.PARSE_EMPTY.value, "no seat section found"))
+                logger.warning("[SEAT] %s returned no seat sections", team_code)
+        except SEAT_CRAWL_EXCEPTIONS as exc:
             logger.exception("Failed to parse seat page for %s", team_code)
+            _, code = classify_failure(exc)
+            self._team_failures.append((team_code, code.value, str(exc)))
         return sections
 
     def _parse_seat_page(self, html: str, _team_code: str, info: dict) -> list[dict[str, Any]]:
@@ -176,22 +288,58 @@ class SeatCrawler(BaseHttpCrawler):
 
         return sections
 
-    def _save_to_db(self, data: list[dict]) -> None:
-        with SessionLocal() as session:
-            try:
-                saved_snaps = save_raw_snapshots(session, self._raw_pages)
-                repo = StadiumSeatSectionRepository(session)
-                count = 0
-                for item in data:
-                    try:
+    def _save_to_db(self, data: list[dict]) -> tuple[int, int]:
+        """Persist one team's sections in its own transaction.
+
+        A single batch session meant the first constraint violation poisoned it and
+        the commit rolled every team's rows back, after which the run still reported
+        a count of what it had saved and never a failure. One session per team makes
+        the team the unit of work, of attribution, and of the dead letter.
+
+        Args:
+            data: Sections to persist, each carrying ``team_code``.
+
+        Returns:
+            How many rows were saved, and how many failed.
+
+        """
+        by_team: dict[str, list[dict[str, Any]]] = {}
+        for item in data:
+            by_team.setdefault(str(item.get("team_code") or ""), []).append(item)
+
+        saved = 0
+        failed = 0
+        for team_code, items in by_team.items():
+            with SessionLocal() as session:
+                try:
+                    repo = StadiumSeatSectionRepository(session)
+                    for item in items:
                         repo.save(item)
-                        count += 1
-                    except SEAT_SAVE_EXCEPTIONS:
-                        logger.exception("Seat section save failed: %s", item.get("section_name", ""))
-                session.commit()
-                logger.info("[SEAT] Saved %s section records, %s snapshots.", count, saved_snaps)
-            except SEAT_SAVE_EXCEPTIONS:
-                session.rollback()
-                logger.exception("Seat batch save error")
-            finally:
-                self._raw_pages.clear()
+                    saved_snaps = save_raw_snapshots(session, self._raw_pages_by_team().pop(team_code, []))
+                    session.commit()
+                    saved += len(items)
+                    logger.info("[SEAT] %s saved %s sections, %s snapshots.", team_code or "-", len(items), saved_snaps)
+                except SEAT_SAVE_EXCEPTIONS:
+                    session.rollback()
+                    failed += len(items)
+                    logger.exception("Seat section save failed for %s", team_code or "-")
+        self._raw_pages.clear()
+        return saved, failed
+
+    def _raw_pages_by_team(self) -> dict[str, list[dict]]:
+        """Index the captured pages by team, consuming them as they are saved.
+
+        Returns:
+            Source pages keyed by team code.
+
+        """
+        pages: dict[str, list[dict]] = {}
+        keep: list[dict] = []
+        for page in self._raw_pages:
+            key = str(page.get("team_code") or "")
+            if key:
+                pages.setdefault(key, []).append(page)
+            else:
+                keep.append(page)
+        self._raw_pages = keep
+        return pages

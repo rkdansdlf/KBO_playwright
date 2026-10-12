@@ -404,6 +404,7 @@ REPLAY_HANDLERS: dict[str, str] = {
     "relay": "relay_crawler",
     "food": "food_crawler",
     "parking": "parking_crawler",
+    "seat": "seat_crawler",
     "kbo_event": "kbo_event_crawler",
     "player_movement": "player_movement_crawler",
     "team_history": "team_history_crawler",
@@ -487,6 +488,13 @@ DECLARED: dict[str, DesignFacts] = {
         empty=EmptySemantics.TYPED,
         note="Same shape as the food sweep: per-team isolation so one unreadable lot page cannot "
         "quietly become an empty result for the whole stadium.",
+    ),
+    "seat_crawler": DesignFacts(
+        granularity=Granularity.TEAM,
+        empty=EmptySemantics.TYPED,
+        note="Per-team isolation for the same reason as the food and parking sweeps, and the reason a page "
+        "with no seat names is recorded as a failure rather than an empty result: the two were the same "
+        "list, and the table aged for weeks with nothing in the ledger to say which one it was.",
     ),
     "relay_crawler": DesignFacts(
         granularity=Granularity.GAME,

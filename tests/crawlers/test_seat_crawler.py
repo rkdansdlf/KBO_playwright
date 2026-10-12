@@ -4,12 +4,38 @@ import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.crawlers import seat_crawler
 
 from src.crawlers.http_client import CrawlerHttpClient
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.seat_crawler import TEAM_SEAT_SOURCES, SeatCrawler
+from src.models.crawl_dead_letter import CrawlDeadLetter
+from src.models.crawl_execution import CrawlExecutionRun
+
+
+@pytest.fixture(autouse=True)
+def _ledger_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the run ledger a database, which the crawler started writing to.
+
+    The crawler classifies outcomes but recorded no run at all, which is why the
+    seat table could age for weeks with nothing in the ledger to explain it. Now
+    that it writes, the tests need somewhere for those rows to go -- otherwise the
+    real engine opens and the run fails on a table the test database never made.
+    """
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    CrawlExecutionRun.__table__.create(engine)
+    CrawlDeadLetter.__table__.create(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr("src.services.crawl_run_service.SessionLocal", factory)
+    monkeypatch.setattr("src.services.crawl_dead_letter_service.SessionLocal", factory)
 
 
 def _ok(html: str, status: int = 200) -> CrawlResult[str]:
