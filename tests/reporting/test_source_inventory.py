@@ -62,8 +62,8 @@ def scratch_db() -> Iterator[sessionmaker]:
         connection.execute(
             text(
                 "CREATE TABLE crawl_execution_runs (id INTEGER PRIMARY KEY, crawler VARCHAR(64), "
-                "status VARCHAR(32), error_code VARCHAR(32), checkpoint TEXT, records_read INTEGER, "
-                "records_written INTEGER, started_at TIMESTAMP)"
+                "status VARCHAR(32), error_code VARCHAR(32), checkpoint TEXT, source_url TEXT, "
+                "records_read INTEGER, records_written INTEGER, started_at TIMESTAMP)"
             )
         )
         connection.execute(text("INSERT INTO rag_chunks (source_table) VALUES ('old_table')"))
@@ -129,8 +129,11 @@ class TestPolicyStatus:
         (tmp_path / "probe_crawler.py").write_text(body, encoding="utf-8")
         return tmp_path
 
-    def _status(self, directory: Path, verdicts) -> inv.PolicyStatus:
-        return inv.policy_status_of("probe_crawler", verdicts, crawler_dir=directory)
+    def _status(self, directory: Path, verdicts, observed: tuple[str, ...] = ()) -> inv.PolicyStatus:
+        return inv.policy_status_of("probe_crawler", verdicts, observed_urls=observed, crawler_dir=directory)[0]
+
+    def _basis(self, directory: Path, verdicts, observed: tuple[str, ...] = ()) -> inv.PolicyBasis:
+        return inv.policy_status_of("probe_crawler", verdicts, observed_urls=observed, crawler_dir=directory)[1]
 
     def test_a_disallowed_host_is_reported_blocked(self, tmp_path: Path) -> None:
         directory = self._crawler(tmp_path, 'URL = "https://blocked.test/x"\n')
@@ -882,7 +885,11 @@ class TestCollectionState:
         real_status = inv.policy_status_of
 
         def allowed(module, verdicts, **kwargs):
-            return inv.PolicyStatus.OK if module == "food_crawler" else real_status(module, verdicts, **kwargs)
+            # The verdict function returns (status, basis) now; returning the bare
+            # status made the caller unpack the string "ok" into two characters.
+            if module == "food_crawler":
+                return inv.PolicyStatus.OK, inv.PolicyBasis.OBSERVED
+            return real_status(module, verdicts, **kwargs)
 
         monkeypatch.setattr(inv, "policy_status_of", allowed)
 
@@ -894,3 +901,111 @@ class TestCollectionState:
         assert row.runs.policy_blocked == 1
         assert [r.crawler for r in report.policy_disagreements()] == ["food_crawler"]
         assert any("read as permitted" in line for line in report.advisories)
+
+
+class TestObservationBeatsInference:
+    """The ledger records the URL; the source scan only sees string literals.
+
+    `food_crawler` read as permitted because its source mentions
+    `www.giantsclub.com`, which publishes no restriction, while the ledger
+    recorded refusals. Both were true: the URL that was refused is assembled at
+    runtime and the scan cannot see it. Preferring observation settles it with a
+    fact, and naming the basis keeps the weaker claim from reading like the
+    stronger one.
+    """
+
+    def _crawler(self, tmp_path: Path) -> Path:
+        from src.utils.host_policy import save_snapshot
+
+        (tmp_path / "food_crawler.py").write_text('URL = "https://permitted.test/x"\n', encoding="utf-8")
+        save_snapshot("permitted.test", "User-agent: *\nDisallow: /ws/\n", policy_dir=tmp_path)
+        save_snapshot("blocked.test", "User-agent: *\nDisallow: /\n", policy_dir=tmp_path)
+        save_snapshot("open.test", "User-agent: *\nDisallow: /ws/\n", policy_dir=tmp_path)
+        return tmp_path
+
+    def test_an_observed_refusal_beats_a_permitted_source_scan(self, tmp_path: Path) -> None:
+        directory = self._crawler(tmp_path)
+        verdicts = {"permitted.test": inv.HostVerdict.ALLOWED}
+
+        status, basis = inv.policy_status_of(
+            "food_crawler",
+            verdicts,
+            observed_urls=("https://blocked.test/Player/Trade.aspx",),
+            crawler_dir=directory,
+            policy_dir=directory,
+        )
+
+        assert status is inv.PolicyStatus.BLOCKED
+        assert basis is inv.PolicyBasis.OBSERVED
+
+    def test_the_basis_is_named_rather_than_implied(self, tmp_path: Path) -> None:
+        directory = self._crawler(tmp_path)
+        verdicts = {"permitted.test": inv.HostVerdict.ALLOWED}
+
+        assert (
+            inv.policy_status_of("food_crawler", verdicts, crawler_dir=directory, policy_dir=directory)[1]
+            is inv.PolicyBasis.SOURCE_SCAN
+        )
+        assert (
+            inv.policy_status_of(
+                "food_crawler",
+                verdicts,
+                observed_urls=("https://permitted.test/x",),
+                crawler_dir=directory,
+                policy_dir=directory,
+            )[1]
+            is inv.PolicyBasis.OBSERVED
+        )
+
+    def test_a_crawler_with_no_source_at_all_is_none(self, tmp_path: Path) -> None:
+        (tmp_path / "silent_crawler.py").write_text("x = 1\n", encoding="utf-8")
+
+        assert inv.policy_status_of("silent_crawler", {}, crawler_dir=tmp_path)[1] is inv.PolicyBasis.NONE
+
+    def test_one_unknown_observed_host_is_not_a_permission(self, tmp_path: Path) -> None:
+        directory = self._crawler(tmp_path)
+
+        status, _ = inv.policy_status_of(
+            "food_crawler",
+            {},
+            observed_urls=("https://unread.test/x",),
+            crawler_dir=directory,
+            policy_dir=directory,
+        )
+
+        assert status is inv.PolicyStatus.UNKNOWN
+
+    def test_a_disallowed_observed_host_wins_over_an_allowed_one(self, tmp_path: Path) -> None:
+        """A crawler with two sources is only as permitted as its worst."""
+        directory = self._crawler(tmp_path)
+
+        status, _ = inv.policy_status_of(
+            "food_crawler",
+            {},
+            observed_urls=("https://open.test/a", "https://blocked.test/b"),
+            crawler_dir=directory,
+            policy_dir=directory,
+        )
+
+        assert status is inv.PolicyStatus.BLOCKED
+
+    def test_the_verdict_follows_the_path_not_just_the_host(self, tmp_path: Path) -> None:
+        """The host scan judges `/`; a crawler reads a specific page.
+
+        A host can allow its root and refuse one path, and the ledger's URL is
+        the only record that says which page was actually requested.
+        """
+        from src.utils.host_policy import save_snapshot
+
+        save_snapshot("partial.test", "User-agent: *\nDisallow: /Player/\n", policy_dir=tmp_path)
+
+        assert (
+            inv.verdict_for_url("https://partial.test/Player/Trade.aspx", policy_dir=tmp_path)
+            is inv.HostVerdict.DISALLOWED
+        )
+        assert (
+            inv.verdict_for_url("https://partial.test/News/List.aspx", policy_dir=tmp_path) is inv.HostVerdict.ALLOWED
+        )
+
+    def test_a_url_without_a_host_is_unknown(self) -> None:
+        assert inv.verdict_for_url("not a url") is inv.HostVerdict.UNREACHABLE

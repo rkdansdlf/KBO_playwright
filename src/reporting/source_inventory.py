@@ -147,6 +147,25 @@ class PolicyStatus(StrEnum):
     """The crawler does not consult the policy, so no verdict can be given."""
 
 
+class PolicyBasis(StrEnum):
+    """Where a verdict came from, because the two are not equally strong.
+
+    A verdict read off the ledger is what happened. A verdict read off a crawler's
+    source is what the source appears to mention, and a URL assembled at runtime
+    is not in it at all. Reporting both without saying which is how a report and a
+    ledger end up disagreeing about the same crawler.
+    """
+
+    OBSERVED = "observed"
+    """Judged from URLs the ledger recorded being fetched."""
+
+    SOURCE_SCAN = "source_scan"
+    """Judged from string literals in the crawler source."""
+
+    NONE = "none"
+    """No source could be identified at all."""
+
+
 class Freshness(StrEnum):
     """How the measured age compares against what the crawler promises."""
 
@@ -495,6 +514,17 @@ class RunSummary:
     succeeded: int
     zero_yield: int
     latest_at: datetime | None = None
+    observed_urls: tuple[str, ...] = ()
+    """URLs the ledger recorded this crawler actually fetching.
+
+    The inventory's own scan of a crawler's source reads string literals, so a URL
+    assembled at runtime is invisible to it and a crawler can be judged permitted
+    while the ledger shows it being refused. That is not a disagreement to
+    resolve by preferring one side: the ledger's URL is what happened, and it is
+    also the precise path, so judging it settles a question the source scan could
+    not ask -- a host can allow `/` and refuse `/Player/Trade.aspx`.
+    """
+
     policy_blocked: int = 0
     """Runs whose outcome was a refusal rather than an unreachable host.
 
@@ -568,6 +598,26 @@ class CollectionState(StrEnum):
 
 
 @dataclass(frozen=True)
+class _Sources:
+    """Where the crawler sources and their host policies live."""
+
+    verdicts: Mapping[str, HostVerdict]
+    crawler_dir: Path
+    policy_dir: Path
+
+
+@dataclass(frozen=True)
+class _Ledger:
+    """What the run ledger says, indexed the way the rows ask for it."""
+
+    runs: dict[str, RunSummary]
+    """By crawler name as the ledger spells it, e.g. `roster_transactions`."""
+
+    observed: dict[str, tuple[str, ...]]
+    """By module stem, because that is what the row builder walks."""
+
+
+@dataclass(frozen=True)
 class TableMeasurement:
     """One table's real state, read from the database."""
 
@@ -594,6 +644,9 @@ class SourceRow:
     crawler: str
     source_domains: tuple[str, ...]
     policy_status: PolicyStatus
+    policy_basis: PolicyBasis = PolicyBasis.NONE
+    """Whether the verdict came from the ledger or from the source text."""
+
     enforced: bool = False
     """Whether the crawler asks the compliance layer before fetching.
 
@@ -607,6 +660,17 @@ class SourceRow:
     rag_chunks: int = 0
     consumers: tuple[str, ...] = ()
     runs: RunSummary | None = None
+
+    @property
+    def observed_hosts(self) -> tuple[str, ...]:
+        """Return the hosts the ledger recorded this crawler fetching."""
+        from urllib.parse import urlparse
+
+        return tuple(
+            dict.fromkeys(
+                host for host in (urlparse(u).hostname for u in (self.runs.observed_urls if self.runs else ())) if host
+            )
+        )
 
     @property
     def stale(self) -> bool:
@@ -658,7 +722,9 @@ class SourceRow:
             "crawler": self.crawler,
             "source_domains": list(self.source_domains),
             "policy_status": self.policy_status.value,
+            "policy_basis": self.policy_basis.value,
             "enforced": self.enforced,
+            "observed_urls": list(self.observed_hosts),
             "declared": self.declared,
             "alternative_source": (self.declaration.alternative_source if self.declaration else None),
             "priority": (self.declaration.priority if self.declaration else None),
@@ -858,38 +924,80 @@ def host_verdicts(*, policy_dir: Path = ROBOTS_DIR) -> dict[str, HostVerdict]:
     return verdicts
 
 
-def policy_status_of(
-    module: str,
-    verdicts: Mapping[str, HostVerdict],
-    *,
-    crawler_dir: Path = CRAWLER_DIR,
-) -> PolicyStatus:
-    """Return what a crawler's sources permit.
-
-    Judges the host's recorded policy, not whether the crawler asks about it.
-    Those are separate facts and conflating them is what made 27 crawlers read as
-    `unknown`: they were unknown because no policy existed for their host, and a
-    crawler that never consults a policy is a different problem from one whose
-    host has none.
+def verdict_for_url(url: str, *, policy_dir: Path = ROBOTS_DIR) -> HostVerdict:
+    """Return what the recorded policy says about one specific URL.
 
     Args:
-        module: Crawler module stem, without ``.py``.
-        verdicts: Recorded verdicts by host.
-        crawler_dir: Directory holding the crawler modules.
+        url: The URL that was fetched.
+        policy_dir: Where the per-host snapshots live.
 
     Returns:
-        The worst verdict among the crawler's hosts.
+        The verdict for that host and that path, or UNREACHABLE when the host has
+        no record.
 
     """
-    domains = source_domains(module, crawler_dir=crawler_dir)
-    if not domains:
-        return PolicyStatus.UNKNOWN
-    seen = [verdicts.get(domain) for domain in domains]
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if not host:
+        return HostVerdict.UNREACHABLE
+    path = parsed.path or "/"
+    return read_policy(host, path=path, policy_dir=policy_dir).verdict
+
+
+def _worst(seen: Sequence[HostVerdict | None]) -> PolicyStatus:
+    """Return the verdict that governs a set of sources.
+
+    Args:
+        seen: One verdict per source; None where a host has no record.
+
+    Returns:
+        The worst verdict, and UNKNOWN whenever a single source is unknown -- one
+        unread source is not a permission.
+
+    """
     if any(verdict is HostVerdict.DISALLOWED for verdict in seen):
         return PolicyStatus.BLOCKED
     if seen and all(verdict in (HostVerdict.ALLOWED, HostVerdict.NO_POLICY) for verdict in seen):
         return PolicyStatus.OK
     return PolicyStatus.UNKNOWN
+
+
+def policy_status_of(
+    module: str,
+    verdicts: Mapping[str, HostVerdict],
+    *,
+    observed_urls: Sequence[str] = (),
+    crawler_dir: Path = CRAWLER_DIR,
+    policy_dir: Path = ROBOTS_DIR,
+) -> tuple[PolicyStatus, PolicyBasis]:
+    """Return what a crawler's sources permit, and how that was determined.
+
+    Prefers the URLs the ledger recorded over the crawler's source text, and says
+    which it used. The preference is not arbitrary: a source scan is an inference
+    about code, and a URL assembled at runtime is invisible to it, so a crawler
+    can read as permitted while production refuses it. The ledger's URL is also
+    the precise path, which settles questions like a host allowing `/` while
+    refusing `/Player/Trade.aspx`.
+
+    Args:
+        module: Crawler module stem, without ``.py``.
+        verdicts: Recorded verdicts by host, judged at the root path.
+        observed_urls: URLs the ledger recorded this crawler fetching.
+        crawler_dir: Directory holding the crawler modules.
+        policy_dir: Directory holding the per-host snapshots.
+
+    Returns:
+        The verdict, and the basis it came from.
+
+    """
+    if observed_urls:
+        return _worst([verdict_for_url(url, policy_dir=policy_dir) for url in observed_urls]), PolicyBasis.OBSERVED
+    domains = source_domains(module, crawler_dir=crawler_dir)
+    if not domains:
+        return PolicyStatus.UNKNOWN, PolicyBasis.NONE
+    return _worst([verdicts.get(domain) for domain in domains]), PolicyBasis.SOURCE_SCAN
 
 
 def _table_columns(session: Session, table: str) -> set[str] | None:
@@ -1001,8 +1109,8 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     try:
         rows = session.execute(
             text(
-                "SELECT crawler, status, records_read, records_written, started_at, error_code, checkpoint "
-                "FROM crawl_execution_runs WHERE started_at > :since"
+                "SELECT crawler, status, records_read, records_written, started_at, error_code, checkpoint, "
+                "source_url FROM crawl_execution_runs WHERE started_at > :since"
             ),
             {"since": since},
         ).all()
@@ -1017,7 +1125,10 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     # error handling silently replaces it with nothing.
     summaries: dict[str, list[int]] = {}
     latest_at: dict[str, datetime] = {}
-    for crawler, status, records_read, records_written, started_at, error_code, checkpoint in rows:
+    urls: dict[str, list[str]] = {}
+    for crawler, status, records_read, records_written, started_at, error_code, checkpoint, source_url in rows:
+        if source_url:
+            urls.setdefault(str(crawler), []).append(str(source_url))
         counts = summaries.setdefault(str(crawler), [0, 0, 0, 0])
         counts[0] += 1
         if status == "success":
@@ -1038,6 +1149,7 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
             zero_yield=counts[2],
             latest_at=latest_at.get(crawler),
             policy_blocked=counts[3],
+            observed_urls=tuple(dict.fromkeys(urls.get(crawler, []))),
         )
         for crawler, counts in summaries.items()
     }
@@ -1152,7 +1264,13 @@ def _measure_declared(
     stale_after_days: int,
     cadence: dict[str, Cadence] | None = None,
     window_hours: int = RUN_WINDOW_HOURS,
-) -> tuple[dict[str, tuple[TableMeasurement, ...]], dict[str, int], dict[str, RunSummary], list[str]]:
+) -> tuple[
+    dict[str, tuple[TableMeasurement, ...]],
+    dict[str, int],
+    dict[str, RunSummary],
+    dict[str, tuple[str, ...]],
+    list[str],
+]:
     """Read every declared table once, returning measurements, chunks, runs and drift.
 
     One session for all of it: the readings are independent, and reconnecting per
@@ -1161,9 +1279,10 @@ def _measure_declared(
     measurements: dict[str, tuple[TableMeasurement, ...]] = {}
     chunks: dict[str, int] = {}
     runs: dict[str, RunSummary] = {}
+    observed: dict[str, tuple[str, ...]] = {}
     drift: list[str] = []
     if session_factory is None:
-        return measurements, chunks, runs, drift
+        return measurements, chunks, runs, observed, drift
 
     schedules = cadence if cadence is not None else scheduled_cadence()
     with session_factory() as session:
@@ -1188,32 +1307,48 @@ def _measure_declared(
                 for m in measurements[module]
                 if m.freshness is Freshness.UNKNOWN and m.rows == 0
             )
-    return measurements, chunks, runs, drift
+    # Keyed by the ledger's name, not the module's, and read back through the same
+    # expression the run summary uses. Keying one by the module and reading the
+    # other by the ledger name is a join that silently matches nothing -- the same
+    # trap as `roster_transactions` against `roster_transaction_crawler`, hit twice
+    # now, so the key is derived in one place and used twice.
+    for ledger_name, summary in runs.items():
+        observed[ledger_name] = summary.observed_urls
+    return measurements, chunks, runs, observed, drift
 
 
 def _build_rows(
     *,
-    verdicts: Mapping[str, HostVerdict],
+    sources: _Sources,
     measurements: dict[str, tuple[TableMeasurement, ...]],
     chunks: dict[str, int],
-    runs: dict[str, RunSummary],
-    crawler_dir: Path,
+    ledger: _Ledger,
 ) -> list[SourceRow]:
     """Assemble one row per crawler, declared or not."""
     rows: list[SourceRow] = []
-    for module in discover_crawler_modules(crawler_dir=crawler_dir):
+    for module in discover_crawler_modules(crawler_dir=sources.crawler_dir):
         declaration = DECLARED.get(module)
         table_measurements = measurements.get(module, ())
+        status, basis = policy_status_of(
+            module,
+            sources.verdicts,
+            observed_urls=ledger.observed.get(module.removesuffix("_crawler"), ()),
+            crawler_dir=sources.crawler_dir,
+            policy_dir=sources.policy_dir,
+        )
         rows.append(
             SourceRow(
                 crawler=module,
-                source_domains=source_domains(module, crawler_dir=crawler_dir),
-                policy_status=policy_status_of(module, verdicts, crawler_dir=crawler_dir),
-                enforced=consults_policy(module, crawler_dir=crawler_dir),
+                source_domains=source_domains(module, crawler_dir=sources.crawler_dir),
+                policy_status=status,
+                policy_basis=basis,
+                enforced=consults_policy(module, crawler_dir=sources.crawler_dir),
                 declaration=declaration,
                 measurements=table_measurements,
                 rag_chunks=sum(chunks.get(m.table, 0) for m in table_measurements),
-                runs=runs.get(declaration.ledger_name or module.removesuffix("_crawler")) if declaration else None,
+                runs=ledger.runs.get(declaration.ledger_name or module.removesuffix("_crawler"))
+                if declaration
+                else None,
                 consumers=(consumers_of(declaration.repository) if declaration and declaration.repository else ()),
             ),
         )
@@ -1312,17 +1447,16 @@ def build_inventory(
 
     """
     verdicts = host_verdicts(policy_dir=robots_dir)
-    measurements, chunks, runs, drift = _measure_declared(
+    measurements, chunks, runs, observed, drift = _measure_declared(
         session_factory,
         stale_after_days=stale_after_days,
         window_hours=window_hours,
     )
     rows = _build_rows(
-        verdicts=verdicts,
+        sources=_Sources(verdicts=verdicts, crawler_dir=crawler_dir, policy_dir=robots_dir),
         measurements=measurements,
         chunks=chunks,
-        runs=runs,
-        crawler_dir=crawler_dir,
+        ledger=_Ledger(runs=runs, observed=observed),
     )
     more_drift, advisories = _collect_findings(rows, crawler_dir=crawler_dir)
     return SourceInventory(
