@@ -494,6 +494,8 @@ class RunSummary:
     succeeded: int
     zero_yield: int
     latest_at: datetime | None = None
+    policy_blocked: int = 0
+    """Runs whose outcome was a refusal rather than an unreachable host."""
 
     @property
     def yields(self) -> bool:
@@ -509,6 +511,62 @@ class RunSummary:
         exists to find.
         """
         return self.succeeded == 0 or self.zero_yield < self.succeeded
+
+
+class CollectionState(StrEnum):
+    """What the run ledger and the table together say about a crawler.
+
+    Neither signal can answer alone, which is the whole reason this exists. A run
+    that succeeded having collected nothing and a table whose contents have not
+    changed in two months both look fine on their own; together they mean the
+    collection has stopped, and the opposite pair means the opposite thing. An
+    age-based verdict reads "old" as "broken", which called a crawler that had
+    written three records every day for four days a table that had not changed
+    since August.
+    """
+
+    COLLECTING = "collecting"
+    """Recent runs collected data and the tables are within their threshold."""
+
+    STABLE = "stable"
+    """Recent runs collected data; the tables have not changed past the threshold.
+
+    Not a defect. This is what a working collector looks like when the source
+    stops publishing, and calling it stale is the false positive that teaches a
+    reader to ignore the column.
+    """
+
+    NOT_COLLECTED = "not_collected"
+    """Every reported success collected nothing.
+
+    The quiet failure: the run did what it was asked and handed back no data.
+    """
+
+    FAILING = "failing"
+    """Runs exist and none succeeded. Loud, and already visible in the ledger."""
+
+    UNEPLAINED = "unexplained"
+    """The tables are old and no run in the window can corroborate either way.
+
+    Most crawlers are weekly or on demand and simply did not run. Naming this
+    state is what keeps it from being read as either of the two above.
+    """
+
+    EMPTY = "empty"
+    """The tables exist and hold nothing."""
+
+    UNKNOWN = "unknown"
+    """Nothing was measured."""
+
+
+#: Run outcomes that mean a source was refused rather than unreachable.
+#:
+#: Named here because the disagreement between this module's own verdict and the
+#: ledger is worth reporting: the inventory judges the hosts it can see in the
+#: source, and a runtime-assembled URL is invisible to it, so `ok` and
+#: `FETCH_BLOCKED` can coexist. Reporting the disagreement is honest; deciding
+#: which side is right without evidence is not.
+POLICY_OUTCOME_CODES = frozenset({"FETCH_BLOCKED"})
 
 
 @dataclass(frozen=True)
@@ -551,6 +609,39 @@ class SourceRow:
     rag_chunks: int = 0
     consumers: tuple[str, ...] = ()
     runs: RunSummary | None = None
+
+    @property
+    def stale(self) -> bool:
+        """Return whether any measured table is past its threshold."""
+        return any(m.freshness is Freshness.STALE for m in self.measurements)
+
+    @property
+    def collection_state(self) -> CollectionState:
+        """Return what the ledger and the tables together say.
+
+        A property rather than a stored field so it cannot disagree with the
+        measurements it is derived from -- the previous age-only verdict was
+        wrong for exactly the crawlers whose runs contradicted their table.
+
+        Returns:
+            The joint verdict.
+
+        """
+        runs = self.runs
+        if runs is not None and runs.total:
+            if runs.succeeded == 0:
+                return CollectionState.FAILING
+            if not runs.yields:
+                # Zero-yield successes, stale tables or not: the source was
+                # consulted and produced nothing, and that is the finding whether
+                # or not a table happens to corroborate it.
+                return CollectionState.NOT_COLLECTED
+            return CollectionState.STABLE if self.stale else CollectionState.COLLECTING
+        if self.stale:
+            return CollectionState.UNEPLAINED
+        if any(m.freshness is Freshness.EMPTY for m in self.measurements):
+            return CollectionState.EMPTY
+        return CollectionState.UNKNOWN
 
     @property
     def declared(self) -> bool:
@@ -613,6 +704,41 @@ class SourceInventory:
         """Index the rows by crawler name."""
         return {row.crawler: row for row in self.rows}
 
+    def by_state(self, state: CollectionState) -> tuple[SourceRow, ...]:
+        """Return the rows in one collection state.
+
+        Args:
+            state: The state to select.
+
+        Returns:
+            The matching rows, in report order.
+
+        """
+        return tuple(row for row in self.rows if row.collection_state is state)
+
+    def not_collected(self) -> tuple[SourceRow, ...]:
+        """Return crawlers whose successes collected nothing.
+
+        The only finding here that is both silent in the ledger and actionable
+        without a judgement call about what the data should look like.
+        """
+        return self.by_state(CollectionState.NOT_COLLECTED)
+
+    def policy_disagreements(self) -> tuple[SourceRow, ...]:
+        """Return crawlers this module calls permitted but the ledger calls refused.
+
+        The two come from different places: the verdict is read off the hosts
+        visible in the crawler source, the outcome was recorded at fetch time. A
+        runtime-assembled URL is invisible to the first, so both can be true at
+        once. Which one is wrong cannot be settled from here, so the
+        disagreement is reported instead of resolved by preferring one.
+        """
+        return tuple(
+            row
+            for row in self.rows
+            if row.policy_status is PolicyStatus.OK and row.runs is not None and row.runs.policy_blocked
+        )
+
     def succeeding_and_stale(self) -> tuple[SourceRow, ...]:
         """Return crawlers reporting success while their tables go empty.
 
@@ -651,7 +777,8 @@ class SourceInventory:
         return tuple(
             row
             for row in self.rows
-            if row.rag_chunks > 0 and any(m.freshness is Freshness.STALE for m in row.measurements)
+            if row.rag_chunks > 0
+            and row.collection_state in (CollectionState.NOT_COLLECTED, CollectionState.UNEPLAINED)
         )
 
 
@@ -876,7 +1003,7 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     try:
         rows = session.execute(
             text(
-                "SELECT crawler, status, records_read, records_written, started_at "
+                "SELECT crawler, status, records_read, records_written, started_at, error_code "
                 "FROM crawl_execution_runs WHERE started_at > :since"
             ),
             {"since": since},
@@ -892,13 +1019,15 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     # error handling silently replaces it with nothing.
     summaries: dict[str, list[int]] = {}
     latest_at: dict[str, datetime] = {}
-    for crawler, status, records_read, records_written, started_at in rows:
-        counts = summaries.setdefault(str(crawler), [0, 0, 0])
+    for crawler, status, records_read, records_written, started_at, error_code in rows:
+        counts = summaries.setdefault(str(crawler), [0, 0, 0, 0])
         counts[0] += 1
         if status == "success":
             counts[1] += 1
             if not (records_read or 0) and not (records_written or 0):
                 counts[2] += 1
+        if error_code in POLICY_OUTCOME_CODES:
+            counts[3] += 1
         if started_at is not None:
             seen = latest_at.get(str(crawler))
             latest_at[str(crawler)] = started_at if seen is None or started_at > seen else seen
@@ -910,6 +1039,7 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
             succeeded=counts[1],
             zero_yield=counts[2],
             latest_at=latest_at.get(crawler),
+            policy_blocked=counts[3],
         )
         for crawler, counts in summaries.items()
     }
@@ -1147,10 +1277,16 @@ def _collect_findings(
         if row.runs is not None
     )
     advisories.extend(
+        f"{row.crawler}: its sources read as permitted but {row.runs.policy_blocked} run(s) were "
+        f"recorded as refused -- the URL is probably built at runtime, which this report cannot see"
+        for row in rows
+        if row.policy_status is PolicyStatus.OK and row.runs is not None and row.runs.policy_blocked
+    )
+    advisories.extend(
         f"AI-visible stale data: {row.crawler} feeds {row.rag_chunks} chunks from a table "
         f"last current {row.stalest.render_age() if row.stalest else 'never'}"
         for row in rows
-        if row.rag_chunks > 0 and any(m.freshness is Freshness.STALE for m in row.measurements)
+        if row.rag_chunks > 0 and row.collection_state in (CollectionState.NOT_COLLECTED, CollectionState.UNEPLAINED)
     )
     return drift, advisories
 

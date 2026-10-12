@@ -62,7 +62,8 @@ def scratch_db() -> Iterator[sessionmaker]:
         connection.execute(
             text(
                 "CREATE TABLE crawl_execution_runs (id INTEGER PRIMARY KEY, crawler VARCHAR(64), "
-                "status VARCHAR(32), records_read INTEGER, records_written INTEGER, started_at TIMESTAMP)"
+                "status VARCHAR(32), error_code VARCHAR(32), records_read INTEGER, records_written INTEGER, "
+                "started_at TIMESTAMP)"
             )
         )
         connection.execute(text("INSERT INTO rag_chunks (source_table) VALUES ('old_table')"))
@@ -707,3 +708,189 @@ class TestRunYields:
 
         reported = {row.crawler for row in report.zero_yield_runs()}
         assert "preview_crawler" in reported
+
+
+def _seed_blocked(factory, crawler: str, count: int) -> None:
+    """Write `count` runs the ledger recorded as refused rather than unreachable."""
+    with factory() as session:
+        for index in range(count):
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, error_code, records_read, "
+                    "records_written, started_at) VALUES (:c, 'failed', 'FETCH_BLOCKED', 0, 0, :t)"
+                ),
+                {"c": crawler, "t": (datetime.now(UTC) - timedelta(hours=index)).replace(tzinfo=None)},
+            )
+        session.commit()
+
+
+class TestCollectionState:
+    """The verdict is the ledger and the table together, because neither alone works.
+
+    Found by running the report: `parking` had succeeded four days running, three
+    records a day, while `parking_lots.updated_at` sat at 2026-08-15. An age-only
+    verdict called that a table that had not been collected for 57 days.
+    """
+
+    def _row(self, factory, monkeypatch, crawler, *, tables, succeeded, zero_yield, total=0):
+        _seed_runs(factory, crawler.removesuffix("_crawler"), succeeded=succeeded, zero_yield=zero_yield, total=total)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            crawler,
+            inv.SourceDeclaration(tables=tables, alternative_source="elsewhere"),
+        )
+        return inv.build_inventory(session_factory=factory).rows_by_crawler()[crawler]
+
+    def test_yielding_runs_with_a_stale_table_are_stable_not_broken(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The false positive this verdict exists to remove."""
+        row = self._row(
+            scratch_db,
+            monkeypatch,
+            "game_detail_crawler",
+            tables=("old_table",),
+            succeeded=4,
+            zero_yield=0,
+        )
+
+        assert row.collection_state is inv.CollectionState.STABLE
+        assert row.stale is True
+
+    def test_zero_yield_successes_are_not_collected(
+        self, scratch_db: sessionmaker, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row = self._row(
+            scratch_db,
+            monkeypatch,
+            "game_detail_crawler",
+            tables=("old_table",),
+            succeeded=4,
+            zero_yield=4,
+        )
+
+        assert row.collection_state is inv.CollectionState.NOT_COLLECTED
+
+    def test_zero_yield_successes_are_not_collected_without_a_table_to_match(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The preview crawler: no table of its own, and the worst case in the set."""
+        row = self._row(
+            scratch_db,
+            monkeypatch,
+            "preview_crawler",
+            tables=(),
+            succeeded=50,
+            zero_yield=50,
+        )
+
+        assert row.collection_state is inv.CollectionState.NOT_COLLECTED
+
+    def test_no_successful_run_is_failing_rather_than_not_collected(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`food` collected nothing and succeeded at nothing; calling that a silent
+        failure would dress up a loud one.
+        """
+        row = self._row(
+            scratch_db,
+            monkeypatch,
+            "food_crawler",
+            tables=("old_table",),
+            succeeded=0,
+            zero_yield=0,
+            total=3,
+        )
+
+        assert row.collection_state is inv.CollectionState.FAILING
+        assert row.stale is True
+
+    def test_a_stale_table_with_no_runs_is_unexplained(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Weekly and on-demand crawlers simply do not run; that is not a verdict."""
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "game_detail_crawler",
+            inv.SourceDeclaration(tables=("old_table",), alternative_source="elsewhere"),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+        row = report.rows_by_crawler()["game_detail_crawler"]
+
+        assert row.collection_state is inv.CollectionState.UNEPLAINED
+
+    def test_yielding_runs_with_a_current_table_are_collecting(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        row = self._row(
+            scratch_db,
+            monkeypatch,
+            "game_detail_crawler",
+            tables=("fresh_table",),
+            succeeded=4,
+            zero_yield=0,
+        )
+
+        assert row.collection_state is inv.CollectionState.COLLECTING
+
+    def test_a_stable_crawler_is_not_reported_as_collecting_nothing(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_runs(scratch_db, "game_detail", succeeded=4, zero_yield=0)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "game_detail_crawler",
+            inv.SourceDeclaration(tables=("old_table",), alternative_source="elsewhere"),
+        )
+
+        report = inv.build_inventory(session_factory=scratch_db)
+
+        assert report.not_collected() == ()
+
+    def test_a_permitted_crawler_with_refused_runs_is_a_disagreement(
+        self,
+        scratch_db: sessionmaker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`food` reads from a host whose policy permits it, yet the ledger recorded
+        refusals -- because the URL is assembled at runtime and this report cannot
+        see it. Reporting the disagreement beats deciding which side is wrong.
+        """
+        _seed_runs(scratch_db, "food", succeeded=2, zero_yield=0)
+        _seed_blocked(scratch_db, "food", 1)
+        monkeypatch.setitem(
+            inv.DECLARED,
+            "food_crawler",
+            inv.SourceDeclaration(tables=(), alternative_source="elsewhere"),
+        )
+        # Inject the verdict rather than rebuilding the row afterwards: a test that
+        # reassembles the object under test is no longer testing the code that
+        # builds it.
+        real_status = inv.policy_status_of
+
+        def allowed(module, verdicts, **kwargs):
+            return inv.PolicyStatus.OK if module == "food_crawler" else real_status(module, verdicts, **kwargs)
+
+        monkeypatch.setattr(inv, "policy_status_of", allowed)
+
+        report = inv.build_inventory(session_factory=scratch_db)
+        row = report.rows_by_crawler()["food_crawler"]
+
+        assert row.policy_status is inv.PolicyStatus.OK
+        assert row.runs is not None
+        assert row.runs.policy_blocked == 1
+        assert [r.crawler for r in report.policy_disagreements()] == ["food_crawler"]
+        assert any("read as permitted" in line for line in report.advisories)

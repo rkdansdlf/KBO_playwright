@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from src.db.engine import SessionLocal
 from src.reporting.source_inventory import (
+    CollectionState,
     Freshness,
     PolicyStatus,
     SourceInventory,
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
 
 EXIT_OK = 0
 EXIT_DRIFT = 3
+
+#: Crawlers named per state line before the rest are counted.
+NAMES_SHOWN = 4
 
 _FRESHNESS_MARK = {
     Freshness.CURRENT: "ok",
@@ -65,8 +69,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _render_zero_yield(inventory: SourceInventory) -> list[str]:
-    """Render the crawlers whose reported successes collected nothing.
+def _render_states(inventory: SourceInventory) -> list[str]:
+    """Render the ledger-and-table matrix.
+
+    The two signals are shown side by side because neither answers alone. An
+    age-only column reads "old" as "broken", which reported a crawler writing
+    three records every day as a table that had not changed since August.
 
     Args:
         inventory: The inventory to render.
@@ -75,20 +83,22 @@ def _render_zero_yield(inventory: SourceInventory) -> list[str]:
         The section's lines, heading included.
 
     """
-    bare = inventory.zero_yield_runs()
-    corroborated = set(inventory.succeeding_and_stale())
-    lines = ["", f"Success that collected nothing ({len(bare)})"]
-    if not bare:
-        lines.append("  none")
-        return lines
-    for row in bare:
-        runs = row.runs
-        if runs is None:
+    lines = ["", "Collection state"]
+    for state in CollectionState:
+        rows = inventory.by_state(state)
+        if not rows:
             continue
-        where = "table is old too" if row in corroborated else "no table of its own"
-        lines.append(
-            f"  {row.crawler}: {runs.succeeded} of {runs.total} runs succeeded in {runs.window_hours}h, "
-            f"reading and writing nothing ({where})"
+        shown = rows[:NAMES_SHOWN]
+        lines.append(f"  {state.value:14} {len(rows):3}  {', '.join(r.crawler for r in shown)}")
+        if len(rows) > NAMES_SHOWN:
+            lines.append(f"  {'':14}      {len(rows) - NAMES_SHOWN} more")
+    disagreements = inventory.policy_disagreements()
+    if disagreements:
+        lines.extend(["", "Policy disagreements"])
+        lines.extend(
+            f"  {row.crawler}: sources read as permitted, but {row.runs.policy_blocked} run(s) were refused"
+            for row in disagreements
+            if row.runs is not None
         )
     return lines
 
@@ -131,7 +141,7 @@ def _render_text(inventory: SourceInventory) -> str:
                 f"{_FRESHNESS_MARK[measurement.freshness]:7} {row.rag_chunks if index == 0 else '':>7}",
             )
 
-    lines.extend(_render_zero_yield(inventory))
+    lines.extend(_render_states(inventory))
 
     exposed = inventory.ai_exposure()
     lines.extend(["", f"AI-visible stale data ({len(exposed)})"])
