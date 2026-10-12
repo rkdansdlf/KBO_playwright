@@ -222,14 +222,31 @@ def _failed_stage_ids(report: object) -> set[str]:
 
 
 def _publish_quality_incident(report: object) -> None:
-    """Open or recover the ``quality:daily`` incident from the DAG quality stage."""
+    """Open or recover the ``quality:daily`` incident from the DAG quality stage.
+
+    A missing stage is deliberately a no-op -- opening an incident needs
+    something to describe, and inventing one would file a data-quality fault
+    nobody measured. It used to be a *silent* no-op, which is how an incident
+    can sit stale for days: the DAG records only that some other stage failed,
+    ``quality:daily`` keeps its last severity and last count, and nothing in the
+    log says the quality verdict was never refreshed.
+
+    So the no-op stays a no-op and becomes visible instead. ``execute_workflow``
+    appends a result for **every** registered stage -- skipped ones become
+    ``SKIPPED`` rather than disappearing (``master.py``) -- so on the daily_sync
+    workflow this branch is an anomaly, not a routine outcome, and the stage
+    list is logged to make the shape of the run reconstructable.
+    """
     from src.notifications.bridge import apply_incidents
 
-    stage = next(
-        (s for s in (getattr(report, "stage_results", []) or []) if getattr(s, "stage_id", "") == "quality_gate"),
-        None,
-    )
+    stages = getattr(report, "stage_results", []) or []
+    stage = next((s for s in stages if getattr(s, "stage_id", "") == "quality_gate"), None)
     if stage is None:
+        logger.warning(
+            "Quality incident not published: daily_sync reported no quality_gate stage "
+            "(stages=%s). quality:daily keeps its previous state unchanged.",
+            [str(getattr(s, "stage_id", "?")) for s in stages],
+        )
         return
 
     key = "quality:daily"
@@ -251,6 +268,29 @@ def _publish_quality_incident(report: object) -> None:
 
     status = str(getattr(quality_report, "overall_status", "FAIL"))
     if status == "PASS":
+        # A passing run says nothing about whether the comparison ever ran. On a
+        # clean database that is the only thing left in the report, and resolving
+        # the incident here would leave "never measured" looking identical to
+        # "measured and found nothing wrong" -- so the comparison stays off
+        # forever because nobody was told to turn it on.
+        hints = tuple(getattr(quality_report, "remediation_hints", []) or ())
+        pack = _regression_pack(quality_report)
+        if pack is not None and not getattr(pack, "baseline_available", False) and hints:
+            apply_incidents(
+                [
+                    AlertEvent(
+                        source=AlertSource.QUALITY,
+                        component="daily",
+                        severity=AlertSeverity.WARNING,
+                        title="데이터 품질 게이트 기준선 미기록",
+                        message=f"{status} 이지만 PA 기준선이 없어 신규 손상을 구분할 수 없음",
+                        incident_key=key,
+                        remediation=hints,
+                        metadata={"overall_status": status, "baseline_available": False},
+                    ),
+                ],
+            )
+            return
         apply_incidents([], resolve_keys=[key])
         return
 

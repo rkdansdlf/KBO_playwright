@@ -142,9 +142,12 @@ class TestTheDailyQualityIncidentNamesWhatChanged:
 
     @staticmethod
     def _publish(report) -> object:
-        from src.scheduler.jobs.daily import _publish_quality_incident
-
+        # The publisher imports ``apply_incidents`` inside its own body, so the
+        # module has to be patched before the function is bound or the patch
+        # lands after the name it replaces was already taken.
         with patch("src.notifications.bridge.apply_incidents") as applied:
+            from src.scheduler.jobs.daily import _publish_quality_incident
+
             _publish_quality_incident(report)
         return applied.call_args
 
@@ -164,13 +167,7 @@ class TestTheDailyQualityIncidentNamesWhatChanged:
             quality_score=79,
             regression_pack=pack,
         )
-        stage = MagicMock()
-        stage.stage_id = "quality_gate"
-        stage.artifacts = {"quality_report": audit}
-        stage.error_message = None
-        report = MagicMock()
-        report.stage_results = [stage]
-        return report
+        return _stage_report(stage_id="quality_gate", artifacts={"quality_report": audit})
 
     def test_the_message_separates_new_damage_from_the_backlog(self) -> None:
         from src.services.quality_hub import RegressionPackSummary
@@ -226,3 +223,171 @@ class TestTheDailyQualityIncidentNamesWhatChanged:
 
         assert "복구불가 20" in event.message
         assert event.metadata["newly_unrecoverable_count"] == 20
+
+
+def _stage_report(*, stage_id: str, artifacts: dict, error_message: str | None = None) -> MagicMock:
+    """A DAG report carrying one stage, with the attributes the incident reads.
+
+    A bare MagicMock answers any attribute, so ``artifacts`` has to be a real dict
+    for ``or {}`` and ``.get`` in the publisher to mean what they read as.
+    """
+    stage = MagicMock()
+    stage.stage_id = stage_id
+    stage.artifacts = artifacts
+    stage.error_message = error_message
+    report = MagicMock()
+    report.stage_results = [stage]
+    return report
+
+
+class TestAPassWithNoBaselineStillReachesTheOperator:
+    """A passing gate is the least likely moment to be believed about anything.
+
+    ``_publish_quality_incident`` resolves the incident and returns the moment the
+    status is PASS, so a run that has never been measured looks identical to a run
+    that was measured and found nothing wrong. The baseline comparison is the part
+    of the report that distinguishes those two, and on a clean database it is the
+    only thing left to say.
+
+    So a passing run that was asked to compare and could not is opened as a
+    notice rather than swallowed. The gate has no verdict to report, and staying
+    silent would mean the comparison is never switched on by anyone.
+    """
+
+    @staticmethod
+    def _publish(report) -> object:
+        # The publisher imports ``apply_incidents`` inside its own body, so the
+        # module has to be patched before the function is bound or the patch
+        # lands after the name it replaces was already taken.
+        with patch("src.notifications.bridge.apply_incidents") as applied:
+            from src.scheduler.jobs.daily import _publish_quality_incident
+
+            _publish_quality_incident(report)
+        return applied.call_args
+
+    @staticmethod
+    def _report(pack, hints: tuple[str, ...] = ()):
+        from src.services.quality_hub import UnifiedQualityReport
+
+        return _stage_report(
+            stage_id="quality_gate",
+            artifacts={
+                "quality_report": UnifiedQualityReport(
+                    timestamp="2026-10-12T03:00:00+09:00",
+                    overall_status="PASS",
+                    quality_score=100,
+                    regression_pack=pack,
+                    remediation_hints=list(hints),
+                ),
+            },
+        )
+
+    def test_a_pass_without_a_comparison_opens_a_notice_instead_of_resolving(self) -> None:
+        from src.services.quality_hub import RegressionPackSummary
+
+        args = self._publish(
+            self._report(
+                RegressionPackSummary(ok=True, check_count=13, failure_count=0),
+                hints=("python3 -m src.cli.data_quality_regression_pack --write-baseline --season 2026",),
+            ),
+        )
+
+        assert args is not None, "a passing run issued no incident at all"
+        events = args.args[0]
+        assert events, "a passing run resolved the incident instead of reporting the missing baseline"
+        event = events[0]
+        assert event.incident_key == "quality:daily"
+        assert "baseline" in " ".join(event.remediation).lower()
+
+    def test_a_pass_with_a_comparison_still_resolves(self) -> None:
+        """Once the baseline exists there is nothing left to report, and silence is right."""
+        from src.services.quality_hub import RegressionPackSummary
+
+        args = self._publish(
+            self._report(
+                RegressionPackSummary(
+                    ok=True,
+                    check_count=13,
+                    failure_count=0,
+                    baseline_available=True,
+                    baseline_violation_count=0,
+                ),
+            ),
+        )
+
+        assert args.args[0] == []
+        assert args.kwargs.get("resolve_keys") == ["quality:daily"]
+
+    def test_a_stage_that_produced_no_audit_is_a_failure_not_a_pass(self) -> None:
+        """The other silent case: the stage ran and produced nothing to judge."""
+        report = _stage_report(stage_id="quality_gate", artifacts={}, error_message="no audit produced")
+
+        args = self._publish(report)
+
+        events = args.args[0]
+        assert events, "a stage that produced no audit was reported as a pass"
+        assert events[0].severity.name == "ERROR"
+        assert "no audit produced" in events[0].message
+
+
+class TestTheMissingBaselineNoticeCarriesItsInstruction:
+    """An alarm with nothing to act on is worse than silence.
+
+    The notice is opened because the gate could not compare, but the reader's
+    next step is in ``remediation_hints``. A run that was asked to compare and
+    produced no hint has failed somewhere else, and opening an incident naming
+    "no baseline" would send the operator to a database that is fine.
+    """
+
+    @staticmethod
+    def _publish(report) -> object:
+        with patch("src.notifications.bridge.apply_incidents") as applied:
+            from src.scheduler.jobs.daily import _publish_quality_incident
+
+            _publish_quality_incident(report)
+        return applied.call_args
+
+    def test_a_pass_with_no_comparison_and_no_instruction_stays_silent(self) -> None:
+        from src.services.quality_hub import RegressionPackSummary, UnifiedQualityReport
+
+        report = _stage_report(
+            stage_id="quality_gate",
+            artifacts={
+                "quality_report": UnifiedQualityReport(
+                    timestamp="2026-10-12T03:00:00+09:00",
+                    overall_status="PASS",
+                    quality_score=100,
+                    regression_pack=RegressionPackSummary(ok=True, check_count=13, failure_count=0),
+                    remediation_hints=[],
+                ),
+            },
+        )
+
+        args = self._publish(report)
+
+        assert args.args[0] == [], "an incident opened with nothing to tell the reader to do"
+        assert args.kwargs.get("resolve_keys") == ["quality:daily"]
+
+    def test_the_notice_names_the_record_command(self) -> None:
+        from src.services.quality_hub import RegressionPackSummary, UnifiedQualityReport
+
+        report = _stage_report(
+            stage_id="quality_gate",
+            artifacts={
+                "quality_report": UnifiedQualityReport(
+                    timestamp="2026-10-12T03:00:00+09:00",
+                    overall_status="PASS",
+                    quality_score=100,
+                    regression_pack=RegressionPackSummary(ok=True, check_count=13, failure_count=0),
+                    remediation_hints=[
+                        "python3 -m src.cli.data_quality_regression_pack --write-baseline --season 2026"
+                    ],
+                ),
+            },
+        )
+
+        event = self._publish(report).args[0][0]
+
+        assert event.severity.name == "WARNING"
+        assert any("--write-baseline" in hint for hint in event.remediation)
+        assert "기준선" in event.message
