@@ -602,6 +602,15 @@ class _SqlCheck:
     required_columns: tuple[str, ...]
     count_sql: str
     sample_sql: str
+    #: Other tables the SQL reads, which must exist for it to run at all.
+    #:
+    #: ``required_columns`` covers the owning table only. A check that joins
+    #: another one -- to compare against, say -- fails with "no such table" when
+    #: that table is absent, which turns a partial schema into a collection
+    #: error for every test and every partially migrated database. Naming the
+    #: table here lets the pack report the check as unmeasurable instead, which
+    #: is what every other missing-column case already does.
+    referenced_tables: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -940,6 +949,112 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    # A finished game with inning lines and no team total is a total that was
+    # missed, not one that does not exist. The innings are written once per
+    # inning, so the total is arithmetic on data already stored -- and the save
+    # path fills it on the next crawl.
+    #
+    # 2026-08-20 produced five of these at once, all COMPLETED, all with complete
+    # inning lines: away 10 home 6, away 16 home 4, away 4 home 5, away 6 home 4,
+    # away 1 home 7. The batch that wrote the innings on 2026-08-26 wrote no
+    # totals and reported success. 369 stored games are in this state.
+    #
+    # Cancelled games are excluded: they legitimately have no total even when
+    # innings were recorded before the call-off. A game with no innings is
+    # excluded too -- it has not been crawled, so there is no evidence that a
+    # total should exist.
+    _SqlCheck(
+        check_id="game_score_missing_with_innings",
+        description="Finished games with inning lines should carry both team totals",
+        table="game",
+        required_columns=("game_id", "game_status", "home_score", "away_score"),
+        referenced_tables=("game_inning_scores",),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND game_status IN ('COMPLETED', 'FINAL', 'DRAW', '종료')
+              AND (home_score IS NULL OR away_score IS NULL)
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+              )
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game.game_id AS TEXT), ''), game.game_status
+            FROM game
+            WHERE game.is_primary
+              AND game.game_status IN ('COMPLETED', 'FINAL', 'DRAW', '종료')
+              AND (game.home_score IS NULL OR game.away_score IS NULL)
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+              )
+            LIMIT 5
+        """,
+    ),
+    # The other direction, and the reason the save path only fills a blank rather
+    # than overwriting: a stated total that contradicts its own innings is the
+    # only trace that two parts of the source page disagreed. Overwriting it with
+    # a sum would remove the evidence and record a number nobody read.
+    _SqlCheck(
+        check_id="game_score_disagrees_with_innings",
+        description="A team total should equal the sum of that team's innings",
+        table="game",
+        required_columns=("game_id", "home_score", "away_score"),
+        referenced_tables=("game_inning_scores",),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+              )
+              AND (
+                    home_score <> (
+                        SELECT SUM(s.runs) FROM game_inning_scores s
+                        WHERE s.game_id = game.game_id AND s.team_side = 'home'
+                    )
+                 OR away_score <> (
+                        SELECT SUM(s.runs) FROM game_inning_scores s
+                        WHERE s.game_id = game.game_id AND s.team_side = 'away'
+                    )
+              )
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game.game_id AS TEXT), ''), game.home_score, game.away_score
+            FROM game
+            WHERE game.is_primary
+              AND game.home_score IS NOT NULL
+              AND game.away_score IS NOT NULL
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+              )
+              AND (
+                    game.home_score <> (
+                        SELECT SUM(s.runs) FROM game_inning_scores s
+                        WHERE s.game_id = game.game_id AND s.team_side = 'home'
+                    )
+                 OR game.away_score <> (
+                        SELECT SUM(s.runs) FROM game_inning_scores s
+                        WHERE s.game_id = game.game_id AND s.team_side = 'away'
+                    )
+              )
+            LIMIT 5
+        """,
+    ),
     # A cancelled game has no result, so a row carrying both scores is asserting
     # something that did not happen. The 2001+ rows that do this are the small
     # residue of finished matches whose terminal state was overwritten, and the
@@ -1080,6 +1195,9 @@ def _run_check(
         for column in (*check.required_columns, *scope_columns)
         if column not in columns and not (column == "source" and "data_source" in columns)
     ]
+    if not missing_columns and check.referenced_tables:
+        available = set(inspect(conn).get_table_names())
+        missing_columns = [f"{name} (table)" for name in check.referenced_tables if name not in available]
     if missing_columns:
         return QualityRegressionResult(
             check_id=check.check_id,
