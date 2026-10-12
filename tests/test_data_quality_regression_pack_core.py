@@ -1413,18 +1413,11 @@ class TestTheBaselineLivesInTheDatabase:
     def _conn() -> object:
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as setup:
-            setup.execute(
-                text(
-                    """
-                    CREATE TABLE pa_violation_baseline (
-                        check_id TEXT NOT NULL,
-                        scope_season INTEGER NOT NULL DEFAULT 0,
-                        player_id INTEGER NOT NULL,
-                        recorded_at TIMESTAMP NOT NULL,
-                        PRIMARY KEY (check_id, scope_season, player_id)
-                    )
-                    """,
-                ),
+            # The record tables come from the migration file itself. The code no
+            # longer creates them, so a hand-written stand-in would let the
+            # migration and the reader drift apart without anything failing.
+            setup.connection.driver_connection.executescript(
+                Path("migrations/sqlite/069_pa_violation_baseline.sql").read_text(),
             )
         # A connection with no transaction already open, so the tests can take one.
         conn = engine.connect()
@@ -1583,3 +1576,171 @@ class TestTheBaselineLivesInTheDatabase:
 
         assert rows, "nothing was recorded"
         assert rows[0][0] is not None
+
+    def test_a_missing_table_is_read_as_not_compared_rather_than_raised(self) -> None:
+        """The daily stage reads this, so it must not fail on a fresh install.
+
+        An unmigrated database is a normal state for a new deployment, and the
+        pack runs inside the quality gate where an exception would take down the
+        whole stage instead of one comparison. It has to come back saying it did
+        not compare -- which the hub already turns into an operator hint.
+        """
+        from src.validators.data_quality_regression_pack import compare_against_baseline_db
+
+        engine = create_engine("sqlite:///:memory:")
+        with engine.connect() as conn:
+            _create_quality_tables(conn)
+            conn.rollback()
+            verdict = compare_against_baseline_db(conn, season=2026)
+
+        assert verdict.baseline_available is False
+        assert verdict.new_violations == ()
+
+    def test_recording_into_an_unmigrated_database_says_what_to_do(self) -> None:
+        """Recording cannot be made to work by guessing at the schema.
+
+        Writing either creates the table outside the migration history or raises
+        something the operator cannot act on. The message names the cause, because
+        the only fix is a migration run this command cannot do for them.
+        """
+        from src.validators.data_quality_regression_pack import (
+            BaselineUnreadableError,
+            write_baseline_to_db,
+        )
+
+        engine = create_engine("sqlite:///:memory:")
+        with engine.connect() as conn:
+            _create_quality_tables(conn)
+            conn.rollback()
+            with pytest.raises(BaselineUnreadableError, match="migrations"):
+                write_baseline_to_db(conn, season=2026)
+
+
+class TestCancelledGamesCarryingScores:
+    """A cancelled game has no result, so a row holding both scores is false.
+
+    7,995 rows of 1983-2000 were found in this state on 2026-10-12, all of them
+    written inside half an hour on 2026-09-23 with nothing in the crawl ledger.
+    Nothing in the status-derivation rules produces it -- every caller hands the
+    database's own scores to the resolver, which returns COMPLETED or DRAW
+    whenever both are present. The writer was never identified, so this check
+    stands in for it: the observation is what was missing when it happened.
+    """
+
+    @staticmethod
+    def _run(conn) -> tuple[object, object, object]:
+        from src.validators.data_quality_regression_pack import _CHECKS, run_regression_pack
+
+        check = next(item for item in _CHECKS if item.check_id == "game_cancelled_with_scores")
+        # run_regression_pack first, so the finding is proved through the entry
+        # point the scheduler and the daily workflow both call, not only through
+        # the private helper that happens to know this one check.
+        report = run_regression_pack(conn)
+        reported = next(res for res in report.results if res.check_id == "game_cancelled_with_scores")
+        return report, reported, check
+
+    @staticmethod
+    def _create_game_table(conn) -> None:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    game_id TEXT,
+                    game_status TEXT,
+                    home_score INTEGER,
+                    away_score INTEGER,
+                    is_primary BOOLEAN
+                )
+                """,
+            ),
+        )
+
+    def test_a_cancelled_game_holding_both_scores_is_reported(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._create_game_table(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
+                    VALUES ('G1', 'CANCELLED', 5, 4, 1)
+                    """,
+                ),
+            )
+
+            report, result, _ = self._run(conn)
+
+        assert result.status == "fail"
+        assert result.violation_count == 1
+        assert result.sample_ids == ("G1",)
+        assert report.ok is False, "the pack reports ok on a run that failed a check"
+
+    def test_a_cancelled_game_without_scores_is_the_normal_shape(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._create_game_table(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
+                    VALUES ('G1', 'CANCELLED', NULL, NULL, 1),
+                           ('G2', 'COMPLETED', 5, 4, 1),
+                           ('G3', 'DRAW', 3, 3, 1)
+                    """,
+                ),
+            )
+
+            report, result, _ = self._run(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+        assert report.ok is True
+
+    def test_a_superseded_duplicate_row_is_not_reported(self) -> None:
+        """A retired duplicate carries the score of a game that does exist.
+
+        The 1982 dedup left 241 rows at ``is_primary = false`` holding exactly
+        this shape -- CANCELLED with both scores. Counting them would put this
+        check in failure before anything has happened again, and a gate that is
+        red on arrival is a gate nobody reads.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._create_game_table(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
+                    VALUES ('DUP', 'CANCELLED', 5, 4, 0),
+                           ('PRIMARY', 'UNRESOLVED_MISSING', 5, 4, 1)
+                    """,
+                ),
+            )
+
+            report, result, _ = self._run(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+        assert report.ok is True
+
+    def test_the_check_is_skipped_rather_than_failed_without_a_game_table(self) -> None:
+        """The other fixtures here have no ``game`` table, so they pass by absence.
+
+        Without the table the check reports ``skipped``, which counts as
+        not-failed. Proving that a green suite is not merely a suite where this
+        check never ran is what keeps the observation from being decorative.
+        """
+        from sqlalchemy import inspect
+
+        from src.validators.data_quality_regression_pack import _CHECKS, run_regression_pack
+
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            assert "game" not in set(inspect(conn).get_table_names())
+
+            report = run_regression_pack(conn)
+
+        result = next(res for res in report.results if res.check_id == "game_cancelled_with_scores")
+        assert result.status == "skipped"
+        assert result.violation_count == 0
+        assert next(c for c in _CHECKS if c.check_id == "game_cancelled_with_scores").table == "game"

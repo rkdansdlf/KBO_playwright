@@ -361,65 +361,22 @@ def compare_unrecoverable(conn: Connection, path: Path) -> UnrecoverableVerdict:
 #: season is shorter than four digits.
 ALL_SEASONS_SCOPE = 0
 
-_BASELINE_COLUMNS = (
-    "scope_season INTEGER NOT NULL DEFAULT {scope}, player_id INTEGER NOT NULL, "
-    "recorded_at {stamp} NOT NULL, PRIMARY KEY (check_id, scope_season, player_id)"
-)
-_BASELINE_CHECK_ID = {"postgresql": "VARCHAR(64)", "sqlite": "TEXT", "oracle": "VARCHAR2(64)"}
-_BASELINE_STAMP = {"postgresql": "TIMESTAMP", "sqlite": "TIMESTAMP", "oracle": "TIMESTAMP"}
+BASELINE_TABLE = "pa_violation_baseline"
+UNRECOVERABLE_TABLE = "pa_unrecoverable"
 
-_BASELINE_ENSURE = {
-    dialect: (
-        f"CREATE TABLE IF NOT EXISTS pa_violation_baseline "
-        f"(check_id {check_id_type} NOT NULL, "
-        + _BASELINE_COLUMNS.format(scope=ALL_SEASONS_SCOPE, stamp=_BASELINE_STAMP[dialect])
-        + ")"
-    )
-    for dialect, check_id_type in _BASELINE_CHECK_ID.items()
-}
-_BASELINE_ENSURE["oracle"] = (
-    "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE pa_violation_baseline "
-    "(check_id VARCHAR2(64) NOT NULL, "
-    + _BASELINE_COLUMNS.format(scope=ALL_SEASONS_SCOPE, stamp="TIMESTAMP")
-    + "CONSTRAINT pk_pa_violation_baseline PRIMARY KEY (check_id, scope_season, player_id))'; END;"
-)
+#: Explains the one way an operator can fix this, which is running the migrations.
+BASELINE_TABLE_MISSING = f"{BASELINE_TABLE} is absent; run the migrations"
 
 
-_UNRECOVERABLE_ENSURE = {
-    "postgresql": (
-        "CREATE TABLE IF NOT EXISTS pa_unrecoverable ("
-        "player_id INTEGER NOT NULL, season INTEGER, league VARCHAR(16), source VARCHAR(20), "
-        "reason VARCHAR(32) NOT NULL, detail VARCHAR(400), recorded_at TIMESTAMP NOT NULL)"
-    ),
-    "sqlite": (
-        "CREATE TABLE IF NOT EXISTS pa_unrecoverable ("
-        "player_id INTEGER NOT NULL, season INTEGER, league TEXT, source TEXT, "
-        "reason TEXT NOT NULL, detail TEXT, recorded_at TIMESTAMP NOT NULL)"
-    ),
-}
-_UNRECOVERABLE_ENSURE["oracle"] = (
-    "BEGIN EXECUTE IMMEDIATE 'CREATE TABLE pa_unrecoverable ("
-    "player_id NUMBER NOT NULL, season NUMBER, league VARCHAR2(16), source VARCHAR2(20), "
-    "reason VARCHAR2(32) NOT NULL, detail VARCHAR2(400), recorded_at TIMESTAMP NOT NULL)'; END;"
-)
+def _table_exists(conn: Connection, table: str) -> bool:
+    """Return whether a record table is present.
 
-
-def _ensure_baseline_table(conn: Connection) -> None:
-    """Create the record table if the migrations have not run yet.
-
-    A read-only connection cannot create it, and a read on a missing table has to
-    come back as "not compared" rather than as an error that fails the daily
-    stage. Callers that want the table present run the migration.
+    Both tables come from the migrations. Creating them here would split the
+    schema between the migration history and the code that reads it, and a
+    read-only connection cannot do it anyway -- so an absent table is reported as
+    "not compared" rather than papered over.
     """
-    dialect = conn.dialect.name
-    if dialect not in _BASELINE_ENSURE:
-        return
-    # No commit: the caller owns the transaction, and committing here would end
-    # a unit of work that is still in progress on the same connection.
-    with contextlib.suppress(Exception):  # absence is reported, not raised
-        conn.execute(text(_BASELINE_ENSURE[dialect]))
-    with contextlib.suppress(Exception):
-        conn.execute(text(_UNRECOVERABLE_ENSURE[dialect]))
+    return table in set(inspect(conn).get_table_names())
 
 
 def _scope_key(season: int | None) -> int:
@@ -437,7 +394,8 @@ def write_baseline_to_db(conn: Connection, *, season: int | None = None) -> dict
     scheduler runs on a different host from the one holding the repository, so a
     repository-relative file would leave the daily gate permanently uncompared.
     """
-    _ensure_baseline_table(conn)
+    if not _table_exists(conn, BASELINE_TABLE):
+        raise BaselineUnreadableError(BASELINE_TABLE_MISSING)
     stamp = datetime.now(KST)
     scope = _scope_key(season)
     recorded: dict[str, Any] = {
@@ -474,7 +432,8 @@ def compare_against_baseline_db(conn: Connection, *, season: int | None = None) 
     missing record as an empty one would report the whole historical backlog as
     new damage on the first night, and those counts are subtracted from a score.
     """
-    _ensure_baseline_table(conn)
+    if not _table_exists(conn, BASELINE_TABLE):
+        return BaselineVerdict((), (), (), unknown_checks=(), baseline_available=False)
     now: set[str] = set()
     for check_id in sorted(_BASELINE_CHECK_IDS):
         now.update(_violated_player_ids(conn, check_id, season=season))
@@ -518,7 +477,8 @@ def write_unrecoverable_to_db(conn: Connection) -> dict[str, Any]:
     where the repository is checked out, so a file would make the record exist on
     the machine that wrote it and nowhere else.
     """
-    _ensure_baseline_table(conn)
+    if not _table_exists(conn, UNRECOVERABLE_TABLE):
+        return {"version": 1, "rows": []}
     rows = _unrecoverable_rows(conn)
     conn.execute(text("DELETE FROM pa_unrecoverable"))
     for row in rows:
@@ -550,7 +510,6 @@ def compare_unrecoverable_db(conn: Connection) -> UnrecoverableVerdict:
     could be, and the crawler that loses counts is still running, so this is where
     damage of that shape surfaces.
     """
-    _ensure_baseline_table(conn)
     recorded: set[str] = set()
     with contextlib.suppress(Exception):  # a missing table means nothing was recorded
         recorded = {str(row[0]) for row in conn.execute(text("SELECT player_id FROM pa_unrecoverable")).all()}
@@ -904,6 +863,48 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             SELECT COALESCE(CAST(player_id AS TEXT), ''), hits, at_bats
             FROM player_season_batting
             WHERE hits > at_bats AND at_bats > 0
+            LIMIT 5
+        """,
+    ),
+    # A cancelled game has no result, so a row carrying both scores is asserting
+    # something that did not happen. The 2001+ rows that do this are the small
+    # residue of finished matches whose terminal state was overwritten, and the
+    # 1983-2000 rows were 7,995 of them at once -- written in half an hour on
+    # 2026-09-23 with no entry in the crawl ledger, so no crawler produced them
+    # and no status-derivation rule explains them.
+    #
+    # This check is the observation that was missing when that happened. It does
+    # not prevent it and cannot repair it: the three derive_stable_game_status
+    # callers already hand the database's own scores to the resolver, which
+    # returns COMPLETED or DRAW whenever both are present, so a CANCELLED row
+    # carrying scores did not come through that path. The writer was never found,
+    # and guessing at one would add a guard with no verified failure behind it.
+    #
+    # is_primary is scoped on purpose. The 241 superseded 1982 duplicate rows
+    # were left CANCELLED on purpose when they were retired -- they carry the
+    # score of a game that exists, which is exactly this shape. Reporting them
+    # would mean this check starts failing before anything has happened again,
+    # and a gate that is red on arrival is a gate nobody reads.
+    _SqlCheck(
+        check_id="game_cancelled_with_scores",
+        description="Cancelled games should not carry both team scores",
+        table="game",
+        required_columns=("game_id", "game_status", "home_score", "away_score", "is_primary"),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND game_status = 'CANCELLED'
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game_id AS TEXT), '')
+            FROM game
+            WHERE is_primary
+              AND game_status = 'CANCELLED'
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
             LIMIT 5
         """,
     ),

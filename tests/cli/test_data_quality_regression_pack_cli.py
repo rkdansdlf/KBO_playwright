@@ -11,7 +11,12 @@ from src.cli.data_quality_regression_pack import main
 
 
 def _create_quality_tables(conn) -> None:
-    """A season table with the shape the pack queries, nothing else."""
+    """A season table with the shape the pack queries, nothing else.
+
+    The record tables come from the migration file itself rather than from a copy
+    of its DDL. The code no longer creates them, so a hand-written stand-in would
+    let the migration and the reader drift apart without anything failing.
+    """
     conn.execute(
         text(
             """
@@ -30,6 +35,9 @@ def _create_quality_tables(conn) -> None:
             )
             """,
         ),
+    )
+    conn.connection.driver_connection.executescript(
+        Path("migrations/sqlite/069_pa_violation_baseline.sql").read_text(),
     )
 
 
