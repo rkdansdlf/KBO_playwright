@@ -198,3 +198,68 @@ PGCONNECT_TIMEOUT=5 venv/bin/python -m src.cli.apply_postgres_migrations --check
 - 최근 Windows Update 5건과 Tailscale 버전
 - 변경한 설정(파일 백업 경로 포함)
 - 재발 시각과 그때의 방화벽 프로필
+
+## 9. 복구 결정 기록 (2026-10-12 ~ 10-13)
+
+Windows `kbo_postgres`(bega_prod) 장애 복구에서 내린 결정과 근거. 각 결정은 복구 과정에서 실제로 확인한 사실을 바탕으로 한다.
+
+### 9.1 원본 보존 (가장 먼저 한 일)
+
+- 손상된 볼륨 `kbo_playwright_postgres-data`를 호스트 사본 `D:\kbo_backup\volume_copy_20261013`로 보존했다.
+- 검증: `global/pg_control` md5 `3fcacd03…`, 3,351개 파일, `pg_wal` 63개가 원본과 일치.
+- 이 사본은 장애 직전 상태이므로 원인 분석과 롤백에 사용한다. 분석이 끝나기 전에는 삭제하지 않는다.
+
+### 9.2 복구 방식: pg_resetwal (사본 볼륨에서만)
+
+- 원인: `pg_control`이 `4/7AFE2D60` 체크포인트를 가리켰으나, 그 WAL 세그먼트가 없어 기동이 PANIC으로 실패했다.
+- 읽을 수 있는 WAL은 `5/B6000000` ~ `5/B6F5E4B0`이었다. 이 구간에 체크포인트 `5/B6F0BF48`이 있었지만, 공식 도구로는 `pg_control`을 그 위치로 되돌릴 수 없었다.
+- 선택: `pg_resetwal -f -x 40000`을 복구 사본 볼륨(`kbo_pg_recover`)에만 실행했다. 원본 볼륨에는 쓰지 않았다.
+- `-x 40000`이 필요한 이유: `pg_control`의 NextXID가 `36811`로 남으면 WAL 마지막 XID `38752`보다 작아서, 재임베딩 행이 보이지 않는다(행 수 0처럼 보임). 실제 데이터 파일 손실은 아니었다.
+- 교훈: `pg_resetwal`은 `-x`를 반드시 WAL 최대 XID보다 크게 지정하고, 기동 후 `txid_current()`와 행의 `xmin`을 대조한다.
+
+### 9.3 손실 범위 (확인된 것과 미확인인 것)
+
+- 확인됨: 버려진 WAL 구간은 `5/B6F5E4B0` 이후이며, 2026-10-12 19:00~19:05 UTC의 커밋 약 100건 규모다.
+- 확인됨: WAL 분석으로 장애 손실에 의한 `game` 행 삭제는 0건이다.
+- 미확인: 위 커밋 100건이 어떤 테이블의 어떤 행인지. 애플리케이션 로그로 확인이 필요하다.
+
+### 9.4 백업
+
+- 복구 직후 운영 DB를 `pg_dump -Fc`로 백업했다: `D:\kbo_backup\bega_prod_after_recovery_20261013.dump`, 약 1.65 GiB.
+- sha256: `4398455c7e5763f917ff8b3c38672e4b459a895484efbc568b20e3e54d18c11e`
+- 검증: `pg_restore -l` 정상, 목록 1,394개 항목.
+
+### 9.5 `rag_chunk_terms` 미복원
+
+- 결정: 옛 term 테이블을 복원하지 않는다(선택지 A).
+- 근거: 옛 term 테이블의 chunk id 222,987개 중 약 78%(174,552개)가 재임베딩 `rag_chunks`(583,265행)에 없다. 존재하는 행만 남기면 4,287,429행 중 814,605행(약 19%)만 남는다.
+- 사용처: 이 테이블은 Oracle 경로의 희소 검색에서만 쓰인다. PostgreSQL 경로는 `content_tsv` 전문 검색을 쓴다. 현재 운영은 `RAG_BACKEND=oracle`이라 서비스 영향은 없다.
+- 후속: PostgreSQL 경로를 운영에 올릴 때 현재 corpus에서 재생성해야 한다.
+- 참고: 결정 보조로 외부 판단 모델(OpenRouter 경유)에 요약을 보냈고 선택지 A(확률 0.76)가 나왔다. 최종 판단은 운영 책임자가 했다.
+
+### 9.6 데이터 차이 (`game`)
+
+- 덤프에 있고 운영에 없는 행: 7개(`game_id`: 19950620LTOB0, 19950621LTOB0, 19950620LGTP0, 19950620HTSL0, 19950621HTSL0, 19950620SSHH0, 19950621SSHH0). 모두 시즌 199500, 상태 `CANCELLED`. 자식 행(라인업, 이닝, 타격)은 덤프에서도 0건이었다.
+- 운영에 덤프 이후 추가된 행: 2개(`597889`, `597890`, 예정 경기).
+- 같은 시즌 상태 변화: 운영 `CANCELLED` 221행, `UNRESOLVED_MISSING` 276행. 덤프 기준 504행이 모두 `CANCELLED`였으므로, 276행이 `UNRESOLVED_MISSING`으로 바뀌었다. 변경 경로로 `src/cli/backfill/auto_healer.py`가 의심되지만 실행 기록은 확인하지 못했다.
+- 미확인: 7행 삭제와 276행 상태 변경을 누가, 언제 실행했는지. KBO_playwright 스케줄러 실행 기록으로 확인해야 한다.
+
+### 9.7 인덱스, 콜레이션, 검증
+
+- HNSW 인덱스: 보류. PostgreSQL 경로를 활성화할 때 생성한다.
+- 콜레이션: `template1`의 기록 버전을 2.41에서 2.36으로 갱신했다(2026-10-13). 운영 DB(`bega_prod` 등)는 기록과 실측이 모두 2.36이므로 REINDEX는 하지 않았다.
+- 검증(2026-10-13): btree 인덱스 347개 `bt_index_check`(heapallindexed) 통과, 기본 테이블 96개 `verify_heapam` 손상 행 0건.
+- 공개 API(`api.begabaseball.xyz`) GET 4개 경로 모두 200.
+
+### 9.8 정리
+
+- 제거함: `pg_scratch` 컨테이너와 `kbo_pg_scratch` 볼륨(검증용 복원 DB), `kbo_postgres_plain16_bak` 컨테이너.
+- 제거 이유(후자): 중지된 상태였지만 운영 볼륨 `kbo_playwright_postgres-data`를 마운트하고 있어, 기동되면 같은 데이터에 두 번째 PostgreSQL이 붙을 수 있었다.
+- 보류: `kbo_pg_recover` 볼륨은 롤백용으로 안정화 확인 뒤 제거한다.
+- 보존: `D:\kbo_backup`의 모든 덤프, `volume_copy_20261013`.
+
+### 9.9 미해결
+
+- 장애 근본 원인: `pg_control`이 최신 체크포인트를 따라가지 않은 이유, Docker Desktop과 디스크 상태. 미확인.
+- "4,996행 감소" 기준값의 출처. 덤프 대조로는 재현되지 않았다.
+- VM 백엔드 `:8080` 응답과 로그 확인(공개 도메인 기준으로는 정상).
