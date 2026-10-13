@@ -16,7 +16,7 @@ import json
 import sys
 from typing import TYPE_CHECKING
 
-from src.crawlers.run_vocabulary import explain, latest, vocabulary
+from src.crawlers.run_vocabulary import builds_observed, explain, latest, vocabulary
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -50,6 +50,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="How far back to summarise runs. Default 72.",
     )
     parser.add_argument(
+        "--build-window-hours",
+        type=int,
+        default=168,
+        help="How far back to group runs by the build that wrote them. Default 168.",
+    )
+    parser.add_argument(
         "--vocabulary-only",
         action="store_true",
         help="Print the vocabulary and skip the database entirely.",
@@ -80,13 +86,14 @@ def _render_explanations(pairs: Sequence[str]) -> tuple[list[str], bool]:
     return lines, unknown
 
 
-def _render(vocabulary_map: dict, summary: dict | None, explanations: list[str]) -> str:
+def _render(vocabulary_map: dict, summary: dict | None, explanations: list[str], builds: dict | None = None) -> str:
     """Render the report for a human.
 
     Args:
         vocabulary_map: Column to value to meaning.
         summary: Recent run totals, or None when the database was not read.
         explanations: Rendered `--explain` lines.
+        builds: Observed build markers, or None when the database was not read.
 
     Returns:
         The rendered report.
@@ -98,6 +105,19 @@ def _render(vocabulary_map: dict, summary: dict | None, explanations: list[str])
         lines.append(f"  {column}")
         for value, meaning in values.items():
             lines.append(f"    {value:{width}}  {meaning}")
+
+    builds = builds if builds is not None else None
+    if builds is not None:
+        lines.extend(["", f"Builds that wrote the last {builds['window_hours']}h of runs"])
+        observed = builds["observed"]
+        if not observed:
+            lines.append("  none")
+        for marker, count in observed.items():
+            note = "this build" if marker == builds["this_build"].get("migrations") else ""
+            lines.append(f"    migrations {marker:24} {count:>6} runs  {note}")
+        lines.append("")
+        lines.append("  A marker is what the build carried, not what it ran. Rows with no marker were")
+        lines.append("  written before builds were identified, which is not the same as a broken build.")
 
     if summary is not None:
         totals = summary["totals"]
@@ -142,17 +162,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     explanations, unknown = _render_explanations(args.explain)
     vocabulary_map = vocabulary()
     summary = None if args.vocabulary_only else latest(args.window_hours)
+    builds = None if args.vocabulary_only else builds_observed(args.build_window_hours)
 
     rendered = (
         json.dumps(
-            {"vocabulary": vocabulary_map, "recent": summary, "unknown": unknown},
+            {"vocabulary": vocabulary_map, "recent": summary, "builds": builds, "unknown": unknown},
             ensure_ascii=False,
             indent=2,
             default=str,
         )
         + "\n"
         if args.json
-        else _render(vocabulary_map, summary, explanations)
+        else _render(vocabulary_map, summary, explanations, builds)
     )
     sys.stdout.write(rendered)
     return 1 if unknown else EXIT_OK

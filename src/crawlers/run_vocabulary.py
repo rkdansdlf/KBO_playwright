@@ -26,6 +26,16 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 
+#: Version of this module's vocabulary, recorded on every run.
+#:
+#: Separate from the migration marker because the two answer different questions.
+#: The migration number says which schema changes a build carries; this says which
+#: column a value is expected to appear in. The `source_limited` misdiagnosis was
+#: the second kind -- a value that existed, in a column nobody thought to look in --
+#: and no migration number would have made it findable.
+CONTRACT_VERSION = 1
+
+
 class RunStatus(StrEnum):
     """What `crawl_execution_runs.status` can hold."""
 
@@ -200,6 +210,50 @@ def vocabulary() -> dict[str, dict[str, str]]:
     return {column: dict(values) for column, values in EXPLANATIONS.items()}
 
 
+def builds_observed(window_hours: int = 168, *, session_factory: object | None = None) -> dict[str, object]:
+    """Return which builds wrote the recent runs, grouped by their marker.
+
+    The question this exists for is "is the running build the one I am reading?",
+    which was answerable only by inferring from behaviour -- and each inference
+    today was wrong. A row with no marker is an older build, not a broken one, so
+    it is reported under its own key rather than dropped.
+
+    Args:
+        window_hours: How far back to look.
+        session_factory: Opens a session. The default engine when omitted.
+
+    Returns:
+        Migration marker to run count, newest first, with the contract this build
+        declares alongside so a mismatch is visible without a second command.
+
+    """
+    from datetime import UTC, timedelta
+    from datetime import datetime as _datetime
+
+    from sqlalchemy import text
+
+    from src.db.build_contract import build_contract, migration_of
+    from src.db.engine import SessionLocal
+
+    factory = session_factory or SessionLocal
+    since = _datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=window_hours)
+    with factory() as session:  # type: ignore[operator]
+        rows = session.execute(
+            text("SELECT checkpoint FROM crawl_execution_runs WHERE started_at > :since"),
+            {"since": since},
+        ).all()
+
+    counts: dict[str, int] = {}
+    for (checkpoint,) in rows:
+        marker = migration_of(checkpoint) or "(before markers)"
+        counts[marker] = counts.get(marker, 0) + 1
+    return {
+        "window_hours": window_hours,
+        "observed": dict(sorted(counts.items(), reverse=True)),
+        "this_build": build_contract(),
+    }
+
+
 def latest(window_hours: int = 72, *, session_factory: object | None = None) -> dict[str, object]:
     """Return what the ledger says about recent runs, in named terms.
 
@@ -263,12 +317,14 @@ def latest(window_hours: int = 72, *, session_factory: object | None = None) -> 
 
 
 __all__ = [
+    "CONTRACT_VERSION",
     "EXPLANATIONS",
     "REFUSAL_ERROR_CODES",
     "REFUSAL_OUTCOMES",
     "CheckpointOutcome",
     "RunStatus",
     "SourceLimitReason",
+    "builds_observed",
     "explain",
     "is_refusal",
     "is_source_limited",
