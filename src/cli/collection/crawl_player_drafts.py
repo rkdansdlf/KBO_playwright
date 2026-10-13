@@ -5,20 +5,46 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import sys
 
 from src.crawlers.draft_history_crawler import DraftHistoryCrawler
 from src.crawlers.draft_wiki_crawler import DraftWikiCrawler
+from src.crawlers.result import CrawlOutcome
 from src.db.engine import get_db_session
 from src.repositories.player_draft_repository import PlayerDraftRepository
 
 logger = logging.getLogger(__name__)
 
 
+async def _crawl_wiki(season: int) -> list[dict[str, object]] | None:
+    """Crawl the Wikipedia draft tables for a season.
+
+    Args:
+        season: Target draft season year.
+
+    Returns:
+        The parsed records, or None when the crawl failed. A season without a
+        Wikipedia page is not a failure: the crawler reports it as empty and
+        the caller logs that and continues with zero records.
+
+    """
+    result = await DraftWikiCrawler().crawl_season(season)
+    if result.ok:
+        return result.data
+    if result.outcome is CrawlOutcome.EMPTY:
+        logger.warning("No Wikipedia draft page found for season %d.", season)
+        return []
+    logger.error("Wikipedia draft crawl failed for season %d: %s", season, result.error)
+    return None
+
+
 async def run(args: argparse.Namespace) -> None:
     """Run draft crawler CLI."""
     if args.source == "wiki":
-        crawler = DraftWikiCrawler()
-        results = await crawler.crawl_season(args.season)
+        records = await _crawl_wiki(args.season)
+        if records is None:
+            sys.exit(1)
+        results = records
     else:
         crawler = DraftHistoryCrawler()
         results = await crawler.crawl_draft_history(season=args.season)
