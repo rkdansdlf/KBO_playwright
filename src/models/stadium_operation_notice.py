@@ -26,7 +26,7 @@ class StadiumOperationNotice(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     stadium_code: Mapped[str] = mapped_column(
         String(10),
-        ForeignKey("stadium_info.stadium_code", ondelete="CASCADE"),
+        ForeignKey("stadiums.stadium_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         comment="Canonical stadium code (e.g. JAMSIL)",

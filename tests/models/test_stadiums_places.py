@@ -79,3 +79,24 @@ def test_models_registered_in_metadata() -> None:
     assert "stadiums" in Base.metadata.tables
     assert "places" in Base.metadata.tables
     assert isinstance(Stadium(stadium_id="X", stadium_name="Y").__repr__(), str)
+
+
+def test_child_tables_reference_stadiums() -> None:
+    from src.models.parking_lot import ParkingLot
+    from src.models.stadium_congestion import StadiumCongestion
+    from src.models.stadium_food_vendor import StadiumFoodVendor
+    from src.models.stadium_operation_notice import StadiumOperationNotice
+    from src.models.stadium_seat_section import StadiumSeatSection
+    from src.models.stadium_transit_time import StadiumTransitTime
+
+    for model in (
+        ParkingLot,
+        StadiumFoodVendor,
+        StadiumSeatSection,
+        StadiumCongestion,
+        StadiumTransitTime,
+        StadiumOperationNotice,
+    ):
+        targets = {fk.target_fullname for col in model.__table__.c for fk in col.foreign_keys}
+        assert "stadiums.stadium_id" in targets, model.__tablename__
+        assert not any(t.startswith("stadium_info.") for t in targets), model.__tablename__
