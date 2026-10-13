@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.crawlers.failure_taxonomy import FailureCode
+from src.db.build_contract import stamp
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL, RUN_STATUS_RUNNING, CrawlExecutionRun
 from src.monitoring.crawler_metrics import record_crawl_run
@@ -205,8 +206,20 @@ def track_crawl_run(
     owns_session = session is None
     active = session if session is not None else (session_factory or SessionLocal)()
     service = CrawlRunService(active)
+
+    def persist() -> None:
+        """Stamp, then write.
+
+        Stamped here rather than only at `start`, because the finalize paths set
+        `checkpoint` from their own arguments and would otherwise overwrite a
+        marker applied once at the beginning -- leaving the row that actually
+        reaches the database unmarked while an in-block assertion passes.
+        """
+        run.checkpoint = stamp(run.checkpoint)
+        _persist(active, owns_session=owns_session)
+
     run = service.start(spec)
-    _persist(active, owns_session=owns_session)
+    persist()
 
     try:
         yield run
@@ -214,13 +227,13 @@ def track_crawl_run(
         try:
             error_code = getattr(exc, "error_code", None) or type(exc).__name__
             service.failed(run, error_code=str(error_code), error_message=str(exc))
-            _persist(active, owns_session=owns_session)
+            persist()
         except Exception:
             logger.exception("Failed to persist crawl run failure for crawler=%s", spec.crawler)
         raise
     else:
         _finalize_unmeasured(service, run)
-        _persist(active, owns_session=owns_session)
+        persist()
     finally:
         if owns_session:
             active.close()
