@@ -30,6 +30,7 @@ from src.models.stadium_congestion import StadiumCongestion
 from src.models.stadium_food import StadiumFood
 from src.models.stadium_food_menu_item import StadiumFoodMenuItem
 from src.models.stadium_food_vendor import StadiumFoodVendor
+from src.models.stadium import Stadium
 from src.models.stadium_info import StadiumInfo, StadiumRegulation
 from src.models.stadium_operation_notice import StadiumOperationNotice
 from src.models.stadium_seat_section import StadiumSeatSection
@@ -56,7 +57,15 @@ def db_session():
 
 @pytest.fixture
 def db_with_stadium(db_session):
-    db_session.add(StadiumInfo(stadium_code="JAMSIL", name_kr="잠실야구장"))
+    """Provide the parent row the stadium child tables reference.
+
+    The parent is `stadiums`, not `stadium_info`: `1db89fef` repointed
+    `parking_lots`, `stadium_food_vendors`, `stadium_operation_notices`, and
+    `stadium_seat_sections` at the `stadiums` master table, and an FK violation
+    on insert is the only thing this fixture could report -- it says nothing
+    about the row it failed to create.
+    """
+    db_session.add(Stadium(stadium_id="JAMSIL", stadium_name="잠실야구장"))
     db_session.commit()
     return db_session
 

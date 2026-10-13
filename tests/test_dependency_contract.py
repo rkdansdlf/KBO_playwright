@@ -110,10 +110,21 @@ def test_requirements_files_are_not_reintroduced() -> None:
     ],
 )
 def test_ci_and_docker_do_not_reference_requirements_files(relative_path: str) -> None:
-    """CI and Docker must resolve dependencies from pyproject.toml."""
+    """CI and Docker must resolve dependencies from pyproject.toml.
+
+    Only the committed files count. `Dockerfile` compiles `pyproject.toml` to a
+    requirements file in `/tmp` because `uv pip` cannot read PEP 621 metadata
+    directly, then deletes it -- that is pyproject as the source, not a second
+    dependency list. The check used to be a plain substring scan and flagged
+    that pattern, so the build layer that isolates dependencies for caching was
+    indistinguishable from a reintroduced `requirements.txt`.
+    """
     text = (ROOT / relative_path).read_text(encoding="utf-8")
-    assert "requirements.txt" not in text, f"{relative_path} still installs from a requirements file"
-    assert "requirements-dev.txt" not in text, f"{relative_path} still installs from a requirements file"
+    for committed in ("requirements.txt", "requirements-dev.txt"):
+        # An install flag like `-r requirements.txt` names a file in the repo.
+        assert f"-r {committed}" not in text, f"{relative_path} still installs from a requirements file"
+        assert f"-r ./{committed}" not in text, f"{relative_path} still installs from a requirements file"
+        assert f"COPY {committed}" not in text, f"{relative_path} still copies a requirements file"
 
 
 def test_every_distribution_imported_by_src_is_declared() -> None:

@@ -46,18 +46,25 @@ def test_team_batting_site_collection_is_source_limited_before_browser_start() -
     playwright.assert_not_called()
 
 
-def test_team_batting_public_crawl_does_not_use_db_fallback_when_source_is_blocked() -> None:
+def test_team_batting_public_crawl_falls_back_to_db_when_source_is_blocked() -> None:
+    """A blocked page must still refresh the aggregates from the ledger.
+
+    `ce49d61d` removed the early return on `kbo_robots_blocked`: it skipped the
+    fallback and left `team_season_batting` frozen while the pipeline logged a
+    successful refresh of zero records. An earlier version of this test
+    asserted the opposite -- that no session is opened -- and started failing
+    when that early return came out.
+    """
     crawler = TeamBattingStatsCrawler()
     with (
         patch.object(batting_module, "get_team_mapping_for_year", return_value={"LG": "LG"}),
         patch.object(batting_module.compliance, "is_allowed_sync", return_value=False),
         patch.object(batting_module, "SessionLocal") as session_local,
     ):
-        result = crawler.crawl(2026, persist=False)
+        crawler.crawl(2026, persist=False)
 
-    assert result == []
     assert crawler.get_last_failure_reason() == "kbo_robots_blocked"
-    session_local.assert_not_called()
+    session_local.assert_called()
 
 
 def test_team_pitching_site_collection_is_source_limited_before_browser_start() -> None:
@@ -72,18 +79,25 @@ def test_team_pitching_site_collection_is_source_limited_before_browser_start() 
     playwright.assert_not_called()
 
 
-def test_team_pitching_public_crawl_does_not_use_db_fallback_when_source_is_blocked() -> None:
+def test_team_pitching_public_crawl_falls_back_to_db_when_source_is_blocked() -> None:
+    """A blocked page must still refresh the aggregates from the ledger.
+
+    `ce49d61d` removed the early return on `kbo_robots_blocked`: it skipped the
+    fallback and left `team_season_batting` frozen while the pipeline logged a
+    successful refresh of zero records. An earlier version of this test
+    asserted the opposite -- that no session is opened -- and started failing
+    when that early return came out.
+    """
     crawler = TeamPitchingStatsCrawler()
     with (
         patch.object(pitching_module, "get_team_mapping_for_year", return_value={"LG": "LG"}),
         patch.object(pitching_module.compliance, "is_allowed_sync", return_value=False),
         patch.object(pitching_module, "SessionLocal") as session_local,
     ):
-        result = crawler.crawl(2026, persist=False)
+        crawler.crawl(2026, persist=False)
 
-    assert result == []
     assert crawler.get_last_failure_reason() == "kbo_robots_blocked"
-    session_local.assert_not_called()
+    session_local.assert_called()
 
 
 def test_fielding_is_source_limited_before_browser_start() -> None:
