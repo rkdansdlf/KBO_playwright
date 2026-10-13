@@ -433,7 +433,10 @@ def _is_team1_home(g: Game, team1: str, team1_ids: tuple[int, ...]) -> bool:
     """
     if team1_ids and g.home_franchise_id is not None:
         return int(g.home_franchise_id) in team1_ids
-    return g.home_team == team1
+    # `Game.home_team` is an untyped `Column`, so the comparison is inferred
+    # as a SQL expression rather than a bool. The value here is a loaded row,
+    # never a query, so the Python comparison is what runs.
+    return bool(g.home_team == team1)
 
 
 def _summarize_h2h_game(

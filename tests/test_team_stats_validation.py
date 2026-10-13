@@ -1,97 +1,55 @@
 """Tests for team batting/pitching consistency validation."""
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+import re
 
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import CreateTable
+
+import src.models
+from src.models.player import PlayerSeasonBatting, PlayerSeasonPitching
+from src.models.season import KboSeason
+from src.models.team_stats import TeamSeasonBatting, TeamSeasonPitching
 from src.validators.quality_gate import QualityGate
+
+#: The tables these tests read. Only these are created.
+_TABLES = (
+    KboSeason.__table__,
+    TeamSeasonBatting.__table__,
+    TeamSeasonPitching.__table__,
+    PlayerSeasonBatting.__table__,
+    PlayerSeasonPitching.__table__,
+)
+
+#: SQLite has no `ALTER COLUMN`, and the models declare `source` and `level` as
+#: NOT NULL. The inserts below are raw SQL that omits both, so the DDL is
+#: emitted from the models with the constraint stripped rather than hand-written.
+_NOT_NULL = re.compile(r"\s+NOT NULL")
+
+
+def _loosened(table) -> str:
+    """Return the model's DDL for `table` with NOT NULL removed."""
+    ddl = str(CreateTable(table).compile(dialect=create_engine("sqlite:///:memory:").dialect))
+    return _NOT_NULL.sub("", ddl)
 
 
 def _make_session():
+    """Return a session over a schema derived from the ORM metadata.
+
+    The columns come from the models rather than from DDL written out here. A
+    hand-written schema has to be extended by hand whenever a column is added,
+    and the omission stays silent until a query selects that column: `e9716962`
+    added `extra_stats` to the season-team reads and all 17 tests in this file
+    failed with `no such column` instead of one test reporting the drift.
+
+    NOT NULL is dropped because the inserts below are raw SQL that omits
+    `source` and `level`. Deriving the DDL keeps the column list honest while
+    preserving the loose schema these tests were written against.
+    """
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
-        conn.execute(
-            text("""
-            CREATE TABLE kbo_seasons (
-                season_id INTEGER PRIMARY KEY,
-                season_year INTEGER NOT NULL,
-                league_type_code INTEGER NOT NULL
-            )
-        """),
-        )
-        conn.execute(
-            text("""
-            CREATE TABLE team_season_batting (
-                team_id TEXT, season INTEGER, league TEXT,
-                games INTEGER, plate_appearances INTEGER, at_bats INTEGER,
-                runs INTEGER, hits INTEGER, doubles INTEGER, triples INTEGER,
-                home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
-                caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER,
-                intentional_walks INTEGER, hbp INTEGER, sacrifice_hits INTEGER,
-                sacrifice_flies INTEGER, gdp INTEGER
-            )
-        """),
-        )
-        conn.execute(
-            text("""
-            CREATE TABLE team_season_pitching (
-                team_id TEXT, season INTEGER, league TEXT,
-                games INTEGER, wins INTEGER, losses INTEGER, saves INTEGER,
-                holds INTEGER, innings_pitched FLOAT, runs_allowed INTEGER,
-                earned_runs INTEGER, hits_allowed INTEGER,
-                home_runs_allowed INTEGER, walks_allowed INTEGER,
-                strikeouts INTEGER, innings_outs INTEGER,
-                intentional_walks INTEGER, hit_batters INTEGER, tbf INTEGER,
-                complete_games INTEGER, shutouts INTEGER, wild_pitches INTEGER,
-                balks INTEGER, sacrifices_allowed INTEGER,
-                sacrifice_flies_allowed INTEGER
-            )
-        """),
-        )
-        conn.execute(
-            text("""
-            CREATE TABLE player_season_batting (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                player_id INTEGER, season INTEGER, league TEXT,
-                source TEXT, level TEXT,
-                team_code TEXT, canonical_team_code TEXT,
-                games INTEGER, plate_appearances INTEGER, at_bats INTEGER,
-                runs INTEGER, hits INTEGER, doubles INTEGER, triples INTEGER,
-                home_runs INTEGER, rbi INTEGER, stolen_bases INTEGER,
-                caught_stealing INTEGER, walks INTEGER, strikeouts INTEGER
-            ,
-            intentional_walks INTEGER,
-            hbp INTEGER,
-            sacrifice_hits INTEGER,
-            sacrifice_flies INTEGER,
-            gdp INTEGER
-        )
-        """),
-        )
-        conn.execute(
-            text("""
-            CREATE TABLE player_season_pitching (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                player_id INTEGER, season INTEGER, league TEXT,
-                source TEXT, level TEXT,
-                team_code TEXT, canonical_team_code TEXT,
-                games INTEGER, wins INTEGER, losses INTEGER, saves INTEGER,
-                holds INTEGER, innings_outs INTEGER, innings_pitched FLOAT,
-                runs_allowed INTEGER, earned_runs INTEGER, hits_allowed INTEGER,
-                home_runs_allowed INTEGER, walks_allowed INTEGER,
-                strikeouts INTEGER
-            ,
-            intentional_walks INTEGER,
-            hit_batters INTEGER,
-            tbf INTEGER,
-            complete_games INTEGER,
-            shutouts INTEGER,
-            wild_pitches INTEGER,
-            balks INTEGER,
-            sacrifices_allowed INTEGER,
-            sacrifice_flies_allowed INTEGER
-        )
-        """),
-        )
+        for table in _TABLES:
+            conn.execute(text(_loosened(table)))
     return sessionmaker(bind=engine)()
 
 
@@ -651,3 +609,41 @@ class TestTeamPitchingValidation:
             assert result["mismatches"] == []
         finally:
             session.close()
+
+
+class TestTheFixtureTracksTheModels:
+    """The schema is derived from the models, so these assert the derivation.
+
+    Without this the file goes back to hand-written DDL quietly, and the next
+    added column surfaces as a wall of `no such column` failures whose only
+    visible cause is a commit that did not touch this file at all.
+    """
+
+    def test_every_model_column_is_present_in_the_created_schema(self):
+        """Each table offers every column its model declares.
+
+        `e9716962` added `extra_stats` to the season-team reads. The fixture
+        still lacked it, and 17 unrelated assertions failed on the missing
+        column rather than on the behaviour they were written to check.
+        """
+        session = _make_session()
+        try:
+            inspector = inspect(session.get_bind())
+            for table in _TABLES:
+                created = {column["name"] for column in inspector.get_columns(table.name)}
+                declared = {column.name for column in table.columns}
+                assert declared <= created, f"{table.name} is missing {sorted(declared - created)}"
+        finally:
+            session.close()
+
+    def test_the_schema_stays_loose_where_the_inserts_depend_on_it(self):
+        """NOT NULL stays dropped, because the raw INSERTs omit those columns.
+
+        The models mark `source` and `level` NOT NULL. Reintroducing the
+        constraint would fail the inserts for a reason that has nothing to do
+        with what these tests verify.
+        """
+        ddl = _loosened(PlayerSeasonBatting.__table__)
+        assert "NOT NULL" not in ddl
+        assert "source" in ddl
+        assert "level" in ddl

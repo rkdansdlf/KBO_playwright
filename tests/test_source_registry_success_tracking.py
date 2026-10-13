@@ -77,15 +77,28 @@ def _assert_source_marked_success(SessionLocal, *, source_key: str, expected_has
         assert len(snapshots) == 1
 
 
-def _set_duplicate_raw_page_and_save(crawler, source_key: str, html: str, save_call) -> None:
-    crawler._raw_pages = [
-        {
-            "source_key": source_key,
-            "url": f"https://example.com/{source_key}",
-            "html": html,
-            "status_code": 200,
-        },
-    ]
+def _set_duplicate_raw_page_and_save(
+    crawler, source_key: str, html: str, save_call, *, team_code: str | None = None
+) -> None:
+    """Stage one captured page, then run the crawler's save.
+
+    `team_code` is what the seat and parking crawlers group their raw pages by:
+    `_raw_pages_by_team()` holds a page back for a team it has no row for, and
+    `_save_to_db` discards whatever is left at the end. The seat and parking
+    crawlers index per team -- one session each, which is what makes the team
+    the unit of work and of the dead letter -- so a page without a team code
+    never reaches `save_raw_snapshots` and the source is never marked. Their
+    production crawl always sets one.
+    """
+    page = {
+        "source_key": source_key,
+        "url": f"https://example.com/{source_key}",
+        "html": html,
+        "status_code": 200,
+    }
+    if team_code is not None:
+        page["team_code"] = team_code
+    crawler._raw_pages = [page]
     save_call()
 
 
@@ -160,7 +173,13 @@ def test_seat_save_marks_duplicate_raw_page_success(monkeypatch, source_registry
     monkeypatch.setattr(seat_module, "StadiumSeatSectionRepository", _NoopRepository)
 
     crawler = seat_module.SeatCrawler()
-    _set_duplicate_raw_page_and_save(crawler, source_key, html, lambda: crawler._save_to_db([{}]))
+    _set_duplicate_raw_page_and_save(
+        crawler,
+        source_key,
+        html,
+        lambda: crawler._save_to_db([{"team_code": "LG"}]),
+        team_code="LG",
+    )
 
     _assert_source_marked_success(source_registry_session_factory, source_key=source_key, expected_hash=expected_hash)
 

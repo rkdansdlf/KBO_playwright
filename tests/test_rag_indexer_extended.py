@@ -120,6 +120,15 @@ def test_indexer_can_write_to_a_separate_sparse_session(db_session: Session) -> 
     try:
         indexer = RagKnowledgeIndexer(db_session, index_session=index_session, embedding_service=FakeEmbeddingService())
         assert indexer.index_press_releases() == 1
-        assert index_session.scalar(select(RagChunk).where(RagChunk.source_row_id == str(release.id))) is not None
+        # The chunk is keyed by KBO's notice number, not by the table's own
+        # `id`: `stable_press_release_source_row_id` uses the notice number
+        # because a re-crawl renumbers `id` while the notice number is the
+        # published business data. Keying by `id` here asserted the identity
+        # the indexer had already moved off, to fix duplicate chunks.
+        chunk = index_session.scalar(
+            select(RagChunk).where(RagChunk.source_row_id == str(release.notice_id)),
+        )
+        assert chunk is not None
+        assert chunk.source_table == "press_release"
     finally:
         index_session.close()

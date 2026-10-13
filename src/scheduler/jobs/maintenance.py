@@ -574,7 +574,11 @@ def verify_stadiums_places_job() -> None:
             if code != 0:
                 alert_warning("verify_stadiums_places", "Stadiums/places drift check failed")
             else:
-                logger.info("Stadiums/places verification passed")
+                # The warning above opens an incident that stays open forever
+                # unless something closes it, so the healthy branch has to say
+                # so too. `tests/scheduler/test_alert_recovery_pairing.py`
+                # enforces this pairing.
+                alert_success("verify_stadiums_places", "Stadiums/places verification passed")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Stadiums/places verification failed")
 

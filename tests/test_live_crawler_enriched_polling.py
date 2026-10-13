@@ -15,6 +15,7 @@ from src.cli.live_crawler import (
     _query_enriched_game_state,
     _select_live_shard,
 )
+from src.crawlers.result import CrawlResult
 from src.db.engine import Engine
 from src.models.base import Base
 
@@ -25,6 +26,21 @@ pytestmark = pytest.mark.integration
 def _test_db_tables():
     Base.metadata.create_all(bind=Engine)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_schedule_lookup_cache():
+    """Keep the module-level schedule cache from leaking between tests.
+
+    The cache is keyed by ``(year, month)`` and lives in the crawler module, so
+    an entry left by one cycle test answers the next one's poll from stale data.
+    Two tests here poll 2026-05 with different schedules, and without this the
+    second sees the first's games and fails on the rotation it is checking --
+    in a file that never touches the cache.
+    """
+    live_crawler._SCHEDULE_LOOKUP_CACHE.clear()
+    yield
+    live_crawler._SCHEDULE_LOOKUP_CACHE.clear()
 
 
 # ===================================================================
@@ -312,6 +328,27 @@ class TestRunLiveCrawlerCycleSharding:
                     },
                 ]
 
+            async def lookup_month(self, year: int, month: int, series_id=None):
+                """The dependency read the live loop actually uses.
+
+                `caa527e2` moved the loop here from `crawl_schedule`: routing a
+                per-cycle "which games are today" question through the work
+                method gave one ledger row and one dead letter per cycle. A fake
+                that only implemented `crawl_schedule` therefore stopped
+                matching the caller the moment the loop was repointed, and
+                these two tests failed on the missing attribute.
+                """
+                return CrawlResult.success(
+                    [
+                        {
+                            "game_id": "20260531AABB0",
+                            "game_date": "20260531",
+                            "away_team_code": "AA",
+                            "home_team_code": "BB",
+                        },
+                    ],
+                )
+
         class _FakeStatusResponse:
             status_code = 200
 
@@ -411,6 +448,16 @@ class TestRunLiveCrawlerCycleSharding:
                         "home_team_code": "DD",
                     },
                 ]
+
+            async def lookup_month(self, year: int, month: int, series_id=None):
+                """The dependency read the live loop actually uses.
+
+                See the other fake in this file: `caa527e2` repointed the loop
+                from `crawl_schedule` to this, and the assertion above only
+                ever ran because the loop still called the work method.
+                """
+                assert (year, month) == (2026, 5)
+                return CrawlResult.success(await self.crawl_schedule(year, month))
 
         class _FakeStatusResponse:
             status_code = 200

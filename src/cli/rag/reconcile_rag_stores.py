@@ -7,7 +7,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from src.constants import KST
 from src.services.rag_reconciliation import (
@@ -25,6 +25,7 @@ from src.services.rag_reconciliation import (
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from sqlalchemy.engine.reflection import Inspector
     from sqlalchemy.orm import Session
 
 _DEFAULT_OUTPUT_ROOT = Path("reports") / "rag_reconciliation"
@@ -68,7 +69,11 @@ def _embedding_column_names(bind: object) -> set[str]:
     """Return the embedding-named columns of ``rag_chunks`` on this store."""
     from sqlalchemy import inspect
 
-    return {column["name"] for column in inspect(bind).get_columns("rag_chunks")}
+    # `inspect()` is annotated as returning `Inspector | None` because the
+    # same call also inspects engines it may not resolve. This bind always
+    # does: both callers pass a live connection, and `get_columns` on a
+    # missing table is the error that should surface, not a silent empty set.
+    return {column["name"] for column in cast("Inspector", inspect(bind)).get_columns("rag_chunks")}
 
 
 def _resolve_embedding_column(session: Session) -> str:
