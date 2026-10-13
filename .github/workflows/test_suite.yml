@@ -67,7 +67,11 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Coverage over the whole suite runs ~10 minutes locally, so 8 minutes
+    # cancelled the job mid-run and reported a cancellation instead of a
+    # result. The other integration jobs on this file use 12; this one needs
+    # the same headroom for the coverage pass it uniquely carries.
+    timeout-minutes: 12
     env:
       # Pinned so the firing fixtures are verified by the same promtool that was
       # used to write them. `test_promtool_is_available_where_it_matters` fails if
