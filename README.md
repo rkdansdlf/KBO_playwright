@@ -8,7 +8,7 @@ Two-track data pipeline:
 - **Core (src/)**: CLI entrypoints (`src/cli/`), Playwright crawlers (`src/crawlers/`), parsers, SQLAlchemy ORM models, and repositories (UPSERT).
 - **Scripts (scripts/)**: Batch utilities for crawling, maintenance, verification, and historical backfill.
 
-**Database**: `DATABASE_URL` is the one application database, and the dialect follows from that URL. The current deployment is PostgreSQL, reached over Tailscale. Oracle is still wired in and is not gone — `src/models/rag_chunk.py` binds `embedding_vector` to Oracle's native `VECTOR`, `src/repositories/oracle_vector_search_repository.py` serves Oracle vector search, and `migrations/oracle/` remains the longest chain — so treat it as a supported legacy target rather than removing it. SQLite is used for local tests and scratch data; never point a production write at it. All save logic uses **UPSERT** for idempotency.
+**Database**: `DATABASE_URL` is the one application database, and the dialect follows from that URL. The deployment is PostgreSQL on the Windows DB host, reached over Tailscale; dense RAG embeddings live in pgvector (`PGVECTOR_URL`). Oracle support has been removed (an `oracle://` `DATABASE_URL` is rejected at engine creation). SQLite is used for local tests and scratch data; never point a production write at it. All save logic uses **UPSERT** for idempotency.
 
 ## Quick Start
 
@@ -40,16 +40,12 @@ python3 -m src.cli.crawl_futures --season 2025 --concurrency 3
 
 # Schema migrations for whichever database DATABASE_URL points at
 python3 -m src.cli.apply_postgres_migrations
-python3 -m src.cli.apply_oracle_migrations
-python3 -m src.cli.sync_sqlite_to_oci \
-  --source-url "sqlite:///./data/kbo_dev.db" \
-  --target-url "$DATABASE_URL" --dry-run
 
 # Quality gates
 python3 -m src.cli.quality_gate_check --year 2025
 python3 -m src.cli.monthly_unified_audit --year 2025
 
-# Index local Markdown sources in Oracle AI Vector Search
+# Index local Markdown sources into the RAG index (sparse + pgvector)
 python3 -m src.cli.build_rag_index --source markdown_docs
 python3 -m src.cli.build_rag_index --source kbo_definitions
 python3 -m src.cli.build_rag_index --source kbo_regulations
@@ -61,7 +57,7 @@ python3 -m src.cli.build_rag_index --source kbo_regulations
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `daily_kbo_sync.yml` | Manual / reviewed schedule | Postgame finalize, quality report, advanced Oracle processing |
+| `daily_kbo_sync.yml` | Manual / reviewed schedule | Postgame finalize, quality report, advanced processing |
 | `backfill.yml` | Manual / reviewed schedule | 6 matrix jobs: missed crawls, stats, SH/SF, advanced stats, player IDs, roster |
 | `daily_preview.yml` | Manual / reviewed schedule | Pregame preview + live data refresh |
 | `weekly_maintenance.yml` | Manual / reviewed schedule | Futures profiles, player enrichment |
@@ -89,7 +85,7 @@ KBO_playwright/
 │   ├── parsers/           # HTML/JSON parsing
 │   ├── repositories/      # UPSERT-based data storage
 │   ├── services/          # Business logic (matchup, P0 readiness, etc.)
-│   ├── sync/              # SQLite to Oracle initial-load utilities
+│   ├── sync/              # SQLite → PostgreSQL sync utilities
 │   ├── aggregators/       # Season stats, rankings, standings computation
 │   └── validators/        # Quality gate checks
 ├── scripts/
@@ -104,7 +100,7 @@ KBO_playwright/
 ├── tests/                 # Pytest suite (1400+ tests)
 │   ├── factories/         # Model factory helpers (DB + model builders)
 │   └── fixtures/          # Static test data (HTML, JSON)
-├── migrations/            # Schema migrations (Oracle + SQLite + PostgreSQL/pgvector)
+├── migrations/            # Schema migrations (SQLite + PostgreSQL/pgvector)
 ├── Docs/                  # Runbooks, URL references, schemas
 ├── data/                  # SQLite database location
 └── logs/                  # Runtime logs and reports

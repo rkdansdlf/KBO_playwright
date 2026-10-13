@@ -103,17 +103,16 @@ def test_staging_rag_chunk_iterator_reembeds_content_without_reusing_vectors() -
     assert "embedding" not in rows[0]
 
 
-def test_staging_rag_chunk_iterator_can_skip_populated_oracle_vectors() -> None:
-    """Avoid materializing populated single-store Oracle vectors during resume."""
+def test_staging_rag_chunk_iterator_can_skip_populated_vectors() -> None:
+    """Avoid materializing populated vectors during resume."""
     session = MagicMock()
-    session.get_bind.return_value.dialect.name = "oracle"
     session.execute.return_value.mappings.return_value = []
 
     rows = list(build_rag_index._iter_staging_rag_chunks(session, None, None, skip_populated=True))
 
     assert rows == []
     statement = str(session.execute.call_args.args[0])
-    assert "embedding_vector IS NULL" in statement
+    assert "embedding IS NULL" in statement
 
 
 def test_staging_candidate_iterator_uses_lightweight_projection() -> None:
@@ -162,9 +161,8 @@ def test_staging_candidate_iterator_rolls_back_before_legacy_fallback() -> None:
 
 
 def test_prepare_staging_chunks_uses_populated_vector_filter() -> None:
-    """Apply the single-store staging optimization through source preparation."""
+    """Apply the staging optimization through source preparation."""
     session = MagicMock()
-    session.get_bind.return_value.dialect.name = "oracle"
     session.execute.return_value.mappings.return_value = []
 
     prepared = build_rag_index._prepare_source_chunks(
@@ -176,7 +174,7 @@ def test_prepare_staging_chunks_uses_populated_vector_filter() -> None:
     )
 
     assert list(prepared) == []
-    assert "embedding_vector IS NULL" in str(session.execute.call_args.args[0])
+    assert "embedding IS NULL" in str(session.execute.call_args.args[0])
 
 
 def test_rankings_iterator_orders_ties_deterministically() -> None:
@@ -253,18 +251,9 @@ def test_process_source_recomputes_hash_and_records_embedding_fingerprint(monkey
     assert chunk["meta"]["embedding_fingerprint"] == "model-a:1536:chunk-v1"
 
 
-def test_persist_index_batch_routes_by_actual_index_dialect(monkeypatch) -> None:
-    """Route writes using the opened sparse session rather than the source dialect."""
+def test_persist_index_batch_publishes_to_sparse_and_vector_stores(monkeypatch) -> None:
+    """Publish every batch through the sparse session plus the pgvector session."""
     batch = [{"source_table": "game", "source_row_id": "1", "content": "본문"}]
-    oracle_session = MagicMock()
-    oracle_session.get_bind.return_value.dialect.name = "oracle"
-    single_store = MagicMock()
-    monkeypatch.setattr("src.services.rag_index_propagation.publish_single_store_batch", single_store)
-
-    build_rag_index._persist_index_batch(batch, oracle_session)
-
-    single_store.assert_called_once_with(oracle_session, batch)
-
     postgres_session = MagicMock()
     postgres_session.get_bind.return_value.dialect.name = "postgresql"
     vector_session = MagicMock()
@@ -479,15 +468,15 @@ def test_build_targets_redact_credentials_and_allow_dry_run(monkeypatch) -> None
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
     targets = build_rag_index._resolve_build_targets(
-        "oracle+oracledb://app:secret@kbo_medium",
+        "postgresql://app:secret@db.internal:5432/kbo",
         embedding_mode="configured",
         dry_run=True,
     )
 
     assert targets.display() == {
-        "source_db": "oracle+oracledb://kbo_medium",
-        "sparse_index_db": "oracle+oracledb://kbo_medium",
-        "vector_db": "oracle+oracledb://kbo_medium",
+        "source_db": "postgresql://db.internal:5432/kbo",
+        "sparse_index_db": "postgresql://db.internal:5432/kbo",
+        "vector_db": "postgresql://127.0.0.1:5432/rag_vector",
         "target_environment": "staging",
         "write_enabled": False,
     }
@@ -585,66 +574,6 @@ def test_postgresql_production_build_is_allowed_with_both_guards(monkeypatch) ->
         dry_run=False,
     )
     assert targets.vector_db == "postgresql://vector:secret@127.0.0.1:5432/rag_vector"
-
-
-def test_separate_oracle_sparse_target_reports_itself_as_vector_store(monkeypatch) -> None:
-    """Keep an explicitly configured Oracle index and vector target aligned."""
-    for key in ("PGVECTOR_URL", "PGVECTOR_TEST_URL"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("RAG_INDEX_DB_URL", "oracle+oracledb://app:secret@separate_sparse")
-    monkeypatch.setenv("RAG_TARGET_ENV", "staging")
-    monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
-
-    targets = build_rag_index._resolve_build_targets(
-        "oracle+oracledb://source:secret@source_db",
-        target_db_url="oracle+oracledb://app:secret@primary_db",
-        embedding_mode="configured",
-        dry_run=False,
-    )
-
-    assert targets.sparse_index_db == "oracle+oracledb://app:secret@separate_sparse"
-    assert targets.vector_db == "oracle+oracledb://app:secret@separate_sparse"
-
-
-def test_oracle_build_uses_one_database_for_sparse_and_vector_targets(monkeypatch) -> None:
-    """Allow Oracle AI Vector Search without PostgreSQL target variables."""
-    for key in ("PGVECTOR_URL", "PGVECTOR_TEST_URL", "RAG_INDEX_DB_URL"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("RAG_TARGET_ENV", "staging")
-    monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
-
-    targets = build_rag_index._resolve_build_targets(
-        "oracle+oracledb://app:secret@kbo_medium",
-        embedding_mode="configured",
-        dry_run=False,
-    )
-
-    assert targets.sparse_index_db == "oracle+oracledb://app:secret@kbo_medium"
-    assert targets.vector_db == "oracle+oracledb://app:secret@kbo_medium"
-    assert targets.write_enabled is True
-
-
-def test_postgresql_source_can_publish_to_oracle_target(monkeypatch) -> None:
-    """Keep source reads separate from the Oracle single-store write target."""
-    for key in ("PGVECTOR_URL", "PGVECTOR_TEST_URL", "RAG_INDEX_DB_URL"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("RAG_TARGET_ENV", "production")
-    monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-    monkeypatch.setenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", "1")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
-
-    targets = build_rag_index._resolve_build_targets(
-        "postgresql://source:secret@127.0.0.1:5432/staging",
-        target_db_url="oracle+oracledb://app:secret@kbo_medium",
-        embedding_mode="configured",
-        dry_run=False,
-    )
-
-    assert targets.source_db == "postgresql://source:secret@127.0.0.1:5432/staging"
-    assert targets.sparse_index_db == "oracle+oracledb://app:secret@kbo_medium"
-    assert targets.vector_db == "oracle+oracledb://app:secret@kbo_medium"
 
 
 def test_oracle_production_build_requires_explicit_write_gate(monkeypatch) -> None:

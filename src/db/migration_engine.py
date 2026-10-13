@@ -48,7 +48,7 @@ _split_sql_statements = split_sql_statements
 
 
 class MigrationEngine:
-    """Orchestrates SQL schema migrations across Oracle, SQLite, and PostgreSQL."""
+    """Orchestrates SQL schema migrations across SQLite and PostgreSQL."""
 
     def __init__(self, migrations_root: Path | None = None) -> None:
         """Initialize migration engine with migrations directory."""
@@ -101,29 +101,19 @@ class MigrationEngine:
 
     def ensure_schema_migrations_table(self, connection: Connection) -> None:
         """Ensure schema_migrations table exists for tracking applied migrations."""
-        dialect_name = connection.dialect.name.lower()
         inspector = inspect(connection)
 
         table_names = [t.lower() for t in inspector.get_table_names()]
         if MIGRATION_TABLE.lower() in table_names:
             return
 
-        if "oracle" in dialect_name:
-            ddl = f"""
-            CREATE TABLE {MIGRATION_TABLE} (
-                version NUMBER(10) PRIMARY KEY,
-                filename VARCHAR2(255) NOT NULL,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-            )
-            """
-        else:
-            ddl = f"""
-            CREATE TABLE {MIGRATION_TABLE} (
-                version INTEGER PRIMARY KEY,
-                filename VARCHAR(255) NOT NULL,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-            )
-            """
+        ddl = f"""
+        CREATE TABLE {MIGRATION_TABLE} (
+            version INTEGER PRIMARY KEY,
+            filename VARCHAR(255) NOT NULL,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+        )
+        """
 
         connection.execute(text(ddl))
         connection.commit()

@@ -16,7 +16,6 @@ from src.cli import build_rag_index
 SOURCE = "postgresql://reader@db.internal/kbo"
 SPARSE = "postgresql://indexer@db.internal/bega_prod"
 VECTOR = "postgresql://writer@db.internal/kbo_rag"
-ORACLE_TARGET = "oracle+oracledb://ADMIN@etyqpnpj0l1ep777_medium"
 
 GUARD_VARS = ("RAG_INDEX_ALLOW_WRITE", "RAG_INDEX_ALLOW_PRODUCTION_WRITE", "PGVECTOR_URL", "PGVECTOR_TEST_URL")
 
@@ -30,7 +29,8 @@ def _clear_guards(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _errors(target_url: str, target_environment: str, *, sparse: str | None = SPARSE) -> list[str]:
     """Run the write-target guard for a non-dry-run build."""
-    return build_rag_index._write_target_errors(SOURCE, target_url, sparse, VECTOR, target_environment)
+    del target_url  # the operational target no longer changes the guard
+    return build_rag_index._write_target_errors(SOURCE, sparse, VECTOR, target_environment)
 
 
 class TestPgvectorProductionIsAllowed:
@@ -69,15 +69,3 @@ class TestOtherRefusalsAreUnchanged:
         monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
         errors = _errors(VECTOR, "staging", sparse=None)
         assert any("RAG_INDEX_DB_URL" in error for error in errors)
-
-    def test_oracle_production_still_needs_its_opt_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Keep the Oracle path's own production guard intact."""
-        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-        errors = build_rag_index._write_target_errors(SOURCE, ORACLE_TARGET, None, None, "production")
-        assert any("RAG_INDEX_ALLOW_PRODUCTION_WRITE" in error for error in errors)
-
-    def test_oracle_production_passes_with_both_guards(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Accept the Oracle shape the old rule was written for."""
-        monkeypatch.setenv("RAG_INDEX_ALLOW_WRITE", "1")
-        monkeypatch.setenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", "1")
-        assert build_rag_index._write_target_errors(SOURCE, ORACLE_TARGET, None, None, "production") == []

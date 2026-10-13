@@ -13,15 +13,10 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - **Primary operational database**: PostgreSQL, reached over Tailscale via `DATABASE_URL=postgresql://...`. It hosts all production baseball data and RAG.
 - **Prod/dev split**: `bega_prod` (100.81.73.13:5432) is primary; `bega_dev` (host 5435) is a weekly snapshot via `scripts/resync_bega_dev.py` (Sundays 04:30). Vector store `kbo_rag` lives alongside prod; nightly `rag_vector_backfill` (05:30) closes identity gaps. Nightly `KBO_PG_Backup` (04:00) dumps all three to `D:/kbo_backup` (keep 3).
 - **Keepalives are required, not optional**: the host is remote, so `DATABASE_URL` carries `keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`. Dropping them lets idle connections be reaped mid-transaction, which surfaces as a spurious `PERSIST_TIMEOUT` rather than as a connectivity complaint.
-- **Migration runners are per-dialect and hardcoded**: `python3 -m src.cli.apply_postgres_migrations` applies `migrations/postgresql/`; `python3 -m src.cli.apply_oracle_migrations` applies `migrations/oracle/`. Neither takes a `--dialect` switch, so the module you pick is what decides the chain. Both are idempotent; re-run to confirm, and `--check` exits non-zero while anything is pending.
+- **Migration runners are per-dialect and hardcoded**: `python3 -m src.cli.apply_postgres_migrations` applies `migrations/postgresql/`. It takes no `--dialect` switch. It is idempotent; re-run to confirm, and `--check` exits non-zero while anything is pending.
 - **SQLite**: Local tests and scratch data only. `migrations/sqlite/` and `migrations/pgvector/` are separate chains. Never point a production write at SQLite.
-- **Oracle is legacy, not gone.** It is no longer the operational store, but it is still in the tree and must not be described as absent:
-  - `migrations/oracle/` is the longer and older chain (65 migrations, numbered up to `076`) against PostgreSQL's 13 (up to `059`).
-  - `src/models/rag_chunk.py` binds `rag_chunks.embedding_vector` to Oracle's native `VECTOR`; other dialects fall back to JSON.
-  - `.github/workflows/oci_connection_probe.yml` and `oci_live_verification.yml` still exercise Oracle via `OCI_DB_URL`.
-  - `src/cli/sync/sync_sqlite_to_oci.py` is a legacy loader, not the primary path.
-  - `src/orchestration/master.py` carries a note that its live Oracle sync stage is **unwired**; the DAG does not depend on it.
-- **Known footgun**: `kbo migrate --dialect` still defaults to `oracle`, so a bare `kbo migrate` inspects the wrong chain. Pass `--dialect postgresql` explicitly.
+- **Oracle support was removed (2026-10).** `migrations/oracle/`, the Oracle engine/wallet path, Oracle `VECTOR` binding, Oracle vector/sparse repositories, the SQLite→OCI loader and the OCI workflows are gone; an `oracle://` `DATABASE_URL` is rejected at engine creation. `rag_chunks.embedding_vector` is portable JSON, and dense vectors live in pgvector (`PGVECTOR_URL`). Historical phase notes below still mention Oracle/OCI; treat them as history.
+- `kbo migrate --dialect` is required and accepts `sqlite`, `postgresql`, `pgvector`.
 - **Do not** describe a PostgreSQL production write as SQLite-lock protected, and do not reintroduce `OCI_DB_URL` as a primary URL.
 
 ## Agent Skill Defaults
@@ -117,9 +112,6 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
 - `python3 -m src.cli.apply_postgres_migrations`: Bootstrap and apply PostgreSQL ORM baseline/migrations against `DATABASE_URL`.
 - `python3 -m src.cli.apply_postgres_migrations --check`: Check PostgreSQL migrations without writing (non-zero exit while anything is pending).
-- `python3 -m src.cli.apply_oracle_migrations`: Legacy Oracle chain (`migrations/oracle/`). Required only for the residual Oracle paths listed in the Database Contract, not for the operational database.
-- `python3 -m src.cli.apply_oracle_migrations --check`: Check Oracle migrations without writing.
-- `python3 -m src.cli.sync.sync_sqlite_to_oci --source-url sqlite:///./data/kbo_dev.db --target-url "$DATABASE_URL" --dry-run`: Legacy SQLite→Oracle loader preview. Not the primary path.
 - `python3 -m src.cli.kbo dlq status|stats|list|show [--json]`: Read-only crawl dead-letter inspection (`list` filters: `--status`, `--crawler`, `--error-code`, `--limit`).
 - `python3 -m src.cli.kbo dlq retry|requeue|ignore <dlq_id> [--reason R] [--apply]`: Guarded DLQ lifecycle actions; requires `--apply` **and** `KBO_ALLOW_DLQ_MUTATION=1` (exit 3 on denial, exit 2 on invalid state).
 - `python3 -m src.cli.kbo crawl replay --run-id <RUN-ID> [--apply]`: Replay one past crawl execution run. Read-only unless `--apply` + `KBO_ALLOW_CRAWL_REPLAY=1`.
@@ -170,7 +162,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
   runs serially, resolves different dependency versions, and reports false
   failures that do not reproduce in `venv/`.
 - **Authoritative full-suite command** (repo root):
-  `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2`
+  `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow" -n 2`
 - `pytest.ini` is the active inifile and does **not** set `-n`, so the worker
   pool must be passed explicitly. Use `-n 2`; `-n auto` over-subscribes workers
   and can hang the run on SQLite/ORM fixture contention.
@@ -262,9 +254,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ### Required Secrets
 - `DATABASE_URL`: PostgreSQL URL for the Tailscale-hosted operational database. Carry the `keepalives` query parameters; without them idle connections get reaped mid-transaction.
-- `OCI_DB_URL`: legacy disposable Oracle schema URL, used only by `oci_connection_probe.yml` and `oci_live_verification.yml`. Never use it as the application primary URL.
-- `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for the two legacy OCI workflows only.
-- `OCI_WALLET_PASSWORD`: Wallet password when the legacy OCI workflows require it.
+- `ORACLE_WALLET_B64`, `OCI_WALLET_PASSWORD`, `OCI_DB_URL`: no longer read by any workflow; delete them from repository secrets.
 - `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - Per-category gap alert: `TELEGRAM_CHAT_ID_RELAY`, `TELEGRAM_CHAT_ID_STANDINGS`, `TELEGRAM_CHAT_ID_PROFILE`, `TELEGRAM_CHAT_ID_FRESHNESS`
 - External APIs: `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`

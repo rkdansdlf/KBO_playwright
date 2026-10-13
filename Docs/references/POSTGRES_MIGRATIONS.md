@@ -1,8 +1,7 @@
 # PostgreSQL Development and pgvector Database
 
-PostgreSQL is not the primary baseball-data database. Oracle Autonomous Database is
-the production source of truth. PostgreSQL remains available for local integration
-tests and the separate pgvector dense-search service.
+PostgreSQL is the primary baseball-data database (Windows DB host over Tailscale),
+with a separate pgvector database for dense search. Oracle support was removed in 2026-10.
 
 ## Schema Contract
 
@@ -12,8 +11,7 @@ tests and the separate pgvector dense-search service.
 4. `python3 -m src.cli.apply_postgres_migrations --check` checks pending versions without writing.
 5. `python3 -m src.cli.apply_postgres_migrations --adopt-existing` validates the current ORM-shaped schema and records only the current migration baseline metadata.
 
-The migration runner uses `DATABASE_URL` for a PostgreSQL development target only.
-The Oracle production path uses `src.cli.apply_oracle_migrations`.
+The migration runner uses `DATABASE_URL`.
 
 The explicit adoption mode does not call `init_db()` or execute migration SQL. It requires
 the current `awards` player-link columns and index, then writes only `schema_migrations`

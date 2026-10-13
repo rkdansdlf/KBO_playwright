@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, relationship
 
-from src.db.types import OracleCompatibleTime
+from src.db.types import PortableTime
 from src.models.base import Base, TimestampMixin
 
 
@@ -134,8 +134,8 @@ class GameMetadata(Base, TimestampMixin):
     stadium_code = Column(String(30))
     stadium_name = Column(String(64))
     attendance = Column(Integer)
-    start_time: Mapped[time | None] = Column(OracleCompatibleTime())  # type: ignore[assignment]
-    end_time: Mapped[time | None] = Column(OracleCompatibleTime())  # type: ignore[assignment]
+    start_time: Mapped[time | None] = Column(PortableTime())  # type: ignore[assignment]
+    end_time: Mapped[time | None] = Column(PortableTime())  # type: ignore[assignment]
     game_time_minutes = Column(Integer)
     weather = Column(String(32))
     source_payload = Column(JSON)

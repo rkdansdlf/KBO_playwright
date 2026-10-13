@@ -166,9 +166,8 @@ def _run_cloud_sync(ctx: dict[str, Any]) -> StageExecutionResult:
                 records_processed=0,
                 error_message="Cloud sync disabled by feature flag (enable_oci_sync=False)",
             )
-        # NOTE: OciSyncEngine requires explicit sqlite/oracle connections and
-        # exposes run_full_sync (no sync_incremental); wiring live Oracle sync
-        # into this stage is a pending product decision. Report SKIPPED instead
+        # NOTE: the former Oracle (OCI) sync engine was removed; wiring a
+        # replacement sync target into this stage is a pending product decision. Report SKIPPED instead
         # of crashing with TypeError when both sync flags are force-enabled.
         return StageExecutionResult(
             stage_id="cloud_sync",

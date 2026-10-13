@@ -94,15 +94,15 @@ def _add_maintenance_and_config_subparsers(
 
 
 def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add migrate, seed, detect, and sync subparsers."""
+    """Add migrate, seed, and detect subparsers."""
     # 7. Migrate
     p_mig = subparsers.add_parser("migrate", help="Run and inspect database schema migrations.")
     p_mig.add_argument(
         "--dialect",
         type=str,
         required=True,
-        choices=["oracle", "sqlite", "postgresql", "pgvector"],
-        help="Target migration chain (oracle, sqlite, postgresql, pgvector). Required rather than defaulted: "
+        choices=["sqlite", "postgresql", "pgvector"],
+        help="Target migration chain (sqlite, postgresql, pgvector). Required rather than defaulted: "
         "the chains are separate files, and a wrong guess applies one chain's schema changes to the wrong database.",
     )
     p_mig.add_argument("--db-url", type=str, default=None, help="Target database connection URL.")
@@ -123,24 +123,6 @@ def _add_data_and_ops_subparsers(subparsers: argparse._SubParsersAction[argparse
     p_det.add_argument("--metric", type=str, default="all", help="Specific metric to audit.")
     p_det.add_argument("--sensitivity", type=str, default="medium", choices=["low", "medium", "high"])
     p_det.add_argument("--json", action="store_true", help="Output report as JSON.")
-
-    # 10. Sync
-    p_sync = subparsers.add_parser("sync", help="Synchronize SQLite data to Oracle Autonomous Database (OCI).")
-    p_sync.add_argument("--source-url", type=str, default="sqlite:///./data/kbo_dev.db", help="Source SQLite URL.")
-    p_sync.add_argument("--target-url", type=str, default=None, help="Target Oracle database URL.")
-    p_sync.add_argument("--dry-run", action="store_true", help="Preview sync row counts without writing.")
-    p_sync.add_argument("--apply", action="store_true", help="Apply synchronization.")
-    p_sync.add_argument("--verify", action="store_true", help="Verify row counts between source and target.")
-    p_sync.add_argument("--mode", type=str, default="full", choices=["full", "incremental"])
-    p_sync.add_argument("--json", action="store_true", help="Output summary in JSON format.")
-    p_sync.add_argument("--tables", type=str, default=None, help="Comma-separated list of tables to sync.")
-    p_sync.add_argument("--exclude-tables", type=str, default=None, help="Comma-separated list of tables to exclude.")
-    p_sync.add_argument("--season", type=int, default=None, help="Filter sync to specific season.")
-    p_sync.add_argument("--since", type=str, default=None, help="Sync changes since timestamp.")
-    p_sync.add_argument("--batch-size", type=int, default=5000, help="Batch size for bulk upsert.")
-    p_sync.add_argument("--commit-every", type=int, default=20000, help="Commit interval.")
-    p_sync.add_argument("--concurrency", type=int, default=3, help="Max concurrent worker threads.")
-    p_sync.add_argument("--reset-checkpoint", type=str, default=None, help="Reset checkpoint for table or 'ALL'.")
 
     # 11. DLQ
     p_dlq = subparsers.add_parser("dlq", help="Inspect and operate the crawl dead letter queue.")
@@ -312,7 +294,7 @@ def _add_advanced_subparsers(subparsers: argparse._SubParsersAction[argparse.Arg
         "-d",
         type=str,
         default=None,
-        help="Target SQL dialect (oracle, sqlite, postgresql).",
+        help="Target SQL dialect (sqlite, postgresql).",
     )
     p_drift.add_argument("--db-url", type=str, default=None, help="Database connection URL.")
     p_drift.add_argument("--tables", "-t", type=str, default=None, help="Comma-separated tables to inspect.")
@@ -577,7 +559,6 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.serve_api import main as srv_main
     from src.cli.simulate_game import main as sim_main
     from src.cli.sync.run_migrations import main as mig_main
-    from src.cli.sync.sync_sqlite_to_oci import main as sync_main
     from src.cli.validate_config import main as conf_main
 
     return {
@@ -590,7 +571,6 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "migrate": mig_main,
         "seed": seed_main,
         "detect": det_main,
-        "sync": sync_main,
         "rag": _rag_dispatcher,
         "simulate": sim_main,
         "drift": drift_main,

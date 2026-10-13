@@ -1,4 +1,4 @@
-"""Migration tests for parking fee kinds (sqlite 065, postgresql 060, oracle 077)."""
+"""Migration tests for parking fee kinds (sqlite 065, postgresql 060)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SQLITE_MIGRATION = ROOT / "migrations/sqlite/065_parking_fee_kinds.sql"
 POSTGRES_MIGRATION = ROOT / "migrations/postgresql/060_parking_fee_kinds.sql"
-ORACLE_MIGRATION = ROOT / "migrations/oracle/077_parking_fee_kinds.sql"
 
 EXPECTED_COLUMNS = {
     "parking_lot_id",
@@ -43,16 +42,6 @@ def test_postgres_migration_is_idempotent_syntax() -> None:
     assert "CREATE TABLE IF NOT EXISTS parking_fee_kinds" in sql
     assert "UNIQUE(parking_lot_id, fee_kind)" in sql
     assert "CREATE INDEX IF NOT EXISTS idx_parking_fee_kinds_lot" in sql
-    assert "DROP" not in sql
-
-
-def test_oracle_migration_is_idempotent_syntax() -> None:
-    sql = ORACLE_MIGRATION.read_text(encoding="utf-8")
-    assert "user_tables" in sql
-    assert "user_indexes" in sql
-    assert "CREATE TABLE PARKING_FEE_KINDS" in sql
-    assert "CONSTRAINT UQ_PARKING_FEE_KIND UNIQUE (PARKING_LOT_ID, FEE_KIND)" in sql
-    assert "IDX_PARKING_FEE_KINDS_LOT" in sql
     assert "DROP" not in sql
 
 

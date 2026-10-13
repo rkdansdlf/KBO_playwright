@@ -112,7 +112,7 @@ def rag_audit_sentinel_job() -> None:
     try:
         from src.cli.rag.audit_rag_index import main as audit_main
 
-        exit_code = audit_main(["--require-nonempty", "--require-postings", "--json"])
+        exit_code = audit_main(["--require-nonempty", "--json"])
     except SCHEDULER_JOB_EXCEPTIONS:
         logger.exception("[Sentinel] RAG index audit crashed")
         alert_warning("rag_audit_sentinel", "RAG index audit crashed; see scheduler logs")
@@ -142,10 +142,9 @@ def _audit_failure_message(exit_code: int) -> str:
     if exit_code == AUDIT_EXIT_STORE_UNREACHABLE:
         return (
             "RAG audit could not reach a vector backend (exit 2); the index was NOT examined. "
-            "Check DATABASE_URL / PGVECTOR_URL reachability before suspecting the index -- "
-            "build_oracle_sparse_index --catch-up would fail too while the store is down."
+            "Check DATABASE_URL / PGVECTOR_URL reachability before suspecting the index."
         )
     return (
         f"RAG index audit failed (exit {exit_code}); retrievable chunks are missing "
-        "embeddings or sparse postings. Run build_oracle_sparse_index --catch-up if needed."
+        "embeddings or sparse postings. Re-run build_rag_index for the affected scope if needed."
     )

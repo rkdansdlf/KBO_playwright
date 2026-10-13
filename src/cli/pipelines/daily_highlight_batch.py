@@ -1,6 +1,6 @@
 """Daily Highlight Batch Script.
 
-Generate game highlights from PBP/WPA data, persists them, syncs to OCI, and sends Telegram reports.
+Generate game highlights from PBP/WPA data, persists them, and sends Telegram reports.
 
 """
 

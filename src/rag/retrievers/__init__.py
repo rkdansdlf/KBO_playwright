@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from src.rag.retrievers.dense_vector import DenseVectorRetriever
 from src.rag.retrievers.hybrid import UnifiedHybridRetriever
-from src.rag.retrievers.oracle_dense import OracleDenseRetriever
 from src.rag.retrievers.sparse_bm25 import SparseBM25Retriever
 
 __all__ = [
-    "OracleDenseRetriever",
+    "DenseVectorRetriever",
     "SparseBM25Retriever",
     "UnifiedHybridRetriever",
 ]

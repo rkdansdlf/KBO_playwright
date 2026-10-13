@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
+from src.db.vector_engine import is_pgvector_available
 from src.services.kbo_entity_resolver import resolve_kbo_entities
 from src.services.rag_search_engine import RagSearchEngine
 from src.utils.kbo_entity_extractor import extract_kbo_entities
@@ -16,7 +16,6 @@ from src.utils.kbo_entity_extractor import extract_kbo_entities
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
     from src.repositories.vector_search_repository import VectorSearchRepository
 
 logger = logging.getLogger(__name__)
@@ -37,12 +36,8 @@ class EmbeddingProvider(Protocol):
         """Return one embedding for a query string."""
 
 
-def _dense_repository() -> VectorSearchRepository | OracleVectorSearchRepository:
+def _dense_repository() -> VectorSearchRepository:
     """Build the repository for the configured dense backend."""
-    if is_oracle_vector_backend():
-        from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
-
-        return OracleVectorSearchRepository()
     from src.repositories.vector_search_repository import VectorSearchRepository
 
     return VectorSearchRepository()
@@ -92,7 +87,7 @@ def _search_dense(
     session, so no caller-owned SQLAlchemy session is shared.
     """
     started_wall = time.perf_counter()
-    if not is_pgvector_available() and not is_oracle_vector_backend():
+    if not is_pgvector_available():
         return [], 0.0, 0.0
 
     try:
@@ -106,7 +101,7 @@ def _search_dense(
 
         vector_kwargs: dict[str, Any] = {
             "query_vector": query_vector,
-            "top_k": top_k if is_oracle_vector_backend() else top_k * 3,
+            "top_k": top_k * 3,
             "team_id": merged_filters.get("team_id"),
             "season_year": merged_filters.get("season_year"),
             "source_table": merged_filters.get("source_table"),
@@ -256,13 +251,12 @@ class HybridRetriever:
 
             # 1. BM25 Search
             bm25_started = time.perf_counter()
-            sparse_top_k = top_k if is_oracle_vector_backend() else top_k * 3
+            sparse_top_k = top_k * 3
             bm25_chunks = self.bm25_engine.search(
                 query=query,
                 top_k=sparse_top_k,
                 category=target_category,
                 filters=merged_filters,
-                oracle_ranked_candidates=not is_oracle_vector_backend(),
             )
             bm25_ms = round((time.perf_counter() - bm25_started) * 1000, 3)
             rank_map: dict[str, dict[str, Any]] = {}

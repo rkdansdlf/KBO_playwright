@@ -16,14 +16,14 @@ from src.rag.dto import (
 from src.rag.evaluation import RagEvaluator
 from src.rag.evaluation_gateway import RagEvaluationGateway
 from src.rag.indexer.knowledge_indexer import KnowledgeIndexer
+from src.rag.retrievers.dense_vector import DenseVectorRetriever
 from src.rag.retrievers.hybrid import UnifiedHybridRetriever
-from src.rag.retrievers.oracle_dense import OracleDenseRetriever
 from src.rag.retrievers.sparse_bm25 import SparseBM25Retriever
 
 __all__ = [
     "BaseRetriever",
+    "DenseVectorRetriever",
     "KnowledgeIndexer",
-    "OracleDenseRetriever",
     "RagDocument",
     "RagEvaluationGateway",
     "RagEvaluationMetrics",

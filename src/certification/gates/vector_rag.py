@@ -1,4 +1,4 @@
-"""G04: Oracle Native Vector & RAG Inspection Certification Gate."""
+"""G04: pgvector & RAG Inspection Certification Gate."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from src.certification.models import GateResult, GateStatus
 from src.db.engine import get_db_session
-from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
+from src.db.vector_engine import is_pgvector_available
 from src.models.rag_chunk import RagChunk
 from src.services.rag_service import RagService
 
@@ -37,10 +37,10 @@ def _get_rag_chunks_safe(engine: Engine, context: CertificationContext) -> list[
 
 
 class VectorRagGate:
-    """G04: Verifies Oracle Native Vector dimension contract (1536), embedding completeness, and probe retrieval."""
+    """G04: Verifies the pgvector dimension contract (1536), embedding completeness, and probe retrieval."""
 
     gate_id: str = "oracle_vector_rag"
-    name: str = "Oracle Native Vector & RAG"
+    name: str = "pgvector & RAG"
     blocking: bool = True
     dependencies: ClassVar[list[str]] = ["schema_migration"]
 
@@ -71,7 +71,7 @@ class VectorRagGate:
             evidence["has_chunks"] = len(chunks) > 0
 
             # 2. Check vector backend capabilities and probe query
-            has_vector_backend = is_oracle_vector_backend() or is_pgvector_available()
+            has_vector_backend = is_pgvector_available()
             evidence["has_vector_backend"] = has_vector_backend
 
             probe_ok = True
@@ -131,7 +131,7 @@ class VectorRagGate:
                 blocking=self.blocking,
                 metrics=metrics,
                 evidence={"error": err},
-                message=f"Oracle Vector RAG inspection failed: {err}",
+                message=f"Vector RAG inspection failed: {err}",
             )
 
 

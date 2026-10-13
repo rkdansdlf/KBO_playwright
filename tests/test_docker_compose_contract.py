@@ -109,10 +109,10 @@ class TestProductionHardening:
             env = _env_items(_services(prod)[name])
             assert any(item.startswith("DATABASE_URL=") and ":?" in item for item in env), name
 
-    def test_wallet_path_is_required(self, prod: dict) -> None:
+    def test_no_oracle_wallet_is_mounted(self, prod: dict) -> None:
         for name in ("scheduler", "api-server"):
-            volumes = _services(prod)[name]["volumes"]
-            assert any(isinstance(v, str) and "ORACLE_WALLET_HOST_PATH:?" in v for v in volumes), name
+            volumes = _services(prod)[name].get("volumes", [])
+            assert not any(isinstance(v, str) and "ORACLE_WALLET" in v for v in volumes), name
 
     def test_api_is_the_only_published_service(self, prod: dict) -> None:
         published = [name for name, svc in _services(prod).items() if "ports" in svc]

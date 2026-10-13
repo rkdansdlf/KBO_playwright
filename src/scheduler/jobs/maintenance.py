@@ -55,7 +55,7 @@ from src.services.orphan_run_sweeper import OrphanSweepResult
 _RETRY_EXCEPT_LOCK_SKIP = retry_if_not_exception_type(_LockSkipped)
 
 # Write-intent gates required by build_rag_index._write_target_errors for the
-# production Oracle RAG target. Scoped to this job only so manual CLI builds
+# production RAG target. Scoped to this job only so manual CLI builds
 # stay guarded by default.
 _RAG_INCREMENTAL_WRITE_ENV = {
     "RAG_TARGET_ENV": "production",
@@ -73,7 +73,7 @@ def _rag_vector_backend_configured() -> bool:
 
     Reads the target resolution the build itself performs, rather than its own
     reading of the environment. The previous version asked two questions --
-    "is ``DATABASE_URL`` Oracle?" and "is a vector URL set?" -- and a deployment
+    "is ``DATABASE_URL`` a vector backend?" and "is a vector URL set?" -- and a deployment
     that points a *separate sparse store* at ``RAG_INDEX_DB_URL`` satisfied
     neither while still being a legitimate configuration. That gap failed
     closed: the job skipped silently, and the operator saw a healthy scheduler
@@ -415,7 +415,7 @@ def _rag_target_urls() -> tuple[str, ...]:
 @_with_db_fail_fast_guard(urls=_rag_target_urls)
 @_with_lock_skip_guard
 def sync_rag_incremental_job() -> None:
-    """RAG Vector DB Incremental Sync Job: sync latest season data into the Oracle RAG index."""
+    """RAG Vector DB Incremental Sync Job: sync latest season data into the RAG index."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         if not _rag_vector_backend_configured():
             logger.warning("=== RAG Vector DB Incremental Sync skipped: vector backend is not configured ===")
@@ -446,33 +446,6 @@ def sync_rag_incremental_job() -> None:
             logger.info("=== RAG Vector DB Incremental Sync Completed Successfully ===")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("RAG Vector DB Incremental Sync job failed")
-
-
-@_with_db_fail_fast_guard
-@_with_lock_skip_guard
-def sparse_terms_catchup_job() -> None:
-    """Sparse postings catch-up for chunks published after the last build (daily 05:40 KST)."""
-    with _scheduler_job_lock(MAINTENANCE_LOCK):
-        logger.info("=== Starting Sparse Terms Catch-up ===")
-        try:
-            from src.cli.rag.build_oracle_sparse_index import main as sparse_main
-
-            previous_env = {key: os.environ.get(key) for key in _RAG_INCREMENTAL_WRITE_ENV}
-            os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
-            try:
-                exit_code = sparse_main(["--apply", "--catch-up", "--batch-size", "40", "--json"])
-            finally:
-                for key, value in previous_env.items():
-                    if value is None:
-                        os.environ.pop(key, None)
-                    else:
-                        os.environ[key] = value
-            if exit_code == 0:
-                logger.info("=== Sparse Terms Catch-up Completed Successfully ===")
-            else:
-                logger.warning("=== Sparse Terms Catch-up Failed (exit %s) ===", exit_code)
-        except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("Sparse terms catch-up job failed")
 
 
 @_with_lock_skip_guard

@@ -1,4 +1,4 @@
-"""Migration tests for the notification incident ledger (sqlite 061, postgresql 056, oracle 075)."""
+"""Migration tests for the notification incident ledger (sqlite 061, postgresql 056)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SQLITE_MIGRATION = ROOT / "migrations/sqlite/061_notification_incidents.sql"
 POSTGRES_MIGRATION = ROOT / "migrations/postgresql/056_notification_incidents.sql"
-ORACLE_MIGRATION = ROOT / "migrations/oracle/075_notification_incidents.sql"
 
 EXPECTED_COLUMNS = {
     "incident_key",
@@ -73,17 +72,6 @@ def test_postgres_migration_is_idempotent_syntax() -> None:
     assert "incident_key VARCHAR(255) NOT NULL UNIQUE" in sql
     for index in EXPECTED_INDEXES:
         assert f"CREATE INDEX IF NOT EXISTS {index}" in sql
-    assert "DROP" not in sql
-
-
-def test_oracle_migration_is_idempotent_syntax() -> None:
-    sql = ORACLE_MIGRATION.read_text(encoding="utf-8")
-    assert "user_tables" in sql
-    assert "user_indexes" in sql
-    assert "CREATE TABLE NOTIFICATION_INCIDENTS" in sql
-    assert "UQ_NOTIFICATION_INCIDENTS_KEY UNIQUE (INCIDENT_KEY)" in sql
-    for index in ("IDX_NOTIFICATION_INCIDENTS_STATE_SEV", "IDX_NOTIFICATION_INCIDENTS_SRC_SEEN"):
-        assert index in sql
     assert "DROP" not in sql
 
 

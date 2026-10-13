@@ -79,12 +79,10 @@ def _vector_context(
     required: bool,
 ) -> tuple[AbstractContextManager[Session | None], str, bool, bool]:
     """Resolve vector session state for read-only comparison."""
-    from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
+    from src.db.vector_engine import get_vector_session, is_pgvector_available
 
     if not required:
         return nullcontext(None), _UNKNOWN_VECTOR, False, False
-    if is_oracle_vector_backend():
-        return nullcontext(None), _AVAILABLE_VECTOR, False, True
     if not is_pgvector_available():
         message = "vector state required but no vector backend is available"
         raise RuntimeError(message)

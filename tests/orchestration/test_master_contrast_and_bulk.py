@@ -32,7 +32,6 @@ GUARD_TARGETS = [
     "src.cli.calculate_rankings.rebuild_rankings",
     "src.services.quality_hub.QualityHub.run_full_audit",
     "src.config.manager.ConfigManager.get_feature_flag",
-    "src.sync.sync_engine.OciSyncEngine",
     "src.notifications.dispatcher.NotificationDispatcher.dispatch",
     "src.services.bulk_loader.BulkChunkLoader",
 ]
@@ -125,7 +124,7 @@ def _execute_daily(ctx: dict[str, Any], monkeypatch, extra=()) -> Any:
 def test_enabled_happy_path_reaches_sync(monkeypatch) -> None:
     """With the same enabled config, the happy path runs and notifies.
 
-    Live Oracle sync wiring is a pending product decision, so the cloud_sync
+    Cloud sync wiring is a pending product decision, so the cloud_sync
     stage reports SKIPPED with a wiring-pending reason instead of COMPLETED.
     """
     mock_notify = MagicMock(return_value=MagicMock(is_delivered=True))
@@ -150,7 +149,6 @@ def test_enabled_happy_path_reaches_sync(monkeypatch) -> None:
 
 def test_quality_fail_verdict_blocks_downstream(monkeypatch) -> None:
     """A QualityHub FAIL verdict (not exception) blocks sync and notification."""
-    mock_sync_cls = MagicMock()
     mock_notify = MagicMock(return_value=MagicMock(is_delivered=True))
     report = _execute_daily(
         _daily_ctx(),
@@ -160,7 +158,6 @@ def test_quality_fail_verdict_blocks_downstream(monkeypatch) -> None:
                 "src.services.quality_hub.QualityHub.run_full_audit",
                 return_value=MagicMock(overall_status="FAIL"),
             ),
-            patch("src.sync.sync_engine.OciSyncEngine", new=mock_sync_cls),
             patch(
                 "src.notifications.dispatcher.NotificationDispatcher.dispatch",
                 new=mock_notify,
@@ -171,7 +168,6 @@ def test_quality_fail_verdict_blocks_downstream(monkeypatch) -> None:
     assert by_id["quality_gate"].status == StageExecutionStatus.FAILED
     assert by_id["cloud_sync"].status == StageExecutionStatus.SKIPPED
     assert by_id["notification"].status == StageExecutionStatus.SKIPPED
-    mock_sync_cls.assert_not_called()
     mock_notify.assert_not_called()
     assert report.overall_status in ("FAILED", "PARTIAL_FAILURE")
 

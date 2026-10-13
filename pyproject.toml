@@ -39,12 +39,9 @@ dependencies = [
     "lxml>=5.2.1",
     "pypdf>=4.0.0",
     "tzdata>=2024.1",
-    # Database. DATABASE_URL is the single application database; the dialect is
-    # read from the URL itself. PostgreSQL is what this deployment runs, Oracle
-    # stays supported for the legacy paths that still reach it (rag_chunk VECTOR
-    # binding, oracle_vector_search_repository, migrations/oracle).
-    "SQLAlchemy>=2.0.41",  # Oracle VECTOR type support
-    "oracledb>=4.0.0",  # Oracle ADB driver (Wallet/TNS/Vector)
+    # Database. DATABASE_URL is the single application database (PostgreSQL in
+    # production, SQLite for local/tests); the dialect is read from the URL itself.
+    "SQLAlchemy>=2.0.41",
     "python-dotenv>=1.0.0",
     # Scheduling
     "APScheduler>=3.10.4",

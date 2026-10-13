@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 
 from src.rag.dto import RetrievalCandidate, RetrievalQuery
 from src.rag.retrievers.hybrid import UnifiedHybridRetriever
-from src.rag.retrievers.oracle_dense import OracleDenseRetriever
+from src.rag.retrievers.dense_vector import DenseVectorRetriever
 from src.rag.retrievers.sparse_bm25 import SparseBM25Retriever
 
 
-def test_oracle_dense_retriever_mocked() -> None:
+def test_dense_vector_retriever_mocked() -> None:
     mock_embed = MagicMock()
     mock_embed.get_embedding.return_value = [0.1, 0.2, 0.3]
 
@@ -26,8 +26,8 @@ def test_oracle_dense_retriever_mocked() -> None:
         }
     ]
 
-    with patch("src.rag.retrievers.oracle_dense.is_oracle_vector_backend", return_value=True):
-        retriever = OracleDenseRetriever(embedding_service=mock_embed, vector_repo=mock_repo)
+    with patch("src.rag.retrievers.dense_vector.is_pgvector_available", return_value=True):
+        retriever = DenseVectorRetriever(embedding_service=mock_embed, vector_repo=mock_repo)
         assert retriever.is_available() is True
 
         res = retriever.retrieve("김도영 30-30", top_k=5)

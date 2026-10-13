@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING, Any
 from src.services.rag_index_propagation import (
     propagate_index_delete,
     propagate_index_update,
-    propagate_single_store_delete,
-    propagate_single_store_update,
 )
 
 if TYPE_CHECKING:
@@ -61,47 +59,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     from src.db.engine import get_rag_index_session
-    from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
+    from src.db.vector_engine import get_vector_session, is_pgvector_available
 
-    oracle_backend = is_oracle_vector_backend()
-    if not is_pgvector_available() and not oracle_backend:
-        plan["error"] = "Oracle VECTOR/pgvector backend is unavailable"
+    if not is_pgvector_available():
+        plan["error"] = "pgvector backend is unavailable"
         _render(plan, as_json=args.as_json)
         return 2
-    with get_rag_index_session() as primary_session:
-        if oracle_backend:
-            if args.delete:
-                result = propagate_single_store_delete(
-                    primary_session,
-                    args.source_table,
-                    args.source_row_id,
-                    purge=args.purge,
-                )
-            else:
-                embedder = _embedding_service(args.embedding_mode)
-                result = propagate_single_store_update(
-                    primary_session,
-                    payload,
-                    embedder.get_embedding(f"{payload['title']}\n{payload['content']}"),
-                )
+    with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
+        if args.delete:
+            result = propagate_index_delete(
+                primary_session,
+                vector_session,
+                args.source_table,
+                args.source_row_id,
+                purge=args.purge,
+            )
         else:
-            with get_vector_session() as vector_session:
-                if args.delete:
-                    result = propagate_index_delete(
-                        primary_session,
-                        vector_session,
-                        args.source_table,
-                        args.source_row_id,
-                        purge=args.purge,
-                    )
-                else:
-                    embedder = _embedding_service(args.embedding_mode)
-                    result = propagate_index_update(
-                        primary_session,
-                        vector_session,
-                        payload,
-                        embedder.get_embedding(f"{payload['title']}\n{payload['content']}"),
-                    )
+            embedder = _embedding_service(args.embedding_mode)
+            result = propagate_index_update(
+                primary_session,
+                vector_session,
+                payload,
+                embedder.get_embedding(f"{payload['title']}\n{payload['content']}"),
+            )
     plan["result"] = result.to_dict()
     _render(plan, as_json=args.as_json)
     return 0

@@ -1,12 +1,11 @@
-"""Dense vector retriever using Oracle AI Vector Search (or local pgvector fallback)."""
+"""Dense vector retriever backed by the PostgreSQL/pgvector store."""
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
 
-from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
+from src.db.vector_engine import is_pgvector_available
 from src.rag.base_retriever import BaseRetriever
 from src.rag.dto import RetrievalCandidate, RetrievalQuery, RetrievalResult
 from src.repositories.vector_search_repository import VectorSearchRepository
@@ -14,37 +13,25 @@ from src.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
-
-def _build_dense_repository() -> VectorSearchRepository | OracleVectorSearchRepository:
-    """Build the repository for the active vector backend."""
-    if is_oracle_vector_backend():
-        from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
-
-        return OracleVectorSearchRepository()
-    return VectorSearchRepository()
-
-
-class OracleDenseRetriever(BaseRetriever):
-    """Dense vector retriever querying Oracle AI Vector Search."""
+class DenseVectorRetriever(BaseRetriever):
+    """Dense vector retriever querying the pgvector store."""
 
     def __init__(
         self,
         *,
         embedding_service: EmbeddingService | None = None,
-        vector_repo: VectorSearchRepository | OracleVectorSearchRepository | None = None,
-        name: str = "OracleDenseRetriever",
+        vector_repo: VectorSearchRepository | None = None,
+        name: str = "DenseVectorRetriever",
     ) -> None:
         """Initialize the dense retriever."""
         super().__init__(name=name)
         self.embedding_service = embedding_service or EmbeddingService()
-        self.vector_repo = vector_repo or _build_dense_repository()
+        self.vector_repo = vector_repo or VectorSearchRepository()
 
     def is_available(self) -> bool:
         """Check if vector search backend is available."""
-        return is_oracle_vector_backend() or is_pgvector_available()
+        return is_pgvector_available()
 
     def retrieve(self, query: RetrievalQuery | str, **kwargs: object) -> RetrievalResult:
         """Execute dense vector similarity retrieval."""

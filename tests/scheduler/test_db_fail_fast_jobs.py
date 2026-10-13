@@ -421,7 +421,6 @@ class TestAnUnusableStoreIsReportedRatherThanEscaped:
 
         from src.cli.rag import build_rag_index
 
-        monkeypatch.setattr(build_rag_index, "_is_oracle_url", lambda _url: False)
         monkeypatch.setattr(build_rag_index, "is_pgvector_available", lambda: False, raising=False)
         resolved = SimpleNamespace(
             source_db="sqlite:///x",

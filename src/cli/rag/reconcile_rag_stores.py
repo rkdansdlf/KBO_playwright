@@ -97,17 +97,10 @@ def _identity_select_prefix(session: Session) -> str:
 
     The presence test is deliberately stricter than ``IS NULL`` on stores whose
     column is textual: the local database records "no vector" as the literal
-    string ``null``, which an ``IS NULL`` test counts as embedded. Oracle keeps
-    the plain test, because its ``VECTOR`` type rejects the text cast this uses
-    (ORA-51810) and never carries that placeholder.
+    string ``null``, which an ``IS NULL`` test counts as embedded.
     """
-    bind = session.get_bind()
-    dialect = getattr(getattr(bind, "dialect", None), "name", None)
     column = _resolve_embedding_column(session)
-    if dialect == "oracle":
-        presence = f"CASE WHEN {column} IS NULL THEN 0 ELSE 1 END"
-    else:
-        presence = f"CASE WHEN {column} IS NULL OR CAST({column} AS TEXT) IN ('null', '[]', '') THEN 0 ELSE 1 END"
+    presence = f"CASE WHEN {column} IS NULL OR CAST({column} AS TEXT) IN ('null', '[]', '') THEN 0 ELSE 1 END"
     return f"{_IDENTITY_SELECT_PREFIX}{presence} AS embedding_present"
 
 
@@ -130,25 +123,12 @@ def fetch_identity_entries(session: Session) -> list[ManifestEntry]:
 def _side_role(side: str) -> str:
     """Return the storage role the named side actually serves.
 
-    Derived from the same resolution dense search uses, not from the side name.
-    ``get_vector_session()`` is what ``vector_search_repository`` reads, and it
-    answers with the Oracle index session when there is no ``PGVECTOR_URL`` and
-    the operational database is Oracle, and with the pgvector store otherwise.
-    So:
-
-    * Oracle single-store -- ``primary`` **is** the dense store, and naming it
-      ``sparse`` would exempt the one side that must be checked.
-    * Separate pgvector -- ``primary`` is the sparse store and ``staging`` holds
-      the vectors.
-
-    Reading this off the configuration is the point. Hard-coding it by side name
-    is how the previous version came to demand vectors from a store that no
-    dense reader opens.
+    ``get_vector_session()`` (what ``vector_search_repository`` reads) always
+    answers with the pgvector store, so ``primary`` is the sparse store and
+    ``staging`` holds the vectors.
     """
     if side == "primary":
-        from src.db.vector_engine import is_oracle_vector_backend
-
-        return ROLE_DENSE if is_oracle_vector_backend() else ROLE_SPARSE
+        return ROLE_SPARSE
     return ROLE_DENSE
 
 

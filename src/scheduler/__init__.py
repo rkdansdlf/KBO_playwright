@@ -88,7 +88,6 @@ from src.scheduler.jobs import (
     recalc_milestones_and_rag_job,
     relay_state_cleanup_job,
     selector_drift_sentinel_job,
-    sparse_terms_catchup_job,
     sync_rag_incremental_job,
     weekly_sla_report_job,
 )
@@ -227,7 +226,6 @@ __all__ = [
     "recalc_milestones_and_rag_job",
     "relay_state_cleanup_job",
     "selector_drift_sentinel_job",
-    "sparse_terms_catchup_job",
     "sync_rag_incremental_job",
     "weekly_sla_report_job",
 ]

@@ -26,7 +26,7 @@ pytest -v --tb=short --durations=10
 | `tests/services/` | `src/services/` 서비스 레이어 |
 | `tests/utils/` | `src/utils/` 유틸리티 |
 | `tests/parsers/` | `src/parsers/` 파서 |
-| `tests/` | SQLite→Oracle 초기 적재와 Oracle dialect 검증 |
+| `tests/` | SQLite/PostgreSQL 경로 검증 |
 | `tests/scripts/` | `scripts/` 유지보수 스크립트 |
 | `tests/aggregators/` | `src/aggregators/` 통계 집계 |
 | `tests/sources/` | `src/sources/` 데이터 소스 |

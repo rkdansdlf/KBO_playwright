@@ -1,8 +1,7 @@
 # PostgreSQL and pgvector Migrations
 
-PostgreSQL migrations are for local integration and the separate pgvector service.
-Oracle Autonomous Database is the production database and has its own migration
-runner: `python3 -m src.cli.apply_oracle_migrations`.
+PostgreSQL is the production database (Windows DB host over Tailscale); pgvector
+holds dense RAG vectors. Oracle support (and `migrations/oracle/`) was removed in 2026-10.
 
 ## Contract
 

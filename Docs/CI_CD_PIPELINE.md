@@ -2,7 +2,7 @@
 
 GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성됩니다.
 
-운영 DB와 RAG sparse/dense 검색은 모두 Oracle Autonomous Database를 사용합니다. PostgreSQL/pgvector는 production target이 아닌 격리된 local acceptance용으로만 유지합니다. 현재 workflow의 기본 DB fallback은 허용하지 않습니다.
+운영 DB는 Windows DB 호스트의 PostgreSQL(Tailscale 경유)이며, RAG dense 벡터는 pgvector(`PGVECTOR_URL`)에 저장합니다. Oracle/OCI 지원은 2026-10에 제거되었습니다. 현재 workflow의 기본 DB fallback은 허용하지 않습니다.
 
 ## Composite Actions
 
@@ -86,8 +86,6 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 | `KBO_USER_PWD` | 예 | KBO 웹사이트 로그인 PW |
 | `TELEGRAM_BOT_TOKEN` | 예 | Telegram 알림 봇 토큰 |
 | `TELEGRAM_CHAT_ID` | 예 | 기본 Telegram 알림 채널 |
-| `DATABASE_URL` | 예 | Oracle Autonomous Database URL |
-| `ORACLE_WALLET_B64` | 예 | Oracle Wallet zip의 base64 값 |
-| `OCI_WALLET_PASSWORD` | 조건부 | Wallet 비밀번호 |
+| `DATABASE_URL` | 예 | PostgreSQL URL (keepalives 파라미터 포함) |
 | `YOUTUBE_API_KEY` | 아니오 | 팬 문화 유튜브 API |
 | `NAVER_CLIENT_ID/SECRET` | 아니오 | 네이버 API |

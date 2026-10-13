@@ -1,4 +1,4 @@
-"""Migration tests for the stadium FK repoint (sqlite 070, postgresql 065, oracle 082)."""
+"""Migration tests for the stadium FK repoint (sqlite 070, postgresql 065)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SQLITE_MIGRATION = ROOT / "migrations/sqlite/070_stadium_fk_to_stadiums.sql"
 POSTGRES_MIGRATION = ROOT / "migrations/postgresql/065_stadium_fk_to_stadiums.sql"
-ORACLE_MIGRATION = ROOT / "migrations/oracle/082_stadium_fk_to_stadiums.sql"
 
 CHILD_TABLES = (
     "parking_lots",
@@ -53,15 +52,6 @@ def test_postgres_migration_drops_and_recreates_constraints() -> None:
     assert "DROP TABLE" not in sql
     assert "DROP CONSTRAINT IF EXISTS parking_lots_stadium_id_fkey" in sql
     assert "DROP CONSTRAINT IF EXISTS stadium_operation_notices_stadium_code_fkey" in sql
-
-
-def test_oracle_migration_is_idempotent_syntax() -> None:
-    sql = ORACLE_MIGRATION.read_text(encoding="utf-8")
-    assert "user_constraints" in sql
-    assert "REFERENCES STADIUMS (STADIUM_ID) ON DELETE CASCADE" in sql
-    assert sql.count("DROP CONSTRAINT FK_") == 6
-    assert "DROP TABLE" not in sql
-    assert "DROP CONSTRAINT" in sql
 
 
 if __name__ == "__main__":

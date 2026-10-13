@@ -14,8 +14,7 @@
 #   TARGET_URL: 크롤링 대상 URL (선택사항)
 #   KBO_REQUEST_DELAY_MIN: 최소 요청 딜레이 (기본: 1.5초)
 #   KBO_REQUEST_DELAY_MAX: 최대 요청 딜레이 (기본: 2.5초)
-#   DATABASE_URL: Oracle Autonomous Database URL
-#   ORACLE_WALLET_HOST_PATH: Oracle Wallet directory on the host
+#   DATABASE_URL: PostgreSQL URL
 
 services:
   text-relay:
@@ -43,9 +42,8 @@ services:
       - KBO_PLAYWRIGHT_SELECTOR_TIMEOUT=${KBO_PLAYWRIGHT_SELECTOR_TIMEOUT:-15000}
       - KBO_PLAYWRIGHT_NAVIGATION_TIMEOUT=${KBO_PLAYWRIGHT_NAVIGATION_TIMEOUT:-30000}
 
-      # Oracle primary database
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the Oracle Autonomous Database}
-      - TNS_ADMIN=/run/oracle-wallet
+      # Primary PostgreSQL database
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the PostgreSQL database}
 
       # 로깅
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -58,7 +56,6 @@ services:
 
       # 로그 출력 디렉토리
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
 
       # 소스코드 마운트 (개발 시 유용, 프로덕션에서는 제거)
       # - ./src:/app/src:ro
@@ -106,13 +103,11 @@ services:
       - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000/chromium/playwright
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the Oracle Autonomous Database}
-      - TNS_ADMIN=/run/oracle-wallet
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the PostgreSQL database}
 
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
 
     networks:
       - kbo-text-relay-network
@@ -144,13 +139,11 @@ services:
       - PLAYWRIGHT_WS_ENDPOINT=ws://browserless:3000/chromium/playwright
       - KBO_REQUEST_DELAY_MIN=${KBO_REQUEST_DELAY_MIN:-1.5}
       - KBO_REQUEST_DELAY_MAX=${KBO_REQUEST_DELAY_MAX:-2.5}
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the Oracle Autonomous Database}
-      - TNS_ADMIN=/run/oracle-wallet
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set to the PostgreSQL database}
 
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
 
     networks:
       - kbo-text-relay-network

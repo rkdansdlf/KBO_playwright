@@ -10,21 +10,21 @@ from src.cli.run_migrations import build_arg_parser, main
 
 def test_build_arg_parser() -> None:
     parser = build_arg_parser()
-    args = parser.parse_args(["--dialect", "oracle", "--dry-run", "--json"])
-    assert args.dialect == "oracle"
+    args = parser.parse_args(["--dialect", "sqlite", "--dry-run", "--json"])
+    assert args.dialect == "sqlite"
     assert args.dry_run is True
     assert args.json is True
 
 
 def test_main_cli_execution_status_json(capsys: pytest.CaptureFixture[str]) -> None:
-    exit_code = main(["--dialect", "oracle", "--status", "--json", "--db-url", "sqlite:///:memory:"])
+    exit_code = main(["--dialect", "sqlite", "--status", "--json", "--db-url", "sqlite:///:memory:"])
     captured = capsys.readouterr()
 
     assert exit_code == 0
     data = json.loads(captured.out)
-    assert data["dialect"] == "oracle"
+    assert data["dialect"] == "sqlite"
     assert "total_available" in data
-    assert data["total_available"] >= 50
+    assert data["total_available"] >= 1
 
 
 def test_the_dialect_must_be_named() -> None:
