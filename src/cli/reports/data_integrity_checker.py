@@ -21,7 +21,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -489,7 +489,9 @@ def _winner_matches(game: Game, *, expected_team: str, expected_franchise_id: in
     winning_franchise_id = game.winning_franchise_id
     if expected_franchise_id is not None and winning_franchise_id is not None:
         return int(winning_franchise_id) == int(expected_franchise_id)
-    return bool(game.winning_team) and game.winning_team == expected_team
+    # `winning_team` is an untyped `Column`, so the comparison is inferred as a
+    # SQL expression; `game` is a loaded row here, so the Python comparison runs.
+    return bool(game.winning_team) and bool(game.winning_team == expected_team)
 
 
 def check_winning_team_consistency(session: Session, target: date) -> CheckResult:
@@ -522,12 +524,16 @@ def check_winning_team_consistency(session: Session, target: date) -> CheckResul
     for game in games:
         if game.home_score is None or game.away_score is None:
             continue
+        # The team-code and franchise-id columns are untyped `Column`
+        # attributes, so reading them yields SQL expressions to a type
+        # checker. These rows are loaded instances, where the attributes hold
+        # plain values, so the casts record what is already true at runtime.
         if game.home_score > game.away_score:
-            expected = game.home_team
-            expected_franchise_id = game.home_franchise_id
+            expected = cast("str", game.home_team)
+            expected_franchise_id = cast("int | None", game.home_franchise_id)
         elif game.away_score > game.home_score:
-            expected = game.away_team
-            expected_franchise_id = game.away_franchise_id
+            expected = cast("str", game.away_team)
+            expected_franchise_id = cast("int | None", game.away_franchise_id)
         else:
             continue
 
