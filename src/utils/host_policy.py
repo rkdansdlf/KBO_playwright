@@ -43,7 +43,7 @@ from src.constants import KST
 logger = logging.getLogger(__name__)
 
 #: Where per-host policies are stored.
-POLICY_DIR = Path("docs/robots")
+POLICY_DIR = Path("Docs/robots")
 
 #: Snapshots carry their provenance in the first lines; the parser needs the rest.
 SNAPSHOT_HEADER_LINES = 3

@@ -40,7 +40,7 @@ def log_source_limited(source: str, url: str) -> str:
 
 
 def _save_robots_snapshot(robots_url: str, content: str) -> Path:
-    snapshot_dir = Path("docs/robots")
+    snapshot_dir = Path("Docs/robots")
     snapshot_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(KST).strftime("%Y%m%d_%H%M%S")
     snapshot_path = snapshot_dir / f"robots_{timestamp}.txt"

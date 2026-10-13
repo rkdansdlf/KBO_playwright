@@ -88,6 +88,14 @@ COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser migrations/ ./migrations/
 COPY --chown=appuser:appuser docker/ ./docker/
+# Per-host robots policies are read at runtime by the source inventory job and
+# by the crawler compliance check, both of which resolve them by relative path
+# (source_inventory.ROBOTS_DIR, host_policy.POLICY_DIR, compliance). Without
+# this COPY the directory does not exist inside the image, every host comes back
+# unreachable, and the policy reads as enforced while enforcing nothing.
+# Dockerfile.playwright already copies all of Docs/; this stage copies only what
+# the runtime reads. The name is case-sensitive on Linux -- it must stay `Docs`.
+COPY --chown=appuser:appuser Docs/robots/ ./Docs/robots/
 COPY --chown=appuser:appuser pyproject.toml ./
 
 # Strip Windows CRLF from shell scripts (host checkout may use CRLF).

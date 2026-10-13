@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 CRAWLER_DIR = Path("src/crawlers")
 SOURCE_DIR = Path("src")
-ROBOTS_DIR = Path("docs/robots")
+ROBOTS_DIR = Path("Docs/robots")
 SNAPSHOT_HEADER_LINES = 3
 
 #: How many undeclared crawlers an advisory names before summarising.

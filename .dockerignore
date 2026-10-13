@@ -19,8 +19,16 @@ reports/
 # resolved by relative path from src/. Excluding the whole tree made
 # `COPY Docs/` fail with `"/Docs": not found`, which broke the text relay
 # pipeline daily. Exclude the heavy subtrees and keep what is read at runtime.
+#
+# Docs/robots/ is a fourth runtime input, and it belongs to the plain Dockerfile
+# rather than the Playwright one: the source inventory job and the crawler
+# compliance check both read their per-host policies from a relative path. It is
+# listed explicitly because a directory name is case-sensitive on Linux, and the
+# code used to spell it `docs/robots` -- which resolves on macOS and not in the
+# container, leaving every host unreachable and no policy enforced.
 Docs/*
 !Docs/references/
+!Docs/robots/
 Docs/certification/
 Docs/incident-evidence/
 .claude/
