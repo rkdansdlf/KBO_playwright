@@ -19,7 +19,7 @@ from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 from src.utils.team_codes import STANDARD_TEAM_CODES
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from sqlalchemy.orm import Session
     from sqlalchemy.sql.elements import ColumnElement
@@ -86,6 +86,14 @@ PLAYER_SEASON_SOURCE_PRIORITY = (
     "AGGREGATED",
     "RECALC",
     "PROFILE",
+    # Written by both player crawlers when the source page was blocked and the season
+    # line was rebuilt from game rows; ``audit_fallback_stats`` treats these as official
+    # values. Unranked, the source ranking fell through to its else branch and the gate
+    # read whichever row sorted next -- for a player whose team code drifted, another
+    # team's total.
+    "AUDIT_FIX",
+    "FALLBACK_AUTO",
+    "FALLBACK",
     "FALLBACK_BACKFILL",
     "ROLLUP",
 )
@@ -111,6 +119,50 @@ def _batting_pa_mismatch(diff: int, cumulative_pa: int) -> bool:
 def _team_stat_mismatch(diff: int, threshold: int = TEAM_STAT_ABSOLUTE_TOLERANCE) -> bool:
     """Return True when absolute team/player stat difference exceeds threshold."""
     return abs(diff) > threshold
+
+
+# The team pages are parsed into these rows, so their provenance travels in extra_stats.
+# Normalized to upper case because the markers are written by crawlers, not by this module.
+TEAM_STATS_SCRAPED_SOURCE = "KBO_TEAM_PAGE"
+TEAM_STATS_AGGREGATED_SOURCE = "PLAYER_ROLLUP"
+
+
+def _normalize_source_marker(value: object) -> str | None:
+    """Return an upper-cased source marker, or None when the value is not one.
+
+    Only real strings count. A row object that was never given a marker can answer
+    this attribute with a placeholder, and a placeholder is not provenance.
+    """
+    if isinstance(value, str) and value.strip():
+        return value.strip().upper()
+    return None
+
+
+def _team_row_source(row: object) -> str | None:
+    """Return the provenance marker a team season row was written with.
+
+    ``extra_stats`` is where the crawlers already record it -- parsed rows carry the
+    page they came from, aggregated rows carry the rollup that produced them. The
+    ``source`` column fallback keeps a future dedicated column working without a
+    second code path here.
+    """
+    extra_stats = getattr(row, "extra_stats", None)
+    if isinstance(extra_stats, dict):
+        marker = _normalize_source_marker(extra_stats.get("source"))
+        if marker:
+            return marker
+
+    return _normalize_source_marker(getattr(row, "source", None))
+
+
+def _is_cross_checkable(row: object) -> bool:
+    """Return whether comparing this team row against player sums checks anything.
+
+    Only a total read from the official team page is independent of the player rows.
+    A total summed from those same rows agrees with them by construction, so a green
+    result there means "nothing was compared" rather than "two sources agreed".
+    """
+    return _team_row_source(row) == TEAM_STATS_SCRAPED_SOURCE
 
 
 def _team_pitching_stat_diffs(
@@ -302,6 +354,30 @@ class QualityGate:
         if selected is None:
             return None, None
         return source_column == selected, selected
+
+    @staticmethod
+    def _summarize_team_provenance(rows: Iterable[Any]) -> str | None:
+        """Return one label describing where the compared team totals came from.
+
+        A single label is enough for a report and keeps a mixed season readable: any
+        scraped row means some rows were genuinely cross-checked, no marker at all
+        means the totals predate provenance tracking, and anything else means every
+        compared row was derived from the player sums.
+        """
+        markers = {_team_row_source(row) for row in rows}
+        markers.discard(None)
+        if not markers:
+            return None
+        if TEAM_STATS_SCRAPED_SOURCE in markers:
+            return TEAM_STATS_SCRAPED_SOURCE
+        if markers == {TEAM_STATS_AGGREGATED_SOURCE}:
+            return TEAM_STATS_AGGREGATED_SOURCE
+        return "+".join(sorted(markers))
+
+    @classmethod
+    def _any_cross_checkable(cls, rows: Iterable[Any]) -> bool:
+        """Return whether at least one compared team total was an independent read."""
+        return any(_is_cross_checkable(row) for row in rows)
 
     @staticmethod
     def _cumulative_map(rows: Sequence[Any]) -> dict[Any, Any]:
@@ -674,6 +750,7 @@ class QualityGate:
             TeamSeasonBatting.sacrifice_hits,
             TeamSeasonBatting.sacrifice_flies,
             TeamSeasonBatting.gdp,
+            TeamSeasonBatting.extra_stats,
         ).where(
             TeamSeasonBatting.season == season,
             TeamSeasonBatting.league == league,
@@ -763,6 +840,8 @@ class QualityGate:
         result["unavailable_fields"] = sorted(unavailable_fields)
         result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
         result["semantics_exempt_diffs"] = semantics_exempt_diffs[:10]
+        result["team_source"] = self._summarize_team_provenance(team_map.values())
+        result["cross_checkable"] = self._any_cross_checkable(team_map.values())
         return result
 
     def validate_season_team_pitching(self, season: int, league: str = "REGULAR") -> dict[str, Any]:
@@ -811,6 +890,7 @@ class QualityGate:
             TeamSeasonPitching.balks,
             TeamSeasonPitching.sacrifices_allowed,
             TeamSeasonPitching.sacrifice_flies_allowed,
+            TeamSeasonPitching.extra_stats,
         ).where(
             TeamSeasonPitching.season == season,
             TeamSeasonPitching.league == league,
@@ -923,6 +1003,8 @@ class QualityGate:
         result["unavailable_fields"] = sorted(unavailable_fields)
         result["semantics_exempt_fields"] = sorted(OFFICIAL_SOURCE_SEMANTICS_EXEMPT_FIELDS)
         result["semantics_exempt_diffs"] = all_semantics_exempt_diffs[:10]
+        result["team_source"] = self._summarize_team_provenance(team_map.values())
+        result["cross_checkable"] = self._any_cross_checkable(team_map.values())
         return result
 
     def _check_futures_batting_impossible(self, player: PlayerSeasonBatting) -> str | None:
