@@ -364,8 +364,10 @@ class QualityGate:
         means the totals predate provenance tracking, and anything else means every
         compared row was derived from the player sums.
         """
-        markers = {_team_row_source(row) for row in rows}
-        markers.discard(None)
+        # Filtering while building keeps the element type `str`, so the
+        # `sorted()` below joins known strings rather than a set that still
+        # admits `None` to the type checker.
+        markers = {source for source in (_team_row_source(row) for row in rows) if source is not None}
         if not markers:
             return None
         if TEAM_STATS_SCRAPED_SOURCE in markers:
