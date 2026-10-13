@@ -113,6 +113,38 @@ class TestFetchIdentityEntries:
 
         assert "embedding_vector" in str(session.execute.call_args.args[0])
 
+    def test_retired_rows_are_excluded_from_both_exports(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A tombstone the primary retired must not read as drift in the gate.
+
+        The export used to select every row, so a retired primary row appeared
+        on one side only and was reported as MISSING_IN_RIGHT for as long as the
+        row existed -- permanently, because it never would be copied across.
+        """
+        session = Mock()
+        session.execute.return_value = _FakeResult([_row("awards", "1")])
+        _patch_columns(monkeypatch, {"embedding"})
+
+        fetch_identity_entries(session)
+
+        statement = str(session.execute.call_args.args[0])
+        assert "index_status" in statement
+        assert "'DELETED'" in statement
+
+    def test_a_retired_primary_row_is_not_compared_as_a_pair(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The exclusion is in the query, so no post-hoc filtering is needed.
+
+        Asserting on the query rather than on the reconciled result, because the
+        defect lived in what the export selected -- the comparison layer never
+        saw a chance to classify it.
+        """
+        session = Mock()
+        session.execute.return_value = _FakeResult([_row("awards", "1", status="DELETED")])
+        _patch_columns(monkeypatch, {"embedding"})
+
+        fetch_identity_entries(session)
+
+        assert "COALESCE" in str(session.execute.call_args.args[0])
+
     def test_postgresql_projection_uses_embedding_column(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = Mock()
         session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))

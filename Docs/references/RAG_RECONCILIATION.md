@@ -370,3 +370,50 @@ identity 대조가 이를 확정한다 — **pgvector의 `press_release` 40건�
 분류가 0이었으므로, 컷오프가 실전에서 값을 하는 순간은 아직 오지 않았다. 무관해 보이지만
 아니며 — 10/11의 28,000건 PBP 차이는 이 기능이 없었으면 하드 드리프트로 보고됐을 차다.
 데이터가 실제로 두 저장소에서 서로 다른 시점에 쓰이는 재색인 상황이 있어야 발동한다.
+
+## 2026-10-12 기록 정정 — 393건 중 40건은 "대기"가 아니라 **중복**이었다
+
+위 절의 판정(`393 = 야간 백필이 닫을 대기분`)은 **40건에 대해 틀렸다.** 353건
+(`milestone`)은 맞았지만, `press_release` 40건은 대기 중인 신규 데이터가 아니라
+**같은 40건이 legacy 키로 한 번 더 만들어진 중복**이었다.
+
+### 원인
+
+`src/services/rag_indexer.py`의 `index_press_releases`가 `meta.source_row_id =
+str(r.id)`를 썼고, `RagChunkRepository`는 그 필드를 identity 폴백으로 쓴다. 반면
+census의 자연키는 KBO 공고번호(`notice_id`)다. 그래서 이 인덱서가 돌 때마다 같은
+공고가 `id` 키로 한 벌 더 생겼다 — 소스 40행에 대해 sparse 80청크(내용 동일),
+pgvector 40청크.
+
+### 그대로 뒀다면 벌어졌을 일
+
+"pgvector가 primary보다 40 뒤처졌다 → 백필이 메운다"는 판단대로 05:30 백필이 돌면,
+그 백필은 이 40건을 **중복 그대로 pgvector에 복사**해 80건으로 만든다. 갭이 닫히는
+것처럼 보이면서 오염이 양쪽으로 퍼진다. 실제로 백필 preview가 `gap_rows: 393`을
+보고했고, 중복 40건을 tombstone한 뒤에야 `353`이 됐다.
+
+### 조치
+
+| 순서 | 작업 | 결과 |
+| --- | --- | --- |
+| 1 | `index_press_releases`가 `stable_press_release_source_row_id(r.notice_id)`를 쓰도록 수정 | 커밋 `00e8e862` |
+| 2 | sparse의 `id` 키 40청크 tombstone (내용 동일 확인 후) | `gap_rows 393 → 353` |
+| 3 | 백필 실행 | `copied=353 failed=0`, `is_clean: true` |
+
+### 이 정정이 바꾸는 판단
+
+위 절의 "393은 곧 닫힐 값이므로 세분화하지 않는다"는 **393이 순수 대기분일 때만**
+성립한다. 실제로는 그 안에 중복이 섞여 있었고, **중복과 대기는 백필을 돌리기 전에
+구분해야 하는 대상**이었다 — 구분 없이 돌리면 중복이 복제된다. 즉 "절대 실패할 수
+없는 분기는 게이트가 아니다"라는 논리는 이 사례에서 **전제가 틀렸다.**
+
+### 함께 고친 게이트 오보
+
+`reconcile_rag_stores`의 export가 `rag_chunks` **전체 행**을 선택해(`index_status`
+필터 없음) primary가 tombstone한 행을 `MISSING_IN_RIGHT`로 **영구 오보**했다. 위
+40건을 tombstone한 순간부터 매 실행마다 40건이 drift로 보고될 상태였다. 양쪽 export에서
+DELETED를 제외하도록 고쳤다 — 방향이 중요하다. 한쪽만 제외하면 의도적 부재가 누락으로
+보이고, 양쪽을 제외하면 **반대 방향 drift(pgvector는 ACTIVE인데 primary가 DELETED)는
+`MISSING_IN_LEFT`로 그대로 탐지**된다.
+
+실측 결과: 양쪽 226,432행, `unexplained_count: 0`, `is_clean: true`.

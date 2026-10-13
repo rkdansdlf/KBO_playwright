@@ -31,8 +31,21 @@ _DEFAULT_OUTPUT_ROOT = Path("reports") / "rag_reconciliation"
 _SIDES = ("primary", "staging")
 
 _IDENTITY_SELECT_PREFIX = "SELECT source_table, source_row_id, content_hash, index_version, index_status, "
-_WITH_TIMESTAMPS_SUFFIX = ", created_at, updated_at FROM rag_chunks"
 _PLAIN_SUFFIX = " FROM rag_chunks"
+
+# Retired rows are excluded from both exports, and the exclusion has to be on both
+# sides to keep its direction. A row the primary tombstoned is meant to be absent
+# from the vector store, so exporting it made every tombstone show up permanently
+# as MISSING_IN_RIGHT -- forty press-release duplicates reported as drift forever
+# after they were retired. Skipping it on both sides does not lose the opposite
+# case: a row still ACTIVE in the vector store while DELETED in the primary loses
+# its counterpart instead and is still reported, as MISSING_IN_LEFT.
+_TOMBSTONE_FILTER = " FROM rag_chunks WHERE COALESCE(index_status, '') <> 'DELETED'"
+
+_TIMESTAMP_TOMBSTONE_FILTER = (
+    ", created_at, updated_at FROM rag_chunks "
+    "WHERE COALESCE(index_status, '') <> 'DELETED' ORDER BY source_table, source_row_id"
+)
 
 
 def _default_stamp() -> str:
@@ -99,7 +112,7 @@ def fetch_identity_entries(session: Session) -> list[ManifestEntry]:
     from sqlalchemy.exc import SQLAlchemyError
 
     prefix = _identity_select_prefix(session)
-    for suffix in (_WITH_TIMESTAMPS_SUFFIX, _PLAIN_SUFFIX):
+    for suffix in (_TIMESTAMP_TOMBSTONE_FILTER, _TOMBSTONE_FILTER):
         try:
             rows = session.execute(text(prefix + suffix)).mappings().all()
         except SQLAlchemyError:
