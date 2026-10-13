@@ -155,52 +155,13 @@ validation record is `Docs/references/rag_production_validation_20260828.json`.
 
 ---
 
-## 4. OCI Live Database Sync & Diagnosis
+## 4. OCI Live Database Sync & Diagnosis (removed)
 
-### 1) OCI 연결 사전 진단
-```bash
-venv/bin/python3 scripts/diagnose_oci_connection.py --json
-```
-
-### 2) Oracle 검증 schema migration
-검증 대상은 `OCI_DB_URL`로만 지정합니다. `DATABASE_URL`은 production primary URL이므로
-검증 명령에 사용하지 않습니다.
-```bash
-venv/bin/python -m src.cli.apply_oracle_migrations \
-  --url "$OCI_DB_URL" --include-safety-gated
-venv/bin/python -m src.cli.apply_oracle_migrations \
-  --url "$OCI_DB_URL" --include-safety-gated
-venv/bin/python -m src.cli.apply_oracle_migrations \
-  --url "$OCI_DB_URL" --include-safety-gated --check
-```
-
-### 3) Oracle schema audit
-```bash
-venv/bin/python scripts/verification/audit_oracle_schema.py \
-  --url "$OCI_DB_URL" --json
-```
-
-### 4) Fresh disposable schema reset
-현재 승인된 대상은 `ADMIN` 검증 schema입니다. 초기화는 destructive하므로 dry-run 확인 후
-정확한 confirmation을 요구합니다. Oracle Database Tools 내부 객체는 보존됩니다.
-```bash
-venv/bin/python scripts/verification/reset_oracle_verification_schema.py \
-  --dry-run --json
-venv/bin/python scripts/verification/reset_oracle_verification_schema.py \
-  --confirm ADMIN --json
-```
-
-초기화 후에는 위 migration 명령을 다시 실행합니다.
-
-### 5) OCI repository and live E2E smoke
-```bash
-KBO_RUN_OCI_INTEGRATION=1 \
-  venv/bin/python -m pytest tests/test_oracle_smoke.py \
-  -m oci -q -o addopts=''
-venv/bin/python scripts/verification/verify_oci_live_sync.py --json
-```
-
----
+Oracle/OCI support was removed in 2026-10 (free-tier capacity exceeded; the
+operational store is PostgreSQL on the Windows DB host over Tailscale). The
+OCI diagnosis, Oracle migration, schema-audit and reset commands that lived
+here no longer exist. See git history before the `chore/remove-oracle` merge
+if the procedure is ever needed again.
 
 ## 5. Current Verification Status (2026-08-17)
 

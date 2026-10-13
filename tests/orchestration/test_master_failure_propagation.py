@@ -146,10 +146,9 @@ def test_enabled_cloud_sync_reports_wiring_pending_skip(monkeypatch) -> None:
 
 
 def test_required_failure_blocks_all_dependents_and_sync_never_runs(monkeypatch) -> None:
-    """After a required failure every dependent stays SKIPPED; sync double runs 0 times."""
+    """After a required failure every dependent stays SKIPPED."""
     mock_rank = MagicMock()
     mock_audit = MagicMock(return_value=MagicMock(overall_status="PASS"))
-    mock_sync = MagicMock()
     mock_notify = MagicMock(return_value=MagicMock(is_delivered=True))
     report = _execute(
         _ctx(),
@@ -161,7 +160,6 @@ def test_required_failure_blocks_all_dependents_and_sync_never_runs(monkeypatch)
             ),
             patch("src.cli.calculate_rankings.rebuild_rankings", new=mock_rank),
             patch("src.services.quality_hub.QualityHub.run_full_audit", new=mock_audit),
-            patch("src.sync.sync_engine.OciSyncEngine", new=mock_sync),
             patch(
                 "src.notifications.dispatcher.NotificationDispatcher.dispatch",
                 new=mock_notify,
@@ -174,9 +172,7 @@ def test_required_failure_blocks_all_dependents_and_sync_never_runs(monkeypatch)
         assert by_id[dep].status == StageExecutionStatus.SKIPPED, dep
     mock_rank.assert_not_called()
     mock_audit.assert_not_called()
-    mock_sync.assert_not_called()
     mock_notify.assert_not_called()
-    assert mock_sync.call_count == 0
     assert report.overall_status in ("FAILED", "PARTIAL_FAILURE")
 
 

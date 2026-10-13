@@ -23,7 +23,6 @@ class DatabaseConfig:
 
     url: str
     dialect: str = "sqlite"
-    tns_admin: str | None = None
     pool_size: int = 5
     max_overflow: int = 10
     echo: bool = False
@@ -39,7 +38,6 @@ class DatabaseConfig:
         return {
             "url": display_url,
             "dialect": self.dialect,
-            "tns_admin": self.tns_admin,
             "pool_size": self.pool_size,
             "max_overflow": self.max_overflow,
             "echo": self.echo,

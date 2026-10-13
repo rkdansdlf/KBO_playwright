@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.rag.base_retriever import BaseRetriever
 from src.rag.dto import RetrievalCandidate, RetrievalQuery, RetrievalResult
-from src.rag.retrievers.oracle_dense import OracleDenseRetriever
+from src.rag.retrievers.dense_vector import DenseVectorRetriever
 from src.rag.retrievers.sparse_bm25 import SparseBM25Retriever
 from src.services.kbo_entity_resolver import resolve_kbo_entities
 from src.utils.kbo_entity_extractor import extract_kbo_entities
@@ -31,14 +31,14 @@ class UnifiedHybridRetriever(BaseRetriever):
         self,
         session: Session,
         *,
-        dense_retriever: OracleDenseRetriever | None = None,
+        dense_retriever: DenseVectorRetriever | None = None,
         sparse_retriever: SparseBM25Retriever | None = None,
         name: str = "UnifiedHybridRetriever",
     ) -> None:
         """Initialize the unified hybrid retriever."""
         super().__init__(name=name)
         self.session = session
-        self.dense_retriever = dense_retriever or OracleDenseRetriever()
+        self.dense_retriever = dense_retriever or DenseVectorRetriever()
         self.sparse_retriever = sparse_retriever or SparseBM25Retriever(session)
 
     def retrieve(self, query: RetrievalQuery | str, **kwargs: Any) -> RetrievalResult:  # noqa: ANN401

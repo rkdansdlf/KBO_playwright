@@ -1,8 +1,6 @@
 """RAG vector database helpers.
 
-PostgreSQL/pgvector remains available for isolated local acceptance tests.
-Oracle Autonomous Database uses the primary RAG session and its native VECTOR
-column instead of a second database.
+Dense vectors live in the PostgreSQL/pgvector store configured by ``PGVECTOR_URL``.
 """
 
 from __future__ import annotations
@@ -82,52 +80,9 @@ def is_pgvector_available() -> bool:
         return True
 
 
-def is_oracle_vector_backend() -> bool:
-    """Return whether the primary database is the configured Oracle vector backend."""
-    if PGVECTOR_URL:
-        return False
-    try:
-        from src.db.engine import Engine
-
-        return getattr(getattr(Engine, "dialect", None), "name", None) == "oracle"
-    except (ImportError, AttributeError):
-        return False
-
-
-def is_oracle_vector_schema_available() -> bool:
-    """Return whether the Oracle RAG vector column has been migrated."""
-    if not is_oracle_vector_backend():
-        return False
-    try:
-        from src.db.engine import Engine
-
-        with Engine.connect() as connection:
-            result = connection.execute(
-                text(
-                    "SELECT COUNT(*) FROM user_tab_columns "
-                    "WHERE table_name = 'RAG_CHUNKS' AND column_name = 'EMBEDDING_VECTOR'"
-                ),
-            )
-            return int(result.scalar() or 0) == 1
-    except _VECTOR_ENGINE_EXCEPTIONS:
-        return False
-
-
 def is_vector_search_available() -> bool:
-    """Return whether either the Oracle or PostgreSQL vector backend is available."""
-    if is_pgvector_available():
-        return True
-    if not is_oracle_vector_schema_available():
-        return False
-    try:
-        from src.db.engine import Engine
-
-        with Engine.connect() as connection:
-            connection.execute(text("SELECT 1 FROM dual"))
-    except _VECTOR_ENGINE_EXCEPTIONS:
-        return False
-    else:
-        return True
+    """Return whether the PostgreSQL/pgvector backend is available."""
+    return is_pgvector_available()
 
 
 @contextmanager
@@ -138,13 +93,6 @@ def get_vector_session() -> Iterator[Session]:
         RuntimeError: PGVECTOR_URL이 설정되지 않은 경우.
 
     """
-    if is_oracle_vector_backend():
-        from src.db.engine import get_rag_index_session
-
-        with get_rag_index_session() as session:
-            yield session
-        return
-
     if VectorSessionLocal is None:
         message = (
             "pgvector DB를 사용할 수 없습니다. .env에 PGVECTOR_URL을 설정하고 Docker pgvector 서비스를 기동하세요."

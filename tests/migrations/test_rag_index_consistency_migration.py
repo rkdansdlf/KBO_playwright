@@ -35,10 +35,3 @@ def test_sqlite_rag_index_migration_is_idempotent() -> None:
         "idx_rag_chunks_index_version",
         "idx_rag_chunks_index_status",
     } <= indexes
-
-
-def test_oracle_rag_index_migration_handles_equivalent_orm_indexes() -> None:
-    """Allow Oracle's duplicate-column-index error during baseline reconciliation."""
-    sql = Path("migrations/oracle/059_rag_index_consistency.sql").read_text(encoding="utf-8").upper()
-
-    assert "SQLCODE != -1408" in sql

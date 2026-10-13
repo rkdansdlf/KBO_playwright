@@ -438,29 +438,6 @@ def test_docker_build_cannot_hang_without_a_timeout():
     )
 
 
-def test_database_workflows_notify_on_failure():
-    """A database outage has to reach someone.
-
-    Both Oracle workflows ran without a notify step, so
-    `oci_live_verification` failed every Sunday from 2026-08-23 onward
-    without an alert. The condition the job exists to detect is the one
-    that was going unreported, which is what let it run six weeks.
-    """
-    for name in ("oci_live_verification.yml", "oci_connection_probe.yml"):
-        workflow = _read(WORKFLOW_DIR / name)
-        steps = _run_script_lines(workflow)
-        notify = [i for i, line in enumerate(steps) if line.endswith("uses: ./.github/actions/notify")]
-
-        assert notify, f"{name} cannot report a failure"
-        # The `if:` belongs to the notify step, so it is written after the
-        # `uses:` line. Reading the pair rather than searching the whole file
-        # keeps a stray `if: always()` elsewhere from standing in for it.
-        after = steps[notify[0] + 1 : notify[0] + 3]
-        assert any(line == "if: always()" for line in after), (
-            f"{name}: notify is skipped on failure, so only green runs would report"
-        )
-
-
 def test_security_audit_installs_the_locked_runtime():
     """The audit has to see the dependency set every other job installs.
 
@@ -590,21 +567,6 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert migration_job.index("Reapply PostgreSQL migrations") < migration_job.index(
         "Check PostgreSQL migrations are current",
     )
-
-
-def test_oci_live_verification_uses_dedicated_target_and_smoke_gates():
-    workflow = _read(WORKFLOW_DIR / "oci_live_verification.yml")
-
-    assert "OCI_DB_URL: ${{ secrets.OCI_DB_URL }}" in workflow
-    assert "DATABASE_URL:" not in workflow
-    assert "init-db: 'false'" in workflow
-    assert "--include-safety-gated" in workflow
-    assert "scripts/verification/audit_oracle_schema.py" in workflow
-    assert "pytest tests/test_oracle_smoke.py -m oci -q -o addopts=''" in workflow
-    assert workflow.index("Apply Oracle migrations") < workflow.index("Reapply Oracle migrations")
-    assert workflow.index("Reapply Oracle migrations") < workflow.index("Check Oracle migrations")
-    assert workflow.index("Check Oracle migrations") < workflow.index("Run Oracle repository smoke tests")
-    assert workflow.index("Run Oracle repository smoke tests") < workflow.index("Run Live Oracle E2E Verification")
 
 
 def test_docker_build_has_full_build_chain():

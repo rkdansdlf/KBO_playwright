@@ -69,7 +69,6 @@ def test_vector_context_unknown_does_not_require_backend() -> None:
 
 
 def test_vector_context_required_fails_closed_without_backend(monkeypatch) -> None:
-    monkeypatch.setattr("src.db.vector_engine.is_oracle_vector_backend", lambda: False)
     monkeypatch.setattr("src.db.vector_engine.is_pgvector_available", lambda: False)
 
     with pytest.raises(RuntimeError, match="vector state required"):

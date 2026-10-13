@@ -190,17 +190,6 @@ class TestFetchIdentityEntries:
 
         assert "'null'" in str(session.execute.call_args.args[0])
 
-    def test_the_vector_type_is_never_cast_to_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Keep Oracle's projection free of a cast its VECTOR type rejects."""
-        session = Mock()
-        session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="oracle"))
-        session.execute.return_value = _FakeResult([_row("game", "9")])
-        _patch_columns(monkeypatch, {"embedding_vector"})
-
-        fetch_identity_entries(session)
-
-        assert "CAST(" not in str(session.execute.call_args.args[0])
-
     def test_column_detection_handles_both_names(self) -> None:
         """Report whichever of the two candidate columns the table has."""
         engine = create_engine("sqlite://")
@@ -378,37 +367,12 @@ class TestTheRoleComesFromTheConfigurationNotTheSideName:
     """`primary` is not a synonym for `sparse`.
 
     Which side holds the vectors is a fact about the deployment, and dense search
-    answers it through `get_vector_session()`. On Oracle there is no separate
-    pgvector store, so the index session *is* the dense store -- calling it sparse
-    there would exempt the one side that must be checked, and the comparison would
-    report clean while verifying nothing.
+    answers it through `get_vector_session()`: the pgvector store is the dense side.
     """
 
     def test_a_separate_pgvector_store_makes_primary_the_sparse_side(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import src.db.vector_engine as vector_engine
-
-        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: False)
-
         assert reconcile_rag_stores._side_role("primary") == "sparse"
         assert reconcile_rag_stores._side_role("staging") == "dense"
-
-    def test_an_oracle_single_store_makes_primary_the_dense_side(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import src.db.vector_engine as vector_engine
-
-        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: True)
-
-        assert reconcile_rag_stores._side_role("primary") == "dense"
-
-    def test_the_oracle_case_does_not_exempt_the_vector_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The reason the distinction matters, asserted on the consequence."""
-        import src.db.vector_engine as vector_engine
-
-        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: True)
-
-        role = reconcile_rag_stores._side_role("primary")
-        entry = ManifestEntry("game", "1", embedding_present=False, role=role)
-
-        assert entry.requires_embeddings is True
 
     def test_the_exported_manifest_carries_the_resolved_role(
         self,
@@ -417,9 +381,6 @@ class TestTheRoleComesFromTheConfigurationNotTheSideName:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The stamp happens at export, the only point that knows the answer."""
-        import src.db.vector_engine as vector_engine
-
-        monkeypatch.setattr(vector_engine, "is_oracle_vector_backend", lambda: False)
         out_path = tmp_path / "out.ndjson"
 
         assert main(["export", "--side", "primary", "--out", str(out_path)]) == 0

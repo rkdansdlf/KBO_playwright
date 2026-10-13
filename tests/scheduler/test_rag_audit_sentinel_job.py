@@ -65,7 +65,7 @@ def _run(exit_code: int | None, exc: Exception | None = None) -> dict[str, Any]:
 def test_sentinel_passes_gate_flags_to_audit_cli() -> None:
     captured = _run(0)
 
-    assert captured["argv"] == ["--require-nonempty", "--require-postings", "--json"]
+    assert captured["argv"] == ["--require-nonempty", "--json"]
     assert captured["warnings"] == []
 
 
@@ -116,17 +116,6 @@ class TestTheFailureMessageNamesTheRightSubsystem:
         assert "was NOT examined" in details
         assert "reachability" in details
 
-    def test_an_unreachable_store_does_not_recommend_a_write_it_cannot_do(self) -> None:
-        """``--catch-up`` writes to the store that is down.
-
-        The message may mention it to say it would fail; it must not offer it as
-        the fix.
-        """
-        captured = _run(AUDIT_EXIT_STORE_UNREACHABLE)
-        _name, details = captured["warnings"][0]
-
-        assert "would fail too" in details
-
     @pytest.mark.parametrize("exit_code", [1, 3, 9])
     def test_an_inconsistent_index_keeps_the_index_message(self, exit_code: int) -> None:
         captured = _run(exit_code)
@@ -134,7 +123,7 @@ class TestTheFailureMessageNamesTheRightSubsystem:
 
         assert str(exit_code) in details
         assert "missing" in details
-        assert "catch-up" in details
+        assert "build_rag_index" in details
         assert "could not reach" not in details
 
     def test_the_store_code_matches_the_audit_contract(self) -> None:

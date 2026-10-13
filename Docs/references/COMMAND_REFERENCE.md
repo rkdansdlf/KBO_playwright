@@ -59,31 +59,27 @@ playwright install chromium
 
 # 환경변수 설정
 cp env.example .env
-# .env 파일 편집하여 Oracle DATABASE_URL, TNS_ADMIN 설정
+# .env 파일 편집하여 PostgreSQL DATABASE_URL(및 PGVECTOR_URL) 설정
 ```
 
 ### 2. 데이터베이스 초기화
 ```bash
-# Oracle ORM baseline 및 migration metadata 생성
-python3 -m src.cli.apply_oracle_migrations
+# PostgreSQL ORM baseline 및 migration 적용
+python3 -m src.cli.apply_postgres_migrations
 
-# Oracle migration 상태 확인
-python3 -m src.cli.apply_oracle_migrations --check
+# PostgreSQL migration 상태 확인
+python3 -m src.cli.apply_postgres_migrations --check
 
 # 기본 데이터 시드 (팀, 시즌, 데이터소스)
 python3 -m scripts.maintenance.seed_data
 
-# 로컬 SQLite → Oracle 초기 적재 미리보기
-python3 -m src.cli.sync_sqlite_to_oci \
+# 로컬 SQLite → PostgreSQL 적재 미리보기 / 적용
+python3 -m src.cli.sync_sqlite_to_postgres \
     --source-url "sqlite:///./data/kbo_dev.db" \
-    --target-url "$DATABASE_URL" \
-    --mode full --dry-run --json
-
-# 검증된 SQLite 데이터를 Oracle에 적재
-python3 -m src.cli.sync_sqlite_to_oci \
+    --target-url "$DATABASE_URL" --json
+python3 -m src.cli.sync_sqlite_to_postgres \
     --source-url "sqlite:///./data/kbo_dev.db" \
-    --target-url "$DATABASE_URL" \
-    --mode full --apply --json
+    --target-url "$DATABASE_URL" --apply --json
 
 # 로컬 SQLite schema 생성이 필요한 경우
 python3 -c "from src.db.engine import init_db; init_db()"
@@ -98,11 +94,10 @@ python3 -c "from src.db.engine import init_db; init_db()"
 # SQLite 무결성 검사
 python3 -m src.cli.sqlite_integrity_guard --database-url "sqlite:///./data/kbo_dev.db"
 
-# SQLite → Oracle 적재 대상과 row count 확인
-python3 -m src.cli.sync_sqlite_to_oci \
+# SQLite → PostgreSQL 적재 대상과 row count 확인
+python3 -m src.cli.sync_sqlite_to_postgres \
     --source-url "sqlite:///./data/kbo_dev.db" \
-    --target-url "$DATABASE_URL" \
-    --mode full --dry-run --json
+    --target-url "$DATABASE_URL" --verify --json
 ```
 
 ### 데이터 검증
@@ -673,46 +668,17 @@ python3 -m scripts.maintenance.audit_completeness_2009_2025 --dry-run
 
 ## 🧠 RAG 인덱스 관리
 
-Oracle 단일 저장소(`rag_chunks` + `RAG_CHUNK_TERMS` postings) 기준입니다. 상세 설계·측정 근거는 `Docs/references/RAG_EVALUATION.md`를 참고하세요.
+sparse index(`rag_chunks`, `DATABASE_URL`) + pgvector(`PGVECTOR_URL`) 기준입니다. 상세 설계·측정 근거는 `Docs/references/RAG_EVALUATION.md`를 참고하세요.
 
-### 1. Sparse postings 색인 (build_oracle_sparse_index)
-
-```bash
-# 미리보기 (쓰기 없음)
-python3 -m src.cli.rag.build_oracle_sparse_index --dry-run --json
-
-# 증분 catch-up — 마지막 색인 이후 청크만 insert-only로 보충 (권장 경로)
-env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION_WRITE=1 \
-  python3 -m src.cli.rag.build_oracle_sparse_index --apply --catch-up --batch-size 40 --json
-
-# 수동 resume — 특정 ID 이후만 처리
-python3 -m src.cli.rag.build_oracle_sparse_index --apply --after-id 229390 --limit 5000 --batch-size 40
-
-# 전체 재생성 — 파생 테이블이라 안전하나 수 분~수십분 소요
-python3 -m src.cli.rag.build_oracle_sparse_index --apply --rebuild --batch-size 500 --json
-```
-
-| 옵션 | 설명 |
-| --- | --- |
-| `--catch-up` | `max(rag_chunk_id)` 자동 산출 후 resume. `--rebuild`/`--after-id`와 상호 배타 |
-| `--after-id N` | N 이후 청크만 처리 (insert-only, ORA-12860 회피) |
-| `--rebuild` | 전체 삭제 후 재생성 (`--apply` 필수, `--limit`/`--catch-up` 불가) |
-| `--batch-size` | 청크/배치. 운영 검증값은 40 (대형 CLOB 구간 튜닝 결과) |
-| `--dry-run` | 기본값. 쓰기 없이 대상·row 수만 보고 |
-
-쓰기 게이트: `RAG_TARGET_ENV=staging|production` + `RAG_INDEX_ALLOW_WRITE=1` (+ production은 `RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`) 필요.
+### 1. Sparse postings 색인
+Oracle 전용이던 `build_oracle_sparse_index`(및 `sparse_terms_catchup` 스케줄 잡)는 Oracle 지원 제거와 함께 삭제되었습니다.
 
 ### 2. 커버리지 감사 (audit_rag_index)
 
 ```bash
-# 기본 일관성 감사 + postings 누락 수 보고
+# sparse/pgvector 일관성 감사 (빈 인덱스면 exit 1)
 python3 -m src.cli.audit_rag_index --require-nonempty --json
-
-# CI/알림용 게이트 — postings 미커버 시 exit 1
-python3 -m src.cli.audit_rag_index --require-nonempty --require-postings --json
 ```
-
-JSON의 `postings_missing`은 retrievable 청크 중 postings가 없는 수입니다.
 
 ### 2-1. 경기 계열 season_year 메타데이터 보정
 
@@ -739,19 +705,10 @@ env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION
 | 시각(KST) | 잡 | 역할 |
 | --- | --- | --- |
 | 05:00 | `sync_rag_incremental_job` | 최신 소스 → chunk/vector 발행 (terms 기본으로 posting 동시 유지) |
-| 05:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
 | 06:05 | `rag_audit_sentinel_job` | 커버리지 게이트 실패 시 Telegram/Slack 경보 |
 
 스케줄러는 launchd 상주 프로세스이며, **잡 추가 후에는 재시작해야 반영**됩니다:
 `launchctl kickstart -k gui/$UID/com.kbo-playwright.scheduler`
-
-### 4. 검색 모드 플래그
-
-```bash
-export RAG_ORACLE_SPARSE_MODE=terms   # 기본값. postings 인덱스 검색 + 증분 유지
-export RAG_ORACLE_SPARSE_MODE=legacy  # 롤백: CLOB instr 후보 경로 (posting 유지도 중단)
-```
-검색 장애 시 terms 경로는 자동으로 legacy CLOB 경로로 fallback합니다.
 
 ---
 
@@ -944,9 +901,9 @@ export DATABASE_URL="sqlite:///./data/kbo_dev.db"
 
 ### 프로덕션 환경
 ```bash
-# Oracle Autonomous Database 연결
-export DATABASE_URL="oracle+oracledb://USER:PASSWORD@TNS_ALIAS"
-export TNS_ADMIN="/secure/path/to/oracle-wallet"
+# PostgreSQL 연결 (Windows DB 호스트, Tailscale)
+export DATABASE_URL="postgresql+psycopg2://USER:PASSWORD@HOST:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5"
+export PGVECTOR_URL="postgresql+psycopg2://USER:PASSWORD@HOST:5432/kbo_rag"
 
 # 안정적인 크롤링
 python3 -m src.cli.run_daily_update

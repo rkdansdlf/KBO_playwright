@@ -329,7 +329,6 @@ jobs:
           pytest -m slow --tb=short -v --durations=10 -n 1 2>&1 | tee pytest-slow-no-network.log
         env:
           DATABASE_URL: sqlite:///./data/kbo_dev.db
-          KBO_RUN_OCI_INTEGRATION: ""
           KBO_RUN_LIVE_BASIC2_HEADERS: ""
           RUN_LIVE_DEBUG_TESTS: ""
           NAVER_CLIENT_ID: ""

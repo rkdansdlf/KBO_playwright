@@ -7,7 +7,7 @@ from datetime import time
 from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.db.types import OracleCompatibleTime
+from src.db.types import PortableTime
 
 from .base import Base, TimestampMixin
 
@@ -30,7 +30,7 @@ class TicketOpenRule(Base, TimestampMixin):
         comment="Days before game day (e.g. 7 = N일 전)",
     )
     open_time: Mapped[time] = mapped_column(
-        OracleCompatibleTime(),
+        PortableTime(),
         nullable=False,
         comment="Opening time on open day (e.g. 11:00)",
     )

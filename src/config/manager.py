@@ -72,11 +72,9 @@ class ConfigManager:
         # Database
         db_url = os.getenv("DATABASE_URL", "sqlite:///./data/kbo_dev.db")
         dialect = _database_dialect(db_url)
-        tns_admin = os.getenv("TNS_ADMIN")
         db_config = DatabaseConfig(
             url=db_url,
             dialect=dialect,
-            tns_admin=tns_admin,
             pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
             echo=debug,
@@ -151,8 +149,8 @@ class ConfigManager:
             elif "sqlite" in db_url and target == EnvironmentType.PRODUCTION:
                 warnings.append("DATABASE_URL is configured for SQLite in production environment.")
 
-            if "oracle" in db_url and not os.getenv("TNS_ADMIN"):
-                warnings.append("Oracle dialect detected but TNS_ADMIN environment variable is unset.")
+            if db_url.startswith("oracle"):
+                missing.append("DATABASE_URL (Oracle is no longer supported; use PostgreSQL)")
 
             if not os.getenv("TELEGRAM_BOT_TOKEN"):
                 warnings.append("TELEGRAM_BOT_TOKEN is unset (notifications will fall back to console).")

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import get_rag_index_session
-from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
+from src.db.vector_engine import get_vector_session, is_pgvector_available
 from src.models.rag_chunk import RagChunk
 from src.models.rag_chunk_vector import RagChunkVector
 from src.repositories.vector_search_repository import VectorSearchRepository
@@ -33,8 +33,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from sqlalchemy.orm import Session
-
-    from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -115,7 +113,7 @@ def _validate_request(queries: list[GoldenQuery], args: argparse.Namespace) -> s
         return "retrieval dataset is empty"
     if any(not query.relevant_chunk_ids for query in queries):
         return "every retrieval case requires relevantChunkIds"
-    vector_available = is_pgvector_available() or is_oracle_vector_backend()
+    vector_available = is_pgvector_available()
     if args.all_variants and not vector_available:
         return "--all-variants requires an available vector backend"
     if args.variant == "vector" and not vector_available:
@@ -210,13 +208,7 @@ def _build_variants(
 ) -> dict[str, Callable[[GoldenQuery, int], Sequence[object]]]:
     """Build named lexical, dense, and hybrid retrieval callables."""
     bm25 = RagSearchEngine(session)
-    vector_repo: VectorSearchRepository | OracleVectorSearchRepository | None
-    if include_vector and is_oracle_vector_backend():
-        from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
-
-        vector_repo = OracleVectorSearchRepository()
-    else:
-        vector_repo = VectorSearchRepository() if include_vector else None
+    vector_repo: VectorSearchRepository | None = VectorSearchRepository() if include_vector else None
     embedder = _build_embedding_service(embedding_mode) if vector_repo is not None else None
     resolver_hybrid = HybridRetriever(session, resolve_entities=True, embedding_service=embedder)
     hybrid = HybridRetriever(session, resolve_entities=False, embedding_service=embedder)
@@ -294,7 +286,7 @@ def _missing_corpus_ids(queries: list[GoldenQuery], *, require_vector: bool) -> 
             for row in primary_session.execute(select(RagChunk.source_table, RagChunk.source_row_id))
         }
     available_ids = primary_ids
-    if require_vector and not is_oracle_vector_backend():
+    if require_vector:
         with get_vector_session() as vector_session:
             available_ids = {
                 f"{row.source_table}:{row.source_row_id}"

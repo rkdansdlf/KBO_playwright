@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import text
 
 from src.db.engine import (
@@ -112,9 +113,15 @@ class TestGetDatabaseType:
         with patch("src.db.engine.DATABASE_URL", "postgresql://user:pass@localhost/db"):
             assert get_database_type() == "postgresql"
 
-    def test_oracle(self):
+    def test_oracle_is_no_longer_recognised(self):
         with patch("src.db.engine.DATABASE_URL", "oracle+oracledb://user:pass@db/service"):
-            assert get_database_type() == "oracle"
+            assert get_database_type() == "unknown"
+
+    def test_oracle_url_is_rejected_at_engine_creation(self):
+        from src.db.engine import create_engine_for_url
+
+        with pytest.raises(ValueError, match="Oracle support has been removed"):
+            create_engine_for_url("oracle+oracledb://user:pass@db/service")
 
     def test_unknown(self):
         with patch("src.db.engine.DATABASE_URL", "mssql://user:pass@localhost/db"):

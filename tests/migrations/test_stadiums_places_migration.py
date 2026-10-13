@@ -1,4 +1,4 @@
-"""Migration tests for stadiums/places (sqlite 067, postgresql 062, oracle 079)."""
+"""Migration tests for stadiums/places (sqlite 067, postgresql 062)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SQLITE_MIGRATION = ROOT / "migrations/sqlite/067_stadiums_places.sql"
 POSTGRES_MIGRATION = ROOT / "migrations/postgresql/062_stadiums_places.sql"
-ORACLE_MIGRATION = ROOT / "migrations/oracle/079_stadiums_places.sql"
 
 EXPECTED_STADIUM_COLUMNS = {
     "stadium_id",
@@ -37,7 +36,6 @@ EXPECTED_STADIUM_COLUMNS = {
 
 SQLITE_DIM_MIGRATION = ROOT / "migrations/sqlite/068_stadiums_dimensions.sql"
 POSTGRES_DIM_MIGRATION = ROOT / "migrations/postgresql/063_stadiums_dimensions.sql"
-ORACLE_DIM_MIGRATION = ROOT / "migrations/oracle/080_stadiums_dimensions.sql"
 
 EXPECTED_PLACE_COLUMNS = {
     "stadium_id",
@@ -99,28 +97,14 @@ def test_postgres_migration_is_idempotent_syntax() -> None:
     assert "DROP" not in sql
 
 
-def test_oracle_migration_is_idempotent_syntax() -> None:
-    sql = ORACLE_MIGRATION.read_text(encoding="utf-8")
-    assert "user_tables" in sql
-    assert "user_indexes" in sql
-    assert "CREATE TABLE STADIUMS" in sql
-    assert "CREATE TABLE PLACES" in sql
-    assert "HOMERUN_PARK_FACTOR" in sql
-    assert "IDX_PLACES_STADIUM" in sql
-    assert "DROP" not in sql
-
-
 def test_dimension_migrations_add_geometry_columns() -> None:
     sqlite_sql = SQLITE_DIM_MIGRATION.read_text(encoding="utf-8")
     pg_sql = POSTGRES_DIM_MIGRATION.read_text(encoding="utf-8")
-    oracle_sql = ORACLE_DIM_MIGRATION.read_text(encoding="utf-8")
     assert "right_fence_m" in sqlite_sql
     assert "is_dome" in sqlite_sql
     assert "valid_to_year" in sqlite_sql
     assert "ADD COLUMN IF NOT EXISTS right_fence_m" in pg_sql
-    assert "RIGHT_FENCE_M" in oracle_sql
     assert "DROP" not in pg_sql
-    assert "DROP" not in oracle_sql
 
     # ALTER TABLE ADD COLUMN applies once via version tracking (unlike
     # CREATE TABLE IF NOT EXISTS), so a single application is asserted here.

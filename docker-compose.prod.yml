@@ -8,15 +8,13 @@
 #     production reaching them is a network decision, not a compose one.
 #   * Grafana anonymous access is off and the admin password is required. The
 #     dev default of `admin` plus anonymous Viewer must never survive a deploy.
-#   * No PostgreSQL service. Oracle Autonomous Database is the production store;
-#     the postgres image only ever existed for local acceptance.
-#   * No pgvector service. Dense embeddings live in Oracle's native VECTOR.
+#   * No PostgreSQL/pgvector service. Production PostgreSQL (DATABASE_URL) and
+#     pgvector (PGVECTOR_URL) run on the external Windows DB host over Tailscale.
 #   * The API is published because it is the only ingress; bind it to a reverse
 #     proxy or a VPN rather than exposing it directly.
 #
 # Required environment:
-#   DATABASE_URL            Oracle Autonomous Database URL
-#   ORACLE_WALLET_HOST_PATH  Host path to the Oracle Wallet
+#   DATABASE_URL            PostgreSQL URL
 #   GRAFANA_ADMIN_PASSWORD  Grafana admin password (no default)
 #
 #   docker compose -f docker-compose.prod.yml up -d
@@ -37,8 +35,7 @@ services:
       - .env
     environment:
       TZ: Asia/Seoul
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
-      TNS_ADMIN: /run/oracle-wallet
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the PostgreSQL database}
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -51,7 +48,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
       - playwright-browsers:/ms-playwright
     networks:
       - kbo-internal
@@ -76,15 +72,13 @@ services:
       - .env
     environment:
       TZ: Asia/Seoul
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
-      TNS_ADMIN: /run/oracle-wallet
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the PostgreSQL database}
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
     ports:
       # The only published port. Put a reverse proxy or VPN in front of it.
       - "127.0.0.1:8000:8000"

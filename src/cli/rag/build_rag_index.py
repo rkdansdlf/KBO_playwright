@@ -1,7 +1,7 @@
-"""KBO 전체 데이터를 청킹하여 Oracle AI Vector RAG 인덱스를 구축합니다.
+"""KBO 전체 데이터를 청킹하여 RAG 인덱스(sparse ``rag_chunks`` + pgvector)를 구축합니다.
 
-Oracle source tables에서 데이터를 읽어 임베딩을 생성하고 동일한 Oracle
-``rag_chunks`` 테이블의 native VECTOR column에 저장합니다.
+Source tables에서 데이터를 읽어 임베딩을 생성하고 sparse index(``rag_chunks``)와
+PostgreSQL/pgvector 벡터 저장소에 저장합니다.
 챗봇이 KBO 관련 모든 질문에 답할 수 있도록 포괄적인 소스를 커버합니다.
 
 지원 소스:
@@ -37,7 +37,6 @@ import json
 import logging
 import os
 import sys
-from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import islice
@@ -173,15 +172,13 @@ class BuildTargets:
     def urls(self) -> frozenset[str]:
         """Return every distinct database URL this build will open.
 
-        A build can reach up to three stores, and they overlap: an Oracle sparse
-        target doubles as the vector store, so ``sparse_index_db`` and
-        ``vector_db`` can be the same URL. De-duplicating matters because the
+        A build can reach up to three stores, and they can overlap. De-duplicating matters because the
         scheduler probes this set before taking a tier lock, and a repeated
         entry would mean paying for the same query twice.
 
         Read off the resolved targets rather than recomputed from the
         environment: the resolution has real precedence (``PGVECTOR_TEST_URL``
-        beats ``PGVECTOR_URL``, an Oracle sparse target becomes the vector store)
+        beats ``PGVECTOR_URL``)
         and a second implementation of those rules would eventually disagree with
         the build it is meant to describe.
         """
@@ -226,20 +223,14 @@ def _redact_url(url: str | None) -> str:
         return "<redacted-invalid-url>"
 
 
-def _is_oracle_url(url: str | None) -> bool:
-    """Return whether a database URL targets Oracle."""
-    return bool(url and url.lower().startswith("oracle"))
-
-
 def _provider_target_errors(
     embedding_mode: str,
     target_environment: str,
-    target_url: str,
     vector_url: str,
 ) -> list[str]:
     """Return provider and vector target validation errors."""
     errors: list[str] = []
-    if not vector_url and not target_url.startswith("oracle"):
+    if not vector_url:
         errors.append("PGVECTOR_URL or PGVECTOR_TEST_URL is required for PostgreSQL vector targets")
     if embedding_mode == "deterministic" and target_environment != "staging":
         errors.append("deterministic embedding requires RAG_TARGET_ENV=staging")
@@ -248,63 +239,37 @@ def _provider_target_errors(
     return errors
 
 
-def _oracle_write_target_errors(
-    sparse_url: str,
-    vector_url: str,
-    target_environment: str,
-) -> list[str]:
-    """Return Oracle single-store safety errors."""
-    errors: list[str] = []
-    if target_environment == "production" and sparse_url and not sparse_url.startswith("oracle"):
-        errors.append("Oracle production builds must leave RAG_INDEX_DB_URL unset or target Oracle")
-    if target_environment == "production" and vector_url and not vector_url.startswith("oracle"):
-        errors.append("Oracle production builds must not use PGVECTOR_URL or PGVECTOR_TEST_URL")
-    if not sparse_url and (os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL")):
-        errors.append("Oracle single-store builds must leave PGVECTOR_URL and PGVECTOR_TEST_URL unset")
-    return errors
-
-
-def _index_target_errors(source_url: str, target_url: str, sparse_url: str, vector_url: str) -> list[str]:
+def _index_target_errors(source_url: str, sparse_url: str, vector_url: str) -> list[str]:
     """Return cross-database target separation and dialect errors."""
     errors: list[str] = []
-    sparse_is_oracle = _is_oracle_url(sparse_url or target_url)
     if sparse_url and _redact_url(source_url) == _redact_url(sparse_url):
         errors.append("source and sparse index targets must be different")
-    if sparse_url and vector_url and not sparse_is_oracle and _redact_url(sparse_url) == _redact_url(vector_url):
+    if sparse_url and vector_url and _redact_url(sparse_url) == _redact_url(vector_url):
         errors.append("sparse index and vector targets must be different")
-    if sparse_url and not sparse_is_oracle and not urlsplit(sparse_url).scheme.startswith("postgres"):
+    if sparse_url and not urlsplit(sparse_url).scheme.startswith("postgres"):
         errors.append("RAG_INDEX_DB_URL must target PostgreSQL for staging writes")
     return errors
 
 
-def _sparse_vector_target_errors(sparse_url: str, target_url: str, vector_url: str) -> list[str]:
+def _sparse_vector_target_errors(vector_url: str) -> list[str]:
     """Return errors for the effective sparse/vector target shape."""
-    effective_sparse_url = sparse_url or target_url
-    if _is_oracle_url(effective_sparse_url):
-        if vector_url:
-            return ["Oracle sparse targets require an empty PGVECTOR_URL"]
-        return []
     if not vector_url:
-        return ["non-Oracle sparse targets require PGVECTOR_URL or PGVECTOR_TEST_URL"]
+        return ["sparse targets require PGVECTOR_URL or PGVECTOR_TEST_URL"]
     if not vector_url.lower().startswith("postgres"):
-        return ["non-Oracle sparse targets require a PostgreSQL vector URL"]
+        return ["sparse targets require a PostgreSQL vector URL"]
     return []
 
 
 def _write_target_errors(
     source_url: str,
-    target_url: str,
     sparse_url: str,
     vector_url: str,
     target_environment: str,
 ) -> list[str]:
     """Return write-target safety errors for a non-dry-run build.
 
-    ``production`` used to be reserved for Oracle, because Oracle was the only
-    production vector store when this was written. The vector store now lives in
-    a pgvector database, so the environment and the engine are separate
-    questions; what must not separate is the opt-in, which every production
-    write still needs.
+    The vector store lives in a pgvector database; every production write still
+    needs the explicit opt-in.
 
     A production build may leave ``RAG_INDEX_DB_URL`` unset, meaning the sparse
     index lives in the target database -- which is where it lives today, inside
@@ -313,8 +278,7 @@ def _write_target_errors(
     experiment cannot default into the operational one.
     """
     errors: list[str] = []
-    is_oracle = _is_oracle_url(target_url)
-    if not sparse_url and not is_oracle and target_environment != "production":
+    if not sparse_url and target_environment != "production":
         errors.append("non-dry-run staging builds require an explicit RAG_INDEX_DB_URL")
     if target_environment not in {"staging", "production"}:
         errors.append("non-dry-run builds require RAG_TARGET_ENV=staging or production")
@@ -322,9 +286,7 @@ def _write_target_errors(
         errors.append("non-dry-run builds require RAG_INDEX_ALLOW_WRITE=1")
     if target_environment == "production" and os.getenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE") != "1":
         errors.append("production builds require RAG_INDEX_ALLOW_PRODUCTION_WRITE=1")
-    if is_oracle:
-        errors.extend(_oracle_write_target_errors(sparse_url, vector_url, target_environment))
-    errors.extend(_index_target_errors(source_url, target_url, sparse_url, vector_url))
+    errors.extend(_index_target_errors(source_url, sparse_url, vector_url))
     return errors
 
 
@@ -340,7 +302,7 @@ RAG_INDEX_URL_ENV_VAR = "RAG_INDEX_DB_URL"
 VECTOR_URL_ENV_VARS = ("PGVECTOR_TEST_URL", "PGVECTOR_URL")
 
 
-def planned_rag_target_urls(*, embedding_mode: str = "oracle") -> frozenset[str]:
+def planned_rag_target_urls(*, embedding_mode: str = "unspecified") -> frozenset[str]:
     """Return the databases a build would open, without validating the write guards.
 
     The scheduler asks this *before* taking a tier lock, so it needs the answer
@@ -364,10 +326,9 @@ def planned_rag_target_urls(*, embedding_mode: str = "oracle") -> frozenset[str]
     # touch".
     from src.db.engine import DATABASE_URL
 
-    resolved = _resolve_target_databases(DATABASE_URL)
+    resolved = _resolve_target_databases()
     if not resolved.vector_db:
-        # No dense target at all: neither Oracle, nor a sparse store to inherit
-        # the dense column from, nor a vector URL. The build stops on this
+        # No dense target at all: no vector URL is configured. The build stops on this
         # precondition inside ``main``, so there is nothing for a scheduler to
         # open. Naming the operational database instead would let the job take a
         # tier lock only to fail on a check it could have read beforehand.
@@ -410,7 +371,7 @@ class ResolvedTargetDatabases:
     vector_db: str
 
 
-def _resolve_target_databases(target_db_url: str) -> ResolvedTargetDatabases:
+def _resolve_target_databases() -> ResolvedTargetDatabases:
     """Resolve the sparse and vector stores for a target database.
 
     The precedence between the vector environment variables is defined once, here,
@@ -419,12 +380,7 @@ def _resolve_target_databases(target_db_url: str) -> ResolvedTargetDatabases:
     """
     configured_sparse_url = os.getenv(RAG_INDEX_URL_ENV_VAR, "")
     configured_vector_url = next((os.getenv(name, "") for name in VECTOR_URL_ENV_VARS if os.getenv(name)), "")
-    if configured_sparse_url:
-        vector_db = configured_sparse_url if _is_oracle_url(configured_sparse_url) else configured_vector_url
-    elif _is_oracle_url(target_db_url):
-        vector_db = target_db_url
-    else:
-        vector_db = configured_vector_url
+    vector_db = configured_vector_url
     return ResolvedTargetDatabases(
         sparse_index_db=configured_sparse_url,
         configured_vector_url=configured_vector_url,
@@ -441,18 +397,17 @@ def _resolve_build_targets(
 ) -> BuildTargets:
     """Resolve and validate explicit source, sparse, and vector build targets."""
     target_db_url = target_db_url or source_db_url
-    resolved = _resolve_target_databases(target_db_url)
+    resolved = _resolve_target_databases()
     configured_sparse_url = resolved.sparse_index_db
     configured_vector_url = resolved.configured_vector_url
     vector_db = resolved.vector_db
     target_environment = os.getenv("RAG_TARGET_ENV", "").strip().lower()
-    errors = _provider_target_errors(embedding_mode, target_environment, target_db_url, vector_db)
+    errors = _provider_target_errors(embedding_mode, target_environment, vector_db)
     if not dry_run:
-        errors.extend(_sparse_vector_target_errors(configured_sparse_url, target_db_url, configured_vector_url))
+        errors.extend(_sparse_vector_target_errors(configured_vector_url))
         errors.extend(
             _write_target_errors(
                 source_db_url,
-                target_db_url,
                 configured_sparse_url,
                 vector_db,
                 target_environment,
@@ -1453,12 +1408,10 @@ _STAGING_LIGHTWEIGHT_QUERY = (
 )
 
 
-def _staging_query(session: Session, *, skip_populated: bool, lightweight: bool) -> str:
+def _staging_query(*, skip_populated: bool, lightweight: bool) -> str:
     """Build the staging query for the requested payload mode."""
     if skip_populated:
-        dialect_name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
-        embedding_column = "embedding_vector" if dialect_name == "oracle" else "embedding"
-        return f"SELECT * FROM rag_chunks WHERE {embedding_column} IS NULL ORDER BY id"  # noqa: S608
+        return "SELECT * FROM rag_chunks WHERE embedding IS NULL ORDER BY id"
     if lightweight:
         return _STAGING_LIGHTWEIGHT_QUERY
     return "SELECT * FROM rag_chunks ORDER BY id"
@@ -1473,7 +1426,7 @@ def _iter_staging_rag_chunks(
     lightweight: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """Yield staging RAG content while deliberately discarding old vectors."""
-    query = _staging_query(session, skip_populated=skip_populated, lightweight=lightweight)
+    query = _staging_query(skip_populated=skip_populated, lightweight=lightweight)
     try:
         rows = session.execute(text(query)).mappings()
     except SQLAlchemyError:
@@ -1736,36 +1689,8 @@ def _skip_existing_index_rows(
         logger.info("RAG incremental selection blocked %d terminal identities", blocked_count)
 
 
-def _session_is_oracle(session: Session) -> bool:
-    """Return whether a SQLAlchemy session is bound to Oracle."""
-    bind = session.get_bind()
-    return str(getattr(getattr(bind, "dialect", None), "name", "")) == "oracle"
-
-
-def _oracle_vector_schema_available(index_session: Session) -> bool:
-    """Check the Oracle vector column on the actual sparse index session."""
-    if not _session_is_oracle(index_session):
-        return False
-    try:
-        result = index_session.execute(
-            text(
-                "SELECT COUNT(*) FROM user_tab_columns "
-                "WHERE table_name = 'RAG_CHUNKS' AND column_name = 'EMBEDDING_VECTOR'"
-            )
-        )
-        return int(result.scalar() or 0) == 1
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
-        return False
-
-
 def _persist_index_batch(batch: list[dict[str, Any]], index_session: Session) -> None:
     """Publish one batch through pending and final sparse/vector states."""
-    if _session_is_oracle(index_session):
-        from src.services.rag_index_propagation import publish_single_store_batch
-
-        publish_single_store_batch(index_session, batch)
-        return
-
     from src.db.vector_engine import get_vector_session
     from src.services.rag_index_propagation import publish_index_batch
 
@@ -1833,7 +1758,7 @@ def _prepare_source_chunks(
 ) -> Iterator[dict[str, Any]]:
     """Materialize long database-backed sources before slow API calls.
 
-    Oracle can close an idle connection while a generator is paused between
+    A remote database can close an idle connection while a generator is paused between
     embedding batches. Materializing the large streaming sources first lets
     the source session release its connection before OpenRouter work begins.
     """
@@ -1864,10 +1789,7 @@ class RagIndexUnavailableError(RuntimeError):
 
 
 #: Reasons the build cannot proceed, kept here so the raise sites stay readable.
-_VECTOR_STORE_UNREACHABLE = (
-    "vector DB에 연결할 수 없습니다. Oracle vector migration 또는 local pgvector setup을 확인하세요."
-)
-_ORACLE_VECTOR_SCHEMA_MISSING = "Oracle RAG vector schema is unavailable. Apply Oracle migrations before indexing."
+_VECTOR_STORE_UNREACHABLE = "vector DB에 연결할 수 없습니다. PGVECTOR_URL 및 pgvector setup을 확인하세요."
 
 
 def _iter_candidate_chunks(
@@ -1900,15 +1822,6 @@ def _iter_candidate_chunks(
     )
 
 
-def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager[Session | None]:
-    """Select the vector session context for the resolved sparse target."""
-    if sparse_is_oracle:
-        return nullcontext(None)
-    from src.db.vector_engine import get_vector_session
-
-    return get_vector_session()
-
-
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
@@ -1916,7 +1829,7 @@ def main(argv: list[str] | None = None) -> None:
     """KBO RAG 인덱스를 구축합니다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    parser = argparse.ArgumentParser(description="Oracle KBO 데이터를 Oracle AI Vector RAG 인덱스에 저장")
+    parser = argparse.ArgumentParser(description="KBO 데이터를 RAG 인덱스(sparse + pgvector)에 저장")
     parser.add_argument(
         "--source",
         choices=_VALID_SOURCES,
@@ -1984,11 +1897,10 @@ def main(argv: list[str] | None = None) -> None:
         targets.write_enabled,
     )
 
-    sparse_is_oracle = _is_oracle_url(targets.sparse_index_db)
-    if not sparse_is_oracle and not is_pgvector_available():
+    if not is_pgvector_available():
         raise RagIndexUnavailableError(_VECTOR_STORE_UNREACHABLE)
 
-    if not args.dry_run and not sparse_is_oracle:
+    if not args.dry_run:
         logger.info("pgvector 테이블 초기화 확인 중...")
         init_vector_db()
 
@@ -2013,7 +1925,9 @@ def main(argv: list[str] | None = None) -> None:
     grand_total = 0
     if not args.dry_run:
         init_rag_index_db()
-    vector_session_context = _vector_session_context(sparse_is_oracle=sparse_is_oracle)
+    from src.db.vector_engine import get_vector_session
+
+    vector_session_context = get_vector_session()
     build_source_options = BuildSourceOptions(
         season=args.season,
         limit=args.limit,
@@ -2026,8 +1940,6 @@ def main(argv: list[str] | None = None) -> None:
         get_rag_index_session() as index_session,
         vector_session_context as vector_session,
     ):
-        if sparse_is_oracle and not _oracle_vector_schema_available(index_session):
-            raise RagIndexUnavailableError(_ORACLE_VECTOR_SCHEMA_MISSING)
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
             chunk_iter = _iter_candidate_chunks(

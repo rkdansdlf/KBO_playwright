@@ -1,15 +1,13 @@
-"""Database engine configuration for Oracle, PostgreSQL, and SQLite."""
+"""Database engine configuration for PostgreSQL and SQLite."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sqlite3
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
-from urllib.parse import quote_plus, unquote, urlsplit
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -39,38 +37,6 @@ DISABLE_SQLITE_WAL = os.getenv("DISABLE_SQLITE_WAL", "0") == "1"
 DB_SESSION_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 
 
-def normalize_oracle_url(url: str) -> str:
-    """Normalize Oracle connection URL, canonicalizing percent-encoding in credentials."""
-    if not url or not url.startswith("oracle"):
-        return url
-    try:
-        parts = urlsplit(url)
-        if not parts.netloc or "@" not in parts.netloc:
-            return url
-        auth, host = parts.netloc.rsplit("@", 1)
-        if ":" not in auth:
-            return url
-        user, password = auth.split(":", 1)
-        decoded = unquote(password)
-        encoded = quote_plus(decoded)
-
-        # Upper-case percent-encoded hex sequences (e.g. %2f -> %2F)
-        res = []
-        idx = 0
-        while idx < len(encoded):
-            if encoded[idx] == "%" and idx + 2 < len(encoded):
-                res.append(encoded[idx : idx + 3].upper())
-                idx += 3
-            else:
-                res.append(encoded[idx])
-                idx += 1
-
-        netloc = f"{user}:{''.join(res)}@{host}"
-        return parts._replace(netloc=netloc).geturl()
-    except (ValueError, IndexError, TypeError):
-        return url
-
-
 def _is_sqlite(url: str | None) -> bool:
     if not url:
         return False
@@ -86,78 +52,6 @@ def _normalize_sqlite_synchronous(value: str | None) -> str:
 
 
 SQLITE_SYNCHRONOUS = _normalize_sqlite_synchronous(os.getenv("SQLITE_SYNCHRONOUS", "NORMAL"))
-
-
-def _custom_json_deserializer(val: object) -> object:
-    """Deserialize JSON strings or Postgres-style string arrays."""
-    if not val:
-        return val
-    val_str = str(val).strip()
-    if val_str.startswith('{"') and val_str.endswith('"}') and ":" not in val_str:
-        return [e.strip(' "') for e in val_str[1:-1].split(",")]
-    try:
-        return json.loads(val_str)
-    except json.JSONDecodeError:
-        return val
-
-
-def _install_oracle_json_compiler() -> None:
-    """Ensure Oracle dialect compiles JSON column types as CLOB.
-
-    The override is unconditional, like `visit_TIME` below. It used to be
-    guarded by `if not hasattr(OracleTypeCompiler, "visit_JSON")`, which made
-    this a silent no-op the moment SQLAlchemy shipped a native `visit_JSON`
-    (2.1.x) that renders the generic `JSON` name instead of CLOB. That is a
-    contract change, not an improvement: Oracle ADB needs CLOB, and the guard
-    turned the regression into a quiet DDL change rather than a visible one.
-    """
-    try:
-        from sqlalchemy.dialects.oracle.base import OracleTypeCompiler
-
-        def visit_JSON(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
-            return "CLOB"
-
-        OracleTypeCompiler.visit_JSON = visit_JSON  # type: ignore[attr-defined]
-
-        def visit_TIME(self: Any, type_: Any, **kw: Any) -> str:  # noqa: ANN401, ARG001, N802
-            return "VARCHAR2(8 CHAR)"
-
-        OracleTypeCompiler.visit_TIME = visit_TIME  # type: ignore[method-assign]
-    except ImportError:
-        pass
-
-
-_oracle_fk_restrict_compiler_installed = False
-
-
-def _install_oracle_fk_restrict_compiler() -> None:
-    """Omit ON DELETE RESTRICT clause for Oracle foreign keys as Oracle doesn't support RESTRICT keyword."""
-    global _oracle_fk_restrict_compiler_installed  # noqa: PLW0603
-    if _oracle_fk_restrict_compiler_installed:
-        return
-    try:
-        from sqlalchemy.dialects.oracle.base import OracleDDLCompiler
-
-        orig_visit_fk = OracleDDLCompiler.visit_foreign_key_constraint
-
-        def visit_foreign_key_constraint(self: Any, constraint: Any, **kw: Any) -> str:  # noqa: ANN401
-            original_ondelete = constraint.ondelete
-            if original_ondelete and str(original_ondelete).upper() == "RESTRICT":
-                constraint.ondelete = None
-            try:
-                res = orig_visit_fk(self, constraint, **kw)
-            finally:
-                constraint.ondelete = original_ondelete
-            return res
-
-        OracleDDLCompiler.visit_foreign_key_constraint = visit_foreign_key_constraint  # type: ignore[method-assign]
-        _oracle_fk_restrict_compiler_installed = True
-    except ImportError:
-        pass
-
-
-_install_oracle_json_compiler()
-_install_oracle_fk_restrict_compiler()
 
 
 def _create_sqlite_engine(url: str, *, sqlite_synchronous: str | None = None) -> SQLAlchemyEngine:
@@ -195,83 +89,6 @@ def _create_sqlite_engine(url: str, *, sqlite_synchronous: str | None = None) ->
     return engine
 
 
-def _parse_oracle_connection(
-    url: str,
-    tns_admin: str | None,
-    wallet_password: str | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """Build an Oracle target URL and wallet connection arguments."""
-    normalized = normalize_oracle_url(url)
-    connect_args: dict[str, Any] = {}
-    target_url = normalized
-
-    try:
-        parts = urlsplit(normalized)
-        auth = parts.netloc.split("@")[0] if "@" in parts.netloc else ""
-        host_part = parts.netloc.split("@")[1] if "@" in parts.netloc else parts.netloc
-        user = password = None
-        if auth:
-            if ":" in auth:
-                user, password_enc = auth.split(":", 1)
-                password = unquote(password_enc)
-            else:
-                user = auth
-        user = user or os.getenv("ORACLE_APP_USER")
-        password = password or os.getenv("ORACLE_APP_PASSWORD")
-
-        if tns_admin:
-            connect_args["config_dir"] = tns_admin
-            connect_args["wallet_location"] = tns_admin
-            resolved_wallet_password = wallet_password or os.getenv("OCI_WALLET_PASSWORD") or password
-            if resolved_wallet_password:
-                connect_args["wallet_password"] = resolved_wallet_password
-
-        if not parts.path or parts.path == "/":
-            target_url = f"{parts.scheme}://@"
-            if user:
-                connect_args["user"] = user
-            if password:
-                connect_args["password"] = password
-            connect_args["dsn"] = host_part
-    except (ValueError, IndexError, AttributeError):
-        pass
-
-    return target_url, connect_args
-
-
-def _create_oracle_engine(
-    url: str,
-    *,
-    tns_admin: str | None = None,
-    wallet_password: str | None = None,
-) -> SQLAlchemyEngine:
-    """Create an Oracle engine with wallet and dialect compatibility settings."""
-    _install_oracle_json_compiler()
-    _install_oracle_fk_restrict_compiler()
-    target_url, connect_args = _parse_oracle_connection(
-        url,
-        tns_admin or os.getenv("TNS_ADMIN"),
-        wallet_password,
-    )
-
-    extra_kwargs: dict[str, Any] = {}
-    if connect_args:
-        extra_kwargs["connect_args"] = connect_args
-
-    eng = create_engine(
-        target_url,
-        pool_pre_ping=True,
-        pool_size=int(os.getenv("ORACLE_POOL_SIZE", "5")),
-        max_overflow=int(os.getenv("ORACLE_MAX_OVERFLOW", "5")),
-        echo=False,
-        **extra_kwargs,
-    )
-    if hasattr(eng, "dialect"):
-        eng.dialect._json_serializer = json.dumps  # type: ignore[attr-defined]  # noqa: SLF001
-        eng.dialect._json_deserializer = _custom_json_deserializer  # type: ignore[attr-defined]  # noqa: SLF001
-    return eng
-
-
 #: Bound the connect phase for the operational database. Without it psycopg2 waits
 #: for the OS TCP timeout (~300s against the remote Tailscale host), so during the
 #: 2026-10-03 outage every DB-bound scheduler job stalled for minutes while holding
@@ -292,8 +109,6 @@ def create_engine_for_url(
     *,
     disable_sqlite_wal: bool = False,  # noqa: ARG001
     sqlite_synchronous: str | None = None,
-    tns_admin: str | None = None,
-    wallet_password: str | None = None,
 ) -> SQLAlchemyEngine:
     """Create engine for url.
 
@@ -301,8 +116,6 @@ def create_engine_for_url(
         url: Url.
         disable_sqlite_wal: Disable Sqlite Wal.
         sqlite_synchronous: SQLite durability mode (``FULL`` or ``NORMAL``).
-        tns_admin: Optional Oracle wallet/TNS configuration directory.
-        wallet_password: Optional Oracle wallet password.
 
     Returns:
         SQLAlchemyEngine instance.
@@ -312,7 +125,8 @@ def create_engine_for_url(
         return _create_sqlite_engine(url, sqlite_synchronous=sqlite_synchronous)
 
     if url.startswith("oracle"):
-        return _create_oracle_engine(url, tns_admin=tns_admin, wallet_password=wallet_password)
+        msg = "Oracle support has been removed; point DATABASE_URL at PostgreSQL (or SQLite for tests)."
+        raise ValueError(msg)
 
     connect_args = _postgres_connect_args(url)
     if connect_args:
@@ -505,8 +319,6 @@ def get_database_type() -> str:
     """Return the database type based on DATABASE_URL."""
     if DATABASE_URL.startswith("sqlite:"):
         return "sqlite"
-    if DATABASE_URL.startswith("oracle"):
-        return "oracle"
     if DATABASE_URL.startswith("mysql"):
         return "mysql"
     if DATABASE_URL.startswith("postgresql"):
