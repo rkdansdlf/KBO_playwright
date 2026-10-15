@@ -52,7 +52,7 @@ DEFAULT_BATCH_SIZE = 50
 _SOURCE_SQL = text(
     "SELECT id, season_year, season_id, league_type_code, team_id, player_id, "
     "source_table, source_row_id, title, content, content_hash, index_version, "
-    "index_status, indexed_at, created_at, updated_at, meta, embedding_vector "
+    "index_status, indexed_at, created_at, updated_at, meta "
     "FROM rag_chunks WHERE index_status = 'ACTIVE' ORDER BY id"
 )
 _TARGET_KEYS_SQL = text("SELECT source_table, source_row_id FROM rag_chunks")
