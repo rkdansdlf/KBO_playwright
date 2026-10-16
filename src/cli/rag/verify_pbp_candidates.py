@@ -190,6 +190,7 @@ def classify(
     verdicts: dict[str, list[str]] = {"confirmed": [], "conflicting": [], "unverified": []}
     samples: list[dict[str, object]] = []
     team_pairs: Counter[tuple[str, str]] = Counter()
+    matched_dates: set[str] = set()
     for candidate in candidates:
         counts["candidates"] += 1
         key = play_key(str(candidate.get("content") or ""))
@@ -201,6 +202,7 @@ def classify(
             counts["new"] += 1
             continue
         counts["matched"] += 1
+        matched_dates.add(key[0])
         if len(hits) > 1:
             counts["ambiguous"] += 1
         candidate_teams = teams_of(str(candidate.get("content") or ""))
@@ -231,6 +233,7 @@ def classify(
         "team_pairs": pairs,
         "samples": samples,
         "source_row_ids": verdicts,
+        "matched_dates": sorted(matched_dates),
     }
 
 
