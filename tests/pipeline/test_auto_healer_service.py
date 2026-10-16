@@ -10,8 +10,10 @@ from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
 from src.models.game import Game, GameInningScore
+from src.pipeline import auto_healer_service
 from src.pipeline.auto_healer_service import AutoHealerService
 from src.pipeline.dto import DefectItem, DefectReport, PipelineDefectType
+from src.repositories import game_status
 
 
 @pytest.fixture
@@ -24,6 +26,13 @@ def db_session():
         yield sess
     finally:
         sess.close()
+
+
+@pytest.fixture(autouse=True)
+def _pin_season(monkeypatch):
+    """Fixtures use 2024 games; pin the season so the current-season guard is deterministic."""
+    monkeypatch.setattr(auto_healer_service, "current_season_year", lambda today=None: 2024)
+    monkeypatch.setattr(game_status, "current_season_year", lambda today=None: 2024)
 
 
 def test_heal_stuck_game(db_session) -> None:

@@ -35,6 +35,7 @@ class TestGameStatus:
         GamePitchingStat.__table__.create(engine)
         return engine, sessionmaker(bind=engine)()
 
+    @patch("src.repositories.game_status.current_season_year", new=lambda today=None: 2024)
     @patch("src.repositories.game_status.get_db_session")
     @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
     def test_update_game_status_updates_record(self, MockCanon, Mockget_db_session):

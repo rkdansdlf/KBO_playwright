@@ -159,7 +159,7 @@ class TestApplyHealOutcome:
         with patch("src.cli.auto_healer.update_game_status") as mock_update:
             result = _apply_heal_outcome("G1", mock_item)
         assert result == "unresolved"
-        mock_update.assert_called_once_with("G1", "UNRESOLVED_MISSING")
+        mock_update.assert_called_once_with("G1", "UNRESOLVED_MISSING", allow_historical=False)
 
 
 class TestLogHealerSummary:

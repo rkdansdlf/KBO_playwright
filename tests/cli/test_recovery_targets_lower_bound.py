@@ -1,4 +1,4 @@
-"""Recovery targets must not include pre-2001 games (issue #32)."""
+"""Recovery targets must not include games from other seasons (issue #32)."""
 
 from datetime import date
 from unittest.mock import patch
@@ -10,21 +10,33 @@ from src.cli.pipelines import run_daily_update
 from src.models.game import Game
 
 
-def test_past_scheduled_recovery_targets_exclude_pre_2001():
+def _targets(games, today):
     engine = create_engine("sqlite:///:memory:")
     Game.__table__.create(engine)
     session = sessionmaker(bind=engine)()
-    session.add_all(
-        [
-            Game(game_id="19950415LTSS0", game_date=date(1995, 4, 15), game_status="UNRESOLVED_MISSING"),
-            Game(game_id="20001013LTSS0", game_date=date(2000, 10, 13), game_status="UNRESOLVED_MISSING"),
-            Game(game_id="20261010LTSS0", game_date=date(2026, 10, 10), game_status="UNRESOLVED_MISSING"),
-        ],
-    )
+    session.add_all(games)
     session.commit()
 
     with patch.object(run_daily_update, "SessionLocal", sessionmaker(bind=engine)):
-        targets = run_daily_update._collect_past_scheduled_recovery_targets(date(2026, 10, 15))
+        targets = run_daily_update._collect_past_scheduled_recovery_targets(today)
 
-    ids = [t["game_id"] for t in targets]
-    assert ids == ["20261010LTSS0"]
+    return [t["game_id"] for t in targets]
+
+
+def test_past_scheduled_recovery_targets_exclude_prior_seasons():
+    games = [
+        Game(game_id="19950415LTSS0", game_date=date(1995, 4, 15), game_status="UNRESOLVED_MISSING"),
+        Game(game_id="20001013LTSS0", game_date=date(2000, 10, 13), game_status="UNRESOLVED_MISSING"),
+        Game(game_id="20261010LTSS0", game_date=date(2026, 10, 10), game_status="UNRESOLVED_MISSING"),
+    ]
+
+    assert _targets(games, date(2026, 10, 15)) == ["20261010LTSS0"]
+
+
+def test_past_scheduled_recovery_targets_stop_at_season_boundary():
+    games = [
+        Game(game_id="20251228LTSS0", game_date=date(2025, 12, 28), game_status="UNRESOLVED_MISSING"),
+        Game(game_id="20260102LTSS0", game_date=date(2026, 1, 2), game_status="UNRESOLVED_MISSING"),
+    ]
+
+    assert _targets(games, date(2026, 1, 5)) == ["20260102LTSS0"]

@@ -280,10 +280,13 @@ class TestAdditionalContracts:
         session.rollback()
         assert session.query(Game).filter_by(game_id="20241015SSLG0").count() == 0
 
-    def test_update_game_status_does_not_commit(self, session: Session) -> None:
+    def test_update_game_status_does_not_commit(self, session: Session, monkeypatch) -> None:
+        from src.repositories import game_status
         from src.repositories.game_status import update_game_status
         from src.models.game import Game
 
+        # The fixture game is from 2024; pin the season so the current-season guard allows the write.
+        monkeypatch.setattr(game_status, "current_season_year", lambda today=None: 2024)
         session.add(Game(game_id="20241015STATUS", game_date=date(2024, 10, 15), game_status="scheduled"))
         session.flush()
 
