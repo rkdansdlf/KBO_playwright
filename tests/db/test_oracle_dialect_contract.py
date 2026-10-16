@@ -202,7 +202,7 @@ class TestVectorColumnRenders:
         from src.models.rag_chunk import RagChunk
 
         compiled = RagChunk.__table__.c.embedding.type.compile(dialect=postgresql.dialect())
-        assert compiled == "VECTOR(1536)"
+        assert compiled.upper() == "VECTOR(1536)"
 
     def test_embedding_dimension_matches_the_configured_embedding_model(self) -> None:
         from sqlalchemy.dialects import postgresql

@@ -27,7 +27,7 @@ def test_postgresql_compiles_the_column_as_pgvector() -> None:
     """PostgreSQL stores vector(1536), so the mapping must not degrade to JSON."""
     compiled = RagChunk.__table__.c.embedding.type.compile(dialect=postgresql.dialect())
 
-    assert compiled == f"VECTOR({RAG_EMBEDDING_DIMENSION})"
+    assert compiled.upper() == f"VECTOR({RAG_EMBEDDING_DIMENSION})"
 
 
 def test_postgresql_statements_do_not_name_a_missing_column() -> None:
