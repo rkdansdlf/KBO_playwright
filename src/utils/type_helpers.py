@@ -19,7 +19,7 @@ def to_int(val: object, default: int = 0) -> int:
     """
     try:
         return int(str(val).strip().replace(",", ""))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default
 
 
@@ -33,7 +33,7 @@ def safe_int(value: object) -> int:
     """
     try:
         return int(str(value).strip().replace(",", ""))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0
 
 
@@ -52,7 +52,7 @@ def safe_int_or_none(value: object) -> int | None:
         return None
     try:
         return int(cleaned)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -66,7 +66,7 @@ def safe_float(value: object) -> float:
     """
     try:
         return float(str(value).strip().replace(",", ""))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0.0
 
 
@@ -85,7 +85,7 @@ def safe_float_or_none(value: object) -> float | None:
         return None
     try:
         return float(cleaned)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -161,7 +161,7 @@ def _parse_decimal_innings(cleaned: str) -> int | None:
         whole = int(parts[0].strip()) if parts[0].strip() else 0
         frac_digit = int(parts[1].strip()[:1])
         return whole * 3 + frac_digit
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

@@ -41,7 +41,7 @@ class SchemaMigrationGate:
                     target_engine = cast("SQLAlchemyEngine", session.bind or Engine)
                     inspector = inspect(target_engine)
                     db_tables = inspector.get_table_names()
-            except (SQLAlchemyError, OSError):
+            except SQLAlchemyError, OSError:
                 if context.target == "local":
                     # Fallback to local SQLite file
                     target_engine = create_engine("sqlite:///./data/kbo_dev.db")

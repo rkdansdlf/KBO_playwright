@@ -376,7 +376,7 @@ def _build_secondary_evidence(session: Session, qr: QuarantinedRecord) -> dict[s
     if qr.entity_type == "batting" and qr.entity_id is not None:
         try:
             player_id = int(qr.entity_id)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return {}
         row = (
             session.execute(
@@ -434,7 +434,7 @@ def reconcile_pending_quarantines(
                 if reconciler.reconcile_and_heal_quarantine(session, int(qr.id), secondary):
                     session.commit()
                     reconciled += 1
-            except (SQLAlchemyError, ValueError, TypeError):
+            except SQLAlchemyError, ValueError, TypeError:
                 session.rollback()
                 logger.warning("Reconciliation failed for quarantine id=%s (%s)", qr.id, qr.game_id)
         if reconciled:
@@ -643,7 +643,7 @@ def _find_unverified_pbp_games(lookback_days: int = 3) -> list[dict]:
             if isinstance(payload, str):
                 try:
                     payload = json.loads(payload)
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError, TypeError:
                     payload = {}
             error_reason = payload.get("pbp_validation_error", "unknown") if isinstance(payload, dict) else "unknown"
             results.append(
@@ -712,7 +712,7 @@ async def run_pbp_healer_async(
                 if isinstance(payload, str):
                     try:
                         payload = json.loads(payload)
-                    except (json.JSONDecodeError, TypeError):
+                    except json.JSONDecodeError, TypeError:
                         payload = {}
                 error_reason = (
                     payload.get("pbp_validation_error", "targeted_mode")

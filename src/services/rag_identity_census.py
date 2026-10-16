@@ -248,7 +248,7 @@ class IdentityCensusReport:
             git_sha = subprocess.run(
                 ["/usr/bin/git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path.cwd()
             ).stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        except subprocess.CalledProcessError, FileNotFoundError, OSError:
             git_sha = "unknown"
 
         # Database fingerprint

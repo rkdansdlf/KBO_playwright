@@ -141,7 +141,7 @@ def _read_snapshot_text(snapshot: RawSourceSnapshot) -> str | None:
         return None
     try:
         raw = Path(path).read_bytes()
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return _strip_tags(raw.decode("utf-8", errors="replace"))
 

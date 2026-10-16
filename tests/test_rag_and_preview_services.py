@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
+def db_session() -> Generator[Session]:
     """In-memory SQLite session fixture."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

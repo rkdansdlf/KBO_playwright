@@ -275,7 +275,7 @@ def _has_review_moments(detail_text: str | None) -> bool:
         return False
     try:
         payload = json.loads(detail_text)
-    except (TypeError, json.JSONDecodeError):
+    except TypeError, json.JSONDecodeError:
         return False
     moments = payload.get("crucial_moments")
     return isinstance(moments, list) and len(moments) > 0
@@ -286,7 +286,7 @@ def _review_moments_have_noise(detail_text: str | None) -> bool:
         return False
     try:
         payload = json.loads(detail_text)
-    except (TypeError, json.JSONDecodeError):
+    except TypeError, json.JSONDecodeError:
         return False
     moments = payload.get("crucial_moments")
     if not isinstance(moments, list):
@@ -414,7 +414,7 @@ def _log_sla_metrics(session: Session, issues: dict[str, list[str]]) -> None:
                     tzinfo=kst_tz,
                 )
                 delay_hours = max(0.0, (now - end_time_kst).total_seconds() / 3600.0)
-            except (ValueError, TypeError, KeyError, AttributeError, SQLAlchemyError):
+            except ValueError, TypeError, KeyError, AttributeError, SQLAlchemyError:
                 delay_hours = 0.0
 
             is_violation = delay_hours > threshold

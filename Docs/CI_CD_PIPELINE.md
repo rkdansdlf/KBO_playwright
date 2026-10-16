@@ -8,7 +8,7 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 
 | Action | 역할 |
 |--------|------|
-| `python-env` | Python 3.12 환경 셋업, 패키지 설치, Playwright 캐시 |
+| `python-env` | Python 3.14 환경 셋업, 패키지 설치, Playwright 캐시 |
 | `kbo-job-setup` | Checkout + python-env + 날짜 해석 |
 | `notify` | Telegram/Slack 상태 알림 |
 
@@ -39,7 +39,7 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 
 ### 테스트 (`test_suite.yml`)
 - **Trigger**: push/PR on main
-- **Jobs**: lint (ruff) → test (pytest matrix: 3.12)
+- **Jobs**: lint (ruff) → test (pytest matrix: 3.14)
 
 ### Backfill Matrix (`backfill.yml`)
 - **Trigger**: 현재 `workflow_dispatch` (schedule 블록은 주석 처리됨)

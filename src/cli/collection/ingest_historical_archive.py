@@ -503,7 +503,7 @@ def _load_archive_payload(path: str) -> tuple[bytes, dict[str, Any]] | None:
     try:
         file_bytes = Path(path).read_bytes()
         payload = json.loads(file_bytes.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    except OSError, UnicodeDecodeError, json.JSONDecodeError:
         return None
     if not isinstance(payload, dict):
         return None
@@ -525,7 +525,7 @@ def _load_provenance(
         return {"source_name": source_name}, False
     try:
         manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    except OSError, UnicodeDecodeError, json.JSONDecodeError:
         return None
     if not _validate_archive_manifest(
         manifest,

@@ -65,7 +65,7 @@ class TrendTracker:
                     current = reports_by_date.get(key)
                     if current is None or self._generated_at_key(report) >= self._generated_at_key(current):
                         reports_by_date[key] = report
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 continue
         return sorted(reports_by_date.values(), key=lambda r: r["_report_date"])
 

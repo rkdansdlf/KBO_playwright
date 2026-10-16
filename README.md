@@ -67,7 +67,7 @@ python3 -m src.cli.build_rag_index --source kbo_regulations
 | `weekly_maintenance.yml` | Manual / reviewed schedule | Futures profiles, player enrichment |
 | `full_recalculation.yml` | Manual | Full season stat recalculation |
 | `kbo_automation.yml` | Manual | 8-phase: pregame, live, finalize, freshness, quality, gap, backfill, recalc |
-| `test_suite.yml` | CI on push | Ruff lint + pytest (3.12) |
+| `test_suite.yml` | CI on push | Ruff lint + pytest (3.14) |
 | `periodic_extras.yml` | Manual / reviewed schedule | Periodic data sync |
 | `kbo_smart_polling.yml` | Manual / reviewed schedule | Game-finish polling and daily update |
 | `text_relay_docker.yml` | Schedule + manual | Text relay Docker job |

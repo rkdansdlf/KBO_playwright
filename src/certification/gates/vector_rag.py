@@ -55,7 +55,7 @@ class VectorRagGate:
                 with get_db_session() as session:
                     bind_engine = cast("Engine", session.bind)
                     chunks = _get_rag_chunks_safe(bind_engine, context) if bind_engine else []
-            except (SQLAlchemyError, OSError):
+            except SQLAlchemyError, OSError:
                 if context.target == "local":
                     local_engine = create_engine("sqlite:///./data/kbo_dev.db")
                     chunks = _get_rag_chunks_safe(local_engine, context)

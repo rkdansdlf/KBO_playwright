@@ -191,7 +191,7 @@ class FanGraphsKboAdapter(ExternalStatsAdapter):
         try:
             if row_season is not None and int(row_season) != season:  # type: ignore[call-overload]
                 return None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         player_name = str(row.get("KName") or "").strip() or _player_name_from_html(str(row.get("Name") or ""))
         if not player_name:

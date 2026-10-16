@@ -1612,7 +1612,7 @@ def _repository_tables(repository: str) -> frozenset[str]:
         return frozenset()
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, SyntaxError):
+    except OSError, SyntaxError:
         return frozenset()
     for node in tree.body:
         if not isinstance(node, ast.ClassDef) or node.name != repository:
@@ -1743,7 +1743,7 @@ def _model_class_names() -> frozenset[str]:
     for path in (SRC_ROOT / "models").glob("*.py"):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-        except (OSError, SyntaxError):
+        except OSError, SyntaxError:
             continue
         names.update(node.name for node in tree.body if isinstance(node, ast.ClassDef))
     return frozenset(names)
@@ -1784,7 +1784,7 @@ def _function_body(path: Path, name: str) -> ast.FunctionDef | ast.AsyncFunction
     """Return the definition of ``name`` in ``path``, if present."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, SyntaxError):
+    except OSError, SyntaxError:
         return None
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name:
@@ -2701,7 +2701,7 @@ def _parse_or_none(path: Path) -> ast.Module | None:
     """
     try:
         return ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-    except (OSError, SyntaxError, ValueError):
+    except OSError, SyntaxError, ValueError:
         return None
 
 

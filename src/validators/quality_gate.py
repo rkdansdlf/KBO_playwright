@@ -289,7 +289,7 @@ class QualityGate:
             columns = {str(column["name"]).lower() for column in sa_inspect(bind).get_columns(model.__tablename__)}
             if "canonical_team_code" not in columns:
                 return model.team_code  # type: ignore[attr-defined]
-        except (SQLAlchemyError, AttributeError, TypeError):
+        except SQLAlchemyError, AttributeError, TypeError:
             pass
         return func.coalesce(
             model.canonical_team_code,  # type: ignore[attr-defined]
@@ -306,7 +306,7 @@ class QualityGate:
         try:
             bind = self.session.get_bind()
             columns = {str(column["name"]).lower() for column in sa_inspect(bind).get_columns(model.__tablename__)}
-        except (SQLAlchemyError, AttributeError, TypeError):
+        except SQLAlchemyError, AttributeError, TypeError:
             return None, None
 
         source_column: Any
@@ -402,7 +402,7 @@ class QualityGate:
         """Return whether the active quality-gate connection uses Oracle."""
         try:
             return self.session.get_bind().dialect.name == "oracle"
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             return False
 
     @staticmethod

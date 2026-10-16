@@ -415,7 +415,7 @@ async def _fetch_naver_live_statuses(relay_crawler: NaverRelayCrawler) -> dict[t
                     if status:
                         status_map[(away, home)] = status
                 return status_map
-    except (httpx.HTTPError, ValueError, TypeError):
+    except httpx.HTTPError, ValueError, TypeError:
         logger.exception("[WARN] Failed to fetch Naver live statuses")
     return {}
 

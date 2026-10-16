@@ -75,7 +75,7 @@ def _as_int(value: object) -> int | None:
         return None
     try:
         return int(str(value).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1196,7 +1196,7 @@ class GameDetailCrawler:
             return None
         try:
             content = await content_method()
-        except (PlaywrightError, RuntimeError, TypeError):
+        except PlaywrightError, RuntimeError, TypeError:
             logger.warning("Could not capture rendered source for %s", source_url)
             return None
         if not isinstance(content, str) or not content:
@@ -1705,7 +1705,7 @@ class GameDetailCrawler:
                 try:
                     val = (await crowd_el.text_content() or "").replace("관중 :", "").replace(",", "").strip()
                     metadata["attendance"] = int(val)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     logger.debug("Failed to parse attendance value from %s", GAME_DETAIL.crowd)
 
             # 2. Try generic area search
@@ -1776,7 +1776,7 @@ class GameDetailCrawler:
                     "line_score": [],
                 },
             }
-        except (PlaywrightError, ValueError, TypeError):
+        except PlaywrightError, ValueError, TypeError:
             return None
 
     async def _fetch_scoreboard_inning_scores(
@@ -1839,7 +1839,7 @@ class GameDetailCrawler:
             else:
                 try:
                     line_score.append(int(v))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     line_score.append(None)
         return line_score
 
@@ -1854,7 +1854,7 @@ class GameDetailCrawler:
                 continue
             try:
                 int(val)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             if e_val is None:
                 e_val = int(val)

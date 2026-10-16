@@ -192,7 +192,7 @@ def compute_at_bat_pitch_count(events: list[dict[str, Any]]) -> list[dict[str, A
             try:
                 balls = max(balls, int(preset_balls or 0))
                 strikes = max(strikes, int(preset_strikes or 0))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 logger.debug("Invalid preset ball/strike value: balls=%s strikes=%s", preset_balls, preset_strikes)
 
         balls, strikes, _matched = advance_pitch_count(description, balls, strikes)

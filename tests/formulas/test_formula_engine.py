@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def mem_engine() -> Generator[Any, None, None]:
+def mem_engine() -> Generator[Any]:
     """Provide isolated in-memory SQLite engine for tests."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

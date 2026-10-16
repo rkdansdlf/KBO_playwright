@@ -655,7 +655,7 @@ class SqliteToOciSynchronizer:
                 oci_cnt: int | None = None
                 try:
                     oci_cnt = writer.count_table(table)
-                except (SQLAlchemyError, RuntimeError, OSError):
+                except SQLAlchemyError, RuntimeError, OSError:
                     logger.exception("[%s] Failed to query Oracle count", table)
                 stats[table] = {
                     "sqlite_count": None,
@@ -676,7 +676,7 @@ class SqliteToOciSynchronizer:
                     "diff": diff,
                     "is_consistent": match,
                 }
-            except (SQLAlchemyError, RuntimeError, OSError):
+            except SQLAlchemyError, RuntimeError, OSError:
                 logger.exception("[%s] Failed to query Oracle count", table)
                 stats[table] = {
                     "sqlite_count": sq_count,

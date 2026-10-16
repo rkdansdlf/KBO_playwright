@@ -61,7 +61,7 @@ def selector_drift_sentinel_job() -> None:
 
         report = sentinel.check_html("schedule", response.text)
         _publish_selector_drift(report)
-    except (RequestException, RuntimeError, ValueError, TypeError, OSError):
+    except RequestException, RuntimeError, ValueError, TypeError, OSError:
         logger.exception("[Sentinel] Selector drift canary check failed")
 
 

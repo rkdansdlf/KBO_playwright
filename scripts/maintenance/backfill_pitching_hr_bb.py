@@ -34,7 +34,7 @@ def _safe_int(val: Any) -> int | None:
         return None
     try:
         return int(val)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -43,7 +43,7 @@ def _safe_float(val: Any) -> float | None:
         return None
     try:
         return float(val)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -155,7 +155,7 @@ def backfill_pitching_stats(
             row_id, cur_hr, cur_bb, cur_era, extra_raw = row[0], row[1], row[2], row[3], row[4]
             try:
                 extra = json.loads(extra_raw)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 continue
 
             if not isinstance(extra, dict):

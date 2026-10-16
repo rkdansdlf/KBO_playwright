@@ -118,7 +118,7 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(value)  # type: ignore[call-overload]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

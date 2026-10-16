@@ -64,7 +64,7 @@ class CheckpointManager:
             try:
                 with target_path.open("r", encoding="utf-8") as f:
                     data = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 logger.exception("Failed to load checkpoint manifest %s", target_path)
                 return None
 

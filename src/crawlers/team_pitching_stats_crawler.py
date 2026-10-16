@@ -265,7 +265,7 @@ class TeamPitchingStatsCrawler(BaseCrawler):
                         selected_season,
                     )
                     continue
-            except (PlaywrightError, PlaywrightTimeoutError):
+            except PlaywrightError, PlaywrightTimeoutError:
                 logger.warning("Failed to select option, trying next")
                 continue
             else:
@@ -278,7 +278,7 @@ def _read_stable_page_content(page: Page) -> str:
         try:
             page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
             return page.content()
-        except (PlaywrightError, PlaywrightTimeoutError):
+        except PlaywrightError, PlaywrightTimeoutError:
             if attempt + 1 >= PAGE_CONTENT_RETRY_ATTEMPTS:
                 raise
             page.wait_for_timeout(TEAM_STATS_REFRESH_WAIT_MS)

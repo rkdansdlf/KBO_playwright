@@ -235,7 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     after_id=after_id,
                 ),
             )
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError:
         logger.exception("Oracle sparse term build failed")
         return 1
 

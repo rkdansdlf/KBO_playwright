@@ -1,7 +1,7 @@
 ###############################################################################
 # Stage 1: Builder — compile native extensions, install all pip packages
 ###############################################################################
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -37,7 +37,7 @@ RUN --mount=type=cache,id=uv-cache-v2,target=/root/.cache/uv \
 ###############################################################################
 # Stage 2: Runtime — lean image without build-essential (~250 MB smaller)
 ###############################################################################
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -70,7 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Install uv (needed at runtime for potential pip operations)

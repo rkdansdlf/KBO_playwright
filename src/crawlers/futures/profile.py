@@ -230,7 +230,7 @@ class FuturesProfileCrawler:
 
             if headers or rows:
                 return {"caption": caption, "summary": summary, "headers": headers, "rows": rows}
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             pass
 
         return None

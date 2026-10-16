@@ -49,7 +49,7 @@ def goto_next_page(page: Page, policy: RequestPolicy | None = None) -> bool:
                         policy.delay()
                     return True
 
-    except (PlaywrightError, PlaywrightTimeoutError, RuntimeError):
+    except PlaywrightError, PlaywrightTimeoutError, RuntimeError:
         logger.exception("      ⚠️ 페이지 이동 중 오류")
         return False
     else:

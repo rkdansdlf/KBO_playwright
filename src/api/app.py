@@ -107,7 +107,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
         init_sentry()
         init_db()
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError:
         logger.warning("Database bootstrap skipped or failed during startup", exc_info=True)
     yield
     logger.info("Shutting down KBO Playwright API server...")

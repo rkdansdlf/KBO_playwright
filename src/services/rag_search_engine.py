@@ -199,7 +199,7 @@ class RagSearchEngine:
                 top_k=top_k,
                 filters=filters,
             )
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError:
             logger.warning("Oracle sparse term search failed; falling back to the CLOB path", exc_info=True)
             return self._oracle_candidates(keywords, top_k, filters, rank_candidates=rank_candidates)
 

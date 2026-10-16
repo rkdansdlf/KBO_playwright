@@ -97,7 +97,7 @@ def _collect_table_issues(
             continue
         try:
             year = int(season_year)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if not _valid_for_year(code, year):
             issues.append(

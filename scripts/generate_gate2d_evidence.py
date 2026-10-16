@@ -432,7 +432,7 @@ def run() -> None:  # noqa: C901
             if is_stored and row.get(col_name) is not None:
                 try:
                     stored_val = float(row[col_name])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     stored_val = None
 
             # 1) Python vs Python

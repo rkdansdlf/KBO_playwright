@@ -5,11 +5,13 @@ import logging
 import os
 import secrets
 import time
-from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from src.utils.throttle import throttle
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterable
 
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
@@ -73,7 +75,7 @@ class RequestPolicy:
         self.retry_exceptions = config.retry_exceptions
 
     @classmethod
-    def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> "RequestPolicy":
+    def with_delay(cls, min_delay: float | None, max_delay: float | None = None) -> RequestPolicy:
         """Handle the with delay operation.
 
         Args:

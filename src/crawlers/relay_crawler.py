@@ -522,7 +522,7 @@ class RelayCrawler(BaseHttpCrawler):
                 return 0
             k_hours, k_mins = map(int, k_time_clean.split(":"))
             g_hours, g_mins = map(int, g_time_clean.split(":"))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             logger.warning("Failed to compute time diff score")
             return 0
         else:
@@ -546,7 +546,7 @@ class RelayCrawler(BaseHttpCrawler):
             try:
                 h, m = map(int, t_clean.split(":"))
                 return h * 60 + m
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
         return 0
 
@@ -1382,7 +1382,7 @@ class RelayCrawler(BaseHttpCrawler):
 
         try:
             inning = int(segment.get("inn") or 0)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             inning = 0
 
         raw_value = segment.get("homeOrAway")

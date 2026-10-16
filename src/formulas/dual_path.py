@@ -62,7 +62,7 @@ def _to_dec(val: object) -> Decimal:
         return Decimal(0)
     try:
         return Decimal(str(val))
-    except (InvalidOperation, TypeError, ValueError):
+    except InvalidOperation, TypeError, ValueError:
         return Decimal(0)
 
 

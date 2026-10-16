@@ -100,7 +100,7 @@ def resetting_factory():
 
 
 @contextmanager
-def session_scope() -> Generator[Session, None, None]:
+def session_scope() -> Generator[Session]:
     """Yield a shared-engine session with empty tables; leaves schema clean on exit."""
     _reset_schema()
     session = _get_shared_factory()()

@@ -38,10 +38,10 @@ jobs:
       # Deliberately not kbo-job-setup: that action installs the dev extras and
       # would make the audit report dev-only pins. This job audits the runtime
       # set, so it installs uv itself and syncs the locked runtime dependencies.
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v5

@@ -64,7 +64,7 @@ class MatchupEngine:
 
             sess.commit()
             logger.info("✅ Matchup metrics recalculated for season %s", season_year)
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError:
             sess.rollback()
             logger.exception("❌ Matchup engine failed")
             raise

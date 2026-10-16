@@ -52,7 +52,7 @@ class CommandRunner:
             function = getattr(ctypes.WinDLL("kernel32", use_last_error=True), function_name)
             if function(buffer, len(buffer)):
                 return Path(buffer.value)
-        except (AttributeError, OSError):
+        except AttributeError, OSError:
             return None
         return None
 

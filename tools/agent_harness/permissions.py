@@ -106,7 +106,7 @@ class PermissionPolicy:
         try:
             resolved = candidate.resolve()
             resolved_relative = resolved.relative_to(root).as_posix()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return None, "path cannot be resolved within the repository root"
         return resolved_relative, None
 

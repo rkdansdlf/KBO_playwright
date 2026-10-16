@@ -7,9 +7,7 @@ Supports two-phase validation: live (structural) and post-game (cross-check).
 
 import logging
 from dataclasses import dataclass
-from typing import Any
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, Any
 
 from src.constants import MAX_OUTS
 from src.models.game import Game
@@ -17,6 +15,9 @@ from src.utils.game_status import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_DRAW,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -445,6 +446,6 @@ def _last_pbp_score(events: list[dict[str, Any]]) -> tuple[int, int] | None:
             continue
         try:
             return int(h_sc), int(a_sc)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
     return None

@@ -65,7 +65,7 @@ def _preview_detail_has_starters(detail_text: str | None) -> bool:
         return False
     try:
         payload = json.loads(detail_text)
-    except (TypeError, json.JSONDecodeError):
+    except TypeError, json.JSONDecodeError:
         return False
     if not isinstance(payload, dict):
         return False

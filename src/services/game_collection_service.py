@@ -535,7 +535,7 @@ def _accepts_lightweight(crawl: object) -> bool:
     """
     try:
         return "lightweight" in inspect.signature(crawl).parameters
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -1641,7 +1641,7 @@ def _derive_sh_sf_for_results(result: GameCollectionResult, log: Callable[[str],
                 updated = apply_sh_sf_to_batting_stats(session, game_id)
                 if updated:
                     updated_total += updated
-            except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+            except SQLAlchemyError, RuntimeError, ValueError, TypeError:
                 logger.exception("SH/SF derivation failed for %s", game_id)
         if updated_total:
             session.commit()

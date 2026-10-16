@@ -42,7 +42,7 @@ def _default_files() -> list[Path]:
             capture_output=True,
             text=True,
         )
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return sorted(p for d in SCAN_DIRS for p in d.rglob("*.py"))
     return [Path(line) for line in result.stdout.splitlines() if line.endswith(".py")]
 

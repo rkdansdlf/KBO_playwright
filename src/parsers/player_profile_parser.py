@@ -363,7 +363,7 @@ def parse_draft(s: str) -> dict[str, Any | None]:
             "draft_pick_overall": int(pick) if pick else None,
             "draft_type": dtype or ("자유선발" if "자유" in s else None),
         }
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default_res
 
 
@@ -393,7 +393,7 @@ def parse_entry_year_team(s: str) -> dict[str, Any | None]:
                     break
 
         return {"entry_year": _to_year(yy), "entry_team_code": team_code}
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return {"entry_year": None, "entry_team_code": None}
 
 

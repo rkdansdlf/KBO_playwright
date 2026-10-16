@@ -97,7 +97,7 @@ def _query_pbp_validation_summary() -> dict[str, int]:
             for status, cnt in rows:
                 key = status if status in counts else "other"
                 counts[key] = counts.get(key, 0) + cnt
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError:
         logger.exception("[WARN] Failed to query PBP validation summary")
     return counts
 
@@ -207,7 +207,7 @@ def _read_pbp_report_csv(target_date: str) -> list[dict[str, str]]:
         with csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-    except (csv.Error, OSError):
+    except csv.Error, OSError:
         logger.exception("Failed to read PBP CSV: %s", csv_path)
         return []
     return rows

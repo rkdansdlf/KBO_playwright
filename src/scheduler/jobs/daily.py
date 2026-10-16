@@ -96,7 +96,7 @@ def _persist_job_registry() -> None:
         target = _job_registry_file()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    except (OSError, ValueError, TypeError):
+    except OSError, ValueError, TypeError:
         logger.exception("Failed to persist job registry")
 
 
@@ -104,7 +104,7 @@ def _load_job_registry() -> None:
     """Restore today's registry snapshot after a scheduler restart."""
     try:
         payload = json.loads(_job_registry_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return
     if not isinstance(payload, dict) or payload.get("date") != datetime.now(KST).date().isoformat():
         return

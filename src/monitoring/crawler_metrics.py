@@ -273,7 +273,7 @@ def _safe_int(value: Any) -> int:  # noqa: ANN401 - ledger columns are untyped
     """Coerce a ledger counter to a non-negative int, defaulting to zero."""
     try:
         return max(0, int(value))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 
@@ -285,7 +285,7 @@ def _duration_seconds(run: CrawlExecutionRun) -> float | None:
         return None
     try:
         return max(0.0, (finished - started).total_seconds())
-    except (AttributeError, TypeError):
+    except AttributeError, TypeError:
         return None
 
 

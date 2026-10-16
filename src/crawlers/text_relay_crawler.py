@@ -249,7 +249,7 @@ class TextRelayCrawler:
         """
         try:
             await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
-        except (PlaywrightError, TimeoutError):
+        except PlaywrightError, TimeoutError:
             logger.warning("No relay containers found for %s", game_id)
             body = await page.content()
             if "데이터가 없습니다" in body or "취소" in body:

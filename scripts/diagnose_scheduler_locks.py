@@ -51,7 +51,7 @@ def _pid_alive(pid: int) -> bool:
         return ctypes.get_last_error() == access_denied
     try:
         os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
+    except OSError, ProcessLookupError:
         return False
     return True
 
@@ -81,7 +81,7 @@ def _find_scheduler_processes() -> list[int]:
             stripped_line = line.strip()
             if stripped_line.isdigit():
                 pids.append(int(stripped_line))
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         pass
     return pids
 

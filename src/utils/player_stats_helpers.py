@@ -54,7 +54,7 @@ def extract_rows_fast(
             """,
             {"selector": selector, "linkQuery": link_query},
         )
-    except (PlaywrightError, RuntimeError, TypeError, ValueError):
+    except PlaywrightError, RuntimeError, TypeError, ValueError:
         logger.exception("Failed to execute JS payload")
         return None
     else:

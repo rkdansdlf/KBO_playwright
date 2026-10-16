@@ -163,7 +163,7 @@ def _pregame_preview_detail_has_starters(detail_text: str | None) -> bool:
         return False
     try:
         payload = json.loads(detail_text)
-    except (TypeError, json.JSONDecodeError):
+    except TypeError, json.JSONDecodeError:
         return False
     if not isinstance(payload, dict):
         return False
@@ -299,7 +299,7 @@ def _parse_start_time(
             start_time += timedelta(days=1)
         if earliest_start_time is None or start_time < earliest_start_time:
             return start_time
-    except (ValueError, TypeError, IndexError, AttributeError):
+    except ValueError, TypeError, IndexError, AttributeError:
         logger.warning("[LiveInterval] Failed to parse start_time: %s", start_time_raw)
     return earliest_start_time
 
@@ -318,7 +318,7 @@ def _parse_update_time(
         updated_kst = updated_dt.replace(tzinfo=KST) if updated_dt.tzinfo is None else updated_dt.astimezone(KST)
         if latest_update_time is None or updated_kst > latest_update_time:
             return updated_kst
-    except (ValueError, TypeError, OSError, AttributeError):
+    except ValueError, TypeError, OSError, AttributeError:
         logger.debug("Skipping unparsable live game update timestamp", exc_info=True)
     return latest_update_time
 

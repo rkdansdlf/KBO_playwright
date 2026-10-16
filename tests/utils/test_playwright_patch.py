@@ -12,7 +12,7 @@ from src import _apply_playwright_patch, _original_async_launch, _original_sync_
 
 
 @pytest.fixture(autouse=True)
-def _restore_playwright_launches() -> Generator[None, None, None]:
+def _restore_playwright_launches() -> Generator[None]:
     """Ensure Playwright launch methods are restored after each test."""
     yield
     AsyncBrowserType.launch = _original_async_launch

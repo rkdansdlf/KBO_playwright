@@ -60,7 +60,7 @@ def audit_historical_season_invariants(
         try:
             engine = create_engine(target_url)
             session = sessionmaker(bind=engine)()
-        except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
             engine = create_engine("sqlite:///./data/kbo_dev.db")
             session = sessionmaker(bind=engine)()
 

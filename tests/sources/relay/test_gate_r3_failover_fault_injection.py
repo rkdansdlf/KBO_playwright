@@ -391,7 +391,7 @@ def test_two_concurrent_db_writers_produce_zero_duplicates(tmp_path: Path):
                     s.rollback()
                     with lock:
                         stats["handled_unique_conflicts"] += 1
-        except (IntegrityError, OperationalError):
+        except IntegrityError, OperationalError:
             with lock:
                 stats["handled_unique_conflicts"] += 1
         except (SQLAlchemyError, RuntimeError, TimeoutError) as exc:

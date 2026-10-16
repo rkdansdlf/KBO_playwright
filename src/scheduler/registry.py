@@ -541,7 +541,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     signal.signal(signal.SIGINT, _shutdown_handler)
     try:
         scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         logger.info("Scheduler stopped by user")
 
 
@@ -557,7 +557,7 @@ def _masked_database_target(url: str) -> str:
 
     try:
         return make_url(url).render_as_string(hide_password=True)
-    except (ValueError, TypeError, SQLAlchemyError):
+    except ValueError, TypeError, SQLAlchemyError:
         return "<unparseable DATABASE_URL>"
 
 
@@ -570,7 +570,7 @@ def _resolve_database_url() -> URL | None:
 
     try:
         return make_url(DATABASE_URL)
-    except (ValueError, TypeError, SQLAlchemyError):
+    except ValueError, TypeError, SQLAlchemyError:
         logger.exception("DATABASE_URL could not be parsed; database target unknown")
         return None
 

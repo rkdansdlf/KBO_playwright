@@ -169,7 +169,7 @@ class ExternalSeasonStatsRepository:
                 record.season,
                 is_pitcher=record.stat_type == "pitching",
             )
-        except (SQLAlchemyError, TypeError, ValueError):
+        except SQLAlchemyError, TypeError, ValueError:
             logger.exception("External player resolution failed for %s", record.player_name)
             return None, "unresolved_player", "player resolver failed"
         if player_id is None:

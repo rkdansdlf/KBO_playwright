@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def test_db() -> Generator[Any, None, None]:
+def test_db() -> Generator[Any]:
     """Create populated in-memory test database."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

@@ -212,7 +212,7 @@ def repair_pitching_season_records(
         engine = create_engine(target_url)
         session_factory = sessionmaker(bind=engine)
         session = session_factory()
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
         logger.exception("Could not open repair database: %s", target_url)
         raise
 
@@ -292,7 +292,7 @@ def repair_pitching_season_records(
             )
 
         return len(rows)
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
         session.rollback()
         logger.exception("Error repairing player_season_pitching")
         raise

@@ -17,7 +17,7 @@ def _get_int(record: dict[str, Any], key: str, default: int = 0) -> int:
         return default
     try:
         return int(val)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default
 
 
@@ -27,7 +27,7 @@ def _get_float(record: dict[str, Any], key: str) -> float | None:
         return None
     try:
         return float(val)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 

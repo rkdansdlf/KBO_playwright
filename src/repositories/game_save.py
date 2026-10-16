@@ -257,7 +257,7 @@ def _extract_existing_preview_payload(summary: GameSummary | None) -> dict[str, 
         return {}
     try:
         payload = json.loads(summary.detail_text)
-    except (TypeError, json.JSONDecodeError):
+    except TypeError, json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
 

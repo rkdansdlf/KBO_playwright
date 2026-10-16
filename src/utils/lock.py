@@ -475,7 +475,7 @@ class ForceProcessLock(ProcessLock):
             pid = int(pid_str)
             try:
                 os.kill(pid, 0)
-            except (OSError, ProcessLookupError):
+            except OSError, ProcessLookupError:
                 logger.info(
                     "Removing stale lock file for %s (PID %d not running)",
                     self.name,

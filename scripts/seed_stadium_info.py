@@ -21,7 +21,7 @@ def SessionLocal() -> Session:
         engine = create_engine(target_url)
         factory = sessionmaker(bind=engine)
         return factory()
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
         engine = create_engine("sqlite:///./data/kbo_dev.db")
         factory = sessionmaker(bind=engine)
         return factory()
@@ -457,7 +457,7 @@ def seed_stadium_info(session: Session | None = None, db_url: str | None = None)
         logger.info("Seeded %s stadiums and %s regulations.", count, len(REGULATION_DATA))
         return count
 
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError:
         session.rollback()
         logger.exception("Error seeding stadium info")
         raise

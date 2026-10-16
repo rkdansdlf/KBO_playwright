@@ -43,7 +43,7 @@ def get_git_revision() -> str:
         )
         if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         pass
     return "UNKNOWN_GIT_SHA"
 

@@ -88,7 +88,7 @@ def _table_staleness_message(
 def _season_staleness_message(*, domain: str, table: str, latest_value: object, now: datetime) -> str | None:
     try:
         latest_season = int(latest_value)  # type: ignore[call-overload]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return f"[STALE] Table {table} (domain={domain}) has invalid season={latest_value!r}"
     required_season = now.year - 1 if now.month in PRESEASON_GRACE_MONTHS else now.year
     if latest_season < required_season:

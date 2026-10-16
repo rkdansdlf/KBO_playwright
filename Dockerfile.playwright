@@ -1,10 +1,16 @@
 # KBO Text Relay Crawler - Playwright 최적화 Dockerfile
-# 베이스 이미지: Microsoft 공식 Playwright Python 이미지 (Python 3.12 + Chromium 내장)
+# 베이스 이미지: python:3.14-slim + Playwright Chromium 직접 설치.
+#
+# Microsoft 공식 Playwright 이미지(mcr.microsoft.com/playwright/python)는 Python
+# 3.12에 고정돼 있고 3.14 변형을 배포하지 않는다. pyproject.toml의
+# `requires-python = ">=3.14"`와 맞지 않으면 `uv pip install .`이 불일치로
+# 빌드를 거부하므로 베이스를 바꾼다. 브라우저와 시스템 라이브러리가 갈라지지
+# 않도록 `playwright install --with-deps`가 둘을 함께 설치한다.
 #
 # 빌드: docker build -f Dockerfile.playwright -t kbo-text-relay .
 # 실행: docker run --rm -v $(pwd)/data:/app/data kbo-text-relay --game-id 20260412SKLG0 --save
 
-FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
+FROM python:3.14-slim
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
@@ -32,6 +38,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN uv pip install --system --no-cache . && rm -rf /app/src
+
+# Chromium과 그 런타임 라이브러리. `--with-deps`가 이 베이스 이미지에 맞는 apt
+# 목록을 계산하므로, 이전에는 Microsoft 베이스 이미지가 암묵적으로 제공하던
+# 라이브러리를 브라우저 빌드와 같은 출처에서 맞춘다.
+RUN python -m playwright install --with-deps chromium && \
+    chmod -R a+rX /ms-playwright
 
 # 소스코드 복사
 COPY src/ ./src/

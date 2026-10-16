@@ -58,7 +58,7 @@ async def test_parse_row():
 GitHub Actions `test_suite.yml`에서 실행:
 - Lint: `ruff check`, `ruff format --check`, `scripts/lint_bare_except.py`
 - Test: `pytest --tb=short -v --durations=10`
-- Matrix: Python 3.12
+- Matrix: Python 3.14
 
 `.gitignore`-된 `inspect_*.py` 스크립트는 `pytest.importorskip()` 사용.
 `pytest-asyncio` 필요 (`pyproject.toml`의 `dev` extra에 포함).

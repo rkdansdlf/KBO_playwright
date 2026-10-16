@@ -183,7 +183,7 @@ class TeamMapper:
                 return False
             self._apply_database_mapping_rows(results)
             self._database_loaded = True
-        except (SQLAlchemyError, ValueError):
+        except SQLAlchemyError, ValueError:
             logger.exception("⚠️ Database team mapping load failed")
             return False
         else:
@@ -292,7 +292,7 @@ class TeamMapper:
         try:
             start_year = int(row[2])  # type: ignore[call-overload]
             end_year = int(row[3]) if row[3] is not None else 9999  # type: ignore[call-overload]
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return
         self._add_mapping_for_years(str(team_name), str(team_code), start_year, end_year)
         franchise = row[4]

@@ -359,7 +359,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not args.check:
                 _bootstrap_orm_schema(engine)
             pending = apply_migrations(engine, check=args.check)
-    except (SQLAlchemyError, RuntimeError, OSError):
+    except SQLAlchemyError, RuntimeError, OSError:
         logger.exception("PostgreSQL migration failed")
         return 1
     finally:

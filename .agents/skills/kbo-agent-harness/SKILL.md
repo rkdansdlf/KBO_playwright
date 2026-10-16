@@ -2,7 +2,7 @@
 name: kbo-agent-harness
 description: Use for KBO_playwright crawler bugs, features, refactors, research, analytics, or architecture work that should be routed through the project Harness and existing verification gates.
 license: MIT
-compatibility: Requires Python 3.12 and repository-local tools.agent_harness.
+compatibility: Requires Python 3.14 and repository-local tools.agent_harness.
 metadata:
   project: KBO_playwright
   harness-version: "1"

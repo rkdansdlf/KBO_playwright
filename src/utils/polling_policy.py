@@ -132,7 +132,7 @@ class AdaptivePollingEngine:
             if inn_val >= _HIGH_LEVERAGE_MIN_INNING and home_score is not None and away_score is not None:
                 score_diff = abs(int(home_score) - int(away_score))
                 return score_diff <= _HIGH_LEVERAGE_MAX_SCORE_DIFF
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return False
 
         return False
