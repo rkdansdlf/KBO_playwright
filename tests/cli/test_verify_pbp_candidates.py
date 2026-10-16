@@ -65,3 +65,34 @@ def test_team_pairs_show_whether_a_match_stays_inside_one_game() -> None:
     assert result["team_pairs"] == [
         {"candidate_teams": "DB vs KIA", "dense_teams": "OB vs HT", "count": 1},
     ]
+
+
+def test_old_and_new_team_codes_give_the_same_game_key() -> None:
+    """OB/HT and DB/KIA name the same game once the aliases are applied."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("20260816DBKIA0") == game_key("20260816OBHT0")
+    assert game_key("20260816DBKIA0") is not None
+
+
+def test_doubleheader_index_separates_two_games_of_one_day() -> None:
+    """The trailing digit is the game of the day, so the two games of a doubleheader differ."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("20260816DBKIA0") != game_key("20260816DBKIA1")
+
+
+def test_legacy_numeric_ids_have_no_game_key() -> None:
+    """A legacy numeric key carries no game id, so it cannot confirm or refute a game."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("1680134") is None
+
+
+def test_game_verdict_confirms_same_game_and_flags_other_games() -> None:
+    """Confirmed: same game. Conflicting: stored under another game. Unverified: nothing to compare."""
+    from src.cli.rag.verify_pbp_candidates import game_verdict
+
+    assert game_verdict("20260816DBKIA0_7", ["20260816OBHT0_7"]) == "confirmed"
+    assert game_verdict("20260816DBKIA0_7", ["20260816OBHT1_7"]) == "conflicting"
+    assert game_verdict("20260816DBKIA0_7", ["1680134"]) == "unverified"

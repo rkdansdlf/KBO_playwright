@@ -212,6 +212,7 @@ class BuildSourceOptions:
     desired_embedding_fingerprint: str | None = None
     vector_key_presence: bool = False
     content_presence: bool = False
+    exclude_ids: frozenset[str] = frozenset()
 
 
 def _redact_url(url: str | None) -> str:
@@ -1918,7 +1919,7 @@ def _iter_candidate_chunks(
     )
     if options.offset:
         chunk_iter = islice(chunk_iter, options.offset, None)
-    return _skip_existing_index_rows(
+    selected = _skip_existing_index_rows(
         chunk_iter,
         index_session,
         IncrementalSelectionOptions(
@@ -1931,6 +1932,7 @@ def _iter_candidate_chunks(
             content_presence=options.content_presence,
         ),
     )
+    return _drop_excluded(selected, options.exclude_ids)
 
 
 def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager[Session | None]:
@@ -1943,6 +1945,26 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 
 
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
+
+
+def _read_exclude_ids(path: str | None) -> frozenset[str]:
+    """Read source_row_ids to leave out, one per line; ``-`` reads standard input.
+
+    Blank lines and ``#`` comments are ignored. ``None`` excludes nothing.
+    """
+    if path is None:
+        return frozenset()
+    text_source = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    return frozenset(
+        line.strip() for line in text_source.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _drop_excluded(chunk_iter: Iterator[dict[str, Any]], exclude_ids: frozenset[str]) -> Iterator[dict[str, Any]]:
+    """Yield chunks whose source_row_id is not in the exclusion list."""
+    for chunk in chunk_iter:
+        if str(chunk.get("source_row_id") or "") not in exclude_ids:
+            yield chunk
 
 
 def _count_candidates(chunk_iter: Iterator[dict[str, Any]], list_path: Path | None) -> int:
@@ -1967,12 +1989,16 @@ def _count_candidates(chunk_iter: Iterator[dict[str, Any]], list_path: Path | No
     return count
 
 
-def _check_presence_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+def _prepare_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Apply count-only's dry-run implication and refuse flag combinations that are not meaningful."""
+    args.dry_run = args.dry_run or args.count_only
     """Refuse presence filters that only mean something on the skip-existing path."""
     if (args.vector_presence or args.content_presence) and not args.skip_existing:
         parser.error("--vector-presence and --content-presence require --skip-existing")
     if args.list_candidates is not None and not args.count_only:
         parser.error("--list-candidates requires --count-only")
+    if args.exclude_file is not None and args.source != "pbp":
+        parser.error("--exclude-file is only supported with --source pbp")
 
 
 def _completion_suffix(args: argparse.Namespace) -> str:
@@ -2046,13 +2072,17 @@ def main(argv: list[str] | None = None) -> None:
         help="--count-only와 함께: 후보를 JSON Lines 파일로 내보낸다 (쓰기·임베딩 없음)",
     )
     parser.add_argument(
+        "--exclude-file",
+        default=None,
+        help="제외할 source_row_id 목록 파일 (한 줄에 하나, '-'는 표준 입력, --source pbp 전용)",
+    )
+    parser.add_argument(
         "--content-presence",
         action="store_true",
         help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
     )
     args = parser.parse_args(argv)
-    args.dry_run = args.dry_run or args.count_only
-    _check_presence_flags(parser, args)
+    _prepare_args(parser, args)
 
     from src.db.engine import DATABASE_URL
     from src.db.vector_engine import init_vector_db, is_pgvector_available
@@ -2117,6 +2147,7 @@ def main(argv: list[str] | None = None) -> None:
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
         vector_key_presence=args.vector_presence,
         content_presence=args.content_presence,
+        exclude_ids=_read_exclude_ids(args.exclude_file),
     )
     with (
         get_rag_source_session() as source_session,

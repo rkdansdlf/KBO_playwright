@@ -50,6 +50,53 @@ def play_key(content: str) -> tuple[str, str, str, str] | None:
     )
 
 
+#: Team codes that appear in game ids, and the current code each old one became.
+KNOWN_CODES = frozenset({"DB", "OB", "KIA", "HT", "SSG", "SK", "LG", "LT", "NC", "HH", "SS", "KT", "KH", "WO"})
+CODE_ALIAS = {"OB": "DB", "HT": "KIA", "SK": "SSG", "WO": "KH"}
+GAME_ID_PATTERN = re.compile(r"(\d{8})([A-Z]+)(\d)")
+
+
+def game_key(game_id: str) -> tuple[str, tuple[str, str], str] | None:
+    """Return ``(date, sorted canonical teams, doubleheader index)`` for a new-style game id.
+
+    The team codes are split by trying known codes, then mapped through ``CODE_ALIAS`` so the
+    old and new codes of one team meet. Legacy numeric ids return ``None``.
+    """
+    match = GAME_ID_PATTERN.fullmatch(game_id)
+    if match is None:
+        return None
+    date, codes, index = match.groups()
+    for cut in range(2, len(codes) - 1):
+        away, home = codes[:cut], codes[cut:]
+        if away in KNOWN_CODES and home in KNOWN_CODES:
+            teams = tuple(sorted({CODE_ALIAS.get(away, away), CODE_ALIAS.get(home, home)}))
+            return (date, (teams[0], teams[-1]), index)
+    return None
+
+
+def game_key_of_row(source_row_id: str) -> tuple[str, tuple[str, str], str] | None:
+    """Return the game key carried by a row's identity, or ``None`` for legacy numeric keys."""
+    return game_key(source_row_id.split("_", 1)[0])
+
+
+def game_verdict(candidate_row_id: str, dense_row_ids: list[str]) -> str:
+    """Judge whether a matched play belongs to the same game as the stored one.
+
+    ``confirmed``: a stored row carries the candidate's game key. ``conflicting``: stored rows
+    carry game keys, and none of them is the candidate's game. ``unverified``: nothing comparable
+    (for example a legacy numeric key, which has no game id), so a doubleheader cannot be ruled out.
+    """
+    candidate_key = game_key_of_row(candidate_row_id)
+    if candidate_key is None:
+        return "unverified"
+    stored_keys = [game_key_of_row(row_id) for row_id in dense_row_ids]
+    if candidate_key in stored_keys:
+        return "confirmed"
+    if any(key is not None for key in stored_keys):
+        return "conflicting"
+    return "unverified"
+
+
 def teams_of(content: str) -> str:
     """Return the ``away vs home`` field, or an empty string when absent."""
     match = TEAMS_PATTERN.search(content or "")
@@ -69,6 +116,7 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
             index[key].append((source_row_id, teams_of(content)))
 
     counts = {"candidates": 0, "unparsed": 0, "matched": 0, "new": 0, "ambiguous": 0}
+    verdicts: dict[str, list[str]] = {"confirmed": [], "conflicting": [], "unverified": []}
     samples: list[dict[str, object]] = []
     team_pairs: Counter[tuple[str, str]] = Counter()
     for candidate in candidates:
@@ -86,6 +134,9 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
             counts["ambiguous"] += 1
         candidate_teams = teams_of(str(candidate.get("content") or ""))
         team_pairs[(candidate_teams, hits[0][1])] += 1
+        row_id = str(candidate.get("source_row_id") or "")
+        verdict = game_verdict(row_id, [hit_id for hit_id, _ in hits])
+        verdicts[verdict].append(row_id)
         if len(samples) < SAMPLE_CAP:
             samples.append(
                 {
@@ -98,7 +149,14 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
         {"candidate_teams": cand, "dense_teams": dense, "count": count}
         for (cand, dense), count in team_pairs.most_common()
     ]
-    return {**counts, "team_pairs": pairs, "samples": samples}
+    game_identity = {name: len(ids) for name, ids in verdicts.items()}
+    return {
+        **counts,
+        "game_identity": game_identity,
+        "team_pairs": pairs,
+        "samples": samples,
+        "source_row_ids": verdicts,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

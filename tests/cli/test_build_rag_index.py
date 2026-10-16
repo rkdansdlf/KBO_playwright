@@ -746,3 +746,29 @@ def test_list_candidates_is_refused_without_count_only() -> None:
         build_rag_index.main(["--list-candidates", "x.jsonl"])
 
     assert raised.value.code == 2
+
+
+def test_drop_excluded_removes_only_listed_identities() -> None:
+    """The exclusion is applied to candidates, so count, list, and apply all see the same set."""
+    chunks = [{"source_row_id": "A"}, {"source_row_id": "B"}, {"source_row_id": "C"}]
+
+    kept = list(build_rag_index._drop_excluded(iter(chunks), frozenset({"B"})))
+
+    assert [chunk["source_row_id"] for chunk in kept] == ["A", "C"]
+
+
+def test_read_exclude_ids_skips_blank_lines_and_comments(tmp_path) -> None:
+    """One identity per line; blank lines and comments are not identities."""
+    source = tmp_path / "exclude.txt"
+    source.write_text("# 322 matched plays\n20260816DBKIA0_7\n\n20260816DBKIA0_9\n", encoding="utf-8")
+
+    assert build_rag_index._read_exclude_ids(str(source)) == frozenset({"20260816DBKIA0_7", "20260816DBKIA0_9"})
+    assert build_rag_index._read_exclude_ids(None) == frozenset()
+
+
+def test_exclude_file_is_refused_for_other_sources() -> None:
+    """Only the PBP path is covered by the verified exclusion list."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--source", "lineups", "--count-only", "--skip-existing", "--exclude-file", "x.txt"])
+
+    assert raised.value.code == 2
