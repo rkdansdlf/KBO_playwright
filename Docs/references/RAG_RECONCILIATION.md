@@ -52,14 +52,20 @@ side 이름이 백엔드를 함의하지 않는다. 무엇을 비교하게 되�
 읽으면 안 된다. `2026-08-28 Exporter Verification`의 "clean self-comparison"이
 정확히 이 경우다.
 
-**현재 운영 구성 (2026-10-10 실측)**: 두 저장소 모두 PostgreSQL이다 —
-`DATABASE_URL`(운영, `100.81.73.13:5432`)과 `PGVECTOR_URL`(`100.81.73.13:55433`).
+**현재 운영 구성 (2026-10-16 갱신)**: 두 저장소 모두 PostgreSQL이다 —
+`DATABASE_URL` = `100.81.73.13:5432/bega_prod`(컨테이너 `172.18.0.3`),
+`PGVECTOR_URL` = `100.81.73.13:5435/kbo_rag_retired_202610`(컨테이너 `172.17.0.2`).
 `RAG_INDEX_DB_URL`은 설정돼 있지 않다. **Oracle은 이 배포의 RAG 저장소가 아니다** —
 `build_rag_index`가 "Oracle production builds must not use PGVECTOR_URL"로 두 구성을
 상호 배타로 강제하므로, `PGVECTOR_URL`이 설정된 이 배포는 Oracle 빌드가 될 수 없다.
 
-`rag_chunks` 행 수는 **재색인이 진행 중이라 변동한다** — 223,114(10/10 직접 조회) →
-228,681(10/10~10/11 export). 행 수를 인용할 때는 export 시각을 함께 볼 것.
+구 `55433/kbo_rag`는 **폐기 개명**되어 접속하지 않는다(포트는 열려 있으나 password
+인증이 실패한다). 그래서 `PGVECTOR_URL`을 55433으로 되돌리면 도구는 동작하지 않는다.
+
+`rag_chunks` 행 수는 저장소마다 다르고 **재색인·재플랫폼으로 변동한다** —
+`bega_prod` 583,265행(10/16), `kbo_rag_retired_202610` 228,681행(10/16 스냅샷).
+행 수를 인용할 때는 **저장소와 조회 시각을 함께** 볼 것. `223,114`·`228,681` 같은
+값은 2026-10-10~11 시점의 `PGVECTOR_URL` 저장소 수치다.
 
 ## 스냅샷 의미론 (as-of 분류)
 
@@ -424,3 +430,56 @@ DELETED를 제외하도록 고쳤다 — 방향이 중요하다. 한쪽만 제�
 `MISSING_IN_LEFT`로 그대로 탐지**된다.
 
 실측 결과: 양쪽 226,432행, `unexplained_count: 0`, `is_clean: true`.
+
+## 2026-10-16 재플랫폼 — dense 컬럼 정합, 정본 미결, 자연키 이관 누락
+
+### 두 저장소의 dense 컬럼은 이제 `embedding`이다
+
+`32c5fffb`(2026-10-16)가 `RagChunk`의 컬럼 매핑을 `embedding_vector`에서 `embedding`으로
+정정했다. 그 이전에는 모델만 `embedding_vector`(JSON)를 가리켜 `select(RagChunk)`가
+`UndefinedColumn`으로 실패했고, 빌더 증분 선택·전파·게이트가 **함께** 깨져 있었다.
+Oracle 방언은 `OracleEmbeddingColumnUnsupportedError`로 **명시적으로 거부**한다 —
+Oracle의 물리 `EMBEDDING`은 레거시 JSON이라 그대로 쓰면 벡터 인덱스를 조용히 오염시킨다.
+
+실측(2026-10-16):
+
+| 저장소 | 컬럼 수 | `embedding` | `index_status` | `index_version` | 행 |
+| --- | --- | --- | --- | --- | --- |
+| `5432/bega_prod` | 33 | 있음 | 있음 | 있음 | 583,265 |
+| `5435/kbo_rag_retired_202610` | 23 | 있음 | 있음 | 있음 | 228,681 |
+
+즉 **모델이 요구하는 컬럼이 두 저장소 모두에 있다.** "저장소 코드와 호환 불가"라는
+2026-10-13 관측은 당시 `bega_prod`가 30컬럼(`embedding`·`index_status` 없음)이던 시점의
+것이며, 지금은 유효하지 않다.
+
+### 자연키는 `bega_prod` 583K 인덱스로 이관되지 않았다
+
+2026-10-11~12에 이 작업이 부여한 자연키가 새 인덱스에 **없다**(실측):
+
+| 키 | `bega_prod` 583K |
+| --- | --- |
+| `awards/2025_MVP_NONE_폰세` | 0건 |
+| `awards/2025_골든글러브_외야수_안현민` | 0건 |
+| `team_events/2026-06-27` | 0건 |
+| `press_release/9646` | 0건 |
+
+583K 인덱스의 `source_row_id`는 다른 규약을 쓴다 — `id=N`, `season_id=N`,
+`id=N#part2`가 테이블마다 섞이고, `game` 청크가 참조하는 `id=1..999`는 도메인
+`game.id`(6320~597890)와 대응하지 않는다. 즉 재플랫폼은 **도메인 테이블에서 다시 뽑은
+별개 인덱스**이고, 이 작업의 자연키는 그쪽에 반영되지 않았다.
+
+### 정본은 아직 미결이다
+
+- 사용자 결정(2026-10-16): **폐기 저장소(5435)를 정본으로 유지**.
+- 실측 긴장: `bega_prod`는 저장소 코드(`RagChunk`)와 정합이고 583,265행으로 더 크다.
+  반면 5435 쌍은 **시점이 서로 다르다**(sparse `5435/kbo` 08-21~09-24 vs dense
+  10-09~10-10)라 교차 검증의 짝으로 쓰기 어렵다.
+- 그래서 `.env`의 `PGVECTOR_URL`은 `5435/kbo_rag_retired_202610`을 가리킨다
+  (2026-10-13 변경, 백업 `.env.bak_20261013_221338`). 어느 쪽을 정본으로 확정할지는
+  별도 판단이 필요하다.
+
+### `bega_prod` 583K 인덱스에 벡터 인덱스가 없다 (2026-10-16 실측)
+
+`pg_indexes`에 `ivfflat`·`hnsw`가 **없다**(pkey와 `content_tsv` GIN만). 583,265행에서
+dense 검색은 **전수 스캔**이 된다. 런북 §9.7의 "HNSW 인덱스: 보류"와 같은 상태이며,
+PostgreSQL dense 경로를 활성화할 때 함께 생성해야 한다.

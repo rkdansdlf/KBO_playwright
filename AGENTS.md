@@ -153,7 +153,9 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - `pyproject.toml` excludes `scripts/investigations/` from ruff scope (debug/investigation files).
 - `G004` (logging-f-string) is globally ignored — f-strings in logging are intentional after print→logger conversion.
 - All `src/` modules have return-type annotations; use `X | None` (not `Optional[X]`) and `list[X]` (not `List[X]`).
-- `from __future__ import annotations` required before modern type syntax in Python 3.12.
+- `from __future__ import annotations` is no longer required on Python 3.14: PEP 649
+  defers annotation evaluation by default, so annotations referencing `TYPE_CHECKING`-only
+  imports are safe without it. The import is retained across `src/` and is harmless.
 
 ## Coding Style & Naming Conventions
 - Python, 4-space indentation, type hints encouraged but not required.
@@ -166,7 +168,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 - Test files follow `test_*.py` naming in `tests/`.
 - Debug utilities (e.g., `debug_*.py`) are not part of the default test run.
 - **Use the project virtualenv.** `venv/` holds the pinned dev dependencies
-  (Python 3.12, `pytest`, `pytest-xdist`). The system `python3` has no `xdist`,
+  (Python 3.14, `pytest`, `pytest-xdist`). The system `python3` has no `xdist`,
   runs serially, resolves different dependency versions, and reports false
   failures that do not reproduce in `venv/`.
 - **Authoritative full-suite command** (repo root):
@@ -222,7 +224,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
-- `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.12), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
+- `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.14), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
 - `.github/actions/kbo-job-setup/`: Reusable checkout + python-env + optional date resolution. Wraps python-env with `playwright`, `init-db`, `resolve-date`, `target-date` inputs. Outputs `KST_DATE`, `KST_YEAR`. Used to eliminate boilerplate in multi-job workflows.
 - `.github/actions/notify/`: Status notification to Telegram and/or Slack. Inputs: `status` (success/failure/cancelled), `workflow` (name override), `channels` (telegram/slack/both).
 
@@ -256,7 +258,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation against the configured database
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
-- `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.12)
+- `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.14)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
 
@@ -272,7 +274,16 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-10-11
+Last updated: 2026-10-16
+
+### 2026-10-16: Python 3.14 전환 (런타임·툴체인·이미지·린트 타깃) — 전 스위트 green
+- **혼재 상태의 발견**: `venv/`는 `pyvenv.cfg`만 3.14.6으로 재생성돼 있고 `venv/bin/python` 심볼릭 링크는 `python3.12`를 가리켰다. 링크가 실제 인터프리터를 결정하므로 AGENTS.md가 안내하는 공식 명령 `./venv/bin/python -m pytest`는 **3.12.15로 돌고 있었다** — 환경이 "3.14로 맞춰졌다"는 인상과 실제 실행이 어긋난 지점이다. 링크를 `python3.14`로 바꾸고 `venv/lib/python3.12` site-packages를 제거해 site-packages를 하나로 만들었다(`pip check` clean).
+- **테스트 코드 자체는 이미 3.14 호환**: 전환 전 `venv/bin/python3.14`로 돌린 전 스위트가 13,844 passed / 5 skipped였고, 제거된 stdlib·`datetime.utcnow()`·`asyncio.get_event_loop()` 사용이 없었다. 즉 전환의 대상은 테스트 코드가 아니라 **툴체인과 배포 경로**였다.
+- **전환 범위**: `requires-python = ">=3.14"` + classifier + ruff `target-version = "py314"` + mypy `python_version = "3.14"`. `uv lock` 재생성은 **패키지 버전 변경 0건**(432줄 삭제는 3.12/3.13 전용 wheel·resolution marker 제거분). 워크플로 3종과 composite action 2종의 기본값을 3.14로, `test_suite.yml` matrix를 `["3.14"]`로 바꿨다 — 워크플로 문자열을 그대로 단언하던 계약 테스트 2건(`tests/test_github_workflows.py`, `tests/agent_harness/test_ci_workflow_contract.py`)도 함께 고쳐야 한다.
+- **린트 타깃을 올린 대가**: ruff가 3.14 정본 문법(PEP 758)으로 `except (A, B):` → `except A, B:`를 재작성해 **155개 파일이 재포맷**됐고, UP043 32·TC003 10·UP037 1·TC002 1 = 44건이 새로 발생해 자동수정했다. TC00x는 `collections.abc`·`datetime.date`·`sqlalchemy.orm.Session`을 `TYPE_CHECKING`으로 옮긴다 — 이 저장소는 과거에 SQLAlchemy `Mapped[...]`가 런타임에 어노테이션을 해석하다 이 이동으로 모델이 깨진 이력이 있으므로, 대상 5개 파일이 전부 `Mapped`/`BaseModel` 없는 일반 dataclass·유틸임을 확인한 뒤 적용하고 전 스위트로 회귀를 확인했다.
+- **`Dockerfile.playwright`는 베이스를 바꿔야 했다**: Microsoft 공식 Playwright 이미지(`mcr.microsoft.com/playwright/python`)는 3.12 고정이고 3.14 변형을 배포하지 않는다. 그대로 두면 `uv pip install .`이 `requires-python` 불일치로 **거부**한다(3.9 인터프리터 실측: "does not satisfy Python>=3.14"). `python:3.14-slim` + `playwright install --with-deps chromium`으로 교체했다. 메인 `Dockerfile`은 `python:3.14-slim` 2곳 + `site-packages` 경로 1곳. **두 이미지 모두 실제로 빌드해 컨테이너에서 확인**(`Python 3.14.7`, 런타임 deps·`import src` OK).
+- **검증**: `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2` = **13,844 passed, 5 skipped**(현대화 전후 동일), `ruff check src/ tests/ scripts/ tools/` 0 errors, `ruff format --check` 2172 files clean, `scripts/check_mypy_scoped.py` 198 files clean.
+- **남은 것**: ① `pytest-asyncio 0.26.0`이 `asyncio.get_event_loop_policy()`를 호출한다 — 3.16 제거 예정이라 `-W error::DeprecationWarning`으로 승격하면 전량 error가 되지만 `pytest.ini`의 `ignore::DeprecationWarning`에 가려져 있다. 상향 시점에 확인해야 한다. ② uv 기반 `.venv`(3.14.3)가 별도로 남아 있고 그 안에 `lib/python3.12`도 함께 있다 — 저장소 코드는 참조하지 않지만 `Docs/runbooks/STADIUM_MASTER_DATA.md`가 Windows 경로로 언급한다.
 
 ### 2026-10-11: RAG 저장소 정합성 게이트 — 역할 분리(`f42002bb`) · export 시각 기록(`e468175b`) · 기록 정정
 - **역할별 임베딩 검사 분리 (`f42002bb`, 과거 기록)**: 이 시점의 `bega_prod`에는 `rag_chunks.embedding_vector`(json)가 있었다. 현재 PostgreSQL 두 저장소에는 그 컬럼이 없고 `embedding`(vector) 하나뿐이다(`32c5fffb` 이후). 과거 기록은 아래와 같다: `bega_prod`의 `rag_chunks.embedding_vector`는 **json**이고 7,025/228,681만 채워져 있다 — sparse(메타데이터) 측이라 임베딩이 없는 것이 정상이다. 이전 게이트는 이 json 열을 "임베딩 누락"으로 읽어 **221,656건**을 보고했다. `ManifestEntry.role`(`sparse`/`dense`)을 도입하고 `requires_embeddings`로 역할별 판정을 한다. **역할은 side 이름이 아니라 `get_vector_session()` 해석 결과에서 온다** — Oracle 단일 저장소에서는 `primary`가 *dense* 측이므로 이름으로 면제하면 유일하게 의미 있는 검사가 꺼진다. 세 방향 모두 fail-closed: 역할 미선언은 면제 아님(`EMBEDDING_UNMEASURED`로 별도 보고), 알 수 없는 역할은 `ValueError`, `embedding_present=None`(미측정)은 `False`와 구분. 회귀 `tests/services/test_rag_reconciliation_roles.py`(16) + CLI 4. **(2026-10-16 정정)** 이 문장의 컬럼명·타입·저장소 라벨은 틀렸다 — 228,681행은 `PGVECTOR_URL`(5435) 저장소의 수치이고, 그때도 두 PostgreSQL 저장소의 dense 컬럼 이름은 `embedding`(pgvector `vector(1536)`)이었다. `embedding_vector`는 모델 매핑에만 있던 이름이다.
@@ -1129,7 +1140,7 @@ Total enabled rules: 90+ (including E, W, F, I, UP, RET, ANN, TC, TRY, B, SIM, G
 
 ### Phase 75 Complete (2026-08-09) — Award history crawler
 
-- **`src/crawlers/award_crawler.py` (new)**: Crawls Wikipedia (MVP/신인상/골든글러브/수비상) via the parse API and yagoonara.com/awards for 올스타전MVP/한국시리즈MVP. Normalizes to `AwardRecord` and persists into `awards` (unique: year+award_type+player_name). Besides that, fetches raw snapshots.
+- **`src/crawlers/award_crawler.py` (new)**: Crawls Wikipedia (MVP/신인상/골든글러브/수비상) via the parse API and yagoonara.com/awards for 올스타전MVP/한국시리즈MVP. Normalizes to `AwardRecord` and persists into `awards`. Besides that, fetches raw snapshots. **(2026-10-16 정정)** 이 항목의 유일키 서술(`unique: year+award_type+player_name`)은 틀렸다 — 실제 제약은 `uq_award_record` = `UNIQUE (year, award_type, category, player_name, team_name)`이다(실 DB 확인). `category`·`team_name`이 빠지면 같은 해·같은 상·같은 이름의 서로 다른 포지션·구단 행을 중복으로 오판한다.
 - **Rowspan fix**: `_render_table` previously never expired pending rowspan cells — the glued year repeated into subsequent rows. Fixed by tracking `(text, remaining)` spans that expire after their duration; extracted `_pull_pending_cells`.
 - **Category policy**: `포지션` column missing → `category=None` (was falling back to column 0, storing the year). 1987+ MVP rows keep the source value in the category cell (team names as stored) — source-faithful, per decision.
 - **`--type` filter**: `crawl()`/`run()` accept `types`; CLI `python3 -m src.cli.crawl_awards --type MVP`.

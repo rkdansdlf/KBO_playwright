@@ -174,6 +174,14 @@ year+award_type+player_name"라고 적고 있으나 **부정확하다** — 카�
 토큰이기 때문이며, query에 선수명이 들어가면 정답이 1위가 된다. 데이터 문제가
 아니라 순위 문제이므로 자연키 조작으로 해결되지 않는다.
 
+### 자연키는 `bega_prod` 583K 인덱스에 없다 (2026-10-16)
+
+위 규칙으로 2026-10-11~12에 부여한 자연키는 `PGVECTOR_URL` 저장소와 main의 RAG 도구에는
+반영됐으나, `bega_prod.rag_chunks`(583,265행, 10-12 재플랫폼)에는 **0건**이다 — 그
+인덱스는 `source_row_id`로 `id=N`·`season_id=N`·`id=N#part2`를 쓰는 별개 규약을 쓴다.
+두 인덱스 중 어느 쪽이 정본인지가 미결이므로(`Docs/references/RAG_RECONCILIATION.md`의
+2026-10-16 절), 자연키 규칙을 어느 저장소에 적용할지도 함께 미결이다.
+
 ## 참고
 
 - 드리프트 실측: `data/archive/workspace_cleanup_20260823/rag_reconciliation_20260823/gap_resolution_summary.json`
