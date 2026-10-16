@@ -10,8 +10,10 @@ from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
 from src.models.game import Game, GameInningScore
+from src.pipeline import auto_healer_service
 from src.pipeline.auto_healer_service import AutoHealerService
 from src.pipeline.dto import DefectItem, DefectReport, PipelineDefectType
+from src.repositories import game_status
 
 
 @pytest.fixture
@@ -24,6 +26,13 @@ def db_session():
         yield sess
     finally:
         sess.close()
+
+
+@pytest.fixture(autouse=True)
+def _pin_season(monkeypatch):
+    """Fixtures use 2024 games; pin the season so the current-season guard is deterministic."""
+    monkeypatch.setattr(auto_healer_service, "current_season_year", lambda today=None: 2024)
+    monkeypatch.setattr(game_status, "current_season_year", lambda today=None: 2024)
 
 
 def test_heal_stuck_game(db_session) -> None:
@@ -119,5 +128,27 @@ def test_heal_stuck_game_skips_pre_2001(db_session) -> None:
     summary = healer.heal_stuck_game("19950501LGSS0")
 
     assert summary.status == "SKIPPED"
+    db_session.refresh(g)
+    assert g.game_status == "SCHEDULED"
+
+
+def test_heal_stuck_game_skips_past_season(db_session) -> None:
+    """A past (post-2001) season game is SKIPPED by automatic healing and left untouched."""
+    g = Game(
+        game_id="20230501LGSS0",
+        game_date=date(2023, 5, 1),
+        home_team="SS",
+        away_team="LG",
+        home_score=None,
+        away_score=None,
+        game_status="SCHEDULED",
+    )
+    db_session.add(g)
+    db_session.flush()
+
+    summary = AutoHealerService(db_session).heal_stuck_game("20230501LGSS0")
+
+    assert summary.status == "SKIPPED"
+    assert "Historical guard" in (summary.error_message or "")
     db_session.refresh(g)
     assert g.game_status == "SCHEDULED"

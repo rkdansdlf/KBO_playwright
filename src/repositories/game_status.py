@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR
 from src.db.engine import get_db_session
 from src.models.game import (
     Game,
@@ -33,25 +32,49 @@ from src.utils.date_helpers import parse_date_str
 logger = logging.getLogger(__name__)
 
 
+def current_season_year(today: date | None = None) -> int:
+    """Return the season year used by automatic runs (KST calendar year)."""
+    if today is None:
+        today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    return today.year
+
+
+def game_year_of(game: Game) -> int | None:
+    """Return the calendar year of a game's date, or None if unknown."""
+    game_date = game.game_date
+    if game_date is None:
+        return None
+    return getattr(game_date, "year", None)
+
+
+def automatic_write_allowed(game_year: int | None, season_year: int) -> bool:
+    """Automatic runs may write only games from the current season.
+
+    Anything else (past seasons, unknown dates) needs an explicit operator run
+    with ``allow_historical=True`` (issue #32).
+    """
+    return game_year is not None and game_year == season_year
+
+
 def update_game_status(
     game_id: str, status: str, session: Session | None = None, *, allow_historical: bool = False
 ) -> bool:
     """Update one game's status.
 
-    Guarded: pre-2001 rows are refused unless ``allow_historical`` is True.
-    Explicit operator runs pass game IDs and opt in; automatic scans do not.
+    Guarded: rows outside the current season are refused unless ``allow_historical``
+    is True. Explicit operator runs pass game IDs and opt in; automatic scans do not.
 
     Args:
         game_id: Game ID.
         status: Status.
         session: DB Session.
-        allow_historical: Opt in to pre-2001 writes.
+        allow_historical: Opt in to writes outside the current season.
 
     """
     if session is None:
         try:
             with get_db_session() as s:
-                return update_game_status(game_id, status, session=s)
+                return update_game_status(game_id, status, session=s, allow_historical=allow_historical)
         except Exception:
             logger.exception("[ERROR] DB Error (Status)")
             return False
@@ -64,15 +87,9 @@ def update_game_status(
     game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
     if not game:
         return False
-    game_year = getattr(game.game_date, "year", None)
-    if game_year is None:
-        try:
-            game_year = int(str(game.game_date)[:4])
-        except ValueError:
-            game_year = None
-    if not allow_historical and game_year is not None and game_year < AUTO_HEAL_HISTORY_FLOOR_YEAR:
+    if not allow_historical and not automatic_write_allowed(game_year_of(game), current_season_year()):
         logger.warning(
-            "[GUARD] Refused status write for pre-2001 game %s (%s -> %s). "
+            "[GUARD] Refused automatic status write outside the current season: %s (%s -> %s). "
             "Use allow_historical=True from an explicit operator run.",
             game_id,
             game.game_status,
@@ -84,6 +101,37 @@ def update_game_status(
     return True
 
 
+def _recompute_game_status(session: Session, game: Game, today: date) -> str:
+    """Derive the next status for one game and fill a missing total from inning rows."""
+    has_metadata = _has_game_child_rows(session, GameMetadata, game.game_id)
+    has_inning = _has_game_child_rows(session, GameInningScore, game.game_id)
+    has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
+    has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
+    has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
+    if game.game_date < today and has_inning and (game.home_score is None or game.away_score is None):
+        inning_totals = dict(
+            session.query(GameInningScore.team_side, func.sum(GameInningScore.runs))
+            .filter(GameInningScore.game_id == game.game_id)
+            .group_by(GameInningScore.team_side)
+            .all(),
+        )
+        if inning_totals.get("away") is not None and inning_totals.get("home") is not None:
+            game.away_score = int(inning_totals["away"] or 0)
+            game.home_score = int(inning_totals["home"] or 0)
+    return _derive_game_status(
+        game_date=game.game_date,
+        home_score=game.home_score,
+        away_score=game.away_score,
+        current_status=game.game_status,
+        has_metadata=has_metadata,
+        has_inning_scores=has_inning,
+        has_lineups=has_lineup,
+        has_batting=has_batting,
+        has_pitching=has_pitching,
+        today=today,
+    )
+
+
 def refresh_game_status_for_date(
     target_date: str,
     today: date | None = None,
@@ -91,8 +139,9 @@ def refresh_game_status_for_date(
 ) -> dict[str, Any]:
     """Recompute game_status only for one target date (YYYYMMDD).
 
-    Rows outside the current season (game year != today's year) are never
-    rewritten; they are counted in ``skipped_past_season`` (issue #32).
+    Automatic runs write only games from the current season. Rows from other
+    seasons are never rewritten; they are counted in ``skipped_past_season``
+    (issue #32).
 
     Args:
         target_date: Target date for the operation.
@@ -113,12 +162,9 @@ def refresh_game_status_for_date(
     except ValueError:
         return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 
-    if dt.year < AUTO_HEAL_HISTORY_FLOOR_YEAR:
-        logger.warning("[GUARD] Refused status refresh for pre-2001 date %s.", target_date)
-        return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
-
     if today is None:
         today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    season_year = current_season_year(today)
 
     games = session.query(Game).filter(Game.game_date == dt).all()
     status_counts: dict[str, int] = {}
@@ -129,36 +175,10 @@ def refresh_game_status_for_date(
     skipped_past_season = 0
     for game in games:
         game_ids.append(game.game_id)
-        if game.game_date.year != today.year:
+        if not automatic_write_allowed(game_year_of(game), season_year):
             skipped_past_season += 1
             continue
-        has_metadata = _has_game_child_rows(session, GameMetadata, game.game_id)
-        has_inning = _has_game_child_rows(session, GameInningScore, game.game_id)
-        has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
-        has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
-        has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
-        if game.game_date < today and has_inning and (game.home_score is None or game.away_score is None):
-            inning_totals = dict(
-                session.query(GameInningScore.team_side, func.sum(GameInningScore.runs))
-                .filter(GameInningScore.game_id == game.game_id)
-                .group_by(GameInningScore.team_side)
-                .all(),
-            )
-            if inning_totals.get("away") is not None and inning_totals.get("home") is not None:
-                game.away_score = int(inning_totals["away"] or 0)
-                game.home_score = int(inning_totals["home"] or 0)
-        next_status = _derive_game_status(
-            game_date=game.game_date,
-            home_score=game.home_score,
-            away_score=game.away_score,
-            current_status=game.game_status,
-            has_metadata=has_metadata,
-            has_inning_scores=has_inning,
-            has_lineups=has_lineup,
-            has_batting=has_batting,
-            has_pitching=has_pitching,
-            today=today,
-        )
+        next_status = _recompute_game_status(session, game, today)
         status_counts[next_status] = status_counts.get(next_status, 0) + 1
         game_ids_by_status.setdefault(next_status, []).append(game.game_id)
         if game.game_status != next_status:

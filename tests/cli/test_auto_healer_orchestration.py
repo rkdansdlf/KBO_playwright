@@ -83,6 +83,7 @@ class TestDefaultHealerOrchestration:
     def test_recovery_targets_merge_and_sort_unique_anomalies(self, monkeypatch):
         first = _game("G1")
         second = _game("G2", status="COMPLETED")
+        monkeypatch.setattr(auto_healer, "current_season_year", lambda today=None: 2025)
         monkeypatch.setattr(auto_healer, "_find_stuck_games", MagicMock(return_value=[second, first]))
         monkeypatch.setattr(auto_healer, "_find_inconsistent_games", MagicMock(return_value=[second]))
         monkeypatch.setattr(auto_healer, "_find_pa_formula_inconsistent_games", MagicMock(return_value=[]))
