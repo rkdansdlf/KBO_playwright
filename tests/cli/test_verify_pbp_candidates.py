@@ -53,3 +53,15 @@ def test_ambiguous_match_is_flagged() -> None:
 
     assert result["matched"] == 1
     assert result["ambiguous"] == 1
+
+
+def test_team_pairs_show_whether_a_match_stays_inside_one_game() -> None:
+    """A match should pair the same two teams under their own codes; any other pair is suspect."""
+    result = classify(
+        [{"source_row_id": "c", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+    )
+
+    assert result["team_pairs"] == [
+        {"candidate_teams": "DB vs KIA", "dense_teams": "OB vs HT", "count": 1},
+    ]

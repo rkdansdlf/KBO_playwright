@@ -13,7 +13,7 @@ import argparse
 import json
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -21,6 +21,7 @@ from sqlalchemy import text
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+TEAMS_PATTERN = re.compile(r"경기: (?P<teams>.*?), 이닝: ")
 PLAY_PATTERN = re.compile(
     r"경기일: (?P<date>[^,]+), 경기: .*?, 이닝: (?P<inning>[^,]+), "
     r"투수: .*?, 타자: (?P<batter>[^,]+), 내용: (?P<event>.*)$"
@@ -49,20 +50,27 @@ def play_key(content: str) -> tuple[str, str, str, str] | None:
     )
 
 
+def teams_of(content: str) -> str:
+    """Return the ``away vs home`` field, or an empty string when absent."""
+    match = TEAMS_PATTERN.search(content or "")
+    return match["teams"].strip() if match else ""
+
+
 def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[str, str]]) -> dict[str, object]:
     """Split candidates into same-play-under-another-key, new, and unparsed.
 
     ``dense_rows`` yields ``(source_row_id, content)``. A candidate is ``matched`` when its
     play key appears in the dense store under any identity, which is the team-code case.
     """
-    index: dict[tuple[str, str, str, str], list[str]] = defaultdict(list)
+    index: dict[tuple[str, str, str, str], list[tuple[str, str]]] = defaultdict(list)
     for source_row_id, content in dense_rows:
         key = play_key(content)
         if key is not None:
-            index[key].append(source_row_id)
+            index[key].append((source_row_id, teams_of(content)))
 
     counts = {"candidates": 0, "unparsed": 0, "matched": 0, "new": 0, "ambiguous": 0}
     samples: list[dict[str, object]] = []
+    team_pairs: Counter[tuple[str, str]] = Counter()
     for candidate in candidates:
         counts["candidates"] += 1
         key = play_key(str(candidate.get("content") or ""))
@@ -76,15 +84,21 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
         counts["matched"] += 1
         if len(hits) > 1:
             counts["ambiguous"] += 1
+        candidate_teams = teams_of(str(candidate.get("content") or ""))
+        team_pairs[(candidate_teams, hits[0][1])] += 1
         if len(samples) < SAMPLE_CAP:
             samples.append(
                 {
                     "candidate_source_row_id": candidate.get("source_row_id"),
-                    "dense_source_row_ids": hits[:3],
+                    "dense_source_row_ids": [row_id for row_id, _ in hits[:3]],
                     "play": list(key),
                 }
             )
-    return {**counts, "samples": samples}
+    pairs = [
+        {"candidate_teams": cand, "dense_teams": dense, "count": count}
+        for (cand, dense), count in team_pairs.most_common()
+    ]
+    return {**counts, "team_pairs": pairs, "samples": samples}
 
 
 def main(argv: list[str] | None = None) -> int:
