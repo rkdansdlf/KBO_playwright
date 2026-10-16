@@ -689,3 +689,11 @@ def test_deterministic_build_requires_staging_environment(monkeypatch) -> None:
             embedding_mode="deterministic",
             dry_run=True,
         )
+
+
+def test_vector_presence_is_refused_without_skip_existing() -> None:
+    """Without the skip filter every chunk is yielded, so key presence would be ignored silently."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--vector-presence"])
+
+    assert raised.value.code == 2

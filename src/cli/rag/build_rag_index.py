@@ -197,6 +197,7 @@ class IncrementalSelectionOptions:
     desired_index_version: str | None = None
     desired_embedding_fingerprint: str | None = None
     include_healthy: bool = False
+    vector_key_presence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +209,7 @@ class BuildSourceOptions:
     offset: int = 0
     skip_existing: bool = False
     desired_embedding_fingerprint: str | None = None
+    vector_key_presence: bool = False
 
 
 def _redact_url(url: str | None) -> str:
@@ -1715,6 +1717,7 @@ def _skip_existing_index_rows(
                 desired_embedding_fingerprint=selection.desired_embedding_fingerprint,
                 require_vector=selection.vector_session is not None,
                 require_primary_embedding=selection.vector_session is None,
+                vector_key_presence=selection.vector_key_presence,
             ),
         )
         if decision.blocked:
@@ -1896,6 +1899,7 @@ def _iter_candidate_chunks(
             desired_index_version=current_index_version(),
             desired_embedding_fingerprint=options.desired_embedding_fingerprint,
             include_healthy=not options.skip_existing,
+            vector_key_presence=options.vector_key_presence,
         ),
     )
 
@@ -1971,9 +1975,16 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="임베딩 API를 호출하지 않고 처리 대상 청크 수만 센다 (dry-run을 포함한다)",
     )
+    parser.add_argument(
+        "--vector-presence",
+        action="store_true",
+        help="정본에 없어도 벡터 저장소에 같은 키가 있으면 갭에서 뺀다 (--skip-existing 필요, 키 존재만 비교)",
+    )
     args = parser.parse_args(argv)
     if args.count_only:
         args.dry_run = True
+    if args.vector_presence and not args.skip_existing:
+        parser.error("--vector-presence requires --skip-existing")
 
     from src.db.engine import DATABASE_URL
     from src.db.vector_engine import init_vector_db, is_pgvector_available
@@ -2036,6 +2047,7 @@ def main(argv: list[str] | None = None) -> None:
         offset=args.offset,
         skip_existing=args.skip_existing,
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
+        vector_key_presence=args.vector_presence,
     )
     with (
         get_rag_source_session() as source_session,
@@ -2053,17 +2065,18 @@ def main(argv: list[str] | None = None) -> None:
                 vector_session,
                 build_source_options,
             )
-            if args.count_only:
-                # 임베딩 전 단계에서 세기만 한다. 제공자 호출과 저장이 모두 없다.
-                count = sum(1 for _ in chunk_iter)
-            else:
-                count = _process_source(
+            # count-only는 임베딩 전 단계에서 세기만 한다. 제공자 호출과 저장이 모두 없다.
+            count = (
+                sum(1 for _ in chunk_iter)
+                if args.count_only
+                else _process_source(
                     source_name,
                     chunk_iter,
                     embedding_service,
                     index_session,
                     dry_run=args.dry_run,
                 )
+            )
             logger.info("✅ [%s] %d 청크 완료", source_name, count)
             grand_total += count
 

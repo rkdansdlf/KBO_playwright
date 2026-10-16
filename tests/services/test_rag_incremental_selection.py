@@ -47,12 +47,14 @@ def _options(
     fingerprint: str | None = None,
     require_vector: bool = False,
     require_primary_embedding: bool = True,
+    vector_key_presence: bool = False,
 ) -> IncrementalDecisionOptions:
     return IncrementalDecisionOptions(
         desired_index_version=version,
         desired_embedding_fingerprint=fingerprint,
         require_vector=require_vector,
         require_primary_embedding=require_primary_embedding,
+        vector_key_presence=vector_key_presence,
     )
 
 
@@ -225,3 +227,42 @@ def test_projection_reads_json_metadata_fingerprint() -> None:
     )
 
     assert state.embedding_fingerprint == embedding_fingerprint("model-a", 1536, "chunk-v1")
+
+
+def test_vector_key_presence_skips_a_canonical_miss_when_the_vector_row_exists() -> None:
+    """A row the vector store already holds is not a gap, even when the canonical row is absent."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        _state(version="rag-v1"),
+        _options(require_vector=True, require_primary_embedding=False, vector_key_presence=True),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "vector_key_present"
+
+
+def test_canonical_miss_with_vector_row_still_reembeds_without_the_option() -> None:
+    """The default keeps the old behaviour: a canonical miss always re-embeds."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        _state(version="rag-v1"),
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "primary_missing"
+
+
+def test_vector_key_presence_still_embeds_a_key_missing_from_both_stores() -> None:
+    """The option only removes identities the vector store holds; true gaps stay selected."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False, vector_key_presence=True),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"

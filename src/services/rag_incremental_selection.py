@@ -40,6 +40,10 @@ class IncrementalDecisionOptions:
     desired_embedding_fingerprint: str | None = None
     require_vector: bool = False
     require_primary_embedding: bool = True
+    #: When the canonical row is absent but the vector store already holds the same
+    #: identity, treat the identity as present. Gap-fill only: content, version and
+    #: fingerprint are not compared, so use this to find missing keys, not to sync.
+    vector_key_presence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +213,17 @@ def _fingerprint_candidate(
     return reason, metadata_repair
 
 
+def _canonical_miss_decision(
+    source_key: str,
+    vector: RagIndexState | None,
+    options: IncrementalDecisionOptions,
+) -> RagCandidateDecision:
+    """Decide a chunk whose canonical row is absent, optionally trusting the vector key."""
+    if vector is not None and options.vector_key_presence:
+        return RagCandidateDecision(source_key, should_reembed=False, reason="vector_key_present")
+    return _reembed(source_key, "primary_missing" if vector is not None else "new")
+
+
 def decide_incremental_candidate(
     chunk: Mapping[str, object],
     existing: RagIndexState | None,
@@ -227,7 +242,7 @@ def decide_incremental_candidate(
     if existing is not None and _is_terminal(existing):
         return _blocked(source_key, "terminal_status")
     if existing is None:
-        return _reembed(source_key, "primary_missing" if vector is not None else "new")
+        return _canonical_miss_decision(source_key, vector, options)
 
     desired_hash = chunk_content_hash(
         _optional_text(chunk.get("title")),
