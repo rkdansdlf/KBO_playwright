@@ -274,7 +274,14 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
+
+### 2026-10-17: RAG 정본 근거 확정 · 런북 §14 · 커밋 귀속 정정
+- **새 인덱스의 신원은 도메인과 분리돼 있다 (`b0e793d5`)**: `bega_prod` 583K의 `source_row_id`가 도메인 PK와 대응하지 않는다 — `game` **0/6,199**(청크 1~6,241 vs 도메인 6320~598,409), `game_batting_stats` **0/139,189**(291,750~440,838 vs 29,129,541~36,549,718), `game_summary`는 814,774,416까지 나온다. **"컬럼이 맞는다"와 "신원이 맞는다"는 다른 문제**이며, `32c5fffb`가 컬럼을 정합시킨 뒤에도 신원이 도메인에 매이는 쪽은 폐기 저장소뿐이다. 따라서 "폐기 저장소(5435) 정본 유지" 결정은 근거가 있다. 근거·표는 `Docs/references/RAG_RECONCILIATION.md`의 2026-10-16 절.
+- **커버리지는 상호 보완적이다**: 새 인덱스 전용 `game_batting_stats` 139,189·`game_inning_scores` 129,996·`game_summary` 73,166·`game_pitching_stats` 49,100, 폐기 전용 `game_play_by_play` 125,218·`player_basic` 8,066·`team_standings_daily` 5,603·`game_highlights` 3,850. **`build_rag_index`의 인덱싱 대상 17종에 게임별 기록 7종(`game_batting_stats`·`game_inning_scores`·`game_pitching_stats`·`game_summary`·`game_metadata`·`game_flow_summary`·`kbo_seasons`)이 없다** — "갭"이 아니라 설계 범위 밖이다. 그 영역이 필요하면 새 인덱스에서 가져올 것이 아니라 도메인에서 같은 방식(도메인 id 기반)으로 다시 뽑아야 한다.
+- **55433은 이 저장소의 저장소가 아니다 (`f042911d`)**: 포트는 열려 있으나 `.env`의 비밀번호 4종 × 사용자 3종 = **12조합이 모두 password 인증에 실패**한다. 구 `kbo_rag`는 `kbo_rag_retired_202610`으로 폐기 개명되어 5435에 보존돼 있다.
+- **커밋 귀속 정정 (`5c5983a7`)**: 이 커밋의 메시지는 "§14 전 컨테이너 무응답"만 말하지만, 실제 diff는 **§9.9~§13(다른 세션이 작업 트리에 남긴 약 210줄)을 함께 담았다.** `git commit -- <path>`가 그 경로의 **모든 미커밋 변경**을 가져가기 때문이며, 부모(`caffd975`)에는 §13이 없었다(§13을 담은 커밋은 이것 하나 — `git log -S`로 확인). 내용은 손실 없이 보존됐고 히스토리 재작성은 하지 않는다. 실제로 무엇이 들어갔는지는 `git show 5c5983a7`으로 볼 것. **교훈: 같은 파일을 두 세션이 동시에 편집 중이면 `git commit -- <path>`는 그 파일의 남의 변경까지 가져간다.**
+- **전 컨테이너 PostgreSQL 무응답 (런북 §14)**: 5432·5435·55433이 **동시에** 응답하지 않는다. ping 3/3·Tailscale active·TCP 세 포트 모두 SYN 응답인데 psycopg2는 전부 `timeout expired`다. §9.11(즉시 끊김)과 달리 **응답 없음**이고, 10-16에는 살아 있던 55433까지 침묵하므로 **호스트 전역** 가능성이 높다(§13의 대량 DELETE와의 인과는 미확정).
 
 ### 2026-10-16: Python 3.14 전환 (런타임·툴체인·이미지·린트 타깃) — 전 스위트 green
 - **혼재 상태의 발견**: `venv/`는 `pyvenv.cfg`만 3.14.6으로 재생성돼 있고 `venv/bin/python` 심볼릭 링크는 `python3.12`를 가리켰다. 링크가 실제 인터프리터를 결정하므로 AGENTS.md가 안내하는 공식 명령 `./venv/bin/python -m pytest`는 **3.12.15로 돌고 있었다** — 환경이 "3.14로 맞춰졌다"는 인상과 실제 실행이 어긋난 지점이다. 링크를 `python3.14`로 바꾸고 `venv/lib/python3.12` site-packages를 제거해 site-packages를 하나로 만들었다(`pip check` clean).
