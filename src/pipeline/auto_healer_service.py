@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR
 from src.models.game import Game, GameInningScore
 from src.pipeline.dto import DefectItem, DefectReport, HealingActionSummary, PipelineDefectType
 from src.repositories.game_repository import update_game_status
+from src.repositories.game_status import automatic_write_allowed, current_season_year, game_year_of
 from src.utils.game_status import GAME_STATUS_COMPLETED, GAME_STATUS_UNRESOLVED
 
 if TYPE_CHECKING:
@@ -43,18 +43,12 @@ class AutoHealerService:
             )
 
         new_status = assumed_status or GAME_STATUS_COMPLETED
-        game_year = getattr(game.game_date, "year", None)
-        if game_year is None:
-            try:
-                game_year = int(str(game.game_date)[:4])
-            except ValueError:
-                game_year = None
-        if game_year is not None and game_year < AUTO_HEAL_HISTORY_FLOOR_YEAR:
+        if not automatic_write_allowed(game_year_of(game), current_season_year()):
             return HealingActionSummary(
                 game_id=game_id,
                 action_taken="lookup",
                 status="SKIPPED",
-                error_message="Historical guard: pre-2001 games require explicit operator run.",
+                error_message="Historical guard: games outside the current season require explicit operator run.",
                 elapsed_seconds=time.perf_counter() - t0,
                 details={"previous_status": game.game_status, "game_date": str(game.game_date)},
             )

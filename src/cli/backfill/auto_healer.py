@@ -37,6 +37,7 @@ from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.notifications.bridge import apply_incidents
 from src.notifications.standalone import send_notification
 from src.repositories.game_repository import update_game_status
+from src.repositories.game_status import automatic_write_allowed, current_season_year, game_year_of
 from src.services.game_collection_service import (
     GameCollectionConfig,
     GameCollectionItemResult,
@@ -217,7 +218,9 @@ def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> N
 def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None, *, allow_historical: bool = False) -> str:
     """Apply status repair based on one shared collection result item.
 
-    Return one of: 'completed', 'cancelled', 'unresolved'
+    Return one of: 'completed', 'cancelled', 'unresolved', 'skipped_past_season'
+    ('skipped_past_season' when the current-season guard refuses the status write;
+    no audit record is written in that case).
 
     Args:
         game_id: Game ID.
@@ -232,12 +235,16 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None, *, 
 
     failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
-        update_game_status(game_id, GAME_STATUS_CANCELLED, allow_historical=allow_historical)
+        if not update_game_status(game_id, GAME_STATUS_CANCELLED, allow_historical=allow_historical):
+            logger.info("  ⏭️  %s skipped: status write refused by current-season guard", game_id)
+            return "skipped_past_season"
         _reconcile_and_audit(game_id, GAME_STATUS_CANCELLED, "cancelled")
         logger.info("  🚫 %s → CANCELLED", game_id)
         return "cancelled"
 
-    update_game_status(game_id, GAME_STATUS_UNRESOLVED, allow_historical=allow_historical)
+    if not update_game_status(game_id, GAME_STATUS_UNRESOLVED, allow_historical=allow_historical):
+        logger.info("  ⏭️  %s skipped: status write refused by current-season guard", game_id)
+        return "skipped_past_season"
     _reconcile_and_audit(game_id, GAME_STATUS_UNRESOLVED, failure_reason)
     logger.info("  ❓ %s → UNRESOLVED_MISSING (reason=%s)", game_id, failure_reason)
     return "unresolved"
@@ -253,7 +260,10 @@ def _find_recovery_targets(
             logger.info("🎯 Target recovery requested for %s specific game(s).", len(all_found))
             return all_found, [], [], []
 
-    stuck_games = _find_stuck_games()
+    # Automatic runs may only re-crawl current-season stuck games; past seasons
+    # need an explicit operator run with target game ids (issue #32).
+    season_year = current_season_year()
+    stuck_games = [game for game in _find_stuck_games() if automatic_write_allowed(game_year_of(game), season_year)]
     inconsistent_games = _find_inconsistent_games()
     pa_formula_games = _find_pa_formula_inconsistent_games()
     all_found = sorted(
