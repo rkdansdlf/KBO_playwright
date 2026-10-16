@@ -141,6 +141,28 @@ class TestGapDetection:
         chunks = list(iter_gap_chunks(_StubEngine(connection), {"game:20260823LTOB0"}))
         assert [chunk.key for chunk in chunks] == ["game:20260823LTOB1"]
 
+    def test_limits_the_gap_to_the_requested_source_tables(self) -> None:
+        """Keep only the named tables so a per-table backfill never touches the others."""
+        connection = _StubConnection(
+            chunks=[
+                _row(source_table="game_play_by_play", source_row_id="pbp-1"),
+                _row(source_table="lineups", source_row_id="lineup-1"),
+            ]
+        )
+        chunks = list(iter_gap_chunks(_StubEngine(connection), set(), frozenset({"game_play_by_play"})))
+        assert [chunk.key for chunk in chunks] == ["game_play_by_play:pbp-1"]
+
+    def test_none_source_filter_keeps_every_table(self) -> None:
+        """An unset filter must not drop rows, so existing callers keep their behaviour."""
+        connection = _StubConnection(
+            chunks=[
+                _row(source_table="game_play_by_play", source_row_id="pbp-1"),
+                _row(source_table="lineups", source_row_id="lineup-1"),
+            ]
+        )
+        chunks = list(iter_gap_chunks(_StubEngine(connection), set(), None))
+        assert [chunk.key for chunk in chunks] == ["game_play_by_play:pbp-1", "lineups:lineup-1"]
+
 
 class TestProviderGuard:
     """Pin that an unusable provider answer refuses the batch."""

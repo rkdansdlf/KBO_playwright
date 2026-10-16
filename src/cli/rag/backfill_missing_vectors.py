@@ -76,13 +76,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-large-gap", action="store_true", help="Embed a gap larger than --max-gap.")
     parser.add_argument("--use-embedding-cache", action="store_true", help="Also write embeddings to the cache table.")
     parser.add_argument("--apply", action="store_true", help="Write the backfilled vectors.")
+    parser.add_argument(
+        "--source",
+        action="append",
+        default=None,
+        help="Limit the gap to this source_table; repeat for several. Default: every table.",
+    )
     return parser
 
 
-def _count_gap(source_engine: object, target_engine: object) -> int:
+def _count_gap(source_engine: object, target_engine: object, source_tables: frozenset[str] | None) -> int:
     """Count the identities the vector store is missing."""
     target_keys = load_target_keys(target_engine)
-    return sum(1 for _ in iter_gap_chunks(source_engine, target_keys))
+    return sum(1 for _ in iter_gap_chunks(source_engine, target_keys, source_tables))
 
 
 def _progress(report: BackfillReport) -> None:
@@ -102,7 +108,12 @@ def main(argv: list[str] | None = None) -> int:
     source_engine = create_engine_for_url(source_url)
     target_engine = create_engine_for_url(target_url)
 
-    preview = {"event": "apply" if args.apply else "preview", "gap_rows": _count_gap(source_engine, target_engine)}
+    source_tables = frozenset(args.source) if args.source else None
+    preview = {
+        "event": "apply" if args.apply else "preview",
+        "source_tables": sorted(source_tables) if source_tables else "all",
+        "gap_rows": _count_gap(source_engine, target_engine, source_tables),
+    }
     _write(preview)
     refusal = gap_guard_message(preview["gap_rows"], args.max_gap)  # type: ignore[arg-type]
     if refusal is not None and not args.allow_large_gap:
@@ -124,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         limit=args.limit,
         on_progress=_progress,
+        source_tables=source_tables,
     )
     verification = verify_target(target_engine)
     _write(

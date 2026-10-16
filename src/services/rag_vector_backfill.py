@@ -103,11 +103,20 @@ def load_target_keys(target_engine: Engine) -> set[str]:
         }
 
 
-def iter_gap_chunks(source_engine: Engine, target_keys: set[str]) -> Iterator[SourceChunk]:
-    """Yield ACTIVE source chunks whose identity the vector store does not hold."""
+def iter_gap_chunks(
+    source_engine: Engine,
+    target_keys: set[str],
+    source_tables: frozenset[str] | None = None,
+) -> Iterator[SourceChunk]:
+    """Yield ACTIVE source chunks whose identity the vector store does not hold.
+
+    ``source_tables`` limits the gap to the named source tables. ``None`` means every table.
+    """
     with source_engine.connect() as connection:
         result = connection.execute(_SOURCE_SQL).mappings()
         for row in result:
+            if source_tables is not None and row["source_table"] not in source_tables:
+                continue
             key = f"{row['source_table']}:{row['source_row_id']}"
             if key in target_keys:
                 continue
@@ -207,6 +216,7 @@ def backfill_gap(  # noqa: PLR0913 - both stores plus the resume and progress kn
     batch_size: int = DEFAULT_BATCH_SIZE,
     limit: int | None = None,
     on_progress: Callable[[BackfillReport], None] | None = None,
+    source_tables: frozenset[str] | None = None,
 ) -> BackfillReport:
     """Embed and upsert every source identity the vector store is missing."""
     report = BackfillReport()
@@ -223,7 +233,7 @@ def backfill_gap(  # noqa: PLR0913 - both stores plus the resume and progress kn
             report=report,
             on_progress=on_progress,
         )
-        for chunk in iter_gap_chunks(source_engine, target_keys):
+        for chunk in iter_gap_chunks(source_engine, target_keys, source_tables):
             report.source_rows += 1
             report.gap_rows += 1
             pending.append(chunk)
