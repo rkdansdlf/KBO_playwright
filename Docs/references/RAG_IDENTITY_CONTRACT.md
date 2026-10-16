@@ -179,8 +179,12 @@ year+award_type+player_name"라고 적고 있으나 **부정확하다** — 카�
 위 규칙으로 2026-10-11~12에 부여한 자연키는 `PGVECTOR_URL` 저장소와 main의 RAG 도구에는
 반영됐으나, `bega_prod.rag_chunks`(583,265행, 10-12 재플랫폼)에는 **0건**이다 — 그
 인덱스는 `source_row_id`로 `id=N`·`season_id=N`·`id=N#part2`를 쓰는 별개 규약을 쓴다.
-두 인덱스 중 어느 쪽이 정본인지가 미결이므로(`Docs/references/RAG_RECONCILIATION.md`의
-2026-10-16 절), 자연키 규칙을 어느 저장소에 적용할지도 함께 미결이다.
+새 인덱스의 `source_row_id`는 도메인 PK와 **대응하지 않는다**(`game` 0/6,199,
+`game_batting_stats` 0/139,189 — `Docs/references/RAG_RECONCILIATION.md`의 2026-10-16
+"정본 판단 근거"). 즉 **신원이 도메인에 매이는 쪽은 폐기 저장소뿐**이므로, 위 자연키
+규칙이 적용되는 저장소는 `5435/kbo_rag_retired_202610`이다. 새 인덱스의 커버리지
+(`game_batting_stats` 등 폐기 쪽에 0인 영역)가 필요하면 새 인덱스에서 가져올 것이
+아니라 **도메인에서 같은 방식(도메인 id 기반)으로 다시 뽑아야** 한다.
 
 ## 참고
 
