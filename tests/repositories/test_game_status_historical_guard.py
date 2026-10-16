@@ -1,4 +1,4 @@
-"""Historical-season guard for refresh_game_status_for_date (issue #32)."""
+"""Pre-2001 guard for refresh_game_status_for_date (issue #32)."""
 
 from datetime import date
 
@@ -23,7 +23,7 @@ def _session():
     return sessionmaker(bind=engine)()
 
 
-def test_refresh_skips_rows_outside_current_season():
+def test_refresh_refuses_pre_2001_date():
     session = _session()
     session.add(
         Game(
@@ -38,18 +38,17 @@ def test_refresh_skips_rows_outside_current_season():
 
     result = refresh_game_status_for_date("19950415", today=date(2026, 10, 15), session=session)
 
-    assert result["total"] == 1
-    assert result["skipped_past_season"] == 1
+    assert result["total"] == 0
     assert result["updated"] == 0
     assert session.query(Game).one().game_status == "UNRESOLVED_MISSING"
 
 
-def test_refresh_still_updates_current_season_rows():
+def test_refresh_allows_2001_and_later():
     session = _session()
     session.add(
         Game(
-            game_id="20261015LTSS0",
-            game_date=date(2026, 10, 15),
+            game_id="20010415LTSS0",
+            game_date=date(2001, 4, 15),
             home_score=None,
             away_score=None,
             game_status="SCHEDULED",
@@ -57,7 +56,6 @@ def test_refresh_still_updates_current_season_rows():
     )
     session.commit()
 
-    result = refresh_game_status_for_date("20261015", today=date(2026, 10, 16), session=session)
+    result = refresh_game_status_for_date("20010415", today=date(2026, 10, 16), session=session)
 
-    assert result["skipped_past_season"] == 0
     assert result["total"] == 1
