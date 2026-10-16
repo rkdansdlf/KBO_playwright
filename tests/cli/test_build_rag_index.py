@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from unittest.mock import MagicMock
 
+import argparse
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -226,6 +227,21 @@ def test_process_source_persists_using_index_session(monkeypatch) -> None:
     assert count == 1
     assert persisted[0][1] is index_session
     assert persisted[0][0][0]["content_hash"] == chunk_content_hash(None, "player")
+
+
+def test_count_only_names_the_mode_so_a_count_is_never_read_as_a_write() -> None:
+    """The final line must say no embedding call and no write happened."""
+    args = argparse.Namespace(count_only=True, dry_run=True)
+
+    assert "count-only" in build_rag_index._completion_suffix(args)
+    assert "임베딩 호출 없음" in build_rag_index._completion_suffix(args)
+
+
+def test_real_run_has_no_completion_suffix() -> None:
+    """A real build keeps its original, unmarked completion line."""
+    args = argparse.Namespace(count_only=False, dry_run=False)
+
+    assert build_rag_index._completion_suffix(args) == ""
 
 
 def test_process_source_recomputes_hash_and_records_embedding_fingerprint(monkeypatch) -> None:

@@ -1912,6 +1912,15 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
+def _completion_suffix(args: argparse.Namespace) -> str:
+    """Name the mode in the final log line so a count is never mistaken for a write."""
+    if args.count_only:
+        return " (count-only, 임베딩 호출 없음, 저장 없음)"
+    if args.dry_run:
+        return " (dry-run, 저장 없음)"
+    return ""
+
+
 def main(argv: list[str] | None = None) -> None:
     """KBO RAG 인덱스를 구축합니다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -1957,7 +1966,14 @@ def main(argv: list[str] | None = None) -> None:
         default="configured",
         help="임베딩 provider; deterministic는 staging 검증 전용",
     )
+    parser.add_argument(
+        "--count-only",
+        action="store_true",
+        help="임베딩 API를 호출하지 않고 처리 대상 청크 수만 센다 (dry-run을 포함한다)",
+    )
     args = parser.parse_args(argv)
+    if args.count_only:
+        args.dry_run = True
 
     from src.db.engine import DATABASE_URL
     from src.db.vector_engine import init_vector_db, is_pgvector_available
@@ -2037,21 +2053,21 @@ def main(argv: list[str] | None = None) -> None:
                 vector_session,
                 build_source_options,
             )
-            count = _process_source(
-                source_name,
-                chunk_iter,
-                embedding_service,
-                index_session,
-                dry_run=args.dry_run,
-            )
+            if args.count_only:
+                # 임베딩 전 단계에서 세기만 한다. 제공자 호출과 저장이 모두 없다.
+                count = sum(1 for _ in chunk_iter)
+            else:
+                count = _process_source(
+                    source_name,
+                    chunk_iter,
+                    embedding_service,
+                    index_session,
+                    dry_run=args.dry_run,
+                )
             logger.info("✅ [%s] %d 청크 완료", source_name, count)
             grand_total += count
 
-    logger.info(
-        "🎉 RAG 인덱스 빌드 완료 — 총 %d 청크 처리%s",
-        grand_total,
-        " (dry-run, 저장 없음)" if args.dry_run else "",
-    )
+    logger.info("🎉 RAG 인덱스 빌드 완료 — 총 %d 청크 처리%s", grand_total, _completion_suffix(args))
 
 
 def cli_main(argv: list[str] | None = None) -> int:
