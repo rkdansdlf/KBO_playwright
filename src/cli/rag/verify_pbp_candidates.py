@@ -125,6 +125,11 @@ def legacy_play_ids(dense_rows: Iterable[tuple[str, str]]) -> list[int]:
     return sorted({int(row_id) for row_id, _ in dense_rows if row_id.isdigit()})
 
 
+#: Source ``inning_half`` spellings. The stored text appends the raw value (``1회top``), so the
+#: source row's value and the text suffix must agree; both Korean and English spellings are accepted.
+HALF_NAMES = {"초": "top", "top": "top", "말": "bottom", "bottom": "bottom"}
+
+
 def mapping_agrees(source: SourcePlay, key: tuple[str, str, str, str]) -> bool:
     """Check that a source row describes the same inning and batter as the stored text.
 
@@ -132,10 +137,10 @@ def mapping_agrees(source: SourcePlay, key: tuple[str, str, str, str]) -> bool:
     inning, half, and batter across the stored rows is the evidence for that mapping.
     """
     _, inning, half, batter = source
-    if inning is None or half not in {"초", "말"}:
+    normalized_half = HALF_NAMES.get(str(half or "").strip().lower())
+    if inning is None or normalized_half is None:
         return False
-    expected_inning = f"{inning}회{'top' if half == '초' else 'bottom'}"
-    return expected_inning == key[1] and (batter or "") == key[2]
+    return f"{inning}회{normalized_half}" == key[1] and (batter or "").strip() == key[2]
 
 
 def _stored_game_key(row_id: str, lookup: dict[str, SourcePlay]) -> tuple[str, tuple[str, str], str] | None:

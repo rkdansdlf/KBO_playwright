@@ -132,3 +132,15 @@ def test_legacy_key_missing_from_source_stays_unverified() -> None:
     result = classify([{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}], [("1680134", OLD_CODE)], {})
 
     assert result["game_identity"]["unverified"] == 1
+
+
+def test_inning_half_agrees_in_either_spelling() -> None:
+    """Korean and English half names describe the same inning half, so both must agree."""
+    from src.cli.rag.verify_pbp_candidates import mapping_agrees, play_key
+
+    key = play_key(OLD_CODE)
+
+    assert key is not None
+    assert mapping_agrees((None, 1, "top", "김대한"), key)
+    assert mapping_agrees((None, 1, "초", "김대한"), key)
+    assert not mapping_agrees((None, 1, "bottom", "김대한"), key)
