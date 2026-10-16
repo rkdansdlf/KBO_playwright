@@ -130,3 +130,25 @@ def test_heal_stuck_game_skips_pre_2001(db_session) -> None:
     assert summary.status == "SKIPPED"
     db_session.refresh(g)
     assert g.game_status == "SCHEDULED"
+
+
+def test_heal_stuck_game_skips_past_season(db_session) -> None:
+    """A past (post-2001) season game is SKIPPED by automatic healing and left untouched."""
+    g = Game(
+        game_id="20230501LGSS0",
+        game_date=date(2023, 5, 1),
+        home_team="SS",
+        away_team="LG",
+        home_score=None,
+        away_score=None,
+        game_status="SCHEDULED",
+    )
+    db_session.add(g)
+    db_session.flush()
+
+    summary = AutoHealerService(db_session).heal_stuck_game("20230501LGSS0")
+
+    assert summary.status == "SKIPPED"
+    assert "Historical guard" in (summary.error_message or "")
+    db_session.refresh(g)
+    assert g.game_status == "SCHEDULED"

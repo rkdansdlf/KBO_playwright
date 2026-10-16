@@ -52,6 +52,74 @@ class TestApplyHealOutcome:
             assert result == "unresolved"
             mock_update.assert_called_once()
 
+    @pytest.mark.parametrize("failure_reason", ["cancelled", "missing", None])
+    def test_past_season_guard_refusal_is_skipped(self, failure_reason) -> None:
+        """Guard refusal (allow_historical=False) -> skipped, no audit, no status log."""
+        mock_item = MagicMock()
+        mock_item.detail_saved = False
+        mock_item.failure_reason = failure_reason
+        with (
+            patch("src.cli.auto_healer.update_game_status", return_value=False) as mock_update,
+            patch("src.cli.auto_healer._reconcile_and_audit") as mock_audit,
+        ):
+            result = _apply_heal_outcome("20190601LGSS0", mock_item, allow_historical=False)
+        assert result == "skipped_past_season"
+        mock_update.assert_called_once()
+        assert mock_update.call_args.kwargs["allow_historical"] is False
+        mock_audit.assert_not_called()
+
+
+class TestPastSeasonGuardIntegration:
+    def test_past_season_game_unchanged_and_unaudited(self, monkeypatch) -> None:
+        """Real guard on an in-memory DB: past-season row keeps its status, no audit row."""
+        from contextlib import contextmanager
+        from datetime import date
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from src.cli.backfill import auto_healer as healer_mod
+        from src.models.base import Base
+        from src.models.game import Game
+        from src.repositories import game_status
+
+        engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+        Base.metadata.create_all(engine)
+        factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+        @contextmanager
+        def _session():
+            s = factory()
+            try:
+                yield s
+                s.commit()
+            finally:
+                s.close()
+
+        with factory() as s:
+            s.add(
+                Game(
+                    game_id="20190601LGSS0",
+                    game_date=date(2019, 6, 1),
+                    home_team="SS",
+                    away_team="LG",
+                    game_status="SCHEDULED",
+                )
+            )
+            s.commit()
+
+        monkeypatch.setattr(game_status, "get_db_session", _session)
+        monkeypatch.setattr(game_status, "current_season_year", lambda today=None: 2026)
+        audit = MagicMock()
+        monkeypatch.setattr(healer_mod, "_reconcile_and_audit", audit)
+
+        item = MagicMock(detail_saved=False, failure_reason="missing")
+        assert healer_mod._apply_heal_outcome("20190601LGSS0", item, allow_historical=False) == "skipped_past_season"
+        audit.assert_not_called()
+        with factory() as s:
+            assert s.query(Game).filter(Game.game_id == "20190601LGSS0").one().game_status == "SCHEDULED"
+
 
 class TestLogHealerSummary:
     def test_dry_run_no_alert(self, caplog) -> None:

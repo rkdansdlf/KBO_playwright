@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import asyncio
 import json
 import logging
@@ -347,7 +349,9 @@ class TestFindRecoveryTargets:
 
     def test_with_stuck_games(self):
         mock_game = _mock_game("G1")
+        mock_game.game_date = date(2025, 6, 15)
         with (
+            patch("src.cli.auto_healer.current_season_year", return_value=2025),
             patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
@@ -667,3 +671,21 @@ class TestRunPbpHealerAsync:
                         assert result["found"] == 2
                         assert result["recovered"] == 1
                         assert result["failed"] == 1
+
+
+class TestAutomaticRunSeasonFilter:
+    def test_automatic_run_drops_past_season_stuck_games(self):
+        current = _mock_game("CUR")
+        current.game_date = date(2025, 6, 15)
+        past = _mock_game("PAST")
+        past.game_date = date(2019, 6, 15)
+        with (
+            patch("src.cli.auto_healer.current_season_year", return_value=2025),
+            patch("src.cli.auto_healer._find_stuck_games", return_value=[current, past]),
+            patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
+            patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+        ):
+            all_found, stuck, _, _ = _find_recovery_targets(None)
+
+        assert [g.game_id for g in all_found] == ["CUR"]
+        assert [g.game_id for g in stuck] == ["CUR"]
