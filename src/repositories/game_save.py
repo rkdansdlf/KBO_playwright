@@ -506,6 +506,34 @@ def _update_detail_core_fields(
     return changed
 
 
+#: A completed KBO game has at least this many innings on the away side.
+MIN_COMPLETE_INNINGS = 9
+
+
+def _innings_are_complete(inning_rows: list[dict[str, Any]]) -> bool:
+    """Whether the inning lines describe a whole game rather than part of one.
+
+    A partial crawl produces a partial inning line, and its sum is a partial
+    score. Writing that into the total is worse than leaving the total blank:
+    the value then agrees with the innings it came from, so the disagreement
+    check cannot see it, and the only remaining trace is a final score that is
+    too low by however many innings were missing.
+
+    The rule comes from how a game is played, not from a constant. The away side
+    always bats nine innings; the home side bats nine too unless it led after the
+    top of the ninth, in which case the bottom ninth is not played and its line
+    is one shorter. Extra innings stay equal because both sides bat them. So a
+    complete game has ``away >= 9`` and ``away - home`` in ``{0, 1}``.
+
+    One stored game fails this -- ``20230404LTSK0`` has seven innings on each
+    side -- which is an innings defect rather than a missing score, and is
+    reported by the historical invariants audit rather than here.
+    """
+    away = len({row.get("inning") for row in inning_rows if row.get("team_side") == "away"})
+    home = len({row.get("inning") for row in inning_rows if row.get("team_side") == "home"})
+    return away >= MIN_COMPLETE_INNINGS and (away - home) in (0, 1)
+
+
 def _score_from_innings(inning_rows: list[dict[str, Any]], side: str) -> int | None:
     """Sum a side's inning runs, or None when that side has no innings at all.
 
@@ -541,11 +569,20 @@ def _fill_missing_scores_from_innings(
     was shut out. Of the stored games with inning lines, one has only one side --
     so this is the rare case, and it is exactly the one where a wrong guess is
     least detectable.
+
+    The innings must also look like a whole game. See ``_innings_are_complete``
+    for why a short line is worse than a blank total rather than merely no better.
     """
     if not inning_rows:
         return False
     sides_with_innings = {row.get("team_side") for row in inning_rows}
     if sides_with_innings != {"home", "away"}:
+        return False
+    if not _innings_are_complete(inning_rows):
+        logger.warning(
+            "[InningScore] %s has an incomplete inning line; not deriving a score from it",
+            ctx.game_id,
+        )
         return False
     changed = False
     for side in ("home", "away"):

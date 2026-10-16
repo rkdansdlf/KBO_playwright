@@ -41,9 +41,14 @@ from src.repositories.game_save import save_game_detail
 
 GAME_ID = "20241015LGSS0"
 
-#: The innings as the page reported them: home 3+1+0+2, away 5+2+1+2.
-HOME_LINE = [3, 1, 0, 2]
-AWAY_LINE = [5, 2, 1, 2]
+#: The innings as the page reported them, in full: home 1x6 = 6, away 2+2+2+1+1+1+1 = 10.
+#:
+#: They are nine innings on each side rather than four because the save path only
+#: derives a total from a line that looks like a whole game -- see
+#: ``game_save._innings_are_complete``. A four-inning line is a partial crawl, and
+#: summing one would write a partial score that agrees with its own innings.
+HOME_LINE = [1, 1, 1, 1, 1, 1, 0, 0, 0]
+AWAY_LINE = [2, 2, 2, 1, 1, 1, 1, 0, 0]
 
 
 @pytest.fixture
@@ -183,11 +188,76 @@ class TestNothingIsInvented:
     def test_a_zero_in_the_innings_is_a_real_score_not_a_missing_one(self, session) -> None:
         """A shutout is the case a falsy check gets wrong."""
         save_game_detail(
-            _payload(home_score=None, away_score=None, home_line=[0, 0, 0, 0], away_line=[0, 0, 0, 1]),
+            _payload(
+                home_score=None,
+                away_score=None,
+                home_line=[0, 0, 0, 0, 0, 0, 0, 0, 0],
+                away_line=[0, 0, 0, 0, 0, 0, 0, 0, 1],
+            ),
             session=session,
         )
 
         assert _score(session) == (0, 1), "a shutout was treated as a missing score"
+
+    def test_a_short_inning_line_does_not_produce_a_score(self, session) -> None:
+        """A partial line sums to a partial score, and nothing downstream can tell.
+
+        This is worse than leaving the total blank. The derived value agrees with
+        the innings it came from, so ``game_score_disagrees_with_innings`` cannot
+        see it, and the only remaining trace is a final score that is too low by
+        however many innings were missing.
+
+        2026-09-01 looks like this already happened: four stored games carry two
+        or three innings and matching scores of 0-0, 0-1 and 0-2.
+        """
+        save_game_detail(
+            _payload(
+                home_score=None,
+                away_score=None,
+                home_line=[1, 1, 1, 1, 1, 0, 0],
+                away_line=[1, 0, 1, 0, 0, 0, 0],
+            ),
+            session=session,
+        )
+
+        assert _score(session) == (None, None), "a partial inning line was summed into a final score"
+
+    def test_a_home_line_one_shorter_than_away_is_a_complete_game(self, session) -> None:
+        """The home side does not bat the bottom ninth when it already leads.
+
+        Treating that as an incomplete line would refuse to fill a score the
+        innings do prove -- which is 164 of the 365 stored games in this state.
+        """
+        save_game_detail(
+            _payload(
+                home_score=None,
+                away_score=None,
+                home_line=[2, 2, 2, 2, 1, 1, 0, 0],
+                away_line=[1, 1, 1, 1, 1, 0, 0, 0, 0],
+            ),
+            session=session,
+        )
+
+        home, away = _score(session)
+        assert (home, away) == (10, 5), "a completed game that ended early was read as a partial one"
+
+    def test_a_home_line_two_shorter_than_away_is_not_a_complete_game(self, session) -> None:
+        """The rule is "one fewer or equal", not "fewer".
+
+        A gap of two cannot happen in a game: it would mean the home side missed
+        a whole inning it had to bat.
+        """
+        save_game_detail(
+            _payload(
+                home_score=None,
+                away_score=None,
+                home_line=[1, 1, 1, 1, 1, 1, 0],
+                away_line=[1, 1, 1, 1, 1, 1, 1, 0, 0],
+            ),
+            session=session,
+        )
+
+        assert _score(session) == (None, None), "a two-inning gap was accepted as a complete game"
 
 
 class TestTheSumItself:
