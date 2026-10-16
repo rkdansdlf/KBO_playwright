@@ -381,6 +381,10 @@ def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]
                 .filter(
                     Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
                     Game.game_date <= yesterday,
+                    # Same lower bound as _find_stuck_games: pre-2001 rows are not recovery
+                    # targets. Re-running them here rewrote historical statuses without an
+                    # audit trail (issue #32).
+                    Game.game_date >= date(2001, 1, 1),
                 )
                 .order_by(Game.game_date.asc(), Game.game_id.asc())
                 .all()
