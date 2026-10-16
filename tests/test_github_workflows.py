@@ -549,7 +549,8 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "migration-apply" in workflow
     assert "apply_postgres_migrations" in workflow
     assert "integration-test-postgres" in workflow
-    assert "image: postgres:16" in workflow
+    assert "image: pgvector/pgvector:pg16" in workflow
+    assert "image: postgres:16" not in workflow
     assert "matrix:" in workflow
     assert 'python-version: ["3.12"]' in workflow
     assert "cancel-in-progress: false" in workflow

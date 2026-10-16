@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import array
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.dialects.oracle import VECTOR, VectorStorageFormat, VectorStorageType
@@ -13,6 +13,41 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.constants import RAG_EMBEDDING_DIMENSION
 
 from .base import Base, TimestampMixin
+from .pgvector_types import Vector
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine.interfaces import Dialect
+    from sqlalchemy.types import TypeEngine
+
+
+class OracleEmbeddingColumnUnsupportedError(Exception):
+    """Raised when the canonical embedding column is used through the Oracle dialect.
+
+    ``rag_chunks.embedding`` is a pgvector column on PostgreSQL and JSON elsewhere.
+    Oracle's physical ``EMBEDDING`` column predates the native vector search work and
+    still holds legacy JSON, so mapping the canonical name there would silently read
+    and write the wrong column. Until the Oracle chain renames its column to match,
+    the dialect is refused outright rather than degrading quietly.
+
+    """
+
+
+class _OracleEmbeddingGuard(TypeDecorator[list[float] | None]):
+    """Refuse to map the canonical embedding column onto Oracle's legacy JSON column."""
+
+    impl = JSON()
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
+        """Return the dialect implementation, refusing the Oracle dialect."""
+        if dialect.name == "oracle":
+            message = (
+                "rag_chunks.embedding is not mapped for Oracle: the physical column there is the "
+                "legacy JSON EMBEDDING, not the native VECTOR column. Rename the Oracle chain to "
+                "match (or run against PostgreSQL/pgvector) before using dense embeddings."
+            )
+            raise OracleEmbeddingColumnUnsupportedError(message)
+        return super().load_dialect_impl(dialect)
 
 
 class OracleVectorType(TypeDecorator[list[float] | None]):
@@ -41,9 +76,6 @@ class OracleVectorType(TypeDecorator[list[float] | None]):
         if isinstance(value, array.array):
             return list(value)
         return value  # type: ignore[return-value]
-
-
-_ORACLE_EMBEDDING_TYPE = OracleVectorType()
 
 
 class RagChunk(Base, TimestampMixin):
@@ -85,12 +117,13 @@ class RagChunk(Base, TimestampMixin):
     index_status: Mapped[str] = mapped_column(String(24), nullable=False, default="ACTIVE", server_default="ACTIVE")
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Keep the old JSON column untouched on Oracle; vector search uses the new VECTOR column.
+    # Canonical across stores: pgvector VECTOR(1536) on PostgreSQL, JSON elsewhere.
     embedding: Mapped[Any | None] = mapped_column(
-        "embedding_vector",
-        JSON().with_variant(_ORACLE_EMBEDDING_TYPE, "oracle"),
+        JSON()
+        .with_variant(Vector(RAG_EMBEDDING_DIMENSION), "postgresql")
+        .with_variant(_OracleEmbeddingGuard(), "oracle"),
         nullable=True,
-        comment="Float embedding vector (Oracle VECTOR; JSON elsewhere)",
+        comment="Float embedding vector (pgvector VECTOR(1536) on PostgreSQL; JSON elsewhere)",
     )
     meta: Mapped[dict[str, Any]] = mapped_column(
         JSON,

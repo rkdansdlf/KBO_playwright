@@ -71,7 +71,9 @@ jobs:
     # cancelled the job mid-run and reported a cancellation instead of a
     # result. The other integration jobs on this file use 12; this one needs
     # the same headroom for the coverage pass it uniquely carries.
-    timeout-minutes: 12
+    # 12 was still too tight: on a slower runner the pytest step took 10m32s
+    # and the job hit the limit at 12m03s after all tests had passed.
+    timeout-minutes: 20
     env:
       # Pinned so the firing fixtures are verified by the same promtool that was
       # used to write them. `test_promtool_is_available_where_it_matters` fails if
@@ -190,7 +192,7 @@ jobs:
     timeout-minutes: 5
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_migrations
@@ -270,7 +272,7 @@ jobs:
     if: always() && needs.test.result == 'success'
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_integration
@@ -354,7 +356,7 @@ jobs:
     if: always() && needs.test.result == 'success'
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_rag_primary
