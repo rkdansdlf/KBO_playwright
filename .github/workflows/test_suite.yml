@@ -190,7 +190,7 @@ jobs:
     timeout-minutes: 5
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_migrations
@@ -270,7 +270,7 @@ jobs:
     if: always() && needs.test.result == 'success'
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_integration
@@ -354,7 +354,7 @@ jobs:
     if: always() && needs.test.result == 'success'
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kbo_rag_primary
