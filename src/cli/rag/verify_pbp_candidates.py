@@ -16,10 +16,12 @@ import sys
 from collections import Counter, defaultdict
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from sqlalchemy.orm import Session
 
 TEAMS_PATTERN = re.compile(r"경기: (?P<teams>.*?), 이닝: ")
 PLAY_PATTERN = re.compile(
@@ -30,6 +32,9 @@ PLAY_PATTERN = re.compile(
 EVENT_PREFIX = 120
 SAMPLE_CAP = 10
 
+_LEGACY_SQL = text(
+    "SELECT id, game_id, inning, inning_half, batter_name FROM game_play_by_play WHERE id IN :ids"
+).bindparams(bindparam("ids", expanding=True))
 _DENSE_SQL = text(
     "SELECT source_row_id, content FROM rag_chunks "
     "WHERE source_table = 'game_play_by_play' AND index_status = 'ACTIVE' "
@@ -79,6 +84,19 @@ def game_key_of_row(source_row_id: str) -> tuple[str, tuple[str, str], str] | No
     return game_key(source_row_id.split("_", 1)[0])
 
 
+def verdict_from_keys(
+    candidate_key: tuple[str, tuple[str, str], str] | None, stored_keys: list[tuple[str, tuple[str, str], str] | None]
+) -> str:
+    """Judge a match from game keys: confirmed, conflicting, or unverified."""
+    if candidate_key is None:
+        return "unverified"
+    if candidate_key in stored_keys:
+        return "confirmed"
+    if any(key is not None for key in stored_keys):
+        return "conflicting"
+    return "unverified"
+
+
 def game_verdict(candidate_row_id: str, dense_row_ids: list[str]) -> str:
     """Judge whether a matched play belongs to the same game as the stored one.
 
@@ -86,15 +104,10 @@ def game_verdict(candidate_row_id: str, dense_row_ids: list[str]) -> str:
     carry game keys, and none of them is the candidate's game. ``unverified``: nothing comparable
     (for example a legacy numeric key, which has no game id), so a doubleheader cannot be ruled out.
     """
-    candidate_key = game_key_of_row(candidate_row_id)
-    if candidate_key is None:
-        return "unverified"
-    stored_keys = [game_key_of_row(row_id) for row_id in dense_row_ids]
-    if candidate_key in stored_keys:
-        return "confirmed"
-    if any(key is not None for key in stored_keys):
-        return "conflicting"
-    return "unverified"
+    return verdict_from_keys(
+        game_key_of_row(candidate_row_id),
+        [game_key_of_row(row_id) for row_id in dense_row_ids],
+    )
 
 
 def teams_of(content: str) -> str:
@@ -103,17 +116,70 @@ def teams_of(content: str) -> str:
     return match["teams"].strip() if match else ""
 
 
-def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[str, str]]) -> dict[str, object]:
+#: One source PBP row for a legacy numeric key: (game_id, inning, inning_half, batter_name).
+SourcePlay = tuple[str | None, int | None, str | None, str | None]
+
+
+def legacy_play_ids(dense_rows: Iterable[tuple[str, str]]) -> list[int]:
+    """Return the integer keys of legacy rows, which may be source ``game_play_by_play.id`` values."""
+    return sorted({int(row_id) for row_id, _ in dense_rows if row_id.isdigit()})
+
+
+def mapping_agrees(source: SourcePlay, key: tuple[str, str, str, str]) -> bool:
+    """Check that a source row describes the same inning and batter as the stored text.
+
+    This tests the hypothesis that a legacy numeric key is the source row id. Agreement on the
+    inning, half, and batter across the stored rows is the evidence for that mapping.
+    """
+    _, inning, half, batter = source
+    if inning is None or half not in {"초", "말"}:
+        return False
+    expected_inning = f"{inning}회{'top' if half == '초' else 'bottom'}"
+    return expected_inning == key[1] and (batter or "") == key[2]
+
+
+def _stored_game_key(row_id: str, lookup: dict[str, SourcePlay]) -> tuple[str, tuple[str, str], str] | None:
+    """Return the game key of a stored row: from its source row for a legacy key, else its own id."""
+    if row_id in lookup and row_id.isdigit():
+        return game_key(lookup[row_id][0] or "")
+    return game_key_of_row(row_id)
+
+
+def _index_dense(
+    dense_rows: Iterable[tuple[str, str]],
+    lookup: dict[str, SourcePlay],
+) -> tuple[
+    dict[tuple[str, str, str, str], list[tuple[str, str]]], dict[str, tuple[str, str, str, str]], dict[str, int]
+]:
+    """Index stored PBP by play key and check the legacy-key mapping against the source rows."""
+    index: dict[tuple[str, str, str, str], list[tuple[str, str]]] = defaultdict(list)
+    dense_keys: dict[str, tuple[str, str, str, str]] = {}
+    for source_row_id, content in dense_rows:
+        key = play_key(content)
+        if key is not None:
+            index[key].append((source_row_id, teams_of(content)))
+            dense_keys[source_row_id] = key
+    diagnostics = {"legacy_found_in_source": 0, "legacy_mapping_agrees": 0, "legacy_mapping_checked": 0}
+    for row_id, key in dense_keys.items():
+        if row_id in lookup and row_id.isdigit():
+            diagnostics["legacy_found_in_source"] += 1
+            diagnostics["legacy_mapping_checked"] += 1
+            diagnostics["legacy_mapping_agrees"] += int(mapping_agrees(lookup[row_id], key))
+    return index, dense_keys, diagnostics
+
+
+def classify(
+    candidates: Iterable[dict[str, str]],
+    dense_rows: Iterable[tuple[str, str]],
+    legacy_lookup: dict[str, SourcePlay] | None = None,
+) -> dict[str, object]:
     """Split candidates into same-play-under-another-key, new, and unparsed.
 
     ``dense_rows`` yields ``(source_row_id, content)``. A candidate is ``matched`` when its
     play key appears in the dense store under any identity, which is the team-code case.
     """
-    index: dict[tuple[str, str, str, str], list[tuple[str, str]]] = defaultdict(list)
-    for source_row_id, content in dense_rows:
-        key = play_key(content)
-        if key is not None:
-            index[key].append((source_row_id, teams_of(content)))
+    lookup = legacy_lookup or {}
+    index, _, diagnostics = _index_dense(dense_rows, lookup)
 
     counts = {"candidates": 0, "unparsed": 0, "matched": 0, "new": 0, "ambiguous": 0}
     verdicts: dict[str, list[str]] = {"confirmed": [], "conflicting": [], "unverified": []}
@@ -135,7 +201,10 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
         candidate_teams = teams_of(str(candidate.get("content") or ""))
         team_pairs[(candidate_teams, hits[0][1])] += 1
         row_id = str(candidate.get("source_row_id") or "")
-        verdict = game_verdict(row_id, [hit_id for hit_id, _ in hits])
+        verdict = verdict_from_keys(
+            game_key_of_row(row_id),
+            [_stored_game_key(hit_id, lookup) for hit_id, _ in hits],
+        )
         verdicts[verdict].append(row_id)
         if len(samples) < SAMPLE_CAP:
             samples.append(
@@ -153,6 +222,7 @@ def classify(candidates: Iterable[dict[str, str]], dense_rows: Iterable[tuple[st
     return {
         **counts,
         "game_identity": game_identity,
+        "legacy_mapping": diagnostics,
         "team_pairs": pairs,
         "samples": samples,
         "source_row_ids": verdicts,
@@ -163,13 +233,28 @@ def main(argv: list[str] | None = None) -> int:
     """Read candidates from stdin, query the vector store read-only, print the summary."""
     argparse.ArgumentParser(description=__doc__).parse_args(argv)
 
+    from src.db.engine import get_rag_source_session
     from src.db.vector_engine import get_vector_session
 
     candidates = [json.loads(line) for line in sys.stdin if line.strip()]
     with get_vector_session() as session:
         dense_rows = [(row[0], row[1]) for row in session.execute(_DENSE_SQL).all()]
-    sys.stdout.write(json.dumps(classify(candidates, dense_rows), ensure_ascii=False, indent=2) + "\n")
+    with get_rag_source_session() as source_session:
+        legacy_lookup = load_legacy_lookup(source_session, legacy_play_ids(dense_rows))
+    result = classify(candidates, dense_rows, legacy_lookup)
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     return 0
+
+
+def load_legacy_lookup(source_session: Session, play_ids: list[int]) -> dict[str, SourcePlay]:
+    """Read ``game_play_by_play`` rows for the legacy keys, in batches of 1,000 (read-only)."""
+    lookup: dict[str, SourcePlay] = {}
+    for start in range(0, len(play_ids), 1000):
+        batch = play_ids[start : start + 1000]
+        rows = source_session.execute(_LEGACY_SQL, {"ids": batch}).all()
+        for row_id, game_id, inning, half, batter in rows:
+            lookup[str(row_id)] = (game_id, inning, half, batter)
+    return lookup
 
 
 if __name__ == "__main__":

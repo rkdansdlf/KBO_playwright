@@ -96,3 +96,39 @@ def test_game_verdict_confirms_same_game_and_flags_other_games() -> None:
     assert game_verdict("20260816DBKIA0_7", ["20260816OBHT0_7"]) == "confirmed"
     assert game_verdict("20260816DBKIA0_7", ["20260816OBHT1_7"]) == "conflicting"
     assert game_verdict("20260816DBKIA0_7", ["1680134"]) == "unverified"
+
+
+def test_legacy_key_is_confirmed_through_its_source_game() -> None:
+    """A legacy key whose source row sits in the same game confirms the match."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {"1680134": ("20260816OBHT0", 1, "초", "김대한")},
+    )
+
+    assert result["game_identity"]["confirmed"] == 1
+    assert result["legacy_mapping"]["legacy_mapping_agrees"] == 1
+
+
+def test_legacy_key_from_another_game_is_conflicting() -> None:
+    """The same text under a different doubleheader game must not be treated as the same play."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {"1680134": ("20260816OBHT1", 1, "초", "김대한")},
+    )
+
+    assert result["game_identity"]["conflicting"] == 1
+
+
+def test_legacy_key_missing_from_source_stays_unverified() -> None:
+    """Without a source row there is nothing to compare, so the match stays unverified."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify([{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}], [("1680134", OLD_CODE)], {})
+
+    assert result["game_identity"]["unverified"] == 1
