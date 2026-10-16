@@ -60,7 +60,7 @@ crawlers ──→ parsers ──→ repositories ──→ models
 - **운영 야구 데이터**: Oracle Autonomous Database (`DATABASE_URL`)
 - **초기 적재 원본/개발·테스트**: SQLite (`data/kbo_*.db`)
 - **RAG sparse/BM25 원문**: Oracle `rag_chunks`
-- **RAG dense vector**: 같은 Oracle `rag_chunks.embedding_vector` (`VECTOR(1536, FLOAT32, DENSE)`)
+- **RAG dense vector**: `rag_chunks.embedding` — PostgreSQL/pgvector는 `vector(1536)`, SQLite는 JSON. Oracle 레거시 `EMBEDDING`은 JSON이므로 모델이 Oracle 방언을 명시적으로 거부한다(`OracleEmbeddingColumnUnsupportedError`)
 - **Local acceptance only**: PostgreSQL/pgvector 경로는 production target이 아닌 격리된 테스트용
 
 ## 설정

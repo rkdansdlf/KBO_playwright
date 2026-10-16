@@ -29,7 +29,7 @@ def _get_rag_chunks_safe(engine: Engine, context: CertificationContext) -> list[
         return []
 
     cols = {c["name"] for c in inspector.get_columns("rag_chunks")}
-    if "embedding_vector" in cols or context.target == "production":
+    if "embedding" in cols or context.target == "production":
         with Session(engine) as session:
             stmt = select(RagChunk)
             return list(session.scalars(stmt).all())
@@ -66,7 +66,7 @@ class VectorRagGate:
             metrics["total_rag_chunks"] = len(chunks)
             metrics["expected_dimension"] = context.expected_vector_dimension
 
-            missing_embeddings = sum(1 for c in chunks if getattr(c, "embedding_vector", None) is None)
+            missing_embeddings = sum(1 for c in chunks if getattr(c, "embedding", None) is None)
             metrics["missing_embeddings"] = missing_embeddings
             evidence["has_chunks"] = len(chunks) > 0
 

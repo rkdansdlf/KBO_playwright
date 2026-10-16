@@ -91,6 +91,9 @@ def refresh_game_status_for_date(
 ) -> dict[str, Any]:
     """Recompute game_status only for one target date (YYYYMMDD).
 
+    Rows outside the current season (game year != today's year) are never
+    rewritten; they are counted in ``skipped_past_season`` (issue #32).
+
     Args:
         target_date: Target date for the operation.
         today: Today.
@@ -123,8 +126,12 @@ def refresh_game_status_for_date(
     updated_game_ids: list[str] = []
     game_ids_by_status: dict[str, list[str]] = {}
     updated = 0
+    skipped_past_season = 0
     for game in games:
         game_ids.append(game.game_id)
+        if game.game_date.year != today.year:
+            skipped_past_season += 1
+            continue
         has_metadata = _has_game_child_rows(session, GameMetadata, game.game_id)
         has_inning = _has_game_child_rows(session, GameInningScore, game.game_id)
         has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
@@ -164,6 +171,7 @@ def refresh_game_status_for_date(
         "total": len(games),
         "updated": updated,
         "status_counts": status_counts,
+        "skipped_past_season": skipped_past_season,
         "game_ids": sorted(game_ids),
         "updated_game_ids": sorted(updated_game_ids),
         "game_ids_by_status": {status: sorted(ids) for status, ids in game_ids_by_status.items()},

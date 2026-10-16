@@ -9,29 +9,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-try:
-    from pgvector.sqlalchemy import Vector
-except ImportError:
-    from sqlalchemy.types import UserDefinedType
-
-    class Vector(UserDefinedType):  # type: ignore[no-redef]
-        """Fallback Vector type when pgvector package is not installed."""
-
-        def __init__(self, dim: int = 1536) -> None:
-            """Initialize the fallback Vector with dimension."""
-            self.dim = dim
-
-        def get_col_spec(self, **kw: object) -> str:  # noqa: ARG002
-            """Return the column specification string."""
-            return f"vector({self.dim})"
-
-
 from sqlalchemy import BigInteger, Date, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.vector_engine import VectorBase
 from src.models.base import TimestampMixin
+from src.models.pgvector_types import Vector
 
 
 class RagChunkVector(VectorBase, TimestampMixin):

@@ -18,9 +18,10 @@ Throttling and stability can be tuned via `.env`:
 | `TNS_ADMIN` | - | Oracle Wallet/TNS directory. |
 | `RAG_INDEX_ALLOW_PRODUCTION_WRITE` | `0` | Explicit second gate for production Oracle RAG writes. |
 
-RAG dense embeddings are stored in Oracle `rag_chunks.embedding_vector` using
-the native `VECTOR(1536, FLOAT32, DENSE)` type. PostgreSQL/pgvector variables
-are not required for production.
+RAG dense embeddings live in the canonical `rag_chunks.embedding` column: a pgvector
+`vector(1536)` on PostgreSQL, JSON on SQLite. Oracle's physical `EMBEDDING` column is the
+legacy JSON one, so the model refuses the Oracle dialect outright
+(`OracleEmbeddingColumnUnsupportedError`) until the Oracle chain is renamed to match.
 
 ### Oracle Initial Load
 Run the schema bootstrap and a read-only preview before writing the verified

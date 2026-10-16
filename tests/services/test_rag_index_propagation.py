@@ -6,8 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from src.services.rag_index_propagation import (
+    _bulk_upsert_sparse,
     propagate_index_delete,
     propagate_index_update,
     publish_index_batch,
@@ -108,3 +110,26 @@ def test_bulk_publish_surfaces_active_sparse_failure_after_vector_commit() -> No
 
     assert events[-4:] == ["vector:ACTIVE", "vector:commit", "sparse:ACTIVE", "sparse:commit"]
     primary.commit.assert_called_once()
+
+
+def test_bulk_sparse_upsert_refreshes_the_canonical_embedding_column() -> None:
+    """Name the canonical `embedding` column in the conflict update.
+
+    The ON CONFLICT clause is assembled from a tuple of column *strings* passed to
+    ``getattr(statement.excluded, column)``, so a stale name there only surfaces as a
+    missing-column failure against a real PostgreSQL store.
+    """
+    session = MagicMock()
+    payload = {
+        "source_table": "game",
+        "source_row_id": "g1",
+        "content": "KIA가 승리했다.",
+        "embedding": [0.1, 0.2],
+    }
+
+    _bulk_upsert_sparse(session, [payload], "PENDING")
+
+    rendered = str(session.execute.call_args.args[0].compile(dialect=postgresql.dialect()))
+
+    assert "embedding = excluded.embedding" in rendered
+    assert "embedding_vector" not in rendered

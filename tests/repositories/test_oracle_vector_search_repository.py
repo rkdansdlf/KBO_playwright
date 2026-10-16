@@ -1,4 +1,11 @@
-"""Tests for Oracle AI Vector Search repository behavior."""
+"""Tests for Oracle AI Vector Search repository behavior.
+
+The Oracle dialect refuses the canonical embedding column by design: its physical
+``EMBEDDING`` column predates native vector search and still holds legacy JSON. The
+statement-shape assertions below therefore compile against PostgreSQL, where the same
+shapes (bounded ``FETCH APPROX``, IN-list scoping, ``VECTOR_DISTANCE``) are plain text
+rather than dialect-specific rendering.
+"""
 
 from __future__ import annotations
 
@@ -8,17 +15,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.dialects import oracle
+from sqlalchemy.dialects import oracle, postgresql
 
-from src.models.rag_chunk import OracleVectorType, RagChunk
+from src.models.rag_chunk import OracleEmbeddingColumnUnsupportedError, OracleVectorType, RagChunk
 from src.repositories.oracle_vector_search_repository import OracleVectorSearchRepository
 
 
-def test_rag_chunk_uses_native_oracle_vector_column() -> None:
-    """Compile the canonical embedding column as Oracle VECTOR."""
-    column_type = RagChunk.__table__.c.embedding_vector.type.compile(dialect=oracle.dialect())
+def test_oracle_dense_mapping_is_refused_instead_of_touching_the_legacy_column() -> None:
+    """Refuse the Oracle dialect rather than read and write its legacy JSON column."""
+    with pytest.raises(OracleEmbeddingColumnUnsupportedError):
+        RagChunk.__table__.c.embedding.type.compile(dialect=oracle.dialect())
 
-    assert column_type == "VECTOR(1536,FLOAT32,DENSE)"
+    with pytest.raises(OracleEmbeddingColumnUnsupportedError):
+        select(RagChunk).compile(dialect=oracle.dialect())
 
 
 def test_distance_expression_uses_oracle_vector_distance() -> None:
@@ -26,7 +35,7 @@ def test_distance_expression_uses_oracle_vector_distance() -> None:
     expression = OracleVectorSearchRepository._distance_expression([0.1] * 1536)
     statement = select(RagChunk).order_by(expression)
 
-    rendered = str(statement.compile(dialect=oracle.dialect()))
+    rendered = str(statement.compile(dialect=postgresql.dialect()))
 
     assert "vector_distance" in rendered.lower()
     assert "cosine" in rendered.lower()
@@ -45,12 +54,12 @@ def test_search_uses_oracle_approximate_fetch() -> None:
         OracleVectorSearchRepository().search_by_cosine([0.1] * 1536)
 
     statement = session.execute.call_args.args[0]
-    rendered = str(statement.compile(dialect=oracle.dialect()))
+    rendered = str(statement.compile(dialect=postgresql.dialect()))
     assert "FETCH APPROX FIRST" in rendered
     select_head = re.split(r"\bFROM\b", rendered, maxsplit=1, flags=re.IGNORECASE)[0].lower()
     # Deferred loading keeps the embedding out of the entity columns; only the
     # distance expression itself may reference it.
-    assert select_head.count("embedding_vector") == 1
+    assert select_head.count("embedding") == 1
 
 
 def test_unfiltered_search_skips_candidate_id_lookup() -> None:
@@ -81,7 +90,7 @@ def test_filtered_search_restricts_distance_to_matching_ids() -> None:
         OracleVectorSearchRepository().search_by_cosine([0.1] * 1536, top_k=5, player_id="78224")
 
     statement = session.execute.call_args.args[0]
-    rendered = str(statement.compile(dialect=oracle.dialect()))
+    rendered = str(statement.compile(dialect=postgresql.dialect()))
     assert "IN (" in rendered
     assert ":player_id" not in rendered
     assert "FETCH APPROX FIRST 25 ROWS ONLY" in rendered
@@ -115,7 +124,7 @@ def test_oversized_filtered_search_falls_back_to_global_post_filter() -> None:
         OracleVectorSearchRepository().search_by_cosine([0.1] * 1536, top_k=5, player_id="wide")
 
     statement = session.execute.call_args.args[0]
-    rendered = str(statement.compile(dialect=oracle.dialect()))
+    rendered = str(statement.compile(dialect=postgresql.dialect()))
     assert "rag_chunks.id IN" not in rendered.lower()
     assert ":player_id" not in rendered
     assert "FETCH APPROX FIRST 100 ROWS ONLY" in rendered

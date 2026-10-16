@@ -27,7 +27,7 @@ def session():
 
 _INSERT_SQL = text(
     "INSERT INTO rag_chunks (source_table, source_row_id, title, content, content_hash, "
-    "index_version, index_status, embedding_vector, indexed_at, created_at, updated_at) "
+    "index_version, index_status, embedding, indexed_at, created_at, updated_at) "
     "VALUES (:source_table, :source_row_id, :title, :content, :content_hash, "
     ":index_version, :index_status, :embedding_json, :indexed_at, :created_at, :updated_at)"
 )
