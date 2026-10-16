@@ -25,32 +25,37 @@ repos:
     hooks:
       - id: bare-except-lint
         name: bare except check
-        entry: python3 scripts/lint_bare_except.py
-        language: system
+        entry: python scripts/lint_bare_except.py
+        language: python
+        language_version: python3.14
         files: \.py$
         pass_filenames: true
       - id: crawler-client-bypass
         name: crawler HTTP client bypass check
-        entry: python3 scripts/lint_crawler_client_bypass.py
-        language: system
+        entry: python scripts/lint_crawler_client_bypass.py
+        language: python
+        language_version: python3.14
         files: ^src/crawlers/.*\.py$
         pass_filenames: true
       - id: module-level-dotenv
         name: module-level .env load check
-        entry: python3 scripts/lint_module_level_dotenv.py
-        language: system
+        entry: python scripts/lint_module_level_dotenv.py
+        language: python
+        language_version: python3.14
         files: \.py$
         pass_filenames: true
       - id: alert-transport-bypass
         name: alert transport bypass check
-        entry: python3 scripts/lint_alert_transport_bypass.py
-        language: system
+        entry: python scripts/lint_alert_transport_bypass.py
+        language: python
+        language_version: python3.14
         files: ^(src|scripts)/.*\.py$
         pass_filenames: false
       - id: notification-layering
         name: notification layering check
-        entry: python3 scripts/lint_notification_layering.py
-        language: system
+        entry: python scripts/lint_notification_layering.py
+        language: python
+        language_version: python3.14
         files: ^src/(notifications/.*|utils/alerting|services/notification_service)\.py$
         pass_filenames: false
       - id: forbid-env-files
