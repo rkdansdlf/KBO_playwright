@@ -697,3 +697,11 @@ def test_vector_presence_is_refused_without_skip_existing() -> None:
         build_rag_index.main(["--vector-presence"])
 
     assert raised.value.code == 2
+
+
+def test_content_presence_is_refused_without_skip_existing() -> None:
+    """Content presence only means something on the skip filter path."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--content-presence"])
+
+    assert raised.value.code == 2

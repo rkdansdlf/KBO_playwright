@@ -198,6 +198,7 @@ class IncrementalSelectionOptions:
     desired_embedding_fingerprint: str | None = None
     include_healthy: bool = False
     vector_key_presence: bool = False
+    content_presence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +211,7 @@ class BuildSourceOptions:
     skip_existing: bool = False
     desired_embedding_fingerprint: str | None = None
     vector_key_presence: bool = False
+    content_presence: bool = False
 
 
 def _redact_url(url: str | None) -> str:
@@ -1620,6 +1622,23 @@ def _load_index_states(index_session: Session, source_table: str | None) -> dict
     }
 
 
+def _load_vector_content_hashes(vector_session: Session, source_table: str) -> frozenset[str]:
+    """Load the content hashes the vector store holds as ACTIVE rows, across every identity key.
+
+    Keyed by content rather than identity, so a play embedded under a legacy key still counts.
+    """
+    from src.models.rag_chunk_vector import RagChunkVector
+
+    statement = (
+        select(RagChunkVector.content_hash)
+        .where(RagChunkVector.source_table == source_table)
+        .where(RagChunkVector.index_status == "ACTIVE")
+        .where(RagChunkVector.content_hash.is_not(None))
+        .distinct()
+    )
+    return frozenset(vector_session.execute(statement).scalars().all())
+
+
 def _load_vector_states(vector_session: Session, source_table: str | None) -> dict[tuple[str, str], RagIndexState]:
     """Load vector states used when sparse and vector stores are separated."""
     from src.models.rag_chunk_vector import RagChunkVector
@@ -1703,6 +1722,14 @@ def _skip_existing_index_rows(
         if selection.vector_session is not None
         else {}
     )
+    if selection.content_presence and (selection.vector_session is None or selection.source_table is None):
+        message = "content presence needs a vector session and a single source table"
+        raise ValueError(message)
+    present_content_hashes = (
+        _load_vector_content_hashes(selection.vector_session, selection.source_table)
+        if selection.content_presence
+        else None
+    )
     version = selection.desired_index_version or current_index_version()
     metadata_gap_count = 0
     blocked_count = 0
@@ -1718,6 +1745,7 @@ def _skip_existing_index_rows(
                 require_vector=selection.vector_session is not None,
                 require_primary_embedding=selection.vector_session is None,
                 vector_key_presence=selection.vector_key_presence,
+                present_content_hashes=present_content_hashes,
             ),
         )
         if decision.blocked:
@@ -1900,6 +1928,7 @@ def _iter_candidate_chunks(
             desired_embedding_fingerprint=options.desired_embedding_fingerprint,
             include_healthy=not options.skip_existing,
             vector_key_presence=options.vector_key_presence,
+            content_presence=options.content_presence,
         ),
     )
 
@@ -1914,6 +1943,12 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 
 
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
+
+
+def _check_presence_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Refuse presence filters that only mean something on the skip-existing path."""
+    if (args.vector_presence or args.content_presence) and not args.skip_existing:
+        parser.error("--vector-presence and --content-presence require --skip-existing")
 
 
 def _completion_suffix(args: argparse.Namespace) -> str:
@@ -1980,11 +2015,15 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="정본에 없어도 벡터 저장소에 같은 키가 있으면 갭에서 뺀다 (--skip-existing 필요, 키 존재만 비교)",
     )
+    parser.add_argument(
+        "--content-presence",
+        action="store_true",
+        help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
+    )
     args = parser.parse_args(argv)
     if args.count_only:
         args.dry_run = True
-    if args.vector_presence and not args.skip_existing:
-        parser.error("--vector-presence requires --skip-existing")
+    _check_presence_flags(parser, args)
 
     from src.db.engine import DATABASE_URL
     from src.db.vector_engine import init_vector_db, is_pgvector_available
@@ -2048,6 +2087,7 @@ def main(argv: list[str] | None = None) -> None:
         skip_existing=args.skip_existing,
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
         vector_key_presence=args.vector_presence,
+        content_presence=args.content_presence,
     )
     with (
         get_rag_source_session() as source_session,

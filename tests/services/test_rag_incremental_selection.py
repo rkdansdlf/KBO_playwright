@@ -266,3 +266,53 @@ def test_vector_key_presence_still_embeds_a_key_missing_from_both_stores() -> No
 
     assert decision.action == "REEMBED"
     assert decision.reason == "new"
+
+
+def test_content_presence_skips_a_canonical_miss_whose_text_is_already_embedded() -> None:
+    """Same text under another key is not a new play, even when the canonical row is absent."""
+    present = frozenset({chunk_content_hash("제목", "본문")})
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_content_hashes=present,
+        ),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "content_present"
+
+
+def test_content_presence_still_embeds_text_the_store_does_not_hold() -> None:
+    """A hash that is not in the store stays a candidate."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_content_hashes=frozenset({"other-hash"}),
+        ),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"
+
+
+def test_content_presence_is_off_by_default() -> None:
+    """Without the hash set the decision is unchanged."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"
