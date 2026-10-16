@@ -825,6 +825,14 @@ def init_db() -> None:
     import src.models  # noqa: F401
     from src.models.base import Base
 
+    if Engine.dialect.name == "postgresql":
+        # rag_chunks.embedding is vector(1536); PostgreSQL needs the pgvector extension
+        # before create_all can resolve that type on a fresh database.
+        from sqlalchemy import text
+
+        with Engine.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
     try:
         Base.metadata.create_all(bind=Engine)
     except SQLAlchemyError as exc:
