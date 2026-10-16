@@ -1945,10 +1945,34 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
+def _count_candidates(chunk_iter: Iterator[dict[str, Any]], list_path: Path | None) -> int:
+    """Count candidate chunks; with ``list_path``, also write one JSON line per candidate.
+
+    Read-only: no embedding call and no database write. The file is for sampling the candidates
+    by hand before an apply run.
+    """
+    if list_path is None:
+        return sum(1 for _ in chunk_iter)
+    count = 0
+    with list_path.open("w", encoding="utf-8") as handle:
+        for chunk in chunk_iter:
+            record = {
+                "source_table": chunk.get("source_table"),
+                "source_row_id": chunk.get("source_row_id"),
+                "title": chunk.get("title"),
+                "content": str(chunk.get("content") or "")[:300],
+            }
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            count += 1
+    return count
+
+
 def _check_presence_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Refuse presence filters that only mean something on the skip-existing path."""
     if (args.vector_presence or args.content_presence) and not args.skip_existing:
         parser.error("--vector-presence and --content-presence require --skip-existing")
+    if args.list_candidates is not None and not args.count_only:
+        parser.error("--list-candidates requires --count-only")
 
 
 def _completion_suffix(args: argparse.Namespace) -> str:
@@ -2016,13 +2040,18 @@ def main(argv: list[str] | None = None) -> None:
         help="정본에 없어도 벡터 저장소에 같은 키가 있으면 갭에서 뺀다 (--skip-existing 필요, 키 존재만 비교)",
     )
     parser.add_argument(
+        "--list-candidates",
+        type=Path,
+        default=None,
+        help="--count-only와 함께: 후보를 JSON Lines 파일로 내보낸다 (쓰기·임베딩 없음)",
+    )
+    parser.add_argument(
         "--content-presence",
         action="store_true",
         help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
     )
     args = parser.parse_args(argv)
-    if args.count_only:
-        args.dry_run = True
+    args.dry_run = args.dry_run or args.count_only
     _check_presence_flags(parser, args)
 
     from src.db.engine import DATABASE_URL
@@ -2107,7 +2136,7 @@ def main(argv: list[str] | None = None) -> None:
             )
             # count-only는 임베딩 전 단계에서 세기만 한다. 제공자 호출과 저장이 모두 없다.
             count = (
-                sum(1 for _ in chunk_iter)
+                _count_candidates(chunk_iter, args.list_candidates)
                 if args.count_only
                 else _process_source(
                     source_name,

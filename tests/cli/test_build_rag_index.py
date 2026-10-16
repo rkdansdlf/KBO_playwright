@@ -705,3 +705,44 @@ def test_content_presence_is_refused_without_skip_existing() -> None:
         build_rag_index.main(["--content-presence"])
 
     assert raised.value.code == 2
+
+
+def test_count_candidates_writes_one_json_line_per_chunk_without_embedding(tmp_path) -> None:
+    """Listing candidates is for sampling: it writes the rows and never calls a provider."""
+    import json
+
+    chunks = iter(
+        [
+            {
+                "source_table": "game_play_by_play",
+                "source_row_id": "20260816OBHT0_7",
+                "title": "t1",
+                "content": "본문1",
+            },
+            {"source_table": "game_play_by_play", "source_row_id": "1680134", "title": "t2", "content": "본문2"},
+        ]
+    )
+    target = tmp_path / "candidates.jsonl"
+
+    count = build_rag_index._count_candidates(chunks, target)
+
+    assert count == 2
+    lines = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+    assert [row["source_row_id"] for row in lines] == ["20260816OBHT0_7", "1680134"]
+    assert lines[0]["content"] == "본문1"
+
+
+def test_count_candidates_without_a_path_only_counts(tmp_path) -> None:
+    """The default path counts and writes nothing."""
+    count = build_rag_index._count_candidates(iter([{"content": "a"}, {"content": "b"}]), None)
+
+    assert count == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_list_candidates_is_refused_without_count_only() -> None:
+    """The listing belongs to the read-only path only."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--list-candidates", "x.jsonl"])
+
+    assert raised.value.code == 2
