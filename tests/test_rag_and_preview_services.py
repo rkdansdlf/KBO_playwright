@@ -193,7 +193,7 @@ def test_oracle_search_uses_bounded_candidates_without_vectors(monkeypatch) -> N
     assert "FETCH FIRST" in compiled
     assert "instr" in compiled.lower()
     assert "CASE" in compiled
-    assert "embedding_vector" not in compiled
+    assert "embedding" not in compiled
 
 
 def test_oracle_search_can_skip_candidate_sorting(monkeypatch) -> None:

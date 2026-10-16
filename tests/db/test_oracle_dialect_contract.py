@@ -194,26 +194,39 @@ class TestJsonColumnCompilesAsClob:
 
 
 class TestVectorColumnRenders:
-    """Dense embeddings live in an Oracle VECTOR column beside the sparse rows."""
+    """The canonical embedding column is pgvector-only; the Oracle dialect is refused."""
 
-    def test_canonical_rag_chunk_uses_native_oracle_vector(self) -> None:
+    def test_canonical_rag_chunk_uses_native_pgvector_dimension(self) -> None:
+        from sqlalchemy.dialects import postgresql
+
         from src.models.rag_chunk import RagChunk
 
-        compiled = RagChunk.__table__.c.embedding_vector.type.compile(dialect=oracle.dialect())
-        assert compiled == "VECTOR(1536,FLOAT32,DENSE)"
+        compiled = RagChunk.__table__.c.embedding.type.compile(dialect=postgresql.dialect())
+        assert compiled == "VECTOR(1536)"
 
-    def test_vector_dimension_matches_the_configured_embedding_model(self) -> None:
+    def test_embedding_dimension_matches_the_configured_embedding_model(self) -> None:
+        from sqlalchemy.dialects import postgresql
+
         from src.models.rag_chunk import RagChunk
 
-        compiled = RagChunk.__table__.c.embedding_vector.type.compile(dialect=oracle.dialect())
-        # A dimension mismatch only surfaces against a live ADB, so pin it here.
-        assert re.search(r"VECTOR\(\d+,", compiled.upper()), compiled
+        compiled = RagChunk.__table__.c.embedding.type.compile(dialect=postgresql.dialect())
+        # A dimension mismatch only surfaces against a live store, so pin it here.
+        assert re.search(r"VECTOR\((\d+)\)", compiled.upper()), compiled
 
-    def test_pgvector_mirror_is_not_used_for_the_production_store(self) -> None:
-        # `RagChunkVector` is the PostgreSQL acceptance mirror. The production
-        # store is Oracle, so the two must not be interchangeable by accident.
+    def test_oracle_dialect_is_refused_instead_of_touching_the_legacy_column(self) -> None:
+        from src.models.rag_chunk import OracleEmbeddingColumnUnsupportedError, RagChunk
+
+        # Oracle's physical EMBEDDING column still holds legacy JSON, so mapping the
+        # canonical name there would silently read and write the wrong column.
+        with pytest.raises(OracleEmbeddingColumnUnsupportedError):
+            RagChunk.__table__.c.embedding.type.compile(dialect=oracle.dialect())
+
+    def test_pgvector_mirror_shares_the_canonical_column_name(self) -> None:
+        # `RagChunkVector` is the pgvector mirror. Both models must agree on the
+        # physical column name that the two PostgreSQL stores actually have.
         from src.models.rag_chunk import RagChunk
         from src.models.rag_chunk_vector import RagChunkVector
 
         assert RagChunk.__table__ is not RagChunkVector.__table__
-        assert "embedding_vector" in RagChunk.__table__.c
+        assert "embedding" in RagChunk.__table__.c
+        assert "embedding_vector" not in RagChunk.__table__.c

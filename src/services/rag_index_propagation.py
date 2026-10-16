@@ -186,7 +186,7 @@ def _bulk_upsert_sparse(session: Session, payloads: list[dict[str, Any]], index_
             "index_version",
             "index_status",
             "indexed_at",
-            "embedding_vector",
+            "embedding",
             "meta",
             "updated_at",
         )

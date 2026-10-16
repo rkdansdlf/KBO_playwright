@@ -240,9 +240,18 @@ def test_oracle_fk_compiler_installation_is_idempotent() -> None:
     assert OracleDDLCompiler.visit_foreign_key_constraint is patched
 
 
-def test_all_registered_orm_tables_compile_for_oracle() -> None:
+def test_all_registered_orm_tables_compile_for_oracle_except_the_refused_embedding() -> None:
+    """Every registered table compiles for Oracle, except the deliberately refused one.
+
+    ``rag_chunks.embedding`` is refused on the Oracle dialect by design: the physical
+    ``EMBEDDING`` column there is legacy JSON, so the model raises
+    ``OracleEmbeddingColumnUnsupportedError`` rather than silently writing the wrong
+    column. Pinning the single exception here keeps the rest of the sweep honest —
+    any other table that stops compiling still fails this test.
+    """
     from src.db import engine
     from src.models.base import Base
+    from src.models.rag_chunk import OracleEmbeddingColumnUnsupportedError
 
     import src.models
 
@@ -250,5 +259,11 @@ def test_all_registered_orm_tables_compile_for_oracle() -> None:
     engine._install_oracle_fk_restrict_compiler()
     dialect = oracle.dialect()
 
-    for table in Base.metadata.tables.values():
-        str(CreateTable(table).compile(dialect=dialect))
+    refused: list[str] = []
+    for name, table in Base.metadata.tables.items():
+        try:
+            str(CreateTable(table).compile(dialect=dialect))
+        except OracleEmbeddingColumnUnsupportedError:
+            refused.append(name)
+
+    assert refused == ["rag_chunks"]

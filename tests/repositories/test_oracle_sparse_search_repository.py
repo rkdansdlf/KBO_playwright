@@ -28,7 +28,7 @@ def test_search_candidates_uses_term_and_date_indexes_without_vectors() -> None:
     compiled = str(statement.compile(dialect=oracle.dialect()))
     assert "rag_chunk_terms" in compiled.lower()
     assert "FETCH FIRST" in compiled
-    assert "embedding_vector" not in compiled
+    assert "embedding" not in compiled
 
 
 def test_search_candidates_accepts_oracle_like_bind_dialect() -> None:
