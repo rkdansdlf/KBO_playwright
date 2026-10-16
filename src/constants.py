@@ -29,6 +29,9 @@ KBO_2000S_ERA_END = 2001
 KBO_PLAYOFF_ERA_END = 2006
 KBO_SEMI_PLAYOFF_ERA_END = 2014
 KBO_QUALITY_AUDIT_START_YEAR = 2020
+#: Automatic jobs must never write games before this year. Older rows require
+#: an explicit operator run with game IDs (see auto-healer historical guard).
+AUTO_HEAL_HISTORY_FLOOR_YEAR = 2001
 KBO_MAX_VALID_SEASON = 2030
 KBO_MAX_GAMES_PER_SEASON = 165
 KBO_MAX_HOME_RUNS_PER_SEASON = 65

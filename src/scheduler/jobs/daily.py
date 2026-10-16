@@ -177,7 +177,7 @@ def _run_legacy_daily_update(
         logger.info("Skipping season stat crawl for daily update (DAILY_SKIP_SEASON_STATS=1)")
         args.append("--skip-season-stats")
 
-    if _env_enabled("DAILY_AUTO_REMEDIATION", "1"):
+    if _env_enabled("DAILY_AUTO_REMEDIATION", "0"):
         logger.info("Auto-remediation enabled for daily update (DAILY_AUTO_REMEDIATION=1)")
         args.append("--fix")
     else:
@@ -404,7 +404,7 @@ def crawl_daily_games() -> None:
                 ctx = {
                     "date": target_date,
                     "skip_season_stats": _env_enabled("DAILY_SKIP_SEASON_STATS", "0"),
-                    "auto_remediation": _env_enabled("DAILY_AUTO_REMEDIATION", "1"),
+                    "auto_remediation": _env_enabled("DAILY_AUTO_REMEDIATION", "0"),
                     "run_main": run_main,
                 }
                 report = orch.execute_workflow(f"daily_sync_{target_date}", context=ctx)

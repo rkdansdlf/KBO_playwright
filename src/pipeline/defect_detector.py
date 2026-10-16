@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, text
 
-from src.constants import KST
+from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR, KST
 from src.models.game import Game, GameBattingStat, GameMetadata, GamePitchingStat
 from src.pipeline.dto import DefectItem, DefectReport, PipelineDefectType
 from src.utils.game_status import (
@@ -38,6 +38,7 @@ class PipelineDefectDetector:
             .where(
                 Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
                 Game.game_date <= cutoff_date,
+                Game.game_date >= date(AUTO_HEAL_HISTORY_FLOOR_YEAR, 1, 1),
             )
             .order_by(Game.game_date.desc())
         )

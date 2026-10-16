@@ -98,4 +98,26 @@ def test_heal_from_defect_report(db_session) -> None:
     assert len(actions) == 1
     assert actions[0].status == "SUCCESS"
     db_session.refresh(g)
-    assert g.game_status == "CANCELLED"  # because scores were None
+    assert g.game_status == "UNRESOLVED_MISSING"  # scores absent != cancelled (issue #32)
+
+
+def test_heal_stuck_game_skips_pre_2001(db_session) -> None:
+    """Pre-2001 rows must never be auto-healed (issue #32)."""
+    g = Game(
+        game_id="19950501LGSS0",
+        game_date=date(1995, 5, 1),
+        home_team="SS",
+        away_team="LG",
+        home_score=None,
+        away_score=None,
+        game_status="SCHEDULED",
+    )
+    db_session.add(g)
+    db_session.flush()
+
+    healer = AutoHealerService(db_session)
+    summary = healer.heal_stuck_game("19950501LGSS0")
+
+    assert summary.status == "SKIPPED"
+    db_session.refresh(g)
+    assert g.game_status == "SCHEDULED"

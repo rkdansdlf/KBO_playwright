@@ -76,7 +76,7 @@ class TestRecoveryExecution:
         assert results == {"completed": 1, "cancelled": 0, "unresolved": 1, "dry_run": 0}
         recovery_manager.mark_completed.assert_called_once_with("G1")
         recovery_manager.mark_failed.assert_called_once_with("G2", "timeout")
-        update_status.assert_called_once_with("G2", auto_healer.GAME_STATUS_UNRESOLVED)
+        update_status.assert_called_once_with("G2", auto_healer.GAME_STATUS_UNRESOLVED, allow_historical=False)
 
 
 class TestDefaultHealerOrchestration:

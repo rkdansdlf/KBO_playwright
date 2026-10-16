@@ -120,3 +120,37 @@ class TestGameStatus:
 
         result = refresh_game_status_for_date("20241015", today=date(2024, 10, 16))
         assert result["total"] == 0
+
+    @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
+    def test_update_game_status_refuses_pre_2001(self, MockCanon):
+        engine, session = self._setup_game_tables()
+
+        g = Game(game_id="19950501LGSS0", game_date=date(1995, 5, 1), game_status="SCHEDULED")
+        session.add(g)
+        session.commit()
+
+        assert update_game_status("19950501LGSS0", "CANCELLED", session=session) is False
+        session.refresh(g)
+        assert g.game_status == "SCHEDULED"
+
+    @patch("src.repositories.game_status._canonicalize_game_id", side_effect=_fake_canonicalize)
+    def test_update_game_status_allows_pre_2001_with_opt_in(self, MockCanon):
+        engine, session = self._setup_game_tables()
+
+        g = Game(game_id="19950501LGSS0", game_date=date(1995, 5, 1), game_status="SCHEDULED")
+        session.add(g)
+        session.commit()
+
+        assert update_game_status("19950501LGSS0", "CANCELLED", session=session, allow_historical=True) is True
+        session.refresh(g)
+        assert g.game_status == "CANCELLED"
+
+    @patch("src.repositories.game_status.get_db_session")
+    def test_refresh_game_status_refuses_pre_2001(self, Mockget_db_session):
+        engine, session = self._setup_game_tables()
+        Mockget_db_session.return_value.__enter__.return_value = session
+        Mockget_db_session.return_value.__exit__.return_value = None
+
+        result = refresh_game_status_for_date("19950501", today=date(2026, 10, 16))
+        assert result["total"] == 0
+        assert result["updated"] == 0

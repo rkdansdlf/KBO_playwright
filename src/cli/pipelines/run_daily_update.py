@@ -31,7 +31,7 @@ from src.cli.pipelines.advanced_daily_steps import (
     crawl_baserunning_step,
     crawl_fielding_step,
 )
-from src.constants import DATE_STR_LEN
+from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR, DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.player_batting_all_series_crawler import BattingSeriesCrawlRequest, crawl_series_batting_stats
@@ -166,6 +166,14 @@ DETAIL_RECOVERY_ALLOWED_REASONS = {
     "exception",
     "missing",
 }
+#: Hard floor for automatic past-game recovery. Rows before 2001 must never
+#: be touched by unattended jobs; they require an explicit operator run with
+#: game IDs. Mirrors the floor already present in auto_healer._find_stuck_games.
+RECOVERY_HISTORY_FLOOR_DATE = date(AUTO_HEAL_HISTORY_FLOOR_YEAR, 1, 1)
+#: Bound automatic recovery to a recent window so a full-table scan of
+#: SCHEDULED/UNRESOLVED rows cannot fan out into relay/review/highlight/story
+#: work for ancient seasons. Aligns with backfill_missed_daily_crawls(14).
+RECOVERY_LOOKBACK_DAYS = 14
 RUNNER_EXCEPTIONS = (subprocess.CalledProcessError, OSError, RuntimeError)
 DB_STEP_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 CRAWLER_STEP_EXCEPTIONS = (
@@ -368,11 +376,20 @@ def _run_python_step(argv: Sequence[str]) -> None:
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
     """Capture auto-healer candidates so repaired past games can be finalized.
 
+    Guarded: only games on/after RECOVERY_HISTORY_FLOOR_DATE (2001-01-01) and
+    within the recent RECOVERY_LOOKBACK_DAYS window are returned. Anything
+    older requires an explicit operator run with game IDs.
+
     Args:
         today: Today.
 
     """
     yesterday = today - timedelta(days=1)
+    try:
+        lookback_days = max(0, int(os.getenv("RECOVERY_LOOKBACK_DAYS", str(RECOVERY_LOOKBACK_DAYS))))
+    except ValueError:
+        lookback_days = RECOVERY_LOOKBACK_DAYS
+    window_start = today - timedelta(days=lookback_days)
 
     try:
         with SessionLocal() as session:
@@ -381,6 +398,8 @@ def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]
                 .filter(
                     Game.game_status.in_([GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED]),
                     Game.game_date <= yesterday,
+                    Game.game_date >= RECOVERY_HISTORY_FLOOR_DATE,
+                    Game.game_date >= window_start,
                 )
                 .order_by(Game.game_date.asc(), Game.game_id.asc())
                 .all()

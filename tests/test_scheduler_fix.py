@@ -109,7 +109,7 @@ def test_excludes_fix_when_disabled(monkeypatch):
 
 
 def test_includes_fix_by_default(monkeypatch):
-    """DAILY_AUTO_REMEDIATION unset → default=1 → --fix must be passed."""
+    """DAILY_AUTO_REMEDIATION unset → default=0 → --fix must NOT be passed."""
     monkeypatch.delenv("DAILY_AUTO_REMEDIATION", raising=False)
 
     captured: list[list] = []
@@ -131,7 +131,7 @@ def test_includes_fix_by_default(monkeypatch):
             p.stop()
 
     assert captured, "run_daily_update_main was never called"
-    assert "--fix" in captured[0], f"Expected --fix in {captured[0]} (default on)"
+    assert "--fix" not in captured[0], f"--fix should be absent from {captured[0]} (default off)"
 
 
 def test_includes_scoped_p0_flags_when_enabled(monkeypatch):

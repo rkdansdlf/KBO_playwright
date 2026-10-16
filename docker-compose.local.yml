@@ -10,14 +10,20 @@
 services:
   scheduler:
     environment:
-      DATABASE_URL: postgresql://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+      DATABASE_URL: postgresql+psycopg2://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+      # Temporary safe-operation profile (2026-10-16): no startup backfill and
+      # no automatic remediation until the historical-write guards are verified
+      # in production. See issue #32.
+      STARTUP_RUN: "0"
+      DAILY_AUTO_REMEDIATION: "0"
+      RECOVERY_LOOKBACK_DAYS: "14"
     volumes:
       - ./src:/app/src
       - ./scripts:/app/scripts
       - ./docs:/app/docs
   api-server:
     environment:
-      DATABASE_URL: postgresql://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+      DATABASE_URL: postgresql+psycopg2://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
   # Pinned digests in docker-compose.dev.yml drifted from locally cached
   # images and the registry is unreachable from here — use local images.
   browserless:

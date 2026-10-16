@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import KST
+from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR, KST
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.db.engine import SessionLocal
 from src.models.game import Game
@@ -79,7 +79,7 @@ def _find_stuck_games() -> list[Game]:
             # duplication is a separate cleanup and is not what this filter is
             # for; it is recorded here because the two are easy to confuse and
             # the duplication is what makes the status look wrong.
-            Game.game_date >= date(2001, 1, 1),
+            Game.game_date >= date(AUTO_HEAL_HISTORY_FLOOR_YEAR, 1, 1),
         )
         return list(session.execute(stmt).scalars().all())
 
@@ -100,6 +100,7 @@ def _find_inconsistent_games() -> list[Game]:
                              WHERE i.game_id = g.game_id AND i.team_side = 'home'), 0) as home_sum
             FROM game g
             WHERE g.game_status IN ('COMPLETED', 'DRAW')
+              AND g.game_date >= '2001-01-01'
         ) sub ON g.game_id = sub.game_id
         WHERE (sub.away_score != sub.away_sum OR sub.home_score != sub.home_sum)
     """,
@@ -120,6 +121,7 @@ def _find_pa_formula_inconsistent_games() -> list[Game]:
         FROM game g
         JOIN game_batting_stats b ON b.game_id = g.game_id
         WHERE g.game_status IN ('COMPLETED', 'DRAW')
+          AND g.game_date >= '2001-01-01'
           AND b.plate_appearances IS NOT NULL
           AND b.plate_appearances != (
               COALESCE(b.at_bats, 0) + COALESCE(b.walks, 0) + COALESCE(b.hbp, 0)
@@ -212,7 +214,7 @@ def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> N
         logger.warning("[AutoHealer] Failed to record correction audit trail for %s: %s", game_id, e)
 
 
-def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> str:
+def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None, *, allow_historical: bool = False) -> str:
     """Apply status repair based on one shared collection result item.
 
     Return one of: 'completed', 'cancelled', 'unresolved'
@@ -220,6 +222,7 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> 
     Args:
         game_id: Game ID.
         item: Item.
+        allow_historical: Opt in to pre-2001 writes (explicit operator run only).
 
     """
     if item and item.detail_saved:
@@ -229,12 +232,12 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None) -> 
 
     failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
-        update_game_status(game_id, GAME_STATUS_CANCELLED)
+        update_game_status(game_id, GAME_STATUS_CANCELLED, allow_historical=allow_historical)
         _reconcile_and_audit(game_id, GAME_STATUS_CANCELLED, "cancelled")
         logger.info("  🚫 %s → CANCELLED", game_id)
         return "cancelled"
 
-    update_game_status(game_id, GAME_STATUS_UNRESOLVED)
+    update_game_status(game_id, GAME_STATUS_UNRESOLVED, allow_historical=allow_historical)
     _reconcile_and_audit(game_id, GAME_STATUS_UNRESOLVED, failure_reason)
     logger.info("  ❓ %s → UNRESOLVED_MISSING (reason=%s)", game_id, failure_reason)
     return "unresolved"
@@ -439,6 +442,7 @@ async def _run_recovery(
     recovery_mgr: RecoveryManager,
     *,
     dry_run: bool,
+    allow_historical: bool = False,
 ) -> dict[str, int]:
     with SessionLocal() as db_session:
         resolver = PlayerIdResolver(db_session, strict_game_resolution=True, allow_auto_register=False)
@@ -467,7 +471,7 @@ async def _run_recovery(
         )
         for game in recovery_candidates:
             item = collection_result.items.get(game.game_id)  # type: ignore[call-overload]
-            outcome = _apply_heal_outcome(game.game_id, item)  # type: ignore[arg-type]
+            outcome = _apply_heal_outcome(game.game_id, item, allow_historical=allow_historical)  # type: ignore[arg-type]
             results[outcome] = results.get(outcome, 0) + 1
             if outcome == "completed":
                 recovery_mgr.mark_completed(game.game_id)  # type: ignore[arg-type]
@@ -576,7 +580,13 @@ async def run_healer_async(
         )
 
     logger.info("\n🚀 Initiating self-recovery for %s game(s)...", total)
-    results = await _run_recovery(recovery_candidates, anomaly_dates, recovery_mgr, dry_run=dry_run)
+    results = await _run_recovery(
+        recovery_candidates,
+        anomaly_dates,
+        recovery_mgr,
+        dry_run=dry_run,
+        allow_historical=bool(target_game_ids),
+    )
     _log_healer_summary(results, dry_run=dry_run)
     return results["unresolved"]
 

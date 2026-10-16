@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import AUTO_HEAL_HISTORY_FLOOR_YEAR
 from src.db.engine import get_db_session
 from src.models.game import (
     Game,
@@ -32,13 +33,19 @@ from src.utils.date_helpers import parse_date_str
 logger = logging.getLogger(__name__)
 
 
-def update_game_status(game_id: str, status: str, session: Session | None = None) -> bool:
+def update_game_status(
+    game_id: str, status: str, session: Session | None = None, *, allow_historical: bool = False
+) -> bool:
     """Update one game's status.
+
+    Guarded: pre-2001 rows are refused unless ``allow_historical`` is True.
+    Explicit operator runs pass game IDs and opt in; automatic scans do not.
 
     Args:
         game_id: Game ID.
         status: Status.
         session: DB Session.
+        allow_historical: Opt in to pre-2001 writes.
 
     """
     if session is None:
@@ -56,6 +63,21 @@ def update_game_status(game_id: str, status: str, session: Session | None = None
 
     game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
     if not game:
+        return False
+    game_year = getattr(game.game_date, "year", None)
+    if game_year is None:
+        try:
+            game_year = int(str(game.game_date)[:4])
+        except ValueError:
+            game_year = None
+    if not allow_historical and game_year is not None and game_year < AUTO_HEAL_HISTORY_FLOOR_YEAR:
+        logger.warning(
+            "[GUARD] Refused status write for pre-2001 game %s (%s -> %s). "
+            "Use allow_historical=True from an explicit operator run.",
+            game_id,
+            game.game_status,
+            status,
+        )
         return False
     game.game_status = status
     session.flush()
@@ -86,6 +108,10 @@ def refresh_game_status_for_date(
     try:
         dt = parse_date_str(target_date)
     except ValueError:
+        return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
+
+    if dt.year < AUTO_HEAL_HISTORY_FLOOR_YEAR:
+        logger.warning("[GUARD] Refused status refresh for pre-2001 date %s.", target_date)
         return {"target_date": target_date, "total": 0, "updated": 0, "status_counts": {}}
 
     if today is None:
