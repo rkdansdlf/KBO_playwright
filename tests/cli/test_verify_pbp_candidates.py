@@ -144,3 +144,15 @@ def test_inning_half_agrees_in_either_spelling() -> None:
     assert mapping_agrees((None, 1, "top", "김대한"), key)
     assert mapping_agrees((None, 1, "초", "김대한"), key)
     assert not mapping_agrees((None, 1, "bottom", "김대한"), key)
+
+
+def test_candidates_repeating_one_play_are_counted_as_internal_duplicates() -> None:
+    """Two identical candidates are one play listed twice; the gate requires zero."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "a", "content": NEW_CODE}, {"source_row_id": "b", "content": NEW_CODE}],
+        [],
+    )
+
+    assert result["candidate_internal_duplicates"] == 2

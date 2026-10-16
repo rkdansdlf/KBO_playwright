@@ -185,13 +185,18 @@ def classify(
     """
     lookup = legacy_lookup or {}
     index, _, diagnostics = _index_dense(dense_rows, lookup)
+    candidate_list = list(candidates)
+    candidate_keys = Counter(play_key(str(c.get("content") or "")) for c in candidate_list)
+    internal_duplicates = sum(
+        1 for c in candidate_list if (k := play_key(str(c.get("content") or ""))) is not None and candidate_keys[k] > 1
+    )
 
     counts = {"candidates": 0, "unparsed": 0, "matched": 0, "new": 0, "ambiguous": 0}
     verdicts: dict[str, list[str]] = {"confirmed": [], "conflicting": [], "unverified": []}
     samples: list[dict[str, object]] = []
     team_pairs: Counter[tuple[str, str]] = Counter()
     matched_dates: set[str] = set()
-    for candidate in candidates:
+    for candidate in candidate_list:
         counts["candidates"] += 1
         key = play_key(str(candidate.get("content") or ""))
         if key is None:
@@ -234,6 +239,7 @@ def classify(
         "samples": samples,
         "source_row_ids": verdicts,
         "matched_dates": sorted(matched_dates),
+        "candidate_internal_duplicates": internal_duplicates,
     }
 
 
