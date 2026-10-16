@@ -31,6 +31,7 @@ PLAY_PATTERN = re.compile(
 #: Candidate content is cut at 300 characters, so compare only the leading part of the event.
 EVENT_PREFIX = 120
 SAMPLE_CAP = 10
+MIN_DUPLICATE_GROUP = 2
 
 _LEGACY_SQL = text(
     "SELECT id, game_id, inning, inning_half, batter_name FROM game_play_by_play WHERE id IN :ids"
@@ -173,6 +174,38 @@ def _index_dense(
     return index, dense_keys, diagnostics
 
 
+def _duplicate_groups(candidates: list[dict[str, str]], verdicts: dict[str, list[str]]) -> list[dict[str, object]]:
+    """Describe each candidate play that appears more than once, for a manual look at the pairs.
+
+    ``in_matched`` says whether a row is one of the 322-style matches (stored already) or a row
+    that the classifier called new, so the report can tell whether a duplicate is inside the new set.
+    """
+    matched_ids = {row_id for ids in verdicts.values() for row_id in ids}
+    groups: dict[tuple[str, str, str, str], list[dict[str, str]]] = defaultdict(list)
+    for candidate in candidates:
+        key = play_key(str(candidate.get("content") or ""))
+        if key is not None:
+            groups[key].append(candidate)
+    result: list[dict[str, object]] = []
+    for key, members in groups.items():
+        if len(members) < MIN_DUPLICATE_GROUP:
+            continue
+        result.append(
+            {
+                "play": list(key),
+                "rows": [
+                    {
+                        "source_row_id": str(m.get("source_row_id") or ""),
+                        "in_matched": str(m.get("source_row_id") or "") in matched_ids,
+                        "content_head": str(m.get("content") or "")[:200],
+                    }
+                    for m in members
+                ],
+            }
+        )
+    return result
+
+
 def classify(
     candidates: Iterable[dict[str, str]],
     dense_rows: Iterable[tuple[str, str]],
@@ -240,6 +273,7 @@ def classify(
         "source_row_ids": verdicts,
         "matched_dates": sorted(matched_dates),
         "candidate_internal_duplicates": internal_duplicates,
+        "candidate_duplicate_groups": _duplicate_groups(candidate_list, verdicts),
     }
 
 

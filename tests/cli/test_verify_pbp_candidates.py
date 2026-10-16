@@ -156,3 +156,17 @@ def test_candidates_repeating_one_play_are_counted_as_internal_duplicates() -> N
     )
 
     assert result["candidate_internal_duplicates"] == 2
+
+
+def test_duplicate_groups_name_the_rows_and_whether_they_are_matched() -> None:
+    """The report lists each duplicate pair so the pair can be judged by hand."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "a", "content": NEW_CODE}, {"source_row_id": "b", "content": NEW_CODE}],
+        [],
+    )
+
+    group = result["candidate_duplicate_groups"][0]
+    assert [row["source_row_id"] for row in group["rows"]] == ["a", "b"]
+    assert all(row["in_matched"] is False for row in group["rows"])
