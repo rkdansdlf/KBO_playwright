@@ -464,8 +464,32 @@ Until a person confirms it, treat three questions as open rather than answered:
    redistribution, third-party integration, or secondary processing;
 3. what consent or API access would be required, and from whom.
 
-If 2026-10-14 passes with those open, the exposure is not hypothetical — it is
-simply undecided.
+**Two of the three can be answered from the repository (measured 2026-10-16).**
+The revision's text is still unverified, so these answer what this codebase
+*does*, not what the revision *covers* — a reader should not read the first as
+settling the second.
+
+1. **Bulk automated — yes.** `src/scheduler/registry.py` registers 18 jobs on
+   cron, and 1,496 runs were recorded on 2026-10-15 alone. Throttling exists
+   (`KBO_REQUEST_DELAY_MIN=2.0`) but throttling is a courtesy, not an exemption:
+   the volume is machine-driven and unattended by design.
+2. **Redistribution through the API / RAG — yes.** `src/api/routers/` exposes
+   eleven routers including `games`, `analytics`, `live_stream` and `milestones`,
+   and the collected text is additionally embedded into a vector store
+   (`rag_chunks`, 583,270 rows measured 2026-10-16). Both read as third-party
+   access to collected data rather than internal use.
+
+   *A prior entry in this file cited 228,681 chunks. That figure is the other
+   store's (`PGVECTOR_URL`, port 5435); the operational database on 5432 held
+   583,270 on the same date. Corrected here rather than silently replaced.*
+3. **Consent route — unverified, and only a person can close it.** This is the
+   question the repository cannot answer, because answering it means reading the
+   revision and that is the route `Disallow: /` refuses.
+
+**2026-10-14 has passed with question 3 open.** The exposure is not hypothetical
+— it is undecided, and it now has a date behind it. Recording that is the
+minimum: the alternative is a reader finding no entry for the deadline and
+concluding it was met.
 
 **The decision that is still open.** The alert now fires, which is the point —
 but whether the block is *acceptable* has not been decided:
