@@ -1676,6 +1676,11 @@ def _load_vector_states(vector_session: Session, source_table: str | None) -> di
     }
 
 
+def rag_source_table_names() -> frozenset[str]:
+    """Return the sources that map to a source table, so the presence filters can key on it."""
+    return frozenset(_SOURCE_TABLE_BY_SOURCE)
+
+
 def rag_all_source_names() -> tuple[str, ...]:
     """Return the sources ``--source all`` runs, in the order it runs them."""
     return tuple(_SOURCE_MAP.keys())

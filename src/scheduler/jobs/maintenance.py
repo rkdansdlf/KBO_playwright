@@ -419,11 +419,17 @@ def rag_incremental_invocations(year: int) -> list[list[str]]:
     content-hash filters. The canonical store holds no PBP rows, so without those filters every
     stored play would look missing and be embedded again.
     """
-    from src.cli.rag.build_rag_index import rag_all_source_names
+    from src.cli.rag.build_rag_index import rag_all_source_names, rag_source_table_names
 
     season = str(year)
+    mapped = rag_source_table_names()
     others = [name for name in rag_all_source_names() if name != "pbp"]
-    invocations = [["--source", name, "--season", season, "--skip-existing"] for name in others]
+    invocations = []
+    for name in others:
+        argv = ["--source", name, "--season", season, "--skip-existing"]
+        if name in mapped:
+            argv += ["--vector-presence", "--content-presence"]
+        invocations.append(argv)
     invocations.append(
         [
             "--source",

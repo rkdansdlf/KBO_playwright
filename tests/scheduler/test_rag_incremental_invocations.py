@@ -23,12 +23,15 @@ def test_pbp_runs_alone_with_the_identity_content_and_vector_filters() -> None:
     ]
 
 
-def test_other_sources_keep_the_previous_skip_existing_run() -> None:
-    """Only PBP changes; the other sources keep the run they had before."""
+def test_mapped_sources_get_the_presence_filters_and_unmapped_ones_keep_the_old_call() -> None:
+    """Sources that map to a table skip identities already stored by content; the rest keep the old call."""
     from src.scheduler.jobs.maintenance import rag_incremental_invocations
 
     others = [argv for argv in rag_incremental_invocations(2026) if "pbp" not in argv]
+    filtered = [argv for argv in others if "--content-presence" in argv]
+    plain = [argv for argv in others if "--content-presence" not in argv]
 
-    assert others
-    assert all(argv[-1] == "--skip-existing" and "--season" in argv for argv in others)
+    assert filtered
+    assert all("--vector-presence" in argv and argv[-1] == "--content-presence" for argv in filtered)
+    assert all(argv[-1] == "--skip-existing" for argv in plain)
     assert not any("all" in argv for argv in rag_incremental_invocations(2026))
