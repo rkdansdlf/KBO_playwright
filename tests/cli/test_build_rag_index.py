@@ -772,3 +772,14 @@ def test_exclude_file_is_refused_for_other_sources() -> None:
         build_rag_index.main(["--source", "lineups", "--count-only", "--skip-existing", "--exclude-file", "x.txt"])
 
     assert raised.value.code == 2
+
+
+def test_play_presence_is_refused_without_skip_existing_or_for_other_sources() -> None:
+    """The play filter only means something on the PBP skip path."""
+    with pytest.raises(SystemExit) as no_skip:
+        build_rag_index.main(["--source", "pbp", "--play-presence"])
+    with pytest.raises(SystemExit) as other_source:
+        build_rag_index.main(["--source", "lineups", "--skip-existing", "--play-presence"])
+
+    assert no_skip.value.code == 2
+    assert other_source.value.code == 2

@@ -316,3 +316,49 @@ def test_content_presence_is_off_by_default() -> None:
 
     assert decision.action == "REEMBED"
     assert decision.reason == "new"
+
+
+def test_play_presence_skips_a_canonical_miss_whose_play_is_already_stored() -> None:
+    """A play stored under another team code is present, even when its key and hash are not."""
+    from src.services.rag_play_identity import play_identity
+
+    other_code = {
+        "source_table": "game_play_by_play",
+        "source_row_id": "x",
+        "title": "t",
+        "content": "경기일: 2026-08-16, 경기: OB vs HT, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃",
+    }
+    present = frozenset({play_identity(other_code["content"])})
+    chunk = {
+        "source_table": "game_play_by_play",
+        "source_row_id": "20260816DBKIA0_7",
+        "title": "t",
+        "content": "경기일: 2026-08-16, 경기: DB vs KIA, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃",
+    }
+
+    decision = decide_incremental_candidate(
+        chunk,
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_play_identities=present,
+        ),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "play_present"
+
+
+def test_play_presence_is_off_by_default() -> None:
+    """Without the identity set the decision does not change."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"

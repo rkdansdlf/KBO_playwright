@@ -199,6 +199,7 @@ class IncrementalSelectionOptions:
     include_healthy: bool = False
     vector_key_presence: bool = False
     content_presence: bool = False
+    play_presence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +213,7 @@ class BuildSourceOptions:
     desired_embedding_fingerprint: str | None = None
     vector_key_presence: bool = False
     content_presence: bool = False
+    play_presence: bool = False
     exclude_ids: frozenset[str] = frozenset()
 
 
@@ -1623,6 +1625,20 @@ def _load_index_states(index_session: Session, source_table: str | None) -> dict
     }
 
 
+def _load_vector_play_identities(vector_session: Session, source_table: str) -> frozenset:
+    """Load the play identities of ACTIVE vector rows, whatever key or team code they were stored under."""
+    from src.models.rag_chunk_vector import RagChunkVector
+    from src.services.rag_play_identity import play_identity
+
+    statement = (
+        select(RagChunkVector.content)
+        .where(RagChunkVector.source_table == source_table)
+        .where(RagChunkVector.index_status == "ACTIVE")
+    )
+    identities = (play_identity(text_value or "") for text_value in vector_session.execute(statement).scalars())
+    return frozenset(identity for identity in identities if identity is not None)
+
+
 def _load_vector_content_hashes(vector_session: Session, source_table: str) -> frozenset[str]:
     """Load the content hashes the vector store holds as ACTIVE rows, across every identity key.
 
@@ -1658,6 +1674,11 @@ def _load_vector_states(vector_session: Session, source_table: str | None) -> di
     return {
         state.key: state for state in (_state_from_index_row(row) for row in vector_session.execute(statement).all())
     }
+
+
+def rag_all_source_names() -> tuple[str, ...]:
+    """Return the sources ``--source all`` runs, in the order it runs them."""
+    return tuple(_SOURCE_MAP.keys())
 
 
 def rag_source_choices() -> tuple[str, ...]:
@@ -1731,6 +1752,11 @@ def _skip_existing_index_rows(
         if selection.content_presence
         else None
     )
+    present_play_identities = (
+        _load_vector_play_identities(selection.vector_session, selection.source_table)
+        if selection.play_presence
+        else None
+    )
     version = selection.desired_index_version or current_index_version()
     metadata_gap_count = 0
     blocked_count = 0
@@ -1747,6 +1773,7 @@ def _skip_existing_index_rows(
                 require_primary_embedding=selection.vector_session is None,
                 vector_key_presence=selection.vector_key_presence,
                 present_content_hashes=present_content_hashes,
+                present_play_identities=present_play_identities,
             ),
         )
         if decision.blocked:
@@ -1930,6 +1957,7 @@ def _iter_candidate_chunks(
             include_healthy=not options.skip_existing,
             vector_key_presence=options.vector_key_presence,
             content_presence=options.content_presence,
+            play_presence=options.play_presence,
         ),
     )
     return _drop_excluded(selected, options.exclude_ids)
@@ -1989,6 +2017,20 @@ def _count_candidates(chunk_iter: Iterator[dict[str, Any]], list_path: Path | No
     return count
 
 
+def _add_presence_flags(parser: argparse.ArgumentParser) -> None:
+    """Register the presence filters that skip identities the vector store already holds."""
+    parser.add_argument(
+        "--content-presence",
+        action="store_true",
+        help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
+    )
+    parser.add_argument(
+        "--play-presence",
+        action="store_true",
+        help="벡터에 같은 플레이(날짜·팀쌍·이닝·타자·내용)가 있으면 갭에서 뺀다 (--skip-existing, --source pbp)",
+    )
+
+
 def _prepare_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Apply count-only's dry-run implication and refuse flag combinations that are not meaningful."""
     args.dry_run = args.dry_run or args.count_only
@@ -1999,6 +2041,8 @@ def _prepare_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--list-candidates requires --count-only")
     if args.exclude_file is not None and args.source != "pbp":
         parser.error("--exclude-file is only supported with --source pbp")
+    if args.play_presence and (not args.skip_existing or args.source != "pbp"):
+        parser.error("--play-presence requires --skip-existing and --source pbp")
 
 
 def _completion_suffix(args: argparse.Namespace) -> str:
@@ -2076,11 +2120,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="제외할 source_row_id 목록 파일 (한 줄에 하나, '-'는 표준 입력, --source pbp 전용)",
     )
-    parser.add_argument(
-        "--content-presence",
-        action="store_true",
-        help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
-    )
+    _add_presence_flags(parser)
     args = parser.parse_args(argv)
     _prepare_args(parser, args)
 
@@ -2147,6 +2187,7 @@ def main(argv: list[str] | None = None) -> None:
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
         vector_key_presence=args.vector_presence,
         content_presence=args.content_presence,
+        play_presence=args.play_presence,
         exclude_ids=_read_exclude_ids(args.exclude_file),
     )
     with (

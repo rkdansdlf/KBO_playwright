@@ -9,6 +9,7 @@ from typing import Any, Final
 
 from src.constants import RAG_EMBEDDING_DIMENSION
 from src.services.rag_index_identity import chunk_content_hash
+from src.services.rag_play_identity import play_identity
 
 TERMINAL_INDEX_STATUSES: Final[frozenset[str]] = frozenset({"DELETED", "TOMBSTONED", "PURGED", "DELETE_PENDING"})
 REPAIRABLE_INDEX_STATUSES: Final[frozenset[str]] = frozenset({"PENDING", "STALE", "REINDEX_REQUIRED"})
@@ -48,6 +49,8 @@ class IncrementalDecisionOptions:
     #: ``None`` disables content presence. Matching a canonical miss means the same text
     #: is already embedded under another key, so the chunk is not a new play.
     present_content_hashes: frozenset[str] | None = None
+    #: Play identities the vector store already holds (see ``rag_play_identity``). ``None`` disables it.
+    present_play_identities: frozenset | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +231,10 @@ def _canonical_miss_decision(
         chunk_hash = chunk_content_hash(_optional_text(chunk.get("title")), _text(chunk.get("content")))
         if chunk_hash in options.present_content_hashes:
             return RagCandidateDecision(source_key, should_reembed=False, reason="content_present")
+    if options.present_play_identities is not None:
+        identity = play_identity(_text(chunk.get("content")))
+        if identity is not None and identity in options.present_play_identities:
+            return RagCandidateDecision(source_key, should_reembed=False, reason="play_present")
     if vector is not None and options.vector_key_presence:
         return RagCandidateDecision(source_key, should_reembed=False, reason="vector_key_present")
     return _reembed(source_key, "primary_missing" if vector is not None else "new")
