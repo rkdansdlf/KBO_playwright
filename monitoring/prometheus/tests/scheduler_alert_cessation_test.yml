@@ -1,0 +1,145 @@
+# Rule-level tests for the two scheduler alerts that watch *cessation*:
+# `KBOSchedulerDown` and `KBOSchedulerJobNotRunning`, both in
+# monitoring/prometheus/alert_rules.yml (group kbo_scheduler_alerts).
+#
+#   promtool test rules monitoring/prometheus/tests/scheduler_alert_cessation_test.yml
+#
+# Why this file exists: every other rule in the group is conditioned on activity
+# -- `increase()` over a window, or a counter that has to move. That is exactly
+# what a stopped job stops producing, and the window then ages the last increment
+# out and *resolves* the alert the job had raised. So the failure that actually
+# happened (collection stopped on 2026-10-13 and nothing said so) was the one
+# failure the group could not report.
+#
+# The two cases worth reading carefully:
+#
+#   * `KBOSchedulerJobNotRunning` is thresholded against each job's *own*
+#     cadence, exported from the trigger. The last two tests below hold the age
+#     constant at 40 minutes and change only the schedule -- an every-fifteen-
+#     minute job must fire, a weekly job must not. A single fixed window cannot
+#     satisfy both, and the pair is what a fixed window would fail.
+#   * `for` is proven by a quiet evaluation *after* the condition held, because a
+#     rule with `for` deleted still passes every firing case in the file.
+#
+# promtool pins `time()` to the test's own clock: at eval_time T, `time()` is T
+# seconds (see crawler_alert_dlq_sweep_test.yml, which rests on the same fact).
+
+rule_files:
+  - ../alert_rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  # ── KBOSchedulerDown: the process stopped being scraped ─────────────────
+  # `up` drops at t=5m, so `for: 10m` puts the first possible firing at 15m.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="kbo-scheduler", instance="scheduler:8000"}'
+        values: '1x10 0x60'
+    alert_rule_test:
+      # Still being scraped.
+      - eval_time: 4m30s
+        alertname: KBOSchedulerDown
+        exp_alerts: []
+
+      # Nine and a half minutes of silence: the condition holds, the hold has
+      # not elapsed. Without this case `for` could be deleted and nothing here
+      # would notice.
+      - eval_time: 14m30s
+        alertname: KBOSchedulerDown
+        exp_alerts: []
+
+      - eval_time: 15m30s
+        alertname: KBOSchedulerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: kbo-scheduler
+              instance: scheduler:8000
+            exp_annotations:
+              summary: "KBO 스케줄러 메트릭 수집 중단"
+              description: "Prometheus가 스케줄러(scheduler:8000)를 10분 이상 스크레이프하지 못했습니다. 컨테이너 상태와 PROMETHEUS_PORT(기본 8000) 리스닝을 확인하세요. 이 규칙이 침묵하면 스케줄러·크롤러 알림 대부분이 함께 침묵합니다."
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # The same series staying up is not an outage. Without this the rule could be
+  # rewritten as a bare `up` test and every case above would still pass.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="kbo-scheduler", instance="scheduler:8000"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KBOSchedulerDown
+        exp_alerts: []
+
+  # ── KBOSchedulerJobNotRunning: the job fires, then stops ────────────────
+  # The commoner shape than "never ran": a healthy process that later loses a
+  # job. The gauge tracks the scrape clock until t=600s and then freezes, so the
+  # age is 0 at the freeze and grows from there.
+  #
+  # db_reachability_check runs every 15 minutes -> cadence 900s, window 1350s.
+  # Age crosses the window at t=1950s; `for: 15m` fires it at t>=2880s (48m).
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_last_run_timestamp{job_id="db_reachability_check"}'
+        values: '0+30x20 600x140'
+      - series: 'kbo_scheduler_job_expected_interval_seconds{job_id="db_reachability_check"}'
+        values: '900x160'
+    alert_rule_test:
+      # Age 20m, still inside the 22.5m window: the condition does not hold yet.
+      - eval_time: 30m
+        alertname: KBOSchedulerJobNotRunning
+        exp_alerts: []
+
+      # Age 35m, past the window, but only 12m into the 15m hold.
+      - eval_time: 45m
+        alertname: KBOSchedulerJobNotRunning
+        exp_alerts: []
+
+      - eval_time: 50m
+        alertname: KBOSchedulerJobNotRunning
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job_id: db_reachability_check
+            exp_annotations:
+              summary: "KBO 스케줄러 작업 미발화: db_reachability_check"
+              description: "db_reachability_check 가 자기 주기의 1.5배(40m 0s) 동안 발화하지 않았습니다. 락/DB 게이트로 조용히 스킵되는지, 스케줄러 로그와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── The same age on a weekly job must stay quiet ────────────────────────
+  # Identical `last_run` shape and identical evaluation time as the firing case
+  # above; the only difference is the cadence the job exports. 40 minutes is
+  # nothing to weekly_sla_report (cadence 604800s, window 907200s) and four
+  # missed ticks to db_reachability_check.
+  #
+  # This pair is the whole reason the rule reads a per-job cadence instead of a
+  # constant: a window wide enough to leave this job alone would let a daily job
+  # stay dead for a month, and a window tight enough for the daily job would page
+  # every day about this one.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_last_run_timestamp{job_id="weekly_sla_report"}'
+        values: '0+30x20 600x140'
+      - series: 'kbo_scheduler_job_expected_interval_seconds{job_id="weekly_sla_report"}'
+        values: '604800x160'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: KBOSchedulerJobNotRunning
+        exp_alerts: []
+
+  # ── A job whose cadence was never exported stays quiet ──────────────────
+  # `kbo_scheduler_job_expected_interval_seconds` is absent, so the right side of
+  # the comparison matches nothing and no window exists to exceed. This is the
+  # deliberate failure direction: an unknown cadence must not collapse into the
+  # tightest window, which would turn a job nobody understands into an alert that
+  # fires all day. The cost is that a job with a missing cadence is unmonitored,
+  # which is why the registration path is contract-tested to publish one.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_last_run_timestamp{job_id="crawl_monthly_unified_audit"}'
+        values: '0x160'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: KBOSchedulerJobNotRunning
+        exp_alerts: []

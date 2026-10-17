@@ -26,6 +26,39 @@ KBO_SCHEDULER_JOB_DURATION_SECONDS = Histogram(
     buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1200.0, 3600.0, float("inf")),
 )
 
+#: When each job was last *submitted*, as a unix timestamp.
+#:
+#: `kbo_scheduler_job_total` cannot answer "has this job stopped firing". A
+#: counter that stops moving and a counter that was never created are both
+#: invisible to `increase()`, so every rule built on one is conditioned on the
+#: activity it is meant to watch for the absence of. A timestamp can be read as
+#: an age (`time() - ...`), which stays evaluable while the job is silent.
+#:
+#: Set on submission rather than on completion, so a job skipped by the database
+#: fail-fast gate still records that the scheduler reached it -- that gate
+#: returns quietly, and "skipped every tick" is otherwise indistinguishable from
+#: "never scheduled".
+KBO_SCHEDULER_JOB_LAST_RUN_TIMESTAMP = Gauge(
+    "kbo_scheduler_job_last_run_timestamp",
+    "Unix timestamp of the last submission of each scheduler job",
+    ["job_id"],
+)
+
+#: How long a job is expected to go between submissions, derived from its own
+#: trigger at registration.
+#:
+#: Exported so the staleness rule can be cadence-aware without restating the
+#: schedule in YAML. A single fixed window cannot serve both an every-ten-minute
+#: job and a monthly one: wide enough for the monthly job and a daily one can sit
+#: dead for a month; narrow enough for the daily job and the monthly one alerts
+#: every day until someone adds an exemption list, which is a second copy of the
+#: schedule that goes stale the next time the schedule changes.
+KBO_SCHEDULER_JOB_EXPECTED_INTERVAL_SECONDS = Gauge(
+    "kbo_scheduler_job_expected_interval_seconds",
+    "Expected seconds between submissions of each scheduler job, from its trigger",
+    ["job_id"],
+)
+
 # Lock contention metrics
 KBO_SCHEDULER_LOCK_SKIP_TOTAL = Counter(
     "kbo_scheduler_lock_skip_total",

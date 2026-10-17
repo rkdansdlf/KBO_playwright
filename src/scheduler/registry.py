@@ -7,6 +7,7 @@ import logging
 import os
 import signal
 import sys
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.cli.calc.monthly_unified_audit import crawl_monthly_unified_audit_job
+from src.scheduler.cadence import expected_interval_seconds
 from src.scheduler.config import (
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
@@ -86,7 +88,11 @@ from src.scheduler.locks import (
     lock_skip_monitor_job,
 )
 from src.scheduler.metrics import job_lifecycle_listener
-from src.utils.metrics import start_metrics_server
+from src.utils.metrics import (
+    KBO_SCHEDULER_JOB_EXPECTED_INTERVAL_SECONDS,
+    KBO_SCHEDULER_JOB_LAST_RUN_TIMESTAMP,
+    start_metrics_server,
+)
 from src.utils.sentry import init_sentry
 
 logger = logging.getLogger("src.scheduler.registry")
@@ -318,6 +324,28 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
     ]
 
 
+def _publish_job_cadence_contract(scheduler: object) -> None:
+    """Publish each registered job's last-run time and expected interval.
+
+    The listener only creates the last-run series when a job is first submitted,
+    so without this a job that never runs again after a restart is *absent* from
+    Prometheus rather than *stale* -- and absence is precisely what a staleness
+    rule cannot threshold. Seeding from the scheduler's own job list (rather than
+    a list restated here) means a job added later is covered by the rule the
+    moment it is registered, with no second place to update.
+    """
+    seeded = time.time()
+    get_jobs = getattr(scheduler, "get_jobs", None)
+    for job in get_jobs() if callable(get_jobs) else ():
+        job_id = str(getattr(job, "id", "") or "")
+        if not job_id:
+            continue
+        KBO_SCHEDULER_JOB_LAST_RUN_TIMESTAMP.labels(job_id=job_id).set(seeded)
+        interval = expected_interval_seconds(getattr(job, "trigger", None))
+        if interval > 0:
+            KBO_SCHEDULER_JOB_EXPECTED_INTERVAL_SECONDS.labels(job_id=job_id).set(interval)
+
+
 def _start_scheduler(args: argparse.Namespace) -> None:
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     scheduler_cls = getattr(mod, "BlockingScheduler", BlockingScheduler) if mod else BlockingScheduler
@@ -536,6 +564,8 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
         "=" * 60,
     )
+
+    _publish_job_cadence_contract(scheduler)
 
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)

@@ -671,6 +671,140 @@ python3 -m src.cli.kbo snapshot replay --snapshot-id 123 --persist --strict
 The three jobs are registered in `src/scheduler/registry.py`; confirm registration
 in `logs/scheduler.launchd.err.log` (`Registered job: crawl_dead_letter_retry`).
 
+### 5.1 Scheduler liveness — the two cessation rules
+
+Every other rule in this repository's alert files is conditioned on *activity*:
+a left side such as `increase(...) > 0`, or a counter that has to move. Those
+are exactly the series a stopped scheduler stops producing — the window ages the
+last increment out and *resolves* the alert the job had raised. Collection
+stopped across most crawlers on 2026-10-13 and no rule reported it, which is the
+failure this section exists for.
+
+Two critical rules watch the absence itself. Both live in
+`monitoring/prometheus/alert_rules.yml`, group `kbo_scheduler_alerts`:
+
+| Alert | Condition | `for` | What it means |
+| --- | --- | --- | --- |
+| `KBOSchedulerDown` | `up{job="kbo-scheduler"} == 0` | 10m | Prometheus has not scraped the scheduler for ten minutes. **Check this one first**: the same metric server feeds every other scheduler rule, so their silence during this alert is not health |
+| `KBOSchedulerJobNotRunning` | `time() - kbo_scheduler_job_last_run_timestamp > 1.5 * kbo_scheduler_job_expected_interval_seconds` | 15m | The process is up and answering scrapes, but one job has stopped firing — skipped, wedged, or dropped from the schedule |
+
+#### The two gauges
+
+Both rules read series the scheduler publishes about itself:
+
+- `kbo_scheduler_job_last_run_timestamp{job_id}` — stamped on
+  `EVENT_JOB_SUBMITTED` (`src/scheduler/metrics.py`), which sits *ahead of* the
+  DB and lock gates. The stamp therefore means "the job was handed to the
+  executor", not "the job did work". It is also **seeded at registration** with
+  the process start time, so the gauge exists before a job's first firing:
+  "never ran" shows up as staleness rather than as a missing series (`absent` is
+  the one state the rule cannot see, and the seed removes it).
+- `kbo_scheduler_job_expected_interval_seconds{job_id}` — the cadence the job
+  declares, derived from its APScheduler trigger by `src/scheduler/cadence.py`
+  and published by `_publish_job_cadence_contract()` immediately before
+  `scheduler.start()` (`src/scheduler/registry.py`). The enumeration is
+  `scheduler.get_jobs()`, the only point that sees every registered job,
+  including the ones registered as bare functions.
+
+#### The cadence is the longest gap, not the average
+
+A job that fires every ten seconds between 12:00 and 22:00 has two gaps — the
+ten seconds and the fourteen hours overnight. A rule built on the short one
+would page every night about a job that is behaving exactly as scheduled.
+Counting the quiet stretch is what lets one rule serve a monthly job and an
+every-15-minute job with no fixed window and no exemption list. The derivation
+is deterministic and takes no start time into account:
+
+| Trigger shape | Cadence |
+| --- | --- |
+| `day_of_week` set, not `*` | 604800 (one week) |
+| otherwise `day` set, not `*` | 2678400 (31 days) |
+| otherwise | `quiet_hours * 3600 + max(3600 / (minutes * seconds), 1)`, cron fields counted as written |
+| unreadable trigger | `0` — "no cadence known" |
+
+`0` is the deliberate failure direction: the comparison has no right side and
+the rule stays quiet. Collapsing an unknown cadence into the tightest window
+would turn a job nobody understands into an alert that fires all day. The cost
+is that such a job is unmonitored, which is why the registration path is
+contract-tested to publish a cadence for every job it registers.
+
+Measured for reference: every-15-minute job `900`, business-hours crawlers
+`36900`, daily `86400`, weekly `604800`, monthly `2678400`.
+
+`1.5 *` turns the interval into a window: a daily job must miss a full day (36h)
+before it fires, an every-15-minute job must miss two ticks (22.5m). Loose
+enough that a long maintenance window is not a page, tight enough that a day of
+silence is.
+
+#### When one fires
+
+1. Read `up{job="kbo-scheduler"}`. If it is `0`, the scheduler or its metric
+   server is gone and `KBOSchedulerDown` is the rule doing the talking — go to
+   the host and restart it. The other scheduler rules are unreadable until
+   scrapes resume.
+2. Otherwise the process is alive and one job is not firing. Compare its own two
+   series to see how late it is against its own contract:
+   ```promql
+   kbo_scheduler_job_last_run_timestamp{job_id="<job>"}
+   kbo_scheduler_job_expected_interval_seconds{job_id="<job>"}
+   ```
+3. Ask the scheduler host why it skipped. Both guards log a specific line and
+   then **return normally**, and that normal return is the whole difficulty:
+   ```bash
+   # on the host running the scheduler
+   grep -E "skipped: .*(timed out|database unreachable)" logs/scheduler.launchd.err.log | tail -20
+   python3 scripts/diagnose_scheduler_locks.py        # exit 0 clean, 1 stale lock / duplicate scheduler
+   python3 -m src.cli.kbo incidents list --state active --json
+   ```
+   `Job <name> skipped: <lock> timed out` is lock contention (the same condition
+   `KBOLockSkipSpike` reports at a coarser grain); `Job <name> skipped: database
+   unreachable` is the fail-fast gate, whose gauge is `kbo_db_available`.
+4. If the job never appears in the log's `Registered job:` lines, it is missing
+   from the schedule rather than stuck. Confirm the deployed registry against
+   `src/scheduler/registry.py`. A job that is not registered exports no cadence,
+   so `KBOSchedulerJobNotRunning` stays quiet for it by design;
+   `KBOSchedulerDown` still watches the process.
+
+#### Confirm the alert had somewhere to land
+
+A rule that fires into a dead Alertmanager is indistinguishable from a rule that
+did not fire. Before concluding "nothing happened", check the delivery path:
+the prod compose keeps Prometheus and Alertmanager on the internal network with
+no published ports, so the container state and Prometheus's own view are the
+reachable facts.
+
+```bash
+# on the scheduler host
+docker inspect --format '{{.State.Status}}' kbo_prometheus kbo_alertmanager
+docker exec kbo_prometheus wget -qO- 'localhost:9090/api/v1/alertmanagers'
+```
+
+The second command is the one that catches the quiet failure: it lists the
+Alertmanagers Prometheus actually believes it can reach, not the ones the
+compose file declares. If the image carries no `wget`, the same URL answers
+`curl -s` from inside the container.
+
+Firing behaviour is asserted, not assumed:
+`monitoring/prometheus/tests/scheduler_alert_cessation_test.yml` covers the
+`for` hold, the per-cadence threshold (the same 40-minute age fires for an
+every-15-minute job and stays quiet for a weekly one) and the never-exported
+cadence. Run it with:
+
+```bash
+promtool test rules monitoring/prometheus/tests/scheduler_alert_cessation_test.yml
+```
+
+#### Known gap: a skipped job still counts as a success
+
+Both guards return without raising, so APScheduler records the run as successful
+— "it ran and did nothing" is indistinguishable from a real run in
+`kbo_scheduler_job_total{status="success"}`, and `KBOSchedulerJobNotRunning`
+does not catch it either, because the heartbeat is stamped at submission: a job
+skipped on every tick keeps its heartbeat fresh forever. The compensating
+signals today are `KBODatabaseUnavailable` (all DB-bound jobs skip together) and
+`KBOLockSkipSpike` (one lock contended by several jobs); a per-job skip counter
+is the next step and is not provided by these two rules.
+
 ---
 
 ## 6. Behaviour during a database outage

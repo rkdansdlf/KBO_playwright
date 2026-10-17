@@ -18,6 +18,7 @@ from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.notifications.bridge import apply_incidents
 from src.utils.metrics import (
     KBO_SCHEDULER_JOB_DURATION_SECONDS,
+    KBO_SCHEDULER_JOB_LAST_RUN_TIMESTAMP,
     KBO_SCHEDULER_JOB_TOTAL,
 )
 
@@ -39,6 +40,7 @@ def job_lifecycle_listener(event: object) -> None:
 
     if event_code == EVENT_JOB_SUBMITTED:
         job_start_times[job_id] = time.time()
+        KBO_SCHEDULER_JOB_LAST_RUN_TIMESTAMP.labels(job_id=job_id).set(job_start_times[job_id])
 
     elif event_code == EVENT_JOB_EXECUTED:
         start_time = job_start_times.pop(job_id, None)

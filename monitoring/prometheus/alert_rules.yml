@@ -19,6 +19,42 @@ groups:
           summary: "KBO 스케줄러 작업 실패"
           description: "스케줄러 작업 {{ $labels.job_id }} 이(가) 실패했습니다."
 
+      # Both rules above are conditioned on activity. `increase()` over a window
+      # is exactly what a job stops producing when it stops firing, and the
+      # window then ages the last increment out and *resolves* the alert the job
+      # had raised. So the pipeline going quiet -- the failure that actually
+      # happened -- was the one thing neither rule could report.
+      #
+      # These two watch absence instead. Down is one series (`up`); stale is an
+      # age (`time() - last submission`) measured against the job's own cadence,
+      # which `kbo_scheduler_job_expected_interval_seconds` exports from the
+      # trigger. That is why no window and no exemption list appear here: a fixed
+      # window cannot serve both an every-ten-minute job and a monthly one, and
+      # an exemption list is a second copy of the schedule that goes stale the
+      # next time the schedule changes.
+      #
+      # The cadence is the *longest* gap a trigger leaves, so 1.5 misses one
+      # firing of a daily job (36h) and two of an every-fifteen-minute job (22m).
+      - alert: KBOSchedulerDown
+        expr: up{job="kbo-scheduler"} == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "KBO 스케줄러 메트릭 수집 중단"
+          description: "Prometheus가 스케줄러({{ $labels.instance }})를 10분 이상 스크레이프하지 못했습니다. 컨테이너 상태와 PROMETHEUS_PORT(기본 8000) 리스닝을 확인하세요. 이 규칙이 침묵하면 스케줄러·크롤러 알림 대부분이 함께 침묵합니다."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      - alert: KBOSchedulerJobNotRunning
+        expr: time() - kbo_scheduler_job_last_run_timestamp > 1.5 * kbo_scheduler_job_expected_interval_seconds
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "KBO 스케줄러 작업 미발화: {{ $labels.job_id }}"
+          description: "{{ $labels.job_id }} 가 자기 주기의 1.5배({{ $value | humanizeDuration }}) 동안 발화하지 않았습니다. 락/DB 게이트로 조용히 스킵되는지, 스케줄러 로그와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
   - name: kbo_database_alerts
     rules:
       # DB availability is owned here (infrastructure path), not by the
