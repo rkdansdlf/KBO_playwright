@@ -37,7 +37,7 @@ def _load_processed(output_dir: str) -> set[str]:
     if path.exists():
         try:
             return set(json.loads(path.read_text(encoding="utf-8")).get("processed", []))
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             return set()
     return set()
 

@@ -48,7 +48,7 @@ def _parse_http_date(candidate: str, *, now: datetime | None) -> float | None:
     """Parse the HTTP-date form of `Retry-After` into a relative delay."""
     try:
         target = parsedate_to_datetime(candidate)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if target is None:
         return None

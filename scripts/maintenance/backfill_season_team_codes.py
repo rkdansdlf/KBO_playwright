@@ -174,7 +174,7 @@ def _available_tables(session: Session) -> set[str] | None:
         if not isinstance(bind, (Engine, SAConnection)):
             return None
         return {str(name).lower() for name in sa_inspect(bind).get_table_names()}
-    except (SQLAlchemyError, AttributeError, TypeError):
+    except SQLAlchemyError, AttributeError, TypeError:
         return None
 
 
@@ -316,7 +316,7 @@ def _build_update_query(session: Session, table_name: str) -> str:
     assignments = ["team_code = :code"]
     try:
         columns = {str(column["name"]).lower() for column in sa_inspect(session.get_bind()).get_columns(table_name)}
-    except (SQLAlchemyError, AttributeError, TypeError):
+    except SQLAlchemyError, AttributeError, TypeError:
         columns = set()
     if not columns or "canonical_team_code" in columns:
         assignments.append("canonical_team_code = :code")

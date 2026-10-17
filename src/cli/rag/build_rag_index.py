@@ -380,7 +380,7 @@ def planned_rag_target_urls(*, embedding_mode: str = "oracle") -> frozenset[str]
             embedding_mode=embedding_mode,
             dry_run=True,
         )
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         # A configuration the build will reject anyway. Reporting the
         # operational database keeps the gate honest -- the job still has to
         # read before its own guard rejects the write -- and reporting nothing
@@ -980,7 +980,7 @@ def _clean_aliases(aliases: object) -> list[str] | None:
             import json
 
             parsed = json.loads(aliases)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
     else:
         parsed = aliases
@@ -1754,7 +1754,7 @@ def _oracle_vector_schema_available(index_session: Session) -> bool:
             )
         )
         return int(result.scalar() or 0) == 1
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError:
         return False
 
 

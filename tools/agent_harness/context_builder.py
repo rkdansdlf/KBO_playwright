@@ -41,7 +41,7 @@ class ContextBuilder:
         runner = CommandRunner(permissions=self.permissions, root=root)
         try:
             result = runner.run(["git", "rev-parse", "HEAD"], skill_id="harness", timeout_seconds=10)
-        except (OSError, subprocess.SubprocessError, PermissionDeniedError):
+        except OSError, subprocess.SubprocessError, PermissionDeniedError:
             result = None
         revision = result.stdout.strip() if result is not None and result.exit_code == 0 else ""
         return {

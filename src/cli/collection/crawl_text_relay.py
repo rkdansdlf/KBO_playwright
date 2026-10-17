@@ -115,7 +115,7 @@ async def _fetch_naver_schedule_games(
             return []
         payload = response.json()
         return list((payload.get("result") or {}).get("games") or [])
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+    except httpx.HTTPError, ValueError, TypeError, KeyError:
         logger.exception("[NAVER] Schedule fetch/parse failed for %s", date_str)
         return []
 

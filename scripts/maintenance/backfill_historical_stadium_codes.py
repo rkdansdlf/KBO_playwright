@@ -173,7 +173,7 @@ def backfill_stadiums(
         engine = create_engine(target_url)
         session_factory = sessionmaker(bind=engine)
         session = session_factory()
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
         target_url = "sqlite:///./data/kbo_dev.db"
         engine = create_engine(target_url)
         session_factory = sessionmaker(bind=engine)
@@ -221,7 +221,7 @@ def backfill_stadiums(
             )
 
         return total_processed
-    except (SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, OSError, ValueError, TypeError:
         session.rollback()
         logger.exception("Error during stadium backfill")
         raise

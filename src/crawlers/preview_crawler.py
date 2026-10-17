@@ -169,7 +169,7 @@ class PreviewCrawler(BasePlaywrightCrawler):
         """
         try:
             return bool(int(str(value)))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             if isinstance(value, str):
                 return value.strip() not in ("", "0", "false", "False", "FALSE")
             return bool(value)

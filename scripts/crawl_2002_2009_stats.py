@@ -33,7 +33,7 @@ def safe_parse_number(val_str: str | None, data_type: type) -> Any:
         return None
     try:
         return data_type(val_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 

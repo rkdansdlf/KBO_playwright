@@ -262,7 +262,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner | None = None) -> 
                 runner=runner,
             ),
         )
-    except (FileNotFoundError, ValueError):
+    except FileNotFoundError, ValueError:
         logger.exception("Retry command configuration error")
         return 2
     except subprocess.CalledProcessError as exc:

@@ -69,7 +69,7 @@ def _scheduler_pid_alive(pid: int) -> bool:
         return ctypes.get_last_error() == access_denied
     try:
         os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
+    except OSError, ProcessLookupError:
         return False
     return True
 
@@ -428,7 +428,7 @@ def lock_skip_monitor_job() -> None:
     try:
         try:
             metrics = counter.collect()
-        except (AttributeError, RuntimeError, OSError):
+        except AttributeError, RuntimeError, OSError:
             logger.info("Lock skip metric not registered yet; skipping check")
             return
         if not metrics:

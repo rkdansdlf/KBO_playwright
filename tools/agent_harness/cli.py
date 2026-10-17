@@ -234,7 +234,7 @@ def _verify_run_locked(  # noqa: PLR0911
     try:
         if evidence.needs_current_schema_upgrade():
             evidence.upgrade_current_schema()
-    except (OSError, TypeError, ValueError):
+    except OSError, TypeError, ValueError:
         pass
     artifact_report = validate_artifact_bundle(evidence.root)
     if not artifact_report.valid:

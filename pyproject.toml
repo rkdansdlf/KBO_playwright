@@ -7,14 +7,14 @@ name = "kbo-playwright"
 version = "1.0.0"
 description = "Korean Baseball Organization (KBO) data collection system using Playwright"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = {text = "MIT"}
 authors = [
     {name = "anomalyco"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Database",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
@@ -89,7 +89,7 @@ include = ["src*", "scripts*"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py314"
 exclude = ["scripts/investigations/"]
 
 [tool.ruff.lint]
@@ -651,7 +651,7 @@ exclude_also = [
 # on the command line (`-n 2`); `-n auto` over-subscribes and can hang the suite.
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 warn_unused_ignores = true
 ignore_missing_imports = true

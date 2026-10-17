@@ -199,7 +199,7 @@ def source_host_of(path: Path) -> str | None:
     """
     try:
         header = path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-    except (OSError, IndexError):
+    except OSError, IndexError:
         return None
     if not header.startswith("# Source:"):
         return None
@@ -346,7 +346,7 @@ def _fetched_at(snapshot: Path) -> str | None:
     """Return the timestamp a snapshot recorded, when it recorded one."""
     try:
         header = snapshot.read_text(encoding="utf-8", errors="replace").splitlines()[1]
-    except (OSError, IndexError):
+    except OSError, IndexError:
         return None
     return header.removeprefix("# Fetched at:").strip() or None
 
@@ -403,7 +403,7 @@ async def record_host(
     url = f"https://{host}{ROBOTS_PATH}"
     try:
         response = await active.get(url)  # type: ignore[attr-defined]
-    except (httpx.HTTPError, OSError):
+    except httpx.HTTPError, OSError:
         logger.warning("[HOST_POLICY] %s could not be reached; nothing recorded", host)
         return HostPolicy(host, HostVerdict.UNREACHABLE)
     finally:

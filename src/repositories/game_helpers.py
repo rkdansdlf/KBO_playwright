@@ -187,7 +187,7 @@ def _coerce_int(value: object) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -541,7 +541,7 @@ def _values_equal(left: object, right: object) -> bool:
     if isinstance(left, Decimal) or isinstance(right, Decimal):
         try:
             return Decimal(str(left)) == Decimal(str(right))
-        except (TypeError, ValueError, InvalidOperation):
+        except TypeError, ValueError, InvalidOperation:
             logger.info("Decimal comparison fallback to equality")
             return left == right
     return left == right
@@ -1191,7 +1191,7 @@ def _stat_int(stats: dict[str, Any], key: str) -> int:
         return 0
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
 
 
@@ -1201,7 +1201,7 @@ def _stat_float(stats: dict[str, Any], key: str) -> float | None:
         return None
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1210,7 +1210,7 @@ def _normalize_player_id(value: object) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1220,7 +1220,7 @@ def _outs_to_decimal(outs: object) -> Decimal | None:
     try:
         whole, remainder = divmod(int(outs), 3)
         return Decimal(whole) + (Decimal(remainder) / Decimal(3))
-    except (TypeError, ValueError, ZeroDivisionError):
+    except TypeError, ValueError, ZeroDivisionError:
         return None
 
 

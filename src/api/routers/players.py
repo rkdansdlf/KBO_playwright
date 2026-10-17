@@ -315,7 +315,7 @@ def _calc_player_sabermetrics(
             metrics["wrc_plus"] = bat_metrics.get("wrc_plus")
             metrics["ops_plus"] = bat_metrics.get("ops_plus")
             metrics["batting_war"] = bat_metrics.get("war")
-        except (ValueError, ZeroDivisionError, TypeError):
+        except ValueError, ZeroDivisionError, TypeError:
             logger.warning("Could not calculate full league sabermetrics; using row defaults", exc_info=True)
 
         metrics["babip"] = bat_stat.babip
@@ -327,7 +327,7 @@ def _calc_player_sabermetrics(
             metrics["fip"] = pitch_metrics.get("fip_adj")
             metrics["lob_pct"] = pitch_metrics.get("lob_pct")
             metrics["pitching_war"] = pitch_metrics.get("war")
-        except (ValueError, ZeroDivisionError, TypeError):
+        except ValueError, ZeroDivisionError, TypeError:
             logger.warning("Could not calculate pitching sabermetrics", exc_info=True)
 
     component_wars = [metrics["batting_war"], metrics["pitching_war"]]

@@ -90,7 +90,7 @@ def is_oracle_vector_backend() -> bool:
         from src.db.engine import Engine
 
         return getattr(getattr(Engine, "dialect", None), "name", None) == "oracle"
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         return False
 
 

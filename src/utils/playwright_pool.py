@@ -104,7 +104,7 @@ class AsyncPlaywrightPool:
                 await install_async_resource_blocking(self._context)
             await self._create_pages()
             self._started = True
-        except (PlaywrightError, RuntimeError, OSError):
+        except PlaywrightError, RuntimeError, OSError:
             await self.close()
             raise
 

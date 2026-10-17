@@ -374,7 +374,7 @@ def to_date_or_none(value: str, fmt: str = "%Y-%m-%d") -> date | None:
         return None
     try:
         return datetime.strptime(value, fmt).date()
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -619,7 +619,7 @@ if __name__ == "__main__":
         # Also drop batting raw table if it exists
         drop_raw_table(Engine, "kbo_season_batting_raw")
 
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, OSError:
         logger.exception("\n❌ An error occurred during seeding")
         db_session.rollback()
         raise

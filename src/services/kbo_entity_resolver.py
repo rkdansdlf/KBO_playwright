@@ -67,7 +67,7 @@ def resolve_kbo_entities(
 
     try:
         players = list(session.execute(stmt).scalars().all())
-    except (SQLAlchemyError, RuntimeError, TypeError, AttributeError):
+    except SQLAlchemyError, RuntimeError, TypeError, AttributeError:
         session.rollback()
         return ResolvedKboEntities(extracted)
 
@@ -83,7 +83,7 @@ def resolve_kbo_entities(
                 )
                 seasonal_ids.update(row[0] for row in session.execute(seasonal_stmt).all())
             players = [player for player in players if player.player_id in seasonal_ids]
-        except (SQLAlchemyError, RuntimeError, TypeError, AttributeError):
+        except SQLAlchemyError, RuntimeError, TypeError, AttributeError:
             session.rollback()
             return ResolvedKboEntities(extracted)
 

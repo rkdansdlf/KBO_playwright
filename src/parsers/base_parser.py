@@ -187,7 +187,7 @@ class BaseJsonParser(BaseParser[T]):
         if isinstance(raw_json, str):
             try:
                 self.payload: dict[str, Any] | list[Any] = json.loads(raw_json)
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 self.payload = {}
         elif isinstance(raw_json, (dict, list)):
             self.payload = raw_json

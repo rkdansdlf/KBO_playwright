@@ -89,7 +89,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             with_boxscores=args.with_boxscores,
             dry_run=args.dry_run,
         )
-    except (ValueError, RuntimeError):
+    except ValueError, RuntimeError:
         logger.exception("[Historical Ingestor] Error during historical season ingestion")
         return 1
     else:

@@ -78,7 +78,7 @@ def retry_due_dead_letters(
     for dlq_id, crawler in candidates:
         try:
             result = retry_dead_letter(dlq_id, active_dispatcher, session_factory=factory)
-        except (InvalidDlqTransitionError, DlqNotFoundError):
+        except InvalidDlqTransitionError, DlqNotFoundError:
             # Another actor (operator CLI, prior worker pass) already claimed the letter.
             conflicted += 1
             record_dlq_retry_outcome(crawler, "conflict")

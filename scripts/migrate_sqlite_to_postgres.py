@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
             apply=args.apply,
             batch_size=args.batch_size,
         )
-    except (SQLAlchemyError, RuntimeError, ValueError, OSError):
+    except SQLAlchemyError, RuntimeError, ValueError, OSError:
         logger.exception("SQLite to PostgreSQL migration failed")
         return 1
     payload = {"apply": args.apply, "tables": [asdict(report) for report in reports]}

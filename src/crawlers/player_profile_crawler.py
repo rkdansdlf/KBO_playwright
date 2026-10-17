@@ -409,7 +409,7 @@ class PlayerProfileCrawler(BasePlaywrightCrawler):
                 }""",
                 timeout=2000,
             )
-        except (PlaywrightError, TimeoutError):
+        except PlaywrightError, TimeoutError:
             logger.info("No real image found for player (expected for some players)")
 
         return await page.evaluate(_EXTRACT_JS)

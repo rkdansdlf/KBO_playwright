@@ -147,7 +147,7 @@ class ValidationRule:
         try:
             fn = self.rule_fn or self.validator_fn
             return fn(val, inputs) if fn else True
-        except (ValueError, TypeError, KeyError, AttributeError, ZeroDivisionError, ArithmeticError):
+        except ValueError, TypeError, KeyError, AttributeError, ZeroDivisionError, ArithmeticError:
             return False
 
 
@@ -313,7 +313,7 @@ class MetricDefinition:
             dec_raw = Decimal(str(val_float))
             format_str = f"0.{'0' * self.precision}" if self.precision > 0 else "0"
             dec_rounded = dec_raw.quantize(Decimal(format_str))
-        except (ValueError, TypeError, KeyError, AttributeError, ZeroDivisionError, ArithmeticError):
+        except ValueError, TypeError, KeyError, AttributeError, ZeroDivisionError, ArithmeticError:
             return FormulaEvaluation(
                 status=EvaluationStatus.INVALID_SOURCE_INPUT,
                 raw_value=None,

@@ -22,7 +22,7 @@ from src.models.player import PlayerBasic
 
 # Setup module-scoped test database factory
 @pytest.fixture(name="db_session_factory", scope="module")
-def _db_session_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any, None, None]:
+def _db_session_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any]:
     """Provide a file-based temporary SQLite database for sharing connections."""
     db_dir = tmp_path_factory.mktemp("api_test_db")
     db_file = db_dir / "test.db"
@@ -32,7 +32,7 @@ def _db_session_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[A
     SessionFactory = sessionmaker(bind=test_engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
     @contextmanager
-    def mock_get_db_session() -> Generator[Session, None, None]:
+    def mock_get_db_session() -> Generator[Session]:
         session = SessionFactory()
         try:
             yield session
@@ -47,7 +47,7 @@ def _db_session_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[A
 
 
 @pytest.fixture(autouse=True)
-def _setup_mock_db(db_session_factory: Any) -> Generator[None, None, None]:
+def _setup_mock_db(db_session_factory: Any) -> Generator[None]:
     """Globally patch get_db_session for all tests in this file."""
     with (
         patch("src.api.routers.games.get_db_session", db_session_factory),
@@ -57,7 +57,7 @@ def _setup_mock_db(db_session_factory: Any) -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def _clean_tables(db_session_factory: Any) -> Generator[None, None, None]:
+def _clean_tables(db_session_factory: Any) -> Generator[None]:
     """Clean all tables in the test database before each test run."""
     with db_session_factory() as session:
         session.query(GamePlayByPlay).delete()

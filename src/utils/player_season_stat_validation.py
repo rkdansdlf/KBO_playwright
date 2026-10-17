@@ -1,11 +1,13 @@
 """Validation helpers for player season stat payloads."""
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.constants import KBO_FOUNDING_YEAR
 from src.utils.player_validation import normalize_player_id, normalize_player_name, validate_player_payload
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 BATTING_CORE_STATS = ("games", "plate_appearances", "at_bats", "hits")
 PITCHING_CORE_STATS = ("games", "innings_pitched", "innings_outs")
@@ -205,7 +207,7 @@ def _validate_season_key(payload: Mapping[str, Any], stat_type: str) -> tuple[bo
     try:
         season_key = "year" if stat_type == "fielding" else "season"
         season = int(str(payload.get(season_key)).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False, "missing_year" if stat_type == "fielding" else "missing_season"
     if season < KBO_FOUNDING_YEAR:
         return False, "missing_year" if stat_type == "fielding" else "missing_season"

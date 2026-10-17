@@ -521,7 +521,7 @@ def _save_fielding_stats_oracle(year: int) -> None:
                 )
                 saved_count += 1
             session.commit()
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError:
             session.rollback()
             logger.exception("⚠️ Oracle 수비 기록 저장 실패")
             return

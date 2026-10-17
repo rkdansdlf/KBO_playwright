@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(name="cert_db_factory", scope="module")
-def _cert_db_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any, None, None]:
+def _cert_db_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any]:
     """Provide a dedicated test SQLite database with all tables created."""
     db_dir = tmp_path_factory.mktemp("cert_engine_test_db")
     db_file = db_dir / "cert_engine_test.db"
@@ -38,7 +38,7 @@ def _cert_db_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any,
     session_factory = sessionmaker(bind=test_engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
     @contextmanager
-    def mock_get_db_session() -> Generator[Session, None, None]:
+    def mock_get_db_session() -> Generator[Session]:
         session = session_factory()
         try:
             yield session
@@ -53,7 +53,7 @@ def _cert_db_factory(tmp_path_factory: pytest.TempPathFactory) -> Generator[Any,
 
 
 @pytest.fixture(autouse=True)
-def _setup_mock_db(cert_db_factory: tuple[Any, Any]) -> Generator[None, None, None]:
+def _setup_mock_db(cert_db_factory: tuple[Any, Any]) -> Generator[None]:
     """Patch get_db_session and Engine to use isolated test DB."""
     mock_session_fn, test_engine = cert_db_factory
     with (

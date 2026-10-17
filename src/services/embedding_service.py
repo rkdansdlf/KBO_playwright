@@ -271,7 +271,7 @@ class EmbeddingService:
                 for attempt in range(OPENROUTER_RATE_LIMIT_RETRIES + 1):
                     try:
                         response = client.post(url, json=payload)
-                    except (httpx.TransportError, OSError):
+                    except httpx.TransportError, OSError:
                         if transport_attempts >= OPENROUTER_TRANSPORT_RETRIES:
                             logger.exception("OpenRouter transport retries exhausted")
                             return None
@@ -313,7 +313,7 @@ def _rate_limit_delay(response: httpx.Response, attempt: int) -> float:
     try:
         if retry_after:
             return min(float(retry_after), OPENROUTER_RATE_LIMIT_MAX_DELAY_SECONDS)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pass
     return min(
         OPENROUTER_RATE_LIMIT_BASE_DELAY_SECONDS * (2**attempt),

@@ -107,7 +107,7 @@ def _defect_years(report: dict[str, Any] | None) -> set[int]:
     for finding in report.get("defects", []):
         try:
             years.add(int(finding["year"]))
-        except (KeyError, TypeError, ValueError):
+        except KeyError, TypeError, ValueError:
             continue
     return years
 
@@ -121,7 +121,7 @@ def _schedule_defect_years(report: dict[str, Any] | None) -> set[int]:
         if finding.get("dimension") == "missing_parent_games":
             try:
                 years.add(int(finding["year"]))
-            except (KeyError, TypeError, ValueError):
+            except KeyError, TypeError, ValueError:
                 continue
     return years
 

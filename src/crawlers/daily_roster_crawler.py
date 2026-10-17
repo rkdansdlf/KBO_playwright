@@ -129,7 +129,7 @@ class DailyRosterCrawler(BasePlaywrightCrawler):
         try:
             async with page.expect_response(lambda response: "Register.aspx" in response.url, timeout=SHORT_TIMEOUT):
                 await page.evaluate(f"__doPostBack('{triggers[0]}', '')")
-        except (TimeoutError, PlaywrightTimeoutError):
+        except TimeoutError, PlaywrightTimeoutError:
             logger.debug("__doPostBack timed out (expected for fast/no-op)")
         await page.wait_for_timeout(2000)  # Wait for UI update
 

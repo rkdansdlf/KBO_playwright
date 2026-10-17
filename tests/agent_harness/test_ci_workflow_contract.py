@@ -31,7 +31,7 @@ def test_agent_harness_workflow_is_a_separate_fast_gate() -> None:
     workflow = _workflow()
 
     assert "name: Agent Harness" in workflow
-    assert 'python-version: "3.12"' in workflow
+    assert 'python-version: "3.14"' in workflow
     assert "init-db: 'false'" in workflow
     assert "permissions:\n  contents: read" in workflow
     assert "timeout-minutes: 5" in workflow

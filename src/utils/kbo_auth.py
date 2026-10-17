@@ -121,7 +121,7 @@ class KboAuthenticator:
                     Path(self.AUTH_STATE_PATH).parent.mkdir(parents=True, exist_ok=True)
                     await context.storage_state(path=self.AUTH_STATE_PATH)
                     return True
-            except (PlaywrightError, TimeoutError, OSError):
+            except PlaywrightError, TimeoutError, OSError:
                 logger.exception("[AUTH] Exception during login")
                 return False
             else:
@@ -156,7 +156,7 @@ class KboAuthenticator:
             return False
         try:
             body = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return False
         if not isinstance(body, dict):
             return False

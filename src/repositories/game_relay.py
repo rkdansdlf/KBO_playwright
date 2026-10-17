@@ -68,7 +68,7 @@ def _coerce_player_id(value: object) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -802,7 +802,7 @@ def _relay_resolution_context(session: Session, game_id: str) -> _RelayResolutio
         home_team_code = (
             team_code_from_game_id_segment(game_id[10:12], season_year) if len(game_id) >= GAME_ID_FULL_LEN else None
         )
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         logger.debug("Failed to parse team codes from game_id: %s", game_id)
 
     game_row = session.query(Game).filter(Game.game_id == game_id).one_or_none()
@@ -814,7 +814,7 @@ def _relay_resolution_context(session: Session, game_id: str) -> _RelayResolutio
         from src.services.player_id_resolver import PlayerIdResolver
 
         resolver = PlayerIdResolver(session, allow_unknown_registration=False)
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError:
         logger.warning("Failed to initialize PlayerIdResolver — player_id resolution will be skipped")
         resolver = None
     return _RelayResolutionContext(resolver, season_year, away_team_code, home_team_code)
@@ -1217,7 +1217,7 @@ def save_relay_data(  # noqa: PLR0913 - keyword-only options are the public cont
         session.flush()
         _log_relay_save_result(game_id, events, valid_event_rows, len(event_rows), len(pbp_rows))
         return len(event_rows) if event_rows else len(pbp_rows)
-    except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError:
         if raise_on_error:
             # The caller asked to classify this itself, and it can only do that
             # with the exception in hand. Swallowing it here would hand back a 0

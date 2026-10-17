@@ -82,7 +82,7 @@ def normalize_player_id(player_id: object) -> int | None:
         return None
     try:
         normalized = int(str(player_id).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return normalized if normalized > 0 else None
 

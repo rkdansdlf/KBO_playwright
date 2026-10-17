@@ -40,7 +40,7 @@ def _get_git_sha() -> str:
         )
         if res.returncode == 0:
             return res.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         pass
     return "unknown_sha"
 
@@ -62,7 +62,7 @@ class LineageEngine:
                 bind = session.get_bind()
                 if bind is not None:
                     return bind  # type: ignore[return-value]
-        except (SQLAlchemyError, OSError, RuntimeError, ValueError):
+        except SQLAlchemyError, OSError, RuntimeError, ValueError:
             return create_engine("sqlite:///./data/kbo_dev.db")
         return Engine
 

@@ -62,7 +62,7 @@ def get_cached_aliases() -> dict[str, str]:
                 new = row.get("new_name", "").strip()
                 if old and new and old != new:
                     aliases[old] = new
-    except (csv.Error, OSError, TypeError, ValueError):
+    except csv.Error, OSError, TypeError, ValueError:
         logger.exception("Failed to load aliases from CSV")
     return aliases
 
@@ -170,7 +170,7 @@ class PlayerIdResolver:
                     new = row.get("new_name", "").strip()
                     if old and new and old != new:
                         aliases[old] = new
-        except (csv.Error, OSError, TypeError, ValueError):
+        except csv.Error, OSError, TypeError, ValueError:
             logger.exception("Failed to load aliases from CSV")
         return aliases
 
@@ -208,7 +208,7 @@ class PlayerIdResolver:
             try:
                 kbo_pid = int(kbo_id)
                 surrogates[pid] = kbo_pid
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.debug("Invalid KBO ID for player %s: %s", pid, kbo_id)
 
         if not surrogates:
@@ -970,7 +970,7 @@ class PlayerIdResolver:
             )
             self.session.add(new_player)
             self.session.commit()
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError:
             self.session.rollback()
             logger.exception("   ❌ Error auto-registering player")
             return None

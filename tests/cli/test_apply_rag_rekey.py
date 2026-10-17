@@ -155,7 +155,7 @@ def _make_manifest(entries: list[dict]) -> dict:
             text=True,
             check=True,
         ).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except subprocess.CalledProcessError, FileNotFoundError, OSError:
         current_git_sha = "unknown"
 
     disposition_counts = Counter(e.get("disposition") for e in entries)

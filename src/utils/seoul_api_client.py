@@ -101,7 +101,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
         if ppltn_max and ppltn_min:
             try:
                 people_count = (int(ppltn_max) + int(ppltn_min)) // 2
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.debug("Invalid people count values: max=%s min=%s", ppltn_max, ppltn_min)
 
         # Congestion index: map levels to 0~100
@@ -119,7 +119,7 @@ async def get_area_congestion(area_name: str) -> CongestionSnapshot | None:
 
     except httpx.HTTPError as e:
         logger.warning("[SeoulAPI] HTTP error for area=%s: %s", area_name, e)
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         logger.exception("[SeoulAPI] Unexpected error for area=%s", area_name)
 
     return None

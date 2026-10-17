@@ -79,7 +79,7 @@ async def run_fetcher(argv: Sequence[str] | None = None) -> int:
             ),
             log=logger.info,
         )
-    except (FileNotFoundError, ValueError):
+    except FileNotFoundError, ValueError:
         logger.exception("[ERROR] Failed to fetch KBO PBP")
         return 1
 

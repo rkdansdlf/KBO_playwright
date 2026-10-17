@@ -534,7 +534,7 @@ def _resolve_missing_player_id(
             )
             if resolved:
                 return resolved
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError, KeyError:
             pass
 
     return _sql_fallback_player_id(db_session, player_name, team_code)

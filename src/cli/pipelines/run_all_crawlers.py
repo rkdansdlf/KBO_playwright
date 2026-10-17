@@ -318,7 +318,7 @@ def start_scheduler() -> None:
 
     try:
         scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         logger.exception("⏰ Scheduler stopped.")
 
 

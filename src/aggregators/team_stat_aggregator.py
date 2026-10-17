@@ -281,7 +281,7 @@ class TeamStatAggregator:
                     str(column["name"]).lower()
                     for column in sa_inspect(bind).get_columns(model.__tablename__)  # type: ignore[attr-defined]
                 }
-            except (SQLAlchemyError, AttributeError, TypeError):
+            except SQLAlchemyError, AttributeError, TypeError:
                 columns = set()
             if "canonical_team_code" not in columns and columns:
                 return model.team_code  # type: ignore[attr-defined]
@@ -295,7 +295,7 @@ class TeamStatAggregator:
         """Return team-code placeholders without Oracle's empty-string NULL value."""
         try:
             is_oracle = self.session is not None and self.session.get_bind().dialect.name == "oracle"
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             is_oracle = False
         if is_oracle:
             return ("합계", "TOTAL", "ALL", "-")

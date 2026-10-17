@@ -166,7 +166,7 @@ def _parse_fetched_at(metadata: dict[str, Any] | None) -> datetime:
         return datetime.now(KST)
     try:
         fetched_at = datetime.fromisoformat(fetched_at_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         logger.debug("Invalid fetched_at string: %s", fetched_at_str)
         return datetime.now(KST)
     if fetched_at.tzinfo is None:
@@ -291,7 +291,7 @@ def _parse_json_team_events(
 ) -> list[dict[str, Any]]:
     try:
         payload = json.loads(html)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return []
 
     team_code = TEAM_CODE_FROM_SOURCE_KEY.get(source_key)

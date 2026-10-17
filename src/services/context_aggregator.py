@@ -63,7 +63,7 @@ class ContextAggregator:
             return None
         try:
             value = float(cast("float", innings_pitched))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
         whole = int(value)
@@ -197,7 +197,7 @@ class ContextAggregator:
             else:
                 try:
                     season_year = int(str(game_id)[:4])
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     season_year = None
 
         rows = (
@@ -386,7 +386,7 @@ class ContextAggregator:
             return None
         try:
             payload = json.loads(cast("str", summary.detail_text))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {}
         return payload if isinstance(payload, dict) else None
 

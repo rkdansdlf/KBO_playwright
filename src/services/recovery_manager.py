@@ -214,7 +214,7 @@ class RecoveryManager:
             try:
                 with self.path.open(encoding="utf-8") as f:
                     self.state.update(json.load(f))
-            except (OSError, json.JSONDecodeError):
+            except OSError, json.JSONDecodeError:
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:

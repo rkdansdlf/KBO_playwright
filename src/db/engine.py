@@ -67,7 +67,7 @@ def normalize_oracle_url(url: str) -> str:
 
         netloc = f"{user}:{''.join(res)}@{host}"
         return parts._replace(netloc=netloc).geturl()
-    except (ValueError, IndexError, TypeError):
+    except ValueError, IndexError, TypeError:
         return url
 
 
@@ -233,7 +233,7 @@ def _parse_oracle_connection(
             if password:
                 connect_args["password"] = password
             connect_args["dsn"] = host_part
-    except (ValueError, IndexError, AttributeError):
+    except ValueError, IndexError, AttributeError:
         pass
 
     return target_url, connect_args

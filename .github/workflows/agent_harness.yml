@@ -37,7 +37,7 @@ jobs:
 
       - uses: ./.github/actions/kbo-job-setup
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           init-db: 'false'
 
       - name: Install harness lint dependencies
@@ -83,7 +83,7 @@ jobs:
 
       - uses: ./.github/actions/kbo-job-setup
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           init-db: 'false'
 
       - name: Prepare test data directory

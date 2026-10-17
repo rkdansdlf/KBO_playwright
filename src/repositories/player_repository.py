@@ -80,7 +80,7 @@ class PlayerRepository:
     def _sync_to_player_basic(self, session: Session, kbo_player_id: str, profile: PlayerProfileParsed) -> None:
         try:
             pid = int(str(kbo_player_id).strip())
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return
 
         basic = session.query(PlayerBasic).filter_by(player_id=pid).first()
@@ -153,7 +153,7 @@ class PlayerRepository:
     def _canonical_player_basic_id(self, session: Session, kbo_player_id: str) -> int | None:
         try:
             candidate_id = int(str(kbo_player_id).strip())
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         exists = session.execute(
             select(PlayerBasic.player_id).where(PlayerBasic.player_id == candidate_id),

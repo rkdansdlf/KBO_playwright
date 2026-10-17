@@ -70,7 +70,7 @@ def _value(row: object, field: str) -> object:
 def _as_number(value: object) -> float:
     try:
         return float(value or 0)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 

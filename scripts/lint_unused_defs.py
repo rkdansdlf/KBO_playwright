@@ -56,7 +56,7 @@ def _reference_files() -> list[Path]:
             capture_output=True,
             text=True,
         )
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return [path for root in REFERENCE_ROOTS for path in Path(root).rglob("*") if path.is_file()]
     return [
         Path(line) for line in result.stdout.splitlines() if line.endswith(REFERENCE_SUFFIXES) and Path(line).is_file()
@@ -75,7 +75,7 @@ def _reference_counts() -> dict[str, int]:
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except (SyntaxError, UnicodeDecodeError):
+        except SyntaxError, UnicodeDecodeError:
             continue
         for node in ast.walk(tree):
             name: str | None = None
@@ -113,7 +113,7 @@ def _definitions(tree: ast.Module) -> list[tuple[str, int]]:
 def _declared_names(path: Path) -> list[tuple[str, int]]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (SyntaxError, UnicodeDecodeError):
+    except SyntaxError, UnicodeDecodeError:
         return []
     return [
         (name, line)

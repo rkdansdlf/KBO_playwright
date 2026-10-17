@@ -1037,7 +1037,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 try:
                     rows_text = await page.evaluate(debug_script)
                     logger.info("Table rows sample: %s", rows_text)
-                except (PlaywrightError, TimeoutError):
+                except PlaywrightError, TimeoutError:
                     logger.info("Debug evaluate failed")
 
         return games
@@ -1054,7 +1054,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         try:
             if "gameId=" in href:
                 return href.split("gameId=")[1].split("&", maxsplit=1)[0]
-        except (IndexError, ValueError):
+        except IndexError, ValueError:
             logger.warning("Failed to parse game_id from href")
         return ""
 

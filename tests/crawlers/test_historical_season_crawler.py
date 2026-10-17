@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def session() -> Generator[Session, None, None]:
+def session() -> Generator[Session]:
     """Provide isolated in-memory test database session."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

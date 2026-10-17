@@ -172,7 +172,7 @@ class PlayerSearchCrawler(BasePlaywrightCrawler):
 
         try:
             await self.policy.run_with_retry_async(_navigate)
-        except (PlaywrightError, TimeoutError):
+        except PlaywrightError, TimeoutError:
             reason = "selector_timeout" if required_selector else "navigation_failed"
             logger.warning("Player search page navigation failed: %s", reason)
             self._record_failure(reason)
@@ -459,7 +459,7 @@ class PlayerSearchCrawler(BasePlaywrightCrawler):
         # the ASP.NET postback mechanism.
         try:
             href = await anchor.get_attribute("href", timeout=SHORT_TIMEOUT)
-        except (PlaywrightError, TimeoutError, AssertionError):
+        except PlaywrightError, TimeoutError, AssertionError:
             logger.warning("Timeout getting href from anchor", exc_info=True)
             href = None
 

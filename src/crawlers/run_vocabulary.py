@@ -100,7 +100,7 @@ def parse_checkpoint(value: object) -> dict[str, object]:
     if isinstance(value, str) and value.strip():
         try:
             parsed = json.loads(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {}
         return dict(parsed) if isinstance(parsed, dict) else {}
     return {}

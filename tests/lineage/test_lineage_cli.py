@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(name="lineage_test_engine", scope="module")
-def _lineage_test_engine(tmp_path_factory: pytest.TempPathFactory) -> Generator[create_engine, None, None]:
+def _lineage_test_engine(tmp_path_factory: pytest.TempPathFactory) -> Generator[create_engine]:
     """Create test SQLite database with seeded records for CLI verification."""
     db_file = tmp_path_factory.mktemp("lineage_cli_db") / "test.db"
     test_engine = create_engine(f"sqlite:///{db_file}")
@@ -62,7 +62,7 @@ def _lineage_test_engine(tmp_path_factory: pytest.TempPathFactory) -> Generator[
 
 
 @pytest.fixture(autouse=True)
-def _patch_lineage_engine(lineage_test_engine: create_engine) -> Generator[None, None, None]:
+def _patch_lineage_engine(lineage_test_engine: create_engine) -> Generator[None]:
     """Patch LineageEngine engine resolution to use the seeded test DB."""
     with patch("src.lineage.engine.LineageEngine._resolve_engine", return_value=lineage_test_engine):
         yield

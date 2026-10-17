@@ -28,7 +28,7 @@ def _safe_float(val: object) -> float:
         return 0.0
     try:
         return float(val)  # type: ignore[arg-type]
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0.0
 
 
@@ -252,7 +252,7 @@ def _parse_ip_to_outs(ip_val: object) -> float:
         if frac in (0.2, 0.67):
             return float(whole * 3 + 2)
         return round(f * 3.0, 1)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0.0
 
 

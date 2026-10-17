@@ -38,7 +38,7 @@ def _git_tracked_robots_dir() -> str:
             text=True,
             check=True,
         ).stdout
-    except (OSError, subprocess.CalledProcessError):  # pragma: no cover - no git/no repo
+    except OSError, subprocess.CalledProcessError:  # pragma: no cover - no git/no repo
         pytest.skip("git is unavailable")
 
     for entry in out.split("\0"):

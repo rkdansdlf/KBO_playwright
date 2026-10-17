@@ -27,7 +27,7 @@ def _load_report(path: Path) -> dict[str, Any] | None:
     try:
         with path.open(encoding="utf-8") as f:
             payload = json.load(f)
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         logger.warning("Skipping unreadable quality report: %s", path)
         return None
     if not isinstance(payload, dict):

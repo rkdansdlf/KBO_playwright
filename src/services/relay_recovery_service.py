@@ -945,7 +945,7 @@ def _should_mark_source_unavailable(
         return False
     try:
         year = int(bucket_id.split("_", 1)[0])
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         year = 0
     if year >= PUBLIC_RELAY_LEGACY_CUTOFF_YEAR:
         return False
@@ -980,7 +980,7 @@ def _coerce_int(value: object) -> int | None:
         return None
     try:
         return int(str(value))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

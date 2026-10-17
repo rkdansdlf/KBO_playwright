@@ -220,7 +220,7 @@ def read_manifest_meta(manifest_path: Path) -> ManifestMeta | None:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     if not isinstance(raw, dict):
         return None

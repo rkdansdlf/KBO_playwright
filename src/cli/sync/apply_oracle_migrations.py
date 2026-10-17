@@ -63,7 +63,7 @@ def _is_already_exists_error(exc: SQLAlchemyError) -> bool:
         return False
     try:
         return int(code) == ORACLE_OBJECT_ALREADY_EXISTS
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -228,7 +228,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             check=args.check,
             include_safety_gated=args.include_safety_gated,
         )
-    except (SQLAlchemyError, RuntimeError, OSError):
+    except SQLAlchemyError, RuntimeError, OSError:
         logger.exception("Oracle migration failed")
         return 1
     finally:

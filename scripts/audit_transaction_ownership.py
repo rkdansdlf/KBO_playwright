@@ -113,7 +113,7 @@ def scan_file(path: Path) -> FileReport:
     """Scan one Python file and collect transaction markers per function."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
+    except OSError, SyntaxError:
         return FileReport(path=path, functions=[], classification="PARSE_ERROR")
 
     by_function: dict[str, list[str]] = {}

@@ -35,7 +35,7 @@ class SyncConsistencyVerifier:
             cursor = self.sqlite_conn.execute(f"SELECT COUNT(1) FROM {table_name}")  # noqa: S608
             row = cursor.fetchone()
             return int(row[0]) if row else 0
-        except (sqlite3.Error, ValueError, TypeError):
+        except sqlite3.Error, ValueError, TypeError:
             return 0
 
     def get_oracle_row_count(self, table_name: str) -> int:
@@ -47,7 +47,7 @@ class SyncConsistencyVerifier:
                 res = conn.execute(text(f"SELECT COUNT(1) FROM {table_name}"))  # noqa: S608
                 row = res.fetchone()
                 return int(row[0]) if row else 0
-        except (SQLAlchemyError, ValueError, TypeError):
+        except SQLAlchemyError, ValueError, TypeError:
             return 0
 
     def verify_table(self, table_meta: TableMeta) -> ConsistencyCheckItem:

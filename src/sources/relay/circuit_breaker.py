@@ -90,7 +90,7 @@ class SourceCircuitBreaker:
                     len(self._cooldowns),
                     len(self._failures),
                 )
-        except (csv.Error, KeyError, OSError, TypeError, ValueError):
+        except csv.Error, KeyError, OSError, TypeError, ValueError:
             logger.exception(
                 "Failed to load circuit breaker state from %s, starting fresh",
                 self._persist_path,
@@ -116,7 +116,7 @@ class SourceCircuitBreaker:
                         if remaining > 0:
                             cooldown_epoch = f"{now + remaining:.2f}"
                     writer.writerow([source_name, bucket_id, failures, cooldown_epoch])
-        except (csv.Error, OSError, TypeError, ValueError):
+        except csv.Error, OSError, TypeError, ValueError:
             logger.exception(
                 "Failed to persist circuit breaker state to %s",
                 self._persist_path,

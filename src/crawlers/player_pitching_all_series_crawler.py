@@ -313,7 +313,7 @@ def _apply_sort_by_code(
             if policy:
                 policy.delay()
             return True
-    except (PlaywrightError, PlaywrightTimeout):
+    except PlaywrightError, PlaywrightTimeout:
         logger.warning("Sort toggle click failed, falling back to JS execution")
 
     has_sort_fn = page.evaluate("typeof sort === 'function'")
@@ -470,7 +470,7 @@ class PitcherStats:
 def _get_and_validate_basic1_headers(page: Page) -> dict[str, int] | None:
     try:
         page.wait_for_selector("table.tData01", timeout=SEL_TIMEOUT)
-    except (PlaywrightError, PlaywrightTimeout):
+    except PlaywrightError, PlaywrightTimeout:
         logger.warning("기록 테이블을 찾을 수 없습니다. (타임아웃)")
         return None
 

@@ -47,7 +47,7 @@ def classify_appearance_type(row: dict[str, Any]) -> str:
 
     try:
         bo_int = int(batting_order) if batting_order is not None else 0
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         bo_int = 0
 
     if is_starter in (1, True, "1", "TRUE"):

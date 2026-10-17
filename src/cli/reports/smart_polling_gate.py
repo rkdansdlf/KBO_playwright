@@ -122,7 +122,7 @@ async def _fetch_naver_games(
             )
         else:
             logger.info("[GATE] No games found for date %s (confirmed by API)", date_str)
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+    except httpx.HTTPError, ValueError, TypeError, KeyError:
         logger.exception("[GATE] Failed to fetch/parse Naver schedule")
         return []
     else:
@@ -208,7 +208,7 @@ def _unknown_games_are_today_or_future(unknown: list[dict[str, Any]], today_date
             if game_date >= today_date:
                 logger.info("  ⏳ Unknown game is today or future: %s", _format_game_label(game))
                 return True
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return True
     return False
 
@@ -299,7 +299,7 @@ def diagnose_game_detail(game: dict[str, Any], now_kst: datetime | None = None) 
                     diff = (game_dt - now_kst).total_seconds()
                     if 0 <= diff <= 900:  # noqa: PLR2004
                         is_pregame = True
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 pass
         diagnosed_state = "PREGAME" if is_pregame else "BEFORE"
     else:

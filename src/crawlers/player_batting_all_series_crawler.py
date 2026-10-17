@@ -166,7 +166,7 @@ def safe_parse_number(value_str: str | None, data_type: type, *, _allow_zero: bo
 
     try:
         return data_type(value_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -782,7 +782,7 @@ def _parse_legacy_row(ctx: LegacyRowContext) -> tuple[int, dict] | None:
         _extract_basic2_stat_by_header(ctx.current_header, cell_texts, batting_data)
 
         _log_first_rows_basic2_legacy(ctx.row_idx, player_name, team_name, ctx.current_header, batting_data)
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         logger.exception("      ⚠️ %s 행 파싱 오류", ctx.description)
         return None
     else:

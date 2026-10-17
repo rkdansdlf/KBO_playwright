@@ -22,7 +22,7 @@ pytest
 
 ## 코딩 컨벤션
 
-- **Python 3.12+**, 4-space indentation
+- **Python 3.14**, 4-space indentation
 - **타입 힌트**: 모든 함수 시그니처에 param/return type 필수
 - **로깅**: `print()` 대신 `logger.info()`
 - **에러 처리**: bare `except:` 금지, 구체적 예외 명시

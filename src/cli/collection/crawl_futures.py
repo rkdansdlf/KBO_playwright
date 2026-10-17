@@ -77,7 +77,7 @@ def _format_filter_counts(prefix: str, filter_counts: dict[str, int]) -> str:
 def _has_player_basic(player_id: str) -> bool:
     try:
         player_id_db = int(str(player_id).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
     with SessionLocal() as session:

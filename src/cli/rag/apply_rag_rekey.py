@@ -122,7 +122,7 @@ def _get_current_git_sha() -> str:
             cwd=Path.cwd(),
         )
         return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except subprocess.CalledProcessError, FileNotFoundError, OSError:
         return "unknown"
 
 
@@ -348,7 +348,7 @@ def _publish_immutable_receipt(  # noqa: PLR0913
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except (OSError, AttributeError):
+    except OSError, AttributeError:
         pass
 
     return receipt_path

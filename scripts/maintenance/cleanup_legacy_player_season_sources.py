@@ -207,7 +207,7 @@ def _restore_values(table: Table, row: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, str):
             try:
                 python_type = table.c[key].type.python_type
-            except (AttributeError, NotImplementedError):
+            except AttributeError, NotImplementedError:
                 python_type = None
             if python_type is datetime:
                 restored_value = datetime.fromisoformat(value)

@@ -264,5 +264,5 @@ class TestCalculateRankingsCLI:
         try:
             main([])
             raise AssertionError("Should have raised SystemExit")
-        except (argparse.ArgumentError, SystemExit):
+        except argparse.ArgumentError, SystemExit:
             pass

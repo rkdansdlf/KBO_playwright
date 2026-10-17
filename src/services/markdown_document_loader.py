@@ -72,7 +72,7 @@ def load_local_markdown_docs(rules_dir: str | Path = "Docs/baseball") -> list[di
     for full_path in sorted(root.rglob("*.md")):
         try:
             content = full_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
+        except OSError, UnicodeError:
             logger.exception("Error reading local Markdown %s", full_path)
             continue
 

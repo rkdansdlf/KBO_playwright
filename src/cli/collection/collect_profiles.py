@@ -43,7 +43,7 @@ def _get_player_name_or_default(session: Session, pid: str) -> str:
         basic_p = session.query(PlayerBasic).filter_by(player_id=int(pid)).first()
         if basic_p:
             return basic_p.name
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         pass
     return "Unknown"
 

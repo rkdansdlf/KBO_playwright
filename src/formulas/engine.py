@@ -51,7 +51,7 @@ def _get_git_commit_sha() -> str:
         )
         if res.returncode == 0:
             return res.stdout.strip()
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         pass
     return "unknown_sha"
 
@@ -79,7 +79,7 @@ class FormulaEngine:
                 bind = session.get_bind()
                 if bind is not None:
                     return bind  # type: ignore[return-value]
-        except (SQLAlchemyError, OSError, RuntimeError):
+        except SQLAlchemyError, OSError, RuntimeError:
             return create_engine("sqlite:///./data/kbo_dev.db")
         return Engine
 
@@ -95,7 +95,7 @@ class FormulaEngine:
         try:
             with session_local() as session:
                 constants = LeagueConstantsEngine.compute_league_constants(session, season)
-        except (SQLAlchemyError, OSError, RuntimeError, ValueError):
+        except SQLAlchemyError, OSError, RuntimeError, ValueError:
             constants = LeagueConstantsEngine.get_baseline_constants(season)
 
         self._constants_cache[season] = constants
@@ -228,7 +228,7 @@ class FormulaEngine:
             if db_col and row_season and db_col in row_season and row_season[db_col] is not None:
                 try:
                     stored_val = float(row_season[db_col])
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     stored_val = None
 
             delta = 0.0

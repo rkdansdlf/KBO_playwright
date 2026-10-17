@@ -267,7 +267,7 @@ def _save_baserunning_stats_oracle(player_list: list[dict[str, Any]], year: int)
                 )
                 saved_count += 1
             session.commit()
-        except (SQLAlchemyError, RuntimeError, ValueError, TypeError):
+        except SQLAlchemyError, RuntimeError, ValueError, TypeError:
             session.rollback()
             logger.exception("⚠️ Oracle 주루 기록 저장 실패")
             return

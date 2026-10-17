@@ -1223,7 +1223,7 @@ def _import_index(source_dir: Path) -> dict[str, tuple[str, ...]]:
     for path in sorted(source_dir.rglob("*.py")):
         try:
             text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             logger.info("Skipping unreadable file while indexing imports: %s", path)
             continue
         # Cheap pre-filter before the parse. Every way of reaching a repository

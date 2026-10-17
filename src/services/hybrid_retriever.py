@@ -118,7 +118,7 @@ def _search_dense(
             vector_kwargs["index_version"] = merged_filters["index_version"]
         vector_results = vector_repo.search_by_cosine(**vector_kwargs)
         elapsed_ms = round((time.perf_counter() - started_wall) * 1000, 3)
-    except (RuntimeError, ValueError, OSError, TypeError, KeyError, IndexError):
+    except RuntimeError, ValueError, OSError, TypeError, KeyError, IndexError:
         logger.warning("Dense vector retrieval failed; falling back to BM25 sparse scoring only", exc_info=True)
         elapsed_ms = round((time.perf_counter() - started_wall) * 1000, 3)
         return [], 0.0, elapsed_ms

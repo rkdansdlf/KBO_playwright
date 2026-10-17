@@ -250,7 +250,7 @@ class PBPCrawler(BasePlaywrightCrawler):
     async def _wait_for_pbp_container(self, page: Page, game_id: str) -> bool:
         try:
             await page.wait_for_selector('div[id^="numCont"]', timeout=SEL_TIMEOUT)
-        except (PlaywrightError, TimeoutError):
+        except PlaywrightError, TimeoutError:
             logger.warning("No PBP containers found for %s", game_id)
             body = await page.content()
             if "데이터가 없습니다" in body or "취소" in body:
@@ -470,7 +470,7 @@ class PBPCrawler(BasePlaywrightCrawler):
                 win_expectancy=float(event_dict.get("win_expectancy_after") or 0.5),
             )
             LivePbpEventStream.get_instance().publish(stream_event)
-        except (ValueError, TypeError, KeyError):
+        except ValueError, TypeError, KeyError:
             logger.debug("[PBPCrawler] Failed to publish stream event for %s", game_id)
 
     async def _extract_flat_events_legacy(self, page: Page, game_id: str = "") -> list[dict[str, Any]]:
