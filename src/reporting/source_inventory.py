@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.crawlers.run_vocabulary import is_refusal
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR
 from src.utils.host_policy import HostVerdict, read_policy
 
 if TYPE_CHECKING:
@@ -1154,7 +1155,14 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
     urls: dict[str, list[str]] = {}
     for crawler, status, records_read, records_written, started_at, error_code, checkpoint, source_url in rows:
         if source_url:
-            urls.setdefault(str(crawler), []).append(str(source_url))
+            # A sweep names every source it reads, joined; judging the joined
+            # string as one URL would read only its first host. `food` and
+            # `award` both record more than one, and the second host is where a
+            # refusal hides.
+            for recorded in str(source_url).split(MULTI_SOURCE_SEPARATOR):
+                url = recorded.strip()
+                if url:
+                    urls.setdefault(str(crawler), []).append(url)
         counts = summaries.setdefault(str(crawler), [0, 0, 0, 0])
         counts[0] += 1
         if status == "success":
