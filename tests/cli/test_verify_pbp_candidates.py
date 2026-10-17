@@ -170,3 +170,16 @@ def test_duplicate_groups_name_the_rows_and_whether_they_are_matched() -> None:
     group = result["candidate_duplicate_groups"][0]
     assert [row["source_row_id"] for row in group["rows"]] == ["a", "b"]
     assert all(row["in_matched"] is False for row in group["rows"])
+
+
+def test_hidden_rows_are_removed_before_classification() -> None:
+    """Hiding the rows a run inserted gives the pre-insert store to classify against."""
+    from src.cli.rag.verify_pbp_candidates import classify, hide_rows
+
+    dense = [("1680134", OLD_CODE), ("20260816DBKIA0_7", NEW_CODE)]
+    visible = hide_rows(dense, frozenset({"20260816DBKIA0_7"}))
+
+    before = classify([{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}], visible)
+    assert before["matched"] == 1
+    assert before["new"] == 0
+    assert hide_rows(dense, frozenset()) == dense

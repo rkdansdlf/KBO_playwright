@@ -14,6 +14,7 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import bindparam, text
@@ -277,9 +278,35 @@ def classify(
     }
 
 
+def hide_rows(
+    dense_rows: Iterable[tuple[str, str]],
+    hidden_ids: frozenset[str],
+) -> list[tuple[str, str]]:
+    """Drop stored rows whose ``source_row_id`` is in ``hidden_ids``.
+
+    Used to rebuild the pre-insert store: the rows inserted by a run are hidden and the same
+    candidates are classified against what was there before.
+    """
+    return [(row_id, content) for row_id, content in dense_rows if row_id not in hidden_ids]
+
+
+def _read_hidden_ids(path: str | None) -> frozenset[str]:
+    """Read one ``source_row_id`` per line; ``None`` hides nothing."""
+    if path is None:
+        return frozenset()
+    with Path(path).open(encoding="utf-8") as handle:
+        return frozenset(line.strip() for line in handle if line.strip())
+
+
 def main(argv: list[str] | None = None) -> int:
     """Read candidates from stdin, query the vector store read-only, print the summary."""
-    argparse.ArgumentParser(description=__doc__).parse_args(argv)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--hide-source-row-ids",
+        default=None,
+        help="파일의 source_row_id를 벡터 조회에서 숨긴다 (삽입 전 상태 재구성용, 읽기 전용)",
+    )
+    args = parser.parse_args(argv)
 
     from src.db.engine import get_rag_source_session
     from src.db.vector_engine import get_vector_session
@@ -287,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     candidates = [json.loads(line) for line in sys.stdin if line.strip()]
     with get_vector_session() as session:
         dense_rows = [(row[0], row[1]) for row in session.execute(_DENSE_SQL).all()]
+    dense_rows = hide_rows(dense_rows, _read_hidden_ids(args.hide_source_row_ids))
     with get_rag_source_session() as source_session:
         legacy_lookup = load_legacy_lookup(source_session, legacy_play_ids(dense_rows))
     result = classify(candidates, dense_rows, legacy_lookup)
