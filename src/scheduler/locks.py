@@ -8,6 +8,7 @@ import functools
 import logging
 import os
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -252,6 +253,36 @@ class _LockSkipped(Exception):  # noqa: N818
         self.cause = cause
 
 
+#: Set by a gate when it skips a run, read back by the job lifecycle listener.
+#:
+#: The fact has to cross a boundary neither side can cross alone. A gate knows
+#: the run was skipped but only the function's ``__name__`` -- not the registered
+#: job id, which is a different string (``crawl_daily_games_job`` registers as
+#: ``crawl_daily_games``). The APScheduler completion event carries the
+#: registered id but no sign that the job did no work, because a skip returns
+#: quietly. A thread-local carries the fact between them: one run stays on one
+#: executor thread from submission to completion, so the flag cannot leak across
+#: jobs.
+_GATE_SKIP = threading.local()
+
+
+def note_gate_skip() -> None:
+    """Record that a pre-flight gate skipped the run now finishing.
+
+    Called by both guards below; consumed once per run by
+    ``src.scheduler.metrics.job_lifecycle_listener``, which folds it into
+    ``kbo_scheduler_job_consecutive_skips``.
+    """
+    _GATE_SKIP.value = True
+
+
+def consume_gate_skip() -> bool:
+    """Return and clear the skip flag for the run now finishing."""
+    skipped = bool(getattr(_GATE_SKIP, "value", False))
+    _GATE_SKIP.value = False
+    return skipped
+
+
 def _with_lock_skip_guard(func: Callable[..., object]) -> Callable[..., object]:
     """Catch ``_LockSkipped`` and log a clean warning."""
 
@@ -260,6 +291,7 @@ def _with_lock_skip_guard(func: Callable[..., object]) -> Callable[..., object]:
         try:
             return func(*args, **kwargs)
         except _LockSkipped as exc:
+            note_gate_skip()
             logger.warning("Job %s skipped: %s timed out", getattr(func, "__name__", "unknown"), exc.cause)
             return None
 
@@ -343,6 +375,7 @@ def _with_db_fail_fast_guard(
         @functools.wraps(target)
         def wrapper(*args: object, **kwargs: object) -> object:
             if not _db_gate(resolve()):
+                note_gate_skip()
                 logger.warning("Job %s skipped: database unreachable", getattr(target, "__name__", "unknown"))
                 return None
             return target(*args, **kwargs)

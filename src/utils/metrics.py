@@ -59,6 +59,25 @@ KBO_SCHEDULER_JOB_EXPECTED_INTERVAL_SECONDS = Gauge(
     ["job_id"],
 )
 
+#: Consecutive runs a pre-flight gate skipped, per job.
+#:
+#: Neither existing signal can see this. The heartbeat above is stamped at
+#: submission, so a job skipped on *every* tick still looks like a job that
+#: fired; and the gates return quietly, so APScheduler reports the run as a
+#: success and `kbo_scheduler_job_total{status="success"}` moves too. Both are
+#: true statements about different things -- the scheduler did reach the job, and
+#: the job function did return -- and neither is evidence that work happened.
+#:
+#: Reset by any run that executed, success or failure, and incremented by a run a
+#: gate skipped, so a value above zero means the last attempt did no work. A
+#: one-tick lock contention clears itself on the next tick; a value that stays up
+#: is a job that has stopped running while every other signal says it has not.
+KBO_SCHEDULER_JOB_CONSECUTIVE_SKIPS = Gauge(
+    "kbo_scheduler_job_consecutive_skips",
+    "Consecutive scheduler runs skipped by a pre-flight gate, per job",
+    ["job_id"],
+)
+
 # Lock contention metrics
 KBO_SCHEDULER_LOCK_SKIP_TOTAL = Counter(
     "kbo_scheduler_lock_skip_total",

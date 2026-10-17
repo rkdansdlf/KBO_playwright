@@ -1,0 +1,111 @@
+# Rule-level tests for `KBOSchedulerJobSkipped` in
+# monitoring/prometheus/alert_rules.yml (group kbo_scheduler_alerts).
+#
+#   promtool test rules monitoring/prometheus/tests/scheduler_alert_skip_test.yml
+#
+# Why this file exists: a job skipped by the database fail-fast gate or by a lock
+# timeout returns quietly -- deliberately, so it does not hold `MAINTENANCE_LOCK`
+# while a dead database times out. APScheduler then reports the skip as a
+# *success*, and `_publish_job_cadence_contract` already stamped the heartbeat at
+# submission. So the two signals an operator would reach for both say the job is
+# healthy while it does nothing at all, and `KBOSchedulerJobNotRunning` cannot
+# page because its left-hand side keeps moving.
+#
+# The cases worth reading carefully:
+#
+#   * the `for` boundary: the same running gauge is evaluated before the streak
+#     starts, inside the hold, and past it. Deleting `for:` still passes the
+#     firing case, so the two quiet cases are what pin it;
+#   * recovery: a streak that returns to zero resolves the alert, because the
+#     rule is a state (`> 0`) and not an `increase()` over a window. An
+#     activity-conditioned rule would keep the alert raised until the window aged
+#     the last skip out, which is the failure this series was added to avoid;
+#   * a job with no gate: its gauge sits at zero forever, and that must stay
+#     quiet. Without this case the rule could be rewritten as a bare series match
+#     and everything else here would still pass.
+
+rule_files:
+  - ../alert_rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  # ── The `for` boundary on a streak that starts and keeps running ────────
+  # Zero for the first five minutes, then a skip every tick. The condition
+  # holds from t=5m; `for: 1h` puts the first possible firing at t=1h5m.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_consecutive_skips{job_id="crawl_p1p2_data"}'
+        values: '0x10 1x200'
+    alert_rule_test:
+      # Still zero: no skip has happened, so the rule has nothing to report.
+      - eval_time: 4m
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts: []
+
+      # 40 minutes into the hold: the condition holds, `for` has not elapsed.
+      - eval_time: 45m
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts: []
+
+      - eval_time: 1h10m
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job_id: crawl_p1p2_data
+            exp_annotations:
+              summary: "KBO 스케줄러 작업이 게이트에서 스킵됨: crawl_p1p2_data"
+              description: "crawl_p1p2_data 가 락 타임아웃 또는 DB 미도달로 1시간 넘게 실행되지 않았습니다. APScheduler는 스킵을 성공으로 계상하고 하트비트도 갱신되므로, 이 규칙이 그 상태를 알리는 유일한 신호입니다. `grep 'skipped:' logs/scheduler.launchd.err.log` 와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── One tick of contention clears itself: the streak resets ─────────────
+  # A skip at t=30s and a job that executes on its next attempt at t=10m. The
+  # gauge is 0 by the time the hold would have elapsed, so no alert -- which is
+  # the whole reason this metric is a streak and not a counter.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_consecutive_skips{job_id="crawl_p1p2_data"}'
+        values: '0 1x20 0x400'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts: []
+
+  # ── A streak that persists raises, and clears when the job runs again ───
+  # A day of skips (well past `for`), then one executed run resets the gauge.
+  # The 3h evaluation is what proves the alert is a state and not a window: an
+  # `increase()`-based rule would still be raised here.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_consecutive_skips{job_id="crawl_p1p2_data"}'
+        values: '0 1x200 0x400'
+    alert_rule_test:
+      - eval_time: 1h10m
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job_id: crawl_p1p2_data
+            exp_annotations:
+              summary: "KBO 스케줄러 작업이 게이트에서 스킵됨: crawl_p1p2_data"
+              description: "crawl_p1p2_data 가 락 타임아웃 또는 DB 미도달로 1시간 넘게 실행되지 않았습니다. APScheduler는 스킵을 성공으로 계상하고 하트비트도 갱신되므로, 이 규칙이 그 상태를 알리는 유일한 신호입니다. `grep 'skipped:' logs/scheduler.launchd.err.log` 와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # The executed run at t=101m reset the streak; the alert is resolved.
+      - eval_time: 3h
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts: []
+
+  # ── A job that has no gate sits at zero and must stay quiet ─────────────
+  # Every completed run resets the streak, so a job that always executes exports
+  # this series as 0 forever. A rule that matched on the series being *present*
+  # would page for the entire schedule.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_scheduler_job_consecutive_skips{job_id="weekly_sla_report"}'
+        values: '0x200'
+    alert_rule_test:
+      - eval_time: 1h30m
+        alertname: KBOSchedulerJobSkipped
+        exp_alerts: []

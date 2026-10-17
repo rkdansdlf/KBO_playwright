@@ -55,6 +55,32 @@ groups:
           description: "{{ $labels.job_id }} 가 자기 주기의 1.5배({{ $value | humanizeDuration }}) 동안 발화하지 않았습니다. 락/DB 게이트로 조용히 스킵되는지, 스케줄러 로그와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
           runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
+      # `KBOSchedulerJobNotRunning` above cannot see the case this one exists
+      # for. The heartbeat is stamped at submission, so a job a gate skips on
+      # *every* tick still looks like a job that fired -- and because the gates
+      # return quietly, APScheduler reports each skip as a success, so
+      # `kbo_scheduler_job_total` moves as well. Both signals are true about
+      # different things (the scheduler reached the job; the job function
+      # returned) and neither means any work happened.
+      #
+      # A streak rather than a rate: reset by any run that executed, incremented
+      # by a run a gate skipped, so `> 0` reads as "the last attempt did no
+      # work". One tick of lock contention clears itself on the next tick; an
+      # hour is long enough that a job still above zero is not recovering.
+      # Severity is `warning` for the reason `KBOLockSkipSpike` is -- the cause
+      # is usually contention, and paging for it teaches operators to ignore the
+      # rule. A database that is actually down raises `KBODatabaseUnavailable`
+      # beside this.
+      - alert: KBOSchedulerJobSkipped
+        expr: kbo_scheduler_job_consecutive_skips > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "KBO 스케줄러 작업이 게이트에서 스킵됨: {{ $labels.job_id }}"
+          description: "{{ $labels.job_id }} 가 락 타임아웃 또는 DB 미도달로 1시간 넘게 실행되지 않았습니다. APScheduler는 스킵을 성공으로 계상하고 하트비트도 갱신되므로, 이 규칙이 그 상태를 알리는 유일한 신호입니다. `grep 'skipped:' logs/scheduler.launchd.err.log` 와 `python3 -m src.cli.kbo incidents list` 를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
   - name: kbo_database_alerts
     rules:
       # DB availability is owned here (infrastructure path), not by the

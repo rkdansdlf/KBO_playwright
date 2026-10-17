@@ -62,6 +62,7 @@ FIXTURE_DIR = ROOT / "monitoring" / "prometheus" / "tests"
 FIXTURES = (
     FIXTURE_DIR / "scheduler_alert_lock_contention_test.yml",
     FIXTURE_DIR / "scheduler_alert_cessation_test.yml",
+    FIXTURE_DIR / "scheduler_alert_skip_test.yml",
 )
 
 PROMTOOL = shutil.which("promtool")
@@ -73,6 +74,7 @@ SCHEDULER_ALERTS = (
     "KBOSchedulerJobFailed",
     "KBOSchedulerDown",
     "KBOSchedulerJobNotRunning",
+    "KBOSchedulerJobSkipped",
 )
 
 #: Every label matcher the group's rules pin, and the value each must select.
@@ -86,6 +88,7 @@ EXPECTED_MATCHERS: dict[str, dict[str, str]] = {
     "KBOSchedulerJobFailed": {"status": "failure"},
     "KBOSchedulerDown": {"job": "kbo-scheduler"},
     "KBOSchedulerJobNotRunning": {},
+    "KBOSchedulerJobSkipped": {},
 }
 
 #: The cadence gauge the staleness rule must read instead of a constant.
@@ -94,6 +97,26 @@ LAST_RUN_GAUGE = "kbo_scheduler_job_last_run_timestamp"
 
 #: The smallest literal that could be a window rather than a multiplier.
 _MINUTE = 60
+
+#: promtool's evaluation times: `30s`, `45m`, `1h10m`, `14m30s`.
+_DURATION = re.compile(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?")
+
+
+def _seconds(value: str) -> int:
+    """Read a fixture ``eval_time`` as whole seconds.
+
+    Read as text, ``"1h10m"`` sorts before ``"45m"``, so a fixture that puts its
+    quiet evaluation first in time can look like it put it last -- the ordering
+    check below would fail on a correct fixture, or pass on one whose hold is
+    unproven. Converting is what that assertion actually needs; the fixture
+    format is promtool's, not a text field this file gets to constrain.
+    """
+    match = _DURATION.fullmatch(value.strip())
+    if match is None or not any(match.groups()):
+        raise AssertionError(f"unreadable fixture eval_time: {value!r}")  # noqa: EM102 - assertion text
+
+    hours, minutes, seconds = (int(part) if part else 0 for part in match.groups())
+    return hours * 3600 + minutes * 60 + seconds
 
 
 def _document() -> dict:
@@ -264,12 +287,21 @@ class TestSeverityIsTheOperatorsRouting:
         Contention is the opposite case. The skipped job runs on its next
         scheduled attempt, so promoting it to `critical` trains operators to
         ignore the rule -- which costs the very signal it was added to provide.
+
+        `KBOSchedulerJobSkipped` is contention one level down: it is raised while
+        a job is not running, which reads like a stoppage, but what it reports is
+        a gate that will be retried -- lock contention, or a database the
+        fail-fast gate found unreachable. The unreachable case raises its own
+        cause (`KBODatabaseUnavailable`, critical) beside this rule, so promoting
+        this one would page twice for one outage and put the warning back to
+        sleep.
         """
         severities = {name: rule.get("labels", {}).get("severity") for name, rule in _rules().items()}
 
         for name in ("KBOSchedulerJobFailed", "KBOSchedulerDown", "KBOSchedulerJobNotRunning"):
             assert severities[name] == "critical", severities
-        assert severities["KBOLockSkipSpike"] == "warning", severities
+        for name in ("KBOLockSkipSpike", "KBOSchedulerJobSkipped"):
+            assert severities[name] == "warning", severities
 
 
 class TestTheSelectedLabelValuesAreTheOnesTheDeploymentEmits:
@@ -351,7 +383,7 @@ class TestTheyActuallyFire:
         firing = [case["eval_time"] for case in cases if case.get("exp_alerts")]
 
         assert quiet and firing, f"{alert} needs both a firing and a quiet case"
-        assert min(quiet) < min(firing), (
+        assert min(map(_seconds, quiet)) < min(map(_seconds, firing)), (
             f"{alert} has no quiet evaluation before its first firing one, so `for` is unproven"
         )
 

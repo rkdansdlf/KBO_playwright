@@ -671,7 +671,7 @@ python3 -m src.cli.kbo snapshot replay --snapshot-id 123 --persist --strict
 The three jobs are registered in `src/scheduler/registry.py`; confirm registration
 in `logs/scheduler.launchd.err.log` (`Registered job: crawl_dead_letter_retry`).
 
-### 5.1 Scheduler liveness — the two cessation rules
+### 5.1 Scheduler liveness — cessation and the skips that look like success
 
 Every other rule in this repository's alert files is conditioned on *activity*:
 a left side such as `increase(...) > 0`, or a counter that has to move. Those
@@ -680,17 +680,18 @@ last increment out and *resolves* the alert the job had raised. Collection
 stopped across most crawlers on 2026-10-13 and no rule reported it, which is the
 failure this section exists for.
 
-Two critical rules watch the absence itself. Both live in
+Three rules watch silence. All live in
 `monitoring/prometheus/alert_rules.yml`, group `kbo_scheduler_alerts`:
 
 | Alert | Condition | `for` | What it means |
 | --- | --- | --- | --- |
 | `KBOSchedulerDown` | `up{job="kbo-scheduler"} == 0` | 10m | Prometheus has not scraped the scheduler for ten minutes. **Check this one first**: the same metric server feeds every other scheduler rule, so their silence during this alert is not health |
 | `KBOSchedulerJobNotRunning` | `time() - kbo_scheduler_job_last_run_timestamp > 1.5 * kbo_scheduler_job_expected_interval_seconds` | 15m | The process is up and answering scrapes, but one job has stopped firing — skipped, wedged, or dropped from the schedule |
+| `KBOSchedulerJobSkipped` | `kbo_scheduler_job_consecutive_skips > 0` | 1h | The process is up and the job is still firing, but a pre-flight gate returns before the job body, so every tick does nothing. The heartbeat stays fresh and APScheduler records each skip as a success — this rule is the only signal that separates "ran" from "was skipped" |
 
-#### The two gauges
+#### The three gauges
 
-Both rules read series the scheduler publishes about itself:
+The rules read series the scheduler publishes about itself:
 
 - `kbo_scheduler_job_last_run_timestamp{job_id}` — stamped on
   `EVENT_JOB_SUBMITTED` (`src/scheduler/metrics.py`), which sits *ahead of* the
@@ -705,6 +706,15 @@ Both rules read series the scheduler publishes about itself:
   `scheduler.start()` (`src/scheduler/registry.py`). The enumeration is
   `scheduler.get_jobs()`, the only point that sees every registered job,
   including the ones registered as bare functions.
+- `kbo_scheduler_job_consecutive_skips{job_id}` — zeroed by every run that
+  executed, success or failure, and incremented by every run a pre-flight gate
+  skipped (`_with_db_fail_fast_guard`, `_with_lock_skip_guard`). The gate records
+  the skip on a thread-local (`note_gate_skip`) and the lifecycle listener reads
+  it when the run completes, because only the listener holds the *registered* job
+  id: the gate knows the function's name, and `crawl_daily_games_job` registers
+  as `crawl_daily_games`. A value above zero therefore means "the last attempt
+  did no work" — one tick of contention clears itself on the next tick, and a
+  value that stays up is a job that is not recovering.
 
 #### The cadence is the longest gap, not the average
 
@@ -742,12 +752,17 @@ silence is.
    server is gone and `KBOSchedulerDown` is the rule doing the talking — go to
    the host and restart it. The other scheduler rules are unreadable until
    scrapes resume.
-2. Otherwise the process is alive and one job is not firing. Compare its own two
-   series to see how late it is against its own contract:
+2. Otherwise the process is alive and one job is not firing. Compare its own
+   series to see how late it is against its own contract — and whether the ticks
+   that did arrive were skipped rather than executed:
    ```promql
    kbo_scheduler_job_last_run_timestamp{job_id="<job>"}
    kbo_scheduler_job_expected_interval_seconds{job_id="<job>"}
+   kbo_scheduler_job_consecutive_skips{job_id="<job>"}
    ```
+   A streak above zero is the subtler case: the heartbeat is fresh and
+   `kbo_scheduler_job_total{status="success"}` is moving, and no work is
+   happening. Step 3 then tells you which gate is doing the skipping.
 3. Ask the scheduler host why it skipped. Both guards log a specific line and
    then **return normally**, and that normal return is the whole difficulty:
    ```bash
@@ -784,26 +799,37 @@ Alertmanagers Prometheus actually believes it can reach, not the ones the
 compose file declares. If the image carries no `wget`, the same URL answers
 `curl -s` from inside the container.
 
-Firing behaviour is asserted, not assumed:
-`monitoring/prometheus/tests/scheduler_alert_cessation_test.yml` covers the
-`for` hold, the per-cadence threshold (the same 40-minute age fires for an
-every-15-minute job and stays quiet for a weekly one) and the never-exported
-cadence. Run it with:
+Firing behaviour is asserted, not assumed. `scheduler_alert_cessation_test.yml`
+covers the `for` hold, the per-cadence threshold (the same 40-minute age fires
+for an every-15-minute job and stays quiet for a weekly one) and the
+never-exported cadence; `scheduler_alert_skip_test.yml` covers the skip streak's
+`for` boundary and, more to the point, its recovery — a run that executes resets
+the gauge and resolves the alert, which an `increase()`-conditioned rule could
+not do. Run both with:
 
 ```bash
 promtool test rules monitoring/prometheus/tests/scheduler_alert_cessation_test.yml
+promtool test rules monitoring/prometheus/tests/scheduler_alert_skip_test.yml
 ```
 
-#### Known gap: a skipped job still counts as a success
+#### A skipped job counts as a success — what covers it now
 
-Both guards return without raising, so APScheduler records the run as successful
-— "it ran and did nothing" is indistinguishable from a real run in
+Both guards return without raising, so APScheduler records the run as successful:
+"it ran and did nothing" is indistinguishable from a real run in
 `kbo_scheduler_job_total{status="success"}`, and `KBOSchedulerJobNotRunning`
 does not catch it either, because the heartbeat is stamped at submission: a job
-skipped on every tick keeps its heartbeat fresh forever. The compensating
-signals today are `KBODatabaseUnavailable` (all DB-bound jobs skip together) and
-`KBOLockSkipSpike` (one lock contended by several jobs); a per-job skip counter
-is the next step and is not provided by these two rules.
+skipped on every tick keeps its heartbeat fresh forever. `KBOSchedulerJobSkipped`
+reads the per-job streak (`kbo_scheduler_job_consecutive_skips`), which only a
+gate can move, so a job whose every tick skips is reported while every other
+signal says it is healthy. `KBODatabaseUnavailable` (all DB-bound jobs skip
+together) and `KBOLockSkipSpike` (one lock contended by several jobs) remain the
+coarser causes.
+
+The gap that is left sits one level down, and no scheduler rule can close it: a
+job that **executes** and quietly does nothing — a crawl that returns zero
+records, a probe that finds nothing to compare — is a real run by every signal
+in this section. Its own domain metrics have to carry that, and for crawlers they
+do (the per-crawler freshness and partial-run alerts).
 
 ---
 
