@@ -61,6 +61,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m tools.agent_harness verify <run-id>`: Run the existing project verification profile selected for a Harness run (all commands pass the CommandRunner allowlist; denial exits 2).
 - `python3 -m venv venv && source venv/bin/activate`: Create and activate virtual environment.
 - `pip3 install -e ".[dev]"`: Install runtime plus development dependencies from `pyproject.toml` (single source of truth; no `requirements.txt`).
+- `UV_PROJECT_ENVIRONMENT=venv uv sync --frozen --all-extras`: Sync `venv/` against `uv.lock`. A bare `uv sync` recreates `.venv/` (uv's own default) — always set the variable so the repo has exactly one environment.
 - `playwright install chromium`: Install Playwright browser binaries.
 - `python3 scripts/scheduler.py`: Run the automated scheduler.
 - `python3 -m src.cli.crawl_schedule --year 2025 --month 3`: Crawl schedule data.
