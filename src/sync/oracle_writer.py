@@ -42,6 +42,55 @@ TABLE_OVERRIDE: dict[str, Callable[[object], object]] = {
 LEVEL_NORMALIZE = {"1": "KBO1", "1군": "KBO1"}
 BULK_MERGE_ROWS = 500
 
+#: Source placeholders that mean "no embedding" and must bind as SQL NULL.
+_VECTOR_PLACEHOLDERS = frozenset({"NULL", "NONE"})
+
+
+def _parse_vector_string(value: str) -> object:
+    """Parse one string form of a VECTOR value, or return it unchanged.
+
+    Split out of :func:`_normalize_vector_value` because the string branch owns
+    most of the refusals (placeholder, unparseable array repr, non-bracket text,
+    empty body, non-numeric parts) and one function cannot hold them all without
+    exceeding the return-count limit.
+    """
+    stripped = value.strip()
+    if stripped.upper() in _VECTOR_PLACEHOLDERS:
+        return None
+    if stripped.lower().startswith("array("):
+        opening = stripped.find("[")
+        closing = stripped.rfind("]")
+        if opening == -1 or closing <= opening:
+            return value
+        stripped = stripped[opening : closing + 1]
+    if not (stripped.startswith("[") and stripped.endswith("]")):
+        return value
+    body = stripped[1:-1].strip()
+    if not body:
+        return []
+    try:
+        return [float(part) for part in body.split(",")]
+    except ValueError:
+        return value
+
+
+def _normalize_vector_value(value: object) -> object:
+    """Normalize a source VECTOR value into a float sequence the driver can bind.
+
+    Bracket strings and Python array reprs are parsed, sequences are coerced to
+    floats, and placeholders become SQL NULL. Anything unparseable is returned
+    unchanged so the failure surfaces at the database instead of vanishing.
+    """
+    if isinstance(value, str):
+        return _parse_vector_string(value)
+    if isinstance(value, (list, tuple)):
+        try:
+            return [float(item) for item in value]
+        except TypeError, ValueError:
+            return value
+    return value
+
+
 TEAM_CODE_MAP = {
     "BE": "HH",
     "HT": "KIA",
@@ -193,6 +242,9 @@ class OracleWriter:
         if value is None or value == "":
             return None
 
+        if oci_type.upper().startswith("VECTOR"):
+            return _normalize_vector_value(value)
+
         if oci_type.startswith(("DATE", "TIMESTAMP")):
             if isinstance(value, datetime):
                 return value.replace(tzinfo=_KST) if "WITH TIME ZONE" in oci_type else value
@@ -292,6 +344,29 @@ class OracleWriter:
         cast_type = data_type if data_type.startswith("TIMESTAMP") else cast_types.get(data_type)
         return f"CAST({bind} AS {cast_type})" if cast_type else bind
 
+    @staticmethod
+    def _vector_bind_names(columns: list[str], column_types: dict[str, str], row_count: int) -> list[str]:
+        """Return flattened bind names for VECTOR columns across ``row_count`` rows."""
+        indexes = [
+            index
+            for index, column in enumerate(columns)
+            if str(column_types.get(column.upper(), "")).upper().startswith("VECTOR")
+        ]
+        if not indexes:
+            return []
+        width = len(columns)
+        return [f"c{row_index * width + index}" for row_index in range(row_count) for index in indexes]
+
+    @staticmethod
+    def _pin_vector_bind_types(cursor: DBAPICursor, bind_names: list[str]) -> None:
+        """Pin DB_TYPE_VECTOR for VECTOR binds so NULL embeddings bind cleanly."""
+        if not bind_names:
+            return
+        vector_type = getattr(oracledb, "DB_TYPE_VECTOR", None)
+        if vector_type is None:
+            return
+        cast("Any", cursor).setinputsizes(**dict.fromkeys(bind_names, vector_type))
+
     def build_insert_sql(self, table: str, columns: list[str], column_names: dict[str, str] | None = None) -> str:
         """Build standard INSERT INTO SQL."""
         table_upper = table.upper()
@@ -305,9 +380,11 @@ class OracleWriter:
         sql: str,
         payloads: list[dict[str, object]],
         table: str,
+        vector_binds: list[str],
     ) -> tuple[int, int]:
         """Execute an array INSERT and fall back to individual rows on error."""
         ora_cursor = cast("Any", cursor)
+        self._pin_vector_bind_types(cursor, vector_binds)
         try:
             ora_cursor.executemany(sql, payloads, batcherrors=True)
             batch_errors = ora_cursor.getbatcherrors()
@@ -321,7 +398,7 @@ class OracleWriter:
                 return len(payloads) - len(batch_errors), len(batch_errors)
         except (oracledb.Error, RuntimeError) as exc:
             logger.warning("[%s] Bulk INSERT failed (%s), falling back to individual rows", table, exc)
-            self.conn.rollback()
+            self._pin_vector_bind_types(cursor, vector_binds)
             synced = 0
             errors = 0
             for payload in payloads:
@@ -354,14 +431,16 @@ class OracleWriter:
         cursor.arraysize = self.arraysize
         synced_total = 0
         error_total = 0
+        single_row_binds = self._vector_bind_names(columns, column_types, 1)
         try:
             if insert_only:
-                return self._execute_insert_batch(cursor, sql, payloads, table)
+                return self._execute_insert_batch(cursor, sql, payloads, table, single_row_binds)
 
             for offset in range(0, len(payloads), BULK_MERGE_ROWS):
                 chunk = payloads[offset : offset + BULK_MERGE_ROWS]
                 try:
                     if len(chunk) == 1:
+                        self._pin_vector_bind_types(cursor, single_row_binds)
                         cursor.execute(sql, chunk[0])
                     else:
                         bulk_sql = self.build_merge_sql(
@@ -377,11 +456,17 @@ class OracleWriter:
                             for row_index, payload in enumerate(chunk)
                             for column_index in range(len(columns))
                         }
+                        self._pin_vector_bind_types(
+                            cursor,
+                            self._vector_bind_names(columns, column_types, len(chunk)),
+                        )
                         cursor.execute(bulk_sql, flattened)
                     synced_total += len(chunk)
                 except (oracledb.Error, RuntimeError) as exc:
                     logger.warning("[%s] Bulk MERGE failed (%s), falling back to individual rows", table, exc)
-                    self.conn.rollback()
+                    # Rows written by earlier chunks are still uncommitted on this
+                    # transaction; a rollback here would discard them silently.
+                    self._pin_vector_bind_types(cursor, single_row_binds)
                     for payload in chunk:
                         try:
                             cursor.execute(sql, payload)
