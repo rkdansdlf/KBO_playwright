@@ -27,25 +27,32 @@ skills:
   superpowers:
     role: workflow
     mode: auto
+    apply: true
   ponytail:
     role: complexity_gate
     mode: auto
+    apply: true
   graphify:
     role: code_graph
     mode: on_demand
+    apply: true
   understand-anything:
     role: deep_architecture
     mode: conditional
+    apply: true
   caveman:
     role: compression
     mode: subagents_only
     proxy: false
+    apply: false
   last30days:
     role: fresh_research
     mode: explicit_or_router
+    apply: true
   i-have-adhd:
     role: human_output
     mode: always
+    apply: true
   aas:
     role: skill_registry
     mode: control_plane
@@ -53,9 +60,11 @@ skills:
   scientific:
     role: analytics
     mode: selected_skills_only
+    apply: false
   diagram-design:
     role: visualization
     mode: on_demand
+    apply: true
 
 routes:
   crawler-bug:

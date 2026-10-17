@@ -11,13 +11,18 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_doctor_reports_locked_reference_only_stack(capsys: pytest.CaptureFixture[str]) -> None:
+def test_doctor_reports_activation_states(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["doctor", "--json"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "PASS"
     assert payload["skill_count"] == 10
-    assert all(skill["mode"] == "reference_only" for skill in payload["skills"])
+    activated = [skill for skill in payload["skills"] if skill["mode"] == "activated"]
+    reference_only = [skill for skill in payload["skills"] if skill["mode"] == "reference_only"]
+    # Seven license-cleared adapters are activated; the three gated ones
+    # (caveman NOASSERTION, aas/scientific selected-asset review) stay locked.
+    assert len(activated) == 7
+    assert {skill["name"] for skill in reference_only} == {"caveman", "aas", "scientific"}
 
 
 def test_plan_routes_crawler_task(capsys: pytest.CaptureFixture[str]) -> None:

@@ -22,6 +22,7 @@ from tools.agent_harness.context_builder import ContextBuilder
 from tools.agent_harness.dto import EVIDENCE_SCHEMA_VERSION, gate_verdict
 from tools.agent_harness.evidence import EvidenceStore
 from tools.agent_harness.exceptions import HarnessConfigError, PermissionDeniedError
+from tools.agent_harness.fetcher import FetchResult, fetch_skills
 from tools.agent_harness.permissions import PermissionPolicy
 from tools.agent_harness.planner import build_plan
 from tools.agent_harness.registry import HarnessRegistry
@@ -117,6 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = subparsers.add_parser("report", help="Print a Harness run report.")
     report.add_argument("run_id", help="Harness run identifier.")
+
+    fetch = subparsers.add_parser("fetch", help="Fetch and vendor external skill adapters.")
+    fetch.add_argument("--skill", nargs="*", default=[], help="Specific skills to fetch (default: all vendable).")
+    fetch.add_argument("--force", action="store_true", help="Force re-fetch even if cached.")
+    fetch.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
+
     return parser
 
 
@@ -146,13 +153,19 @@ def _doctor(registry: HarnessRegistry) -> DoctorReport:
             warnings.append(
                 f"{name}: {locked.redistribution}; execution remains disabled",
             )
+        if adapter.apply and adapter.executable:
+            mode = "activated"
+        elif adapter.apply:
+            mode = "policy_only"
+        else:
+            mode = "reference_only"
         rows.append(
             {
                 "name": name,
                 "role": adapter.role,
                 "revision": locked.revision,
                 "license": locked.license,
-                "mode": "reference_only",
+                "mode": mode,
                 "network": name == "last30days",
             }
         )
@@ -650,6 +663,32 @@ def _handle_report(
     return 0
 
 
+def _handle_fetch(
+    args: argparse.Namespace,
+    registry: HarnessRegistry,
+    _permissions: PermissionPolicy,
+) -> int:
+    root = registry.root
+    skill_ids = args.skill or None
+    results: list[FetchResult] = fetch_skills(root, skill_ids=skill_ids, force=args.force)
+
+    if args.json:
+        _write_output([r.to_dict() for r in results], as_json=True)
+    else:
+        for result in results:
+            status_icon = {
+                "vended": "+",
+                "cached": "=",
+                "skipped": "-",
+                "failed": "!",
+            }.get(result.status, "?")
+            vendor_info = f" -> {result.vendor_path}" if result.vendor_path else ""
+            sys.stdout.write(f"[{status_icon}] {result.skill_id}: {result.detail}{vendor_info}\n")
+
+    failed = [r for r in results if r.status == "failed"]
+    return 1 if failed else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run a Harness CLI command and return its process exit code."""
     parser = build_parser()
@@ -677,6 +716,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "verify": _handle_verify,
         "validate": _handle_validate,
         "report": _handle_report,
+        "fetch": _handle_fetch,
     }
     handler = handlers.get(args.command)
     if handler is None:

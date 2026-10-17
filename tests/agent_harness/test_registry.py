@@ -15,10 +15,17 @@ def test_registry_loads_locked_skill_stack() -> None:
     assert registry.locked_skills["scientific"].redistribution == "selected_asset_review_required"
 
 
-def test_registry_validates_reference_only_adapters() -> None:
+def test_registry_validates_activation_gates() -> None:
     registry = HarnessRegistry.load()
 
     issues = registry.validate()
 
     assert issues == []
-    assert all(not adapter.executable for adapter in registry.adapters.values())
+    # Activation is legal only where redistribution is allowed; the three
+    # gated adapters must remain non-executable and unapplied.
+    for adapter in registry.adapters.values():
+        if adapter.executable or adapter.apply:
+            assert registry.locked_skills[adapter.name].redistribution == "allowed"
+    for name in ("caveman", "aas", "scientific"):
+        assert not registry.adapters[name].executable
+        assert not registry.adapters[name].apply

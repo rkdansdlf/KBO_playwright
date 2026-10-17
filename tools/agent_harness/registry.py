@@ -111,6 +111,7 @@ class AdapterSpec:
     capabilities: tuple[str, ...]
     license_gate: str | None = None
     transport: str = "native"
+    apply: bool = False
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,7 @@ class HarnessRegistry:
                 capabilities=capabilities,
                 license_gate=str(row["license_gate"]) if "license_gate" in row else None,
                 transport=transport,
+                apply=row.get("apply") is True,
             )
 
         profiles: dict[str, ProfileSpec] = {}
@@ -359,8 +361,14 @@ class HarnessRegistry:
             adapter = self.adapters.get(name)
             if adapter is None:
                 continue
-            if adapter.executable:
-                issues.append(f"{name} external adapter must remain reference-only")
+            # Activated adapters require redistribution=allowed
+            if adapter.executable or adapter.apply:
+                locked_skill = self.locked_skills.get(name)
+                redistribution = locked_skill.redistribution if locked_skill else None
+                if redistribution != "allowed":
+                    issues.append(
+                        f"{name} external adapter must remain reference-only (redistribution={redistribution})",
+                    )
             if adapter.role != self.skills[name].role:
                 issues.append(f"{name} adapter role differs from harness role")
             if locked.redistribution not in {"allowed", adapter.license_gate}:
@@ -402,6 +410,7 @@ class HarnessRegistry:
             transport=transport,
             capabilities=frozenset(adapter.capabilities),
             executable=adapter.source if transport == SkillTransport.CLI else None,
+            apply=adapter.apply,
             network_required=skill_id == "last30days",
             write_required=False,
             source_repo=locked.repository,

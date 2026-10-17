@@ -110,10 +110,31 @@ class PolicyExecutor:
         )
 
 
+class ActivatedSkillExecutor:
+    """Record an activated (vendored) skill awaiting host execution.
+
+    Activation clears the license and vendoring gates; it never means this
+    process ran the skill. Native, CLI, and MCP skills remain host-executed,
+    so the honest status stays ``HOST_EXECUTION_REQUIRED``.
+    """
+
+    def execute(self, skill: SkillDefinition, stage: str) -> SkillExecutionResult:
+        """Record an activated skill available for host execution."""
+        return SkillExecutionResult(
+            skill_id=skill.skill_id,
+            stage=stage,
+            transport=skill.transport,
+            status=SkillExecutionStatus.HOST_EXECUTION_REQUIRED,
+            detail=f"activated skill vendored and awaiting host execution in stage {stage}",
+        )
+
+
 def executor_for(skill: SkillDefinition) -> SkillExecutor:
     """Return the executor matching a skill transport."""
     if skill.transport == SkillTransport.POLICY:
         return PolicyExecutor()
+    if skill.apply:
+        return ActivatedSkillExecutor()
     if skill.transport == SkillTransport.CLI:
         return CliSkillExecutor()
     if skill.transport == SkillTransport.MCP:
@@ -138,6 +159,7 @@ def execute_route(decision: RouteDecision, registry: HarnessRegistry) -> list[Sk
 
 
 __all__ = [
+    "ActivatedSkillExecutor",
     "CliSkillExecutor",
     "McpSkillExecutor",
     "NativeSkillExecutor",

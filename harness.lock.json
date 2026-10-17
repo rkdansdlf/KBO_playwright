@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_at": "2026-09-22",
-  "install_policy": "reference_only",
+  "install_policy": "vendor_allowed",
   "skills": {
     "superpowers": {
       "repository": "https://github.com/obra/superpowers.git",

@@ -2,5 +2,6 @@ name: graphify
 source: Graphify-Labs/graphify
 role: code_graph
 transport: cli
-executable: false
+executable: true
+apply: true
 capabilities: [local-ast-graph, dependency-context]

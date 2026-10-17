@@ -2,5 +2,6 @@ name: superpowers
 source: obra/superpowers
 role: workflow
 transport: native
-executable: false
+executable: true
+apply: true
 capabilities: [brainstorming, planning, systematic-debugging, test-driven-development, verification-before-completion]

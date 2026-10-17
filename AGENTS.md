@@ -38,7 +38,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 ### Agent Harness Contract
 - `AGENTS.md` remains policy; `.agent-harness/` stores routing and permission configuration; `tools/agent_harness/` is the development-task control plane; `artifacts/agent-harness/` contains generated evidence only.
 - Route crawler bugs, features, refactors, research, analytics, and architecture tasks with `python3 -m tools.agent_harness plan "<task>"` when the Harness is available.
-- External skill adapters are pinned in `harness.lock.json` but remain `reference_only`. Do not fetch, vendor, install, or claim execution of third-party skills without explicit approval and a passing license review.
+- External skill adapters are pinned in `harness.lock.json`. Seven license-cleared skills (superpowers, ponytail, graphify, understand-anything, last30days, i-have-adhd, diagram-design) are activated and vended under `vendor/skills/` via `python3 -m tools.agent_harness fetch`; `caveman` (NOASSERTION), `aas`, and `scientific` (selected-asset review) remain gated and must not be fetched, vendored, installed, or claimed as executed without explicit approval and a passing license review. See `Docs/references/SKILL_LICENSE_REVIEW.md`.
 - Graphify is the default context role. Add Understand Anything only for `refactor` or `architecture`; use Caveman only for subagent output and i-have-adhd only for human-facing output.
 - Harness verification delegates to existing pytest, Ruff, crawler, certification, and quality gates. It must not replace those sources of truth.
 
@@ -54,6 +54,7 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.kbo migrate --dialect postgresql --status`: Inspect database schema migration status.
 - `python3 -m src.cli.kbo seed --season 2026 --games-per-team 2`: Generate synthetic KBO scenario data.
 - `python3 -m tools.agent_harness doctor`: Validate the pinned skill stack, adapters, permissions, and OpenCode skill path.
+- `python3 -m tools.agent_harness fetch [--skill <id>...] [--force]`: Vendor activated external skills at their pinned revisions into `vendor/skills/` (gated skills are skipped).
 - `python3 -m tools.agent_harness plan "<task>"`: Select a Harness profile and render its stages without executing external skills.
 - `python3 -m tools.agent_harness run --profile crawler-bug "<task>"`: Create an auditable task handoff under `artifacts/agent-harness/`.
 - `python3 -m tools.agent_harness route "<task>" --changed-files <paths...>`: Show task classification and skill selection only (file signals beat prompt keywords).

@@ -2,5 +2,6 @@ name: i-have-adhd
 source: ayghri/i-have-adhd
 role: human_output
 transport: policy
-executable: false
+executable: true
+apply: true
 capabilities: [answer-first-formatting]

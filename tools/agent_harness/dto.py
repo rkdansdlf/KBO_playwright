@@ -89,6 +89,7 @@ class SkillDefinition:
     transport: SkillTransport
     capabilities: frozenset[str]
     executable: str | None = None
+    apply: bool = False
     network_required: bool = False
     write_required: bool = False
     source_repo: str | None = None

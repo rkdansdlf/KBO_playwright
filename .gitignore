@@ -121,3 +121,6 @@ coverage_report.txt
 !/data/seed/team_rivalries.csv
 !/data/manifests/
 /Wallet_ETYQPNPJ0L1EP777
+
+# Vendor (external skill adapters, gitignored)
+/vendor/

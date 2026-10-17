@@ -2,5 +2,6 @@ name: diagram-design
 source: cathrynlavery/diagram-design
 role: visualization
 transport: native
-executable: false
+executable: true
+apply: true
 capabilities: [html-svg-diagrams]

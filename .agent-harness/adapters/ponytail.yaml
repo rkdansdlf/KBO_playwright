@@ -2,5 +2,6 @@ name: ponytail
 source: DietrichGebert/ponytail
 role: complexity_gate
 transport: native
-executable: false
+executable: true
+apply: true
 capabilities: [yagni, simplification, review]
