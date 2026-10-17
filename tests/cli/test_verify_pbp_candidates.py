@@ -98,31 +98,19 @@ def test_game_verdict_confirms_same_game_and_flags_other_games() -> None:
     assert game_verdict("20260816DBKIA0_7", ["1680134"]) == "unverified"
 
 
-def test_legacy_key_is_confirmed_through_its_source_game() -> None:
-    """A legacy key whose source row sits in the same game confirms the match."""
+def test_legacy_key_does_not_decide_the_game_even_when_the_source_row_names_one() -> None:
+    """A legacy numeric key points at other games in the source, so its game must not decide anything."""
     from src.cli.rag.verify_pbp_candidates import classify
 
     result = classify(
         [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
         [("1680134", OLD_CODE)],
-        {"1680134": ("20260816OBHT0", 1, "초", "김대한")},
+        {"1680134": ("20260901HHKT0", 2, "top", "김대한")},
+        frozenset(),
     )
 
-    assert result["game_identity"]["confirmed"] == 1
-    assert result["legacy_mapping"]["legacy_mapping_agrees"] == 1
-
-
-def test_legacy_key_from_another_game_is_conflicting() -> None:
-    """The same text under a different doubleheader game must not be treated as the same play."""
-    from src.cli.rag.verify_pbp_candidates import classify
-
-    result = classify(
-        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
-        [("1680134", OLD_CODE)],
-        {"1680134": ("20260816OBHT1", 1, "초", "김대한")},
-    )
-
-    assert result["game_identity"]["conflicting"] == 1
+    assert result["game_identity"]["conflicting"] == 0
+    assert result["source_row_ids"]["text_confirmed"] == ["20260816DBKIA0_7"]
 
 
 def test_legacy_key_missing_from_source_stays_unverified() -> None:
@@ -183,3 +171,69 @@ def test_hidden_rows_are_removed_before_classification() -> None:
     assert before["matched"] == 1
     assert before["new"] == 0
     assert hide_rows(dense, frozenset()) == dense
+
+
+def test_canonical_pair_maps_old_codes_and_ignores_order() -> None:
+    """The same two teams name the same pair whatever their code generation or order."""
+    from src.cli.rag.verify_pbp_candidates import canonical_pair
+
+    assert canonical_pair("DB vs KIA") == canonical_pair("HT vs OB") == ("DB", "KIA")
+    assert canonical_pair("KIA vs DB") == ("DB", "KIA")
+    assert canonical_pair("nonsense") is None
+
+
+def test_double_header_days_are_the_days_the_same_pair_played_twice() -> None:
+    """A day with one game per pair is not a doubleheader."""
+    from src.cli.rag.verify_pbp_candidates import double_header_keys
+
+    rows = [
+        ("2026-08-16", "DB", "KIA"),
+        ("2026-08-16", "OB", "HT"),
+        ("2026-08-17", "DB", "KIA"),
+    ]
+
+    assert double_header_keys(rows) == frozenset({("2026-08-16", ("DB", "KIA"))})
+
+
+def test_match_without_a_game_id_is_text_confirmed_when_its_day_has_no_double_header() -> None:
+    """Same date, same alias team pair, same play, and no doubleheader that day: the match stands."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {},
+        frozenset(),
+    )
+
+    assert result["source_row_ids"]["text_confirmed"] == ["20260816DBKIA0_7"]
+    assert result["matched_details"][0]["verdict"] == "text_confirmed"
+
+
+def test_match_on_a_double_header_day_stays_unverified() -> None:
+    """With two games between the same teams that day, the text alone cannot pick the game."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {},
+        frozenset({("2026-08-16", ("DB", "KIA"))}),
+    )
+
+    assert result["source_row_ids"]["unverified"] == ["20260816DBKIA0_7"]
+
+
+def test_match_with_different_teams_is_a_team_conflict() -> None:
+    """The same batter and event under different teams is a different game."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    other = OLD_CODE.replace("OB vs HT", "LG vs LT")
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", other)],
+        {},
+        frozenset(),
+    )
+
+    assert result["source_row_ids"]["team_conflict"] == ["20260816DBKIA0_7"]

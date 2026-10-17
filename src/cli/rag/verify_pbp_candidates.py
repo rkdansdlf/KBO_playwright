@@ -37,6 +37,9 @@ MIN_DUPLICATE_GROUP = 2
 _LEGACY_SQL = text(
     "SELECT id, game_id, inning, inning_half, batter_name FROM game_play_by_play WHERE id IN :ids"
 ).bindparams(bindparam("ids", expanding=True))
+_GAME_SQL = text(
+    "SELECT game_date, home_team, away_team FROM game WHERE game_date >= '2026-01-01' AND game_date < '2027-01-01'"
+)
 _DENSE_SQL = text(
     "SELECT source_row_id, content FROM rag_chunks "
     "WHERE source_table = 'game_play_by_play' AND index_status = 'ACTIVE' "
@@ -112,6 +115,28 @@ def game_verdict(candidate_row_id: str, dense_row_ids: list[str]) -> str:
     )
 
 
+def canonical_pair(teams: str) -> tuple[str, str] | None:
+    """Return the sorted, alias-mapped team pair of an ``away vs home`` field, or ``None``."""
+    parts = [part.strip() for part in teams.split(" vs ")]
+    if len(parts) != 2 or not all(parts):  # noqa: PLR2004 - away and home
+        return None
+    first, second = sorted(CODE_ALIAS.get(part, part) for part in parts)
+    return (first, second)
+
+
+def double_header_keys(rows: Iterable[tuple[str, str, str]]) -> frozenset[tuple[str, tuple[str, str]]]:
+    """Return ``(date, team pair)`` for every day on which the same two teams played more than once.
+
+    ``rows`` yields ``(game_date, home_team, away_team)`` from the source game table.
+    """
+    counts: Counter[tuple[str, tuple[str, str]]] = Counter()
+    for game_date, home, away in rows:
+        pair = canonical_pair(f"{away} vs {home}")
+        if pair is not None:
+            counts[(str(game_date), pair)] += 1
+    return frozenset(key for key, count in counts.items() if count > 1)
+
+
 def teams_of(content: str) -> str:
     """Return the ``away vs home`` field, or an empty string when absent."""
     match = TEAMS_PATTERN.search(content or "")
@@ -146,9 +171,12 @@ def mapping_agrees(source: SourcePlay, key: tuple[str, str, str, str]) -> bool:
 
 
 def _stored_game_key(row_id: str, lookup: dict[str, SourcePlay]) -> tuple[str, tuple[str, str], str] | None:
-    """Return the game key of a stored row: from its source row for a legacy key, else its own id."""
-    if row_id in lookup and row_id.isdigit():
-        return game_key(lookup[row_id][0] or "")
+    """Return the game key a stored row carries in its own identity.
+
+    Legacy numeric keys are not source row ids (the source lookup showed they point at other games),
+    so they carry no usable game key, whatever the lookup says. ``lookup`` is kept for the diagnostics only.
+    """
+    del lookup
     return game_key_of_row(row_id)
 
 
@@ -211,6 +239,7 @@ def classify(
     candidates: Iterable[dict[str, str]],
     dense_rows: Iterable[tuple[str, str]],
     legacy_lookup: dict[str, SourcePlay] | None = None,
+    double_headers: frozenset[tuple[str, tuple[str, str]]] | None = None,
 ) -> dict[str, object]:
     """Split candidates into same-play-under-another-key, new, and unparsed.
 
@@ -226,7 +255,14 @@ def classify(
     )
 
     counts = {"candidates": 0, "unparsed": 0, "matched": 0, "new": 0, "ambiguous": 0}
-    verdicts: dict[str, list[str]] = {"confirmed": [], "conflicting": [], "unverified": []}
+    verdicts: dict[str, list[str]] = {
+        "confirmed": [],
+        "conflicting": [],
+        "unverified": [],
+        "text_confirmed": [],
+        "team_conflict": [],
+    }
+    details: list[dict[str, object]] = []
     samples: list[dict[str, object]] = []
     team_pairs: Counter[tuple[str, str]] = Counter()
     matched_dates: set[str] = set()
@@ -251,7 +287,25 @@ def classify(
             game_key_of_row(row_id),
             [_stored_game_key(hit_id, lookup) for hit_id, _ in hits],
         )
+        cand_pair = canonical_pair(candidate_teams)
+        dense_pairs = [canonical_pair(teams) for _, teams in hits]
+        if verdict == "unverified" and cand_pair is not None:
+            if any(pair == cand_pair for pair in dense_pairs):
+                if double_headers is not None and (key[0], cand_pair) not in double_headers:
+                    verdict = "text_confirmed"
+            elif any(pair is not None for pair in dense_pairs):
+                verdict = "team_conflict"
         verdicts[verdict].append(row_id)
+        details.append(
+            {
+                "candidate_source_row_id": row_id,
+                "date": key[0],
+                "candidate_pair": list(cand_pair) if cand_pair else None,
+                "dense_source_row_ids": [hit_id for hit_id, _ in hits[:3]],
+                "dense_pairs": [list(pair) if pair else None for pair in dense_pairs[:3]],
+                "verdict": verdict,
+            }
+        )
         if len(samples) < SAMPLE_CAP:
             samples.append(
                 {
@@ -272,6 +326,7 @@ def classify(
         "team_pairs": pairs,
         "samples": samples,
         "source_row_ids": verdicts,
+        "matched_details": details,
         "matched_dates": sorted(matched_dates),
         "candidate_internal_duplicates": internal_duplicates,
         "candidate_duplicate_groups": _duplicate_groups(candidate_list, verdicts),
@@ -317,7 +372,8 @@ def main(argv: list[str] | None = None) -> int:
     dense_rows = hide_rows(dense_rows, _read_hidden_ids(args.hide_source_row_ids))
     with get_rag_source_session() as source_session:
         legacy_lookup = load_legacy_lookup(source_session, legacy_play_ids(dense_rows))
-    result = classify(candidates, dense_rows, legacy_lookup)
+        game_rows = source_session.execute(_GAME_SQL).all()
+    result = classify(candidates, dense_rows, legacy_lookup, double_header_keys(game_rows))
     sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     return 0
 
