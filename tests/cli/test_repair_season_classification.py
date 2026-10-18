@@ -97,19 +97,27 @@ def test_plan_matches_the_issue(factory: sessionmaker) -> None:
         "20260320HTHH0": (202600, 202601),
         "20260816HHSS0": (None, 202600),
         "20261006KTWO0": (202605, 202600),
+        # QA fix 2/3: 10/12 is before the first postseason day; postseason games
+        # are never played earlier than planned, so it is demoted.
+        "20261012LGHT0": (202603, 202600),
     }
-    # QA fix 1/3: 10/12 stored 준PO sits on the regular-season edge; 10/14 and
-    # 10/15 are stored regular inside the WC window. None of them auto-move.
-    assert [item["game_id"] for item in plan.review] == ["20261012LGHT0", "20261014OBLG0", "20261015OBLG0"]
+    # 10/14 and 10/15 are stored regular inside the WC window: decisions needed.
+    assert [item["game_id"] for item in plan.review] == ["20261014OBLG0", "20261015OBLG0"]
+    assert all(item["blocking"] for item in plan.review)
+    assert plan.unresolved == 2
     actions = {(row.season_id, row.action) for row in plan.season_rows}
-    # WC and KS have no confirmed first game and review rows remain: their
-    # stored dates are kept (never NULL while review rows remain).
+    # Date-hold mode: WC (stored 10/6~7) and KS (stored 10/26~11/1) lie outside
+    # their calendar windows, so they take the window instead of NULL.
     assert actions == {
         (202600, "update"),
         (202601, "create"),
+        (202602, "update"),
         (202603, "update"),
+        (202605, "update"),
     }
-    assert any("korean_series" in warning and "kept the stored" in warning for warning in plan.warnings)
+    rows = {row.season_id: row.new for row in plan.season_rows}
+    assert rows[202602] == {"start_date": "2026-10-14", "end_date": "2026-10-15"}
+    assert rows[202605] == {"start_date": "2026-11-02", "end_date": "2026-11-10"}
     regular = next(row for row in plan.season_rows if row.season_id == 202600)
     assert regular.new == {"start_date": "2026-03-28", "end_date": "2026-10-12"}
 
@@ -151,8 +159,8 @@ def test_apply_is_idempotent_and_rollback_restores(
     assert after["20261015OBLG0"] == 202600  # review item left alone
     with factory() as db:
         assert build_plan(db, 2026).empty
-        # KS has not started, but review rows remain: its stored dates stay, never NULL.
-        assert db.get(KboSeason, 202605).start_date == date(2026, 10, 26)
+        # KS has not started and review rows remain: stale 10/26 replaced by the window, never NULL.
+        assert db.get(KboSeason, 202605).start_date == date(2026, 11, 2)
         assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
 
     backups = list(tmp_path.glob("season_classification_2026_*.json"))
@@ -204,6 +212,10 @@ def _add_games(make: sessionmaker, rows: list[tuple[str, date, int | None, str]]
         db.commit()
 
 
+def _review_items(plan) -> dict[str, dict]:
+    return {item["game_id"]: item for item in plan.review}
+
+
 def _review_notes(plan) -> dict[str, str]:
     return {item["game_id"]: item["note"] for item in plan.review}
 
@@ -214,7 +226,9 @@ def test_delayed_postseason_game_outside_every_window_keeps_its_stage(factory: s
     with factory() as db:
         plan = build_plan(db, 2026)
     assert "20261024LGHT0" not in {change.game_id for change in plan.games}
-    assert "kept the stored postseason type" in _review_notes(plan)["20261024LGHT0"]
+    assert "delayed series" in _review_notes(plan)["20261024LGHT0"]
+    # Informational: the stored type is already the plausible one.
+    assert not _review_items(plan)["20261024LGHT0"]["blocking"]
 
 
 def test_unknown_game_outside_every_window_goes_to_review(factory: sessionmaker) -> None:
@@ -293,15 +307,31 @@ def test_null_season_game_in_a_postseason_window_is_still_assigned(factory: sess
     assert {change.game_id: change.new_type for change in plan.games}["20261020SSLG0"] == "semi_playoff"
 
 
-def test_postseason_game_on_the_regular_season_edge_goes_to_review(factory: sessionmaker) -> None:
-    """QA fix 1/3 repro: 10/12 (last regular day) stored as WC was demoted, giving SS/KT 145 games."""
-    _add_games(factory, [("20261012SSKT0", date(2026, 10, 12), 202602, "COMPLETED")])
+def test_postseason_game_before_the_first_postseason_day_is_demoted(factory: sessionmaker) -> None:
+    """QA fix 2/3: 10/12 stored as WC (first WC is 10/14) is safely regular; 10/13 too."""
+    _add_games(
+        factory,
+        [
+            ("20261012SSKT0", date(2026, 10, 12), 202602, "COMPLETED"),
+            ("20261013SSKT0", date(2026, 10, 13), 202602, "COMPLETED"),
+        ],
+    )
     with factory() as db:
         plan = build_plan(db, 2026)
-    assert "20261012SSKT0" not in {change.game_id for change in plan.games}
-    assert "regular-season edge" in _review_notes(plan)["20261012SSKT0"]
-    # Away from the edge a postseason-stored regular game is still demoted.
-    assert {change.game_id: change.new_type for change in plan.games}["20261006KTWO0"] == "regular"
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert changes["20261012SSKT0"] == "regular"
+    assert changes["20261013SSKT0"] == "regular"
+    assert changes["20261006KTWO0"] == "regular"
+
+
+def test_postseason_game_at_the_start_of_the_regular_season_goes_to_review(factory: sessionmaker) -> None:
+    _add_games(factory, [("20260329SSKT0", date(2026, 3, 29), 202602, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20260329SSKT0" not in {change.game_id for change in plan.games}
+    item = _review_items(plan)["20260329SSKT0"]
+    assert "start of the regular season" in item["note"]
+    assert item["blocking"]
 
 
 def test_allstar_game_is_never_repaired(factory: sessionmaker) -> None:
@@ -334,8 +364,9 @@ def test_postseason_start_date_is_the_actual_first_game(factory: sessionmaker) -
         plan = build_plan(db, 2026)
     rows = {row.season_id: row for row in plan.season_rows}
     assert rows[202604].new["start_date"] == "2026-10-26"
-    # Review rows remain in the fixture: KS (not started) keeps its stored dates.
-    assert 202605 not in rows
+    # Review rows remain in the fixture: KS (not started, stored 10/26 is
+    # outside its window) takes the calendar window rather than NULL.
+    assert rows[202605].new == {"start_date": "2026-11-02", "end_date": "2026-11-10"}
 
 
 def _resolve_review_rows(make: sessionmaker) -> None:
@@ -358,51 +389,73 @@ def test_not_started_postseason_rows_get_no_planned_dates(factory: sessionmaker)
     assert not plan.warnings
 
 
-def test_dates_are_never_nulled_while_review_or_null_rows_remain(
+def _set_postseason_rows(make: sessionmaker, po: tuple[date | None, date | None], ks: tuple[date | None, date | None]):
+    with make() as db:
+        db.add(KboSeason(season_id=202604, season_year=2026, league_type_code=4, league_type_name="플레이오프"))
+        db.flush()
+        for season_id, (start, end) in ((202604, po), (202605, ks)):
+            row = db.get(KboSeason, season_id)
+            row.start_date, row.end_date = start, end
+        db.commit()
+
+
+def _po_ks_dates(make: sessionmaker) -> tuple[tuple, tuple]:
+    with make() as db:
+        po, ks = db.get(KboSeason, 202604), db.get(KboSeason, 202605)
+        return (po.start_date, po.end_date), (ks.start_date, ks.end_date)
+
+
+PO_WINDOW = (date(2026, 10, 25), date(2026, 10, 31))
+KS_WINDOW = (date(2026, 11, 2), date(2026, 11, 10))
+
+
+def test_hold_mode_replaces_stale_dates_with_the_window(
     factory: sessionmaker,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """QA fix 1/3: bega_backend joins NULL-season games to every stage when a stage has no start date.
-
-    While review rows (or NULL season_id games) remain, a not-started stage keeps
-    its stored dates, in the plan and after a real --apply, with a warning.
-    """
-    with factory() as db:
-        db.add(
-            KboSeason(
-                season_id=202604,
-                season_year=2026,
-                league_type_code=4,
-                league_type_name="플레이오프",
-                start_date=date(2026, 10, 25),
-                end_date=date(2026, 10, 31),
-            ),
-        )
-        db.commit()
+    """QA fix 2/3 repro 1: PO 10/18 and KS 10/26 are wrong; review rows remain; --apply must fix them."""
+    _set_postseason_rows(factory, (date(2026, 10, 18), date(2026, 10, 24)), (date(2026, 10, 26), date(2026, 11, 1)))
     with factory() as db:
         plan = build_plan(db, 2026)
-    assert plan.review
-    touched_rows = {row.season_id for row in plan.season_rows}
-    assert 202604 not in touched_rows
-    assert 202605 not in touched_rows
-    assert {w.split(":")[0] for w in plan.warnings} >= {"playoff", "korean_series"}
+    assert plan.unresolved > 0
+    rows = {row.season_id: row.new for row in plan.season_rows}
+    assert rows[202604] == {"start_date": "2026-10-25", "end_date": "2026-10-31"}
+    assert rows[202605] == {"start_date": "2026-11-02", "end_date": "2026-11-10"}
 
     monkeypatch.setenv(ALLOW_ENV, "1")
     assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
-    with factory() as db:
-        po, ks = db.get(KboSeason, 202604), db.get(KboSeason, 202605)
-        assert (po.start_date, po.end_date) == (date(2026, 10, 25), date(2026, 10, 31))
-        assert (ks.start_date, ks.end_date) == (date(2026, 10, 26), date(2026, 11, 1))
+    assert _po_ks_dates(factory) == (PO_WINDOW, KS_WINDOW)
 
 
-def test_null_season_rows_alone_also_hold_the_dates(factory: sessionmaker) -> None:
-    _resolve_review_rows(factory)
-    _add_games(factory, [("20261024SSHT0", date(2026, 10, 24), None, "COMPLETED")])  # NULL, unresolvable
+def test_hold_mode_keeps_dates_already_inside_the_window(factory: sessionmaker) -> None:
+    _set_postseason_rows(factory, PO_WINDOW, KS_WINDOW)
     with factory() as db:
         plan = build_plan(db, 2026)
-    assert [item["game_id"] for item in plan.review] == ["20261024SSHT0"]
-    assert 202605 not in {row.season_id for row in plan.season_rows}
+    assert {202604, 202605}.isdisjoint({row.season_id for row in plan.season_rows})
+    assert any(w.startswith("playoff: not started") and "kept the stored dates" in w for w in plan.warnings)
+
+
+def test_null_dates_plus_a_null_season_game_get_the_window(
+    factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """QA fix 2/3 repro 2: PO/KS start NULL and a NULL season_id game (10/13) left: apply writes the windows."""
+    _resolve_review_rows(factory)
+    _set_postseason_rows(factory, (None, None), (None, None))
+    _add_games(factory, [("20261013SSHT0", date(2026, 10, 13), None, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert [item["game_id"] for item in plan.review] == ["20261013SSHT0"]
+    assert plan.unresolved == 1
+    rows = {row.season_id: row.new for row in plan.season_rows}
+    assert rows[202604] == {"start_date": "2026-10-25", "end_date": "2026-10-31"}
+    assert rows[202605] == {"start_date": "2026-11-02", "end_date": "2026-11-10"}
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
+    assert _po_ks_dates(factory) == (PO_WINDOW, KS_WINDOW)
 
 
 def test_unexpected_error_is_reported_cleanly(
@@ -447,13 +500,14 @@ def test_review_game_does_not_date_its_stored_stage(
     assert "20261014SSHT0" not in {change.game_id for change in plan.games}
     rows = {row.season_id: row for row in plan.season_rows}
     assert rows[202603].new["start_date"] == "2026-10-17"
-    assert 202602 not in rows  # WC unconfirmed (10/14 regular is review now): stored dates kept
+    # WC has no confirmed game (10/14 rows are in review): hold mode, stale 10/6 -> window.
+    assert rows[202602].new == {"start_date": "2026-10-14", "end_date": "2026-10-15"}
 
     monkeypatch.setenv(ALLOW_ENV, "1")
     assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
     with factory() as db:
         assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
-        assert db.get(KboSeason, 202602).start_date == date(2026, 10, 6)  # stored value, untouched
+        assert db.get(KboSeason, 202602).start_date == date(2026, 10, 14)  # window, not NULL
         assert db.query(Game).filter(Game.game_id == "20261014SSHT0").one().season_id == 202603
         assert build_plan(db, 2026).empty
 
@@ -465,8 +519,8 @@ def test_review_game_does_not_start_a_stage_that_has_not_started(
 ) -> None:
     """Regression (round 3): a PO-stored game on 10/18 (준PO window edge) is a review item.
 
-    PO has not started, so the existing PO row keeps no start_date: no change is
-    planned for it and --apply leaves it untouched.
+    PO has not started, so the game must not date PO (no 10/18). Review rows
+    remain, so (QA fix 2/3) the NULL PO row takes its calendar window, never 10/18.
     """
     with factory() as db:
         db.add(KboSeason(season_id=202604, season_year=2026, league_type_code=4, league_type_name="플레이오프"))
@@ -476,7 +530,8 @@ def test_review_game_does_not_start_a_stage_that_has_not_started(
         plan = build_plan(db, 2026)
     assert "window boundary" in _review_notes(plan)["20261018SSLG0"]
     assert "20261018SSLG0" not in {change.game_id for change in plan.games}
-    assert 202604 not in {row.season_id for row in plan.season_rows}
+    rows = {row.season_id: row.new for row in plan.season_rows}
+    assert rows[202604] == {"start_date": "2026-10-25", "end_date": "2026-10-31"}
     semi = next(row for row in plan.season_rows if row.season_id == 202603)
     assert semi.new["start_date"] == "2026-10-17"
 
@@ -484,6 +539,97 @@ def test_review_game_does_not_start_a_stage_that_has_not_started(
     assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
     with factory() as db:
         po = db.get(KboSeason, 202604)
-        assert (po.start_date, po.end_date) == (None, None)
+        assert (po.start_date, po.end_date) == PO_WINDOW
         assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
         assert db.query(Game).filter(Game.game_id == "20261018SSLG0").one().season_id == 202604
+
+
+@pytest.fixture
+def recrawled() -> sessionmaker:
+    """2026 after a correct Naver re-crawl: every row is stored under its real type."""
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Game.__table__.create(engine)
+    KboSeason.__table__.create(engine)
+    make = sessionmaker(bind=engine, expire_on_commit=False)
+    spans = {
+        202600: (0, "정규시즌", date(2026, 3, 28), date(2026, 10, 12)),
+        202601: (1, "시범경기", date(2026, 3, 12), date(2026, 3, 24)),
+        202602: (2, "와일드카드", date(2026, 10, 14), date(2026, 10, 15)),
+        202603: (3, "준플레이오프", date(2026, 10, 17), date(2026, 10, 23)),
+        202604: (4, "플레이오프", date(2026, 10, 18), date(2026, 10, 24)),  # stale
+        202605: (5, "한국시리즈", date(2026, 10, 26), date(2026, 11, 1)),  # stale
+    }
+    with make() as db:
+        db.add_all(
+            KboSeason(
+                season_id=sid, season_year=2026, league_type_code=code, league_type_name=name, start_date=a, end_date=b
+            )
+            for sid, (code, name, a, b) in spans.items()
+        )
+        rows = [
+            ("20260320HTHH0", date(2026, 3, 20), 202601, "COMPLETED"),
+            ("20261012LGHT0", date(2026, 10, 12), 202600, "COMPLETED"),
+            ("20261013SSKT0", date(2026, 10, 13), 202600, "COMPLETED"),  # regular game scheduled 10/13
+            ("20261014OBLG0", date(2026, 10, 14), 202602, "COMPLETED"),
+            ("20261016OBLG0", date(2026, 10, 16), 202602, "COMPLETED"),  # WC game 2 rained out to 10/16
+            ("20261017LGHT0", date(2026, 10, 17), 202603, "COMPLETED"),
+            ("20261024LGHT0", date(2026, 10, 24), 202603, "COMPLETED"),  # 준PO game 5 postponed to 10/24
+        ]
+        db.add_all(
+            Game(game_id=gid, game_date=day, season_id=sid, game_status=status, is_primary=True)
+            for gid, day, sid, status in rows
+        )
+        db.commit()
+    return make
+
+
+def test_after_a_correct_recrawl_nothing_needs_a_decision(
+    recrawled: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """QA fix 2/3: plausible kept rows are informational; unresolved reaches 0 and date-hold turns off."""
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    assert not plan.games
+    assert {item["game_id"] for item in plan.review} == {"20261013SSKT0", "20261016OBLG0", "20261024LGHT0"}
+    assert not any(item["blocking"] for item in plan.review)
+    assert plan.unresolved == 0
+    assert not plan.warnings
+    rows = {row.season_id: row.new for row in plan.season_rows}
+    # Hold mode is off: not-started PO/KS are cleared, not set to the planned window.
+    assert rows == {
+        202604: {"start_date": None, "end_date": None},
+        202605: {"start_date": None, "end_date": None},
+    }
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=recrawled) == EXIT_OK
+    with recrawled() as db:
+        assert (db.get(KboSeason, 202604).start_date, db.get(KboSeason, 202605).start_date) == (None, None)
+        assert db.get(KboSeason, 202602).start_date == date(2026, 10, 14)
+        assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
+        assert build_plan(db, 2026).empty
+
+
+def test_regular_make_up_game_beside_a_postseason_game_is_informational(recrawled: sessionmaker) -> None:
+    _add_games(recrawled, [("20261017SSKT0", date(2026, 10, 17), 202600, "COMPLETED")])
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    item = _review_items(plan)["20261017SSKT0"]
+    assert "make-up" in item["note"]
+    assert not item["blocking"]
+    assert plan.unresolved == 0
+
+
+def test_warning_does_not_call_a_played_stage_not_started(factory: sessionmaker) -> None:
+    """QA fix 2/3: WC has a played game (10/14, in review) -- it is not 'not started'."""
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    wildcard = [w for w in plan.warnings if w.startswith("wildcard")]
+    assert wildcard
+    assert "not started" not in wildcard[0]
+    assert "has played games" in wildcard[0]
+    korean = [w for w in plan.warnings if w.startswith("korean_series")]
+    assert korean
+    assert "not started" in korean[0]
