@@ -742,8 +742,9 @@ env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION
 | 05:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
 | 06:05 | `rag_audit_sentinel_job` | 커버리지 게이트 실패 시 Telegram/Slack 경보 |
 
-스케줄러는 launchd 상주 프로세스이며, **잡 추가 후에는 재시작해야 반영**됩니다:
-`launchctl kickstart -k gui/$UID/com.kbo-playwright.scheduler`
+스케줄러는 Windows 서버의 작업 스케줄러로 도는 상주 프로세스이며, **잡 추가 후에는 재시작해야 반영**됩니다.
+재시작 절차는 [`Docs/runbooks/WINDOWS_SCHEDULER.md`](../runbooks/WINDOWS_SCHEDULER.md) §5를 따릅니다.
+(이전 방식: Mac launchd `launchctl kickstart -k gui/$UID/com.kbo-playwright.scheduler` — 더 이상 사용하지 않음)
 
 ### 4. 검색 모드 플래그
 
