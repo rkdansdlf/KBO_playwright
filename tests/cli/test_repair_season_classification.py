@@ -18,7 +18,7 @@ from src.cli.repair_season_classification import (
     build_plan,
     run,
 )
-from src.models.game import Game
+from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
 
 
@@ -255,6 +255,7 @@ def test_earlier_stored_stage_on_the_next_window_edge_goes_to_review(factory: se
         plan = build_plan(db, 2026)
     assert "20261025LGHT0" not in {change.game_id for change in plan.games}
     assert "earlier than the calendar stage" in _review_notes(plan)["20261025LGHT0"]
+    assert _review_items(plan)["20261025LGHT0"]["blocking"]
 
 
 def test_delayed_semi_playoff_game_inside_the_po_window_is_not_promoted(
@@ -633,3 +634,117 @@ def test_warning_does_not_call_a_played_stage_not_started(factory: sessionmaker)
     korean = [w for w in plan.warnings if w.startswith("korean_series")]
     assert korean
     assert "not started" in korean[0]
+
+
+def _update_games(make: sessionmaker, season_id: int, game_ids: list[str]) -> None:
+    with make() as db:
+        db.query(Game).filter(Game.game_id.in_(game_ids)).update({Game.season_id: season_id}, synchronize_session=False)
+        db.commit()
+
+
+def test_semi_playoff_games_stored_as_wildcard_keep_the_semi_playoff_dates(
+    recrawled: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """QA fix 3/3 repro: 준PO games 10/17-21 stored as WC are [decide]; 준PO dates are kept, not cleared."""
+    _add_games(
+        recrawled,
+        [
+            ("20261018LGHT0", date(2026, 10, 18), 202603, "COMPLETED"),
+            ("20261020HTLG0", date(2026, 10, 20), 202603, "COMPLETED"),
+            ("20261021HTLG0", date(2026, 10, 21), 202603, "COMPLETED"),
+        ],
+    )
+    semi_ids = ["20261017LGHT0", "20261018LGHT0", "20261020HTLG0", "20261021HTLG0"]
+    _update_games(recrawled, 202602, semi_ids)
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    items = _review_items(plan)
+    assert all(items[gid]["blocking"] for gid in semi_ids)
+    assert plan.unresolved >= len(semi_ids)
+    assert not {change.game_id for change in plan.games} & set(semi_ids)
+    assert 202603 not in {row.season_id for row in plan.season_rows}  # 10/17~10/23 is inside the window: kept
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=recrawled) == EXIT_OK
+    with recrawled() as db:
+        semi = db.get(KboSeason, 202603)
+        assert (semi.start_date, semi.end_date) == (date(2026, 10, 17), date(2026, 10, 23))
+        again = build_plan(db, 2026)
+        assert again.unresolved > 0
+        assert all(_review_items(again)[gid]["blocking"] for gid in semi_ids)
+
+
+def test_confirmed_stage_does_not_start_after_its_review_games(recrawled: sessionmaker) -> None:
+    """준PO 10/17-21 stored as WC (review) plus a confirmed 10/22 준PO game: 준PO still starts 10/17."""
+    _add_games(recrawled, [("20261022HTLG0", date(2026, 10, 22), 202603, "COMPLETED")])
+    _update_games(recrawled, 202602, ["20261017LGHT0"])
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    assert 202603 not in {row.season_id for row in plan.season_rows}
+
+
+def test_informational_review_row_alone_keeps_its_stage_dates(recrawled: sessionmaker) -> None:
+    """Safeguard: with nothing to decide, a stage an [info] row relates to is not cleared."""
+    _update_games(recrawled, 202603, ["20261024LGHT0"])  # unchanged: 10/24 준PO stays [info]
+    _add_games(recrawled, [("20261016SSKT0", date(2026, 10, 16), 202600, "COMPLETED")])  # beside WC 10/16: [info]
+    with recrawled() as db:
+        db.query(Game).filter(Game.game_id == "20261017LGHT0").delete()
+        db.commit()
+        plan = build_plan(db, 2026)
+    assert plan.unresolved == 0
+    # 준PO has no confirmed game now; the 10/24 [info] row relates to it, so its dates are kept.
+    assert 202603 not in {row.season_id for row in plan.season_rows}
+    assert any(w.startswith("semi_playoff") and "relate to this stage" in w for w in plan.warnings)
+
+
+def test_regular_game_after_the_first_postseason_day_needs_a_decision(recrawled: sessionmaker) -> None:
+    """QA fix 3/3 repro: the 10/16 WC game stored as regular, with no other postseason game that day."""
+    _update_games(recrawled, 202600, ["20261016OBLG0"])
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    item = _review_items(plan)["20261016OBLG0"]
+    assert item["blocking"]
+    assert plan.unresolved == 1
+    assert not _review_items(plan)["20261013SSKT0"]["blocking"]  # before the first postseason day: [info]
+
+
+def test_regular_make_up_game_after_the_span_beside_a_postseason_game_is_informational(
+    recrawled: sessionmaker,
+) -> None:
+    _add_games(recrawled, [("20261016SSKT0", date(2026, 10, 16), 202600, "COMPLETED")])
+    with recrawled() as db:
+        plan = build_plan(db, 2026)
+    assert not _review_items(plan)["20261016SSKT0"]["blocking"]
+    assert plan.unresolved == 0
+
+
+def test_postseason_id_evidence_blocks_the_pre_postseason_demotion(recrawled: sessionmaker) -> None:
+    """QA fix 3/3 (optional): a Naver postseason id (alias) on 10/12 goes to [decide], not to regular."""
+    with recrawled() as db:
+        GameIdAlias.__table__.create(db.get_bind())
+    _update_games(recrawled, 202603, ["20261012LGHT0", "20261013SSKT0"])
+    with recrawled() as db:
+        db.add(GameIdAlias(alias_game_id="33331012LGHT02026", canonical_game_id="20261012LGHT0", source="naver"))
+        db.commit()
+        plan = build_plan(db, 2026)
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert "20261012LGHT0" not in changes
+    assert _review_items(plan)["20261012LGHT0"]["blocking"]
+    assert changes["20261013SSKT0"] == "regular"  # no postseason evidence: still demoted
+
+
+def test_unexpected_database_error_hides_bind_parameters() -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    from src.cli.backfill.repair_season_classification import _safe_error_text
+
+    exc = IntegrityError(
+        "UPDATE game SET season_id=? WHERE game_id=?", (202603, "SECRET-ROW"), Exception("constraint failed")
+    )
+    text = _safe_error_text(exc)
+    assert "SECRET-ROW" not in text
+    assert "parameters" not in text
+    assert "constraint failed" in text
+    assert len(_safe_error_text(OSError("x" * 1000))) <= 300

@@ -16,24 +16,31 @@ of being changed, either as **decide** (needs an operator decision) or **info**
 
 * decide: a stored regular game inside a postseason window with no stored game
   of that stage the same day (the crawler confirms Naver date-style ids as
-  regular, so moving it would flip-flop), a stage move next to a window
-  boundary, a stored postseason game at the start of the regular season, a
-  NULL ``season_id`` the repair cannot place, an unknown season type, and an
-  All-Star game not stored under an all-star season;
+  regular, so moving it would flip-flop), a stored stage *earlier* than the
+  calendar stage (a delayed series, or e.g. 준PO games stored as WC), a stage
+  move next to a window boundary, a stored regular game after the first
+  postseason day with no postseason game that day, a stored postseason game at
+  the start of the regular season or with a Naver postseason id before the
+  first postseason day, a NULL ``season_id`` the repair cannot place, an
+  unknown season type, and an All-Star game not stored under an all-star season;
 * info: a stored postseason game outside every window on or after the first
-  postseason day (rain-delayed series, e.g. 10/16 WC, 10/24 준PO), a stored
-  stage earlier than the calendar stage (delayed series), a regular game after
-  the regular-season span, a regular make-up game beside a same-day stage game.
+  postseason day (rain-delayed series, e.g. 10/16 WC, 10/24 준PO), a regular
+  game after the regular-season span but before the first postseason day
+  (10/13), a regular make-up game beside a same-day postseason game.
 
 A stored postseason game before the first postseason day (10/12, 10/13) is
-demoted to regular: postseason games are only ever pushed later. Postseason
-games stored as regular are corrected by re-crawling (the Naver id prefix).
+demoted to regular (postseason games are only ever pushed later) unless its id
+or a ``game_id_aliases`` row carries a Naver postseason prefix. Postseason games
+stored as regular are corrected by re-crawling (the Naver id prefix).
 
 While any **decide** row or unplaced NULL ``season_id`` game remains ("date-hold
 mode"), a postseason stage with no confirmed first game never gets NULL dates
 (bega_backend otherwise joins NULL-season games to every stage and labels the
 postseason KS): stored dates inside the stage's calendar window are kept, NULL
-or out-of-window dates are replaced by the window.
+or out-of-window dates are replaced by the window. As a safeguard, a stage that
+any review row (decide or info) relates to is held the same way even with
+nothing to decide, and a started stage never starts after a played review game
+dated in its window.
 
 After ``--apply``: recompute standings and **restart bega_backend**
 (``LeagueStageResolver`` / ``LEAGUE_DATES`` cache season types and stage dates).
@@ -68,8 +75,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from sqlalchemy import inspect
+
 from src.constants import KST
-from src.models.game import Game
+from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -92,6 +101,7 @@ from src.utils.season_classification import (
     calendar_season_type,
     in_regular_season_span,
     postseason_window_of,
+    season_type_from_naver_game_id,
 )
 from src.validators.season_team_code import ALL_STAR_TEAM_CODES
 
@@ -244,7 +254,7 @@ def _plan_season_rows(
     first_played: dict[str, date],
     *,
     unresolved_rows: int = 0,
-    played_stages: frozenset[str] = frozenset(),
+    stages: tuple[frozenset[str], frozenset[str]] = (frozenset(), frozenset()),
 ) -> None:
     """Plan ``kbo_seasons`` creates/updates.
 
@@ -260,12 +270,19 @@ def _plan_season_rows(
     whole postseason as KS. Its stored dates are kept when they lie inside the
     stage's calendar window; NULL or out-of-window dates (e.g. PO 10/18, KS
     10/26) are replaced by the calendar window, as for a newly created row.
+
+    ``stages`` is ``(played_stages, review_stages)``: stages with played games
+    (for the warning wording), and stages that any review row (decision or
+    informational) relates to: its stored or calendar type, or the window its
+    date lies in. As a safeguard such a stage is held the same way even when
+    nothing needs a decision, so its dates are never cleared under a game whose
+    type is in doubt.
     """
     year = plan.year
     spans = _target_spans(year, first_played)
     by_code = _rows_by_code(session, year)
     targeted = {change.new_season_id for change in plan.games}
-    hold_dates = unresolved_rows > 0
+    played_stages, review_stages = stages
 
     for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items():
         if season_type not in spans:
@@ -273,17 +290,28 @@ def _plan_season_rows(
         start, end = spans[season_type]
         existing = by_code.get(code, [])
         unconfirmed = season_type in POSTSEASON_STAGES and start is None
+        reason = _hold_reason(unresolved_rows, in_review=season_type in review_stages) if unconfirmed else None
+        status = _stage_status(season_type, played=season_type in played_stages)
         if not existing:
             season_id = year * 100 + code
             if not (unconfirmed and season_id not in targeted):
-                hold = (unresolved_rows, season_type in played_stages) if unconfirmed and hold_dates else None
+                hold = f"{status}; {reason}" if reason else None
                 _plan_create(session, plan, season_type, (start, end), hold)
             continue
-        if unconfirmed and hold_dates:
-            _plan_held_rows(plan, season_type, existing, unresolved_rows, played=season_type in played_stages)
+        if reason:
+            _plan_held_rows(plan, season_type, existing, f"{status}; {reason}")
             continue
         for row in existing:
             _plan_update(plan, row, (start, end))
+
+
+def _hold_reason(unresolved_rows: int, *, in_review: bool) -> str | None:
+    """Why a stage without a confirmed first game keeps dates (None: it does not)."""
+    if unresolved_rows > 0:
+        return f"{unresolved_rows} review/NULL season_id row(s) still need a decision"
+    if in_review:
+        return "review row(s) relate to this stage"
+    return None
 
 
 def _stage_status(season_type: str, *, played: bool) -> str:
@@ -303,9 +331,7 @@ def _plan_held_rows(
     plan: RepairPlan,
     season_type: str,
     rows: list[KboSeason],
-    unresolved_rows: int,
-    *,
-    played: bool,
+    reason: str,
 ) -> None:
     """Date-hold mode for a stage without a confirmed first game (see ``_plan_season_rows``)."""
     window = _calendar_window(plan.year, season_type)
@@ -318,8 +344,7 @@ def _plan_held_rows(
         else "kept the stored dates (inside the calendar window)"
     )
     plan.warnings.append(
-        f"{_stage_status(season_type, played=played)}; {unresolved_rows} review/NULL season_id row(s) still need a "
-        f"decision, so its dates are not cleared: {action}. Resolve them and re-run the repair.",
+        f"{reason}, so its dates are not cleared: {action}. Resolve them and re-run the repair.",
     )
 
 
@@ -343,23 +368,21 @@ def _plan_create(
     plan: RepairPlan,
     season_type: str,
     span: tuple[str | None, str | None],
-    hold: tuple[int, bool] | None,
+    hold: str | None,
 ) -> None:
     """Plan the creation of a missing ``kbo_seasons`` row.
 
-    ``hold`` is ``(unresolved_rows, played)`` in date-hold mode for a stage with
-    no confirmed first game: the row takes the calendar window, not NULL dates.
+    ``hold`` is the warning reason in date-hold mode for a stage with no
+    confirmed first game: the row takes the calendar window, not NULL dates.
     """
     year = plan.year
     code = SEASON_TYPE_TO_LEAGUE_CODE[season_type]
     season_id = year * 100 + code
     start, end = span
     if hold is not None:
-        unresolved_rows, played = hold
         start, end = _calendar_window(year, season_type)
         plan.warnings.append(
-            f"{_stage_status(season_type, played=played)}; {unresolved_rows} review/NULL season_id row(s) still "
-            f"need a decision, so the new kbo_seasons row {season_id} gets the calendar window {start}~{end} "
+            f"{hold}, so the new kbo_seasons row {season_id} gets the calendar window {start}~{end} "
             "instead of NULL dates",
         )
     clash = session.get(KboSeason, season_id)
@@ -460,20 +483,30 @@ def _expected_in_window(
         )
     if stored_type in POSTSEASON_STAGES and calendar in POSTSEASON_STAGES and stored_type != calendar:
         if POSTSEASON_STAGES.index(stored_type) < POSTSEASON_STAGES.index(calendar):
-            return Verdict(None, "stored stage earlier than the calendar stage (delayed series); kept")
+            # A delayed series, or a later-stage game stored as an earlier one
+            # (e.g. 준PO stored as WC): the stored type must not date the stage.
+            return Verdict(
+                None, "stored stage earlier than the calendar stage (delayed series?); left unchanged", blocking=True
+            )
         if _near_window_boundary(game_date):
             return Verdict(None, "postseason stage move next to a window boundary; left unchanged", blocking=True)
     return Verdict(calendar)
 
 
-def _stored_postseason_outside_windows(game_date: date) -> Verdict | None:
-    """Verdict for a stored postseason game on a date in no window (None: fall through)."""
+def _stored_postseason_outside_windows(game_date: date, *, postseason_id: bool) -> Verdict | None:
+    """Verdict for a stored postseason game on a date in no window (None: fall through).
+
+    ``postseason_id`` is crawler evidence: the game id carries a Naver
+    postseason series prefix (``4444``/``3333``/``5555``/``7777``).
+    """
     if in_regular_season_span(game_date) and _near_regular_season_start(game_date):
         return Verdict(None, "stored postseason game at the start of the regular season; left unchanged", blocking=True)
     first_postseason = _first_postseason_day(game_date.year)
     if first_postseason is None:
         return None
     if game_date < first_postseason:
+        if postseason_id:
+            return Verdict(None, "postseason game id before the first postseason day; left unchanged", blocking=True)
         # Postseason games are only ever pushed later, never earlier.
         return Verdict(REGULAR)
     return Verdict(None, "stored postseason game outside every window (delayed series); kept")
@@ -485,6 +518,7 @@ def _expected_type(
     calendar: str | None,
     *,
     same_day_stage: bool = False,
+    postseason_id: bool = False,
 ) -> Verdict:
     """Decide what the repair does with one game.
 
@@ -501,19 +535,31 @@ def _expected_type(
     * rained-out regular games are made up inside postseason windows, and the
       crawler confirms Naver date-style ids as regular: a stored regular game
       there goes to review (informational when a stored game of the calendar
-      stage is on the same day), and one after the regular span is kept.
+      stage is on the same day). A stored regular game after the regular span
+      is informational only before the first postseason day (10/13) or beside
+      a same-day stored postseason game; otherwise it needs a decision.
+
+    ``same_day_stage`` says a stored game of the calendar stage (outside every
+    window: of any postseason stage) is on the same day.
     """
     if calendar is not None:
         return _expected_in_window(game_date, stored_type, calendar, same_day_stage=same_day_stage)
     if stored_type in POSTSEASON_STAGES:
-        verdict = _stored_postseason_outside_windows(game_date)
+        verdict = _stored_postseason_outside_windows(game_date, postseason_id=postseason_id)
         if verdict is not None:
             return verdict
     if in_regular_season_span(game_date) is not False:
         return Verdict(REGULAR)
     span = REGULAR_SEASON_SPANS.get(game_date.year)
     if stored_type == REGULAR and span is not None and game_date > date.fromisoformat(span[1]):
-        return Verdict(None, "regular game after the regular-season span (make-up/tiebreaker); kept")
+        first_postseason = _first_postseason_day(game_date.year)
+        if same_day_stage or (first_postseason is not None and game_date < first_postseason):
+            return Verdict(None, "regular game after the regular-season span (make-up/tiebreaker); kept")
+        return Verdict(
+            None,
+            "stored regular game after the first postseason day with no postseason game that day; left unchanged",
+            blocking=True,
+        )
     return Verdict(
         None, "outside the regular season and every postseason window; type unknown, left unchanged", blocking=True
     )
@@ -548,6 +594,7 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
         for game in games
         if game.season_id is not None and type_by_season_id.get(int(game.season_id)) in POSTSEASON_STAGES
     }
+    postseason_ids = _postseason_id_evidence(session, games)
     played_stages: set[str] = set()
     for game in games:
         old_season_id = None if game.season_id is None else int(game.season_id)
@@ -574,7 +621,14 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
             plan,
             game,
             season_ids,
-            (old_season_id, old_type, calendar, status, (game.game_date, calendar) in stored_stage_days),
+            (
+                old_season_id,
+                old_type,
+                calendar,
+                status,
+                _same_day_stage(game.game_date, calendar, stored_stage_days),
+                str(game.game_id) in postseason_ids,
+            ),
             include_unplayed_postseason=include_unplayed_postseason,
         )
         # Only confirmed types count: a review item keeps its stored type, but
@@ -588,6 +642,7 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
             candidates = (confirmed_type,) if confirmed_type is not None else (old_type, calendar)
             played_stages.update(t for t in candidates if t in POSTSEASON_STAGES)
 
+    _extend_back_to_review_games(first_played, plan.review)
     planned = {change.game_id for change in plan.games}
     # Only rows that need a decision hold the dates; informational review rows
     # (stored type already plausible, nothing would change) do not.
@@ -599,16 +654,74 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
         plan,
         first_played,
         unresolved_rows=len(unresolved),
-        played_stages=frozenset(played_stages),
+        stages=(frozenset(played_stages), _review_stages(plan.review)),
     )
     return plan
+
+
+def _postseason_id_evidence(session: Session, games: list[Game]) -> frozenset[str]:
+    """Game ids whose own id or a stored alias carries a Naver postseason series prefix.
+
+    The Naver crawler stores its source id (e.g. ``33331012LGHT02026``) as a
+    ``game_id_aliases`` row of the canonical KBO id.
+    """
+    evidence = {
+        str(game.game_id) for game in games if season_type_from_naver_game_id(game.game_id) in POSTSEASON_STAGES
+    }
+    if not games or not inspect(session.get_bind()).has_table(GameIdAlias.__tablename__):
+        return frozenset(evidence)
+    ids = [str(game.game_id) for game in games]
+    for chunk_start in range(0, len(ids), 500):
+        rows = (
+            session.query(GameIdAlias.alias_game_id, GameIdAlias.canonical_game_id)
+            .filter(GameIdAlias.canonical_game_id.in_(ids[chunk_start : chunk_start + 500]))
+            .all()
+        )
+        evidence.update(
+            str(canonical) for alias, canonical in rows if season_type_from_naver_game_id(alias) in POSTSEASON_STAGES
+        )
+    return frozenset(evidence)
+
+
+def _same_day_stage(game_date: date, calendar: str | None, stored_stage_days: set[tuple[date, str | None]]) -> bool:
+    """Return whether a stored game of the calendar stage (outside every window: any stage) is on this day."""
+    if calendar is not None:
+        return (game_date, calendar) in stored_stage_days
+    return any(day == game_date for day, _stage in stored_stage_days)
+
+
+def _extend_back_to_review_games(first_played: dict[str, date], review: list[dict[str, Any]]) -> None:
+    """Never start a confirmed stage after a played review game dated in its window.
+
+    E.g. 준PO games 10/17-21 stored as WC go to review, 10/22 is a confirmed
+    준PO game: 준PO keeps starting 10/17 rather than moving to 10/22 (the
+    backend would then show the doubtful games as WC). Review games never
+    *start* a stage on their own (see ``_plan_game``).
+    """
+    for item in review:
+        stage = item.get("calendar_type")
+        if stage not in first_played or item.get("game_status") not in _STARTED:
+            continue
+        game_date = date.fromisoformat(str(item["game_date"]))
+        first_played[stage] = min(first_played[stage], game_date)
+
+
+def _review_stages(review: list[dict[str, Any]]) -> frozenset[str]:
+    """Postseason stages a review row relates to (stored/calendar type, or date window)."""
+    stages: set[str] = set()
+    for item in review:
+        stages.update(t for t in (item.get("current_type"), item.get("calendar_type")) if t in POSTSEASON_STAGES)
+        window = postseason_window_of(date.fromisoformat(str(item["game_date"])))
+        if window is not None:
+            stages.add(window[0])
+    return frozenset(stages)
 
 
 def _plan_game(
     plan: RepairPlan,
     game: Game,
     season_ids: dict[str, int],
-    state: tuple[int | None, str | None, str | None, str | None, bool],
+    state: tuple[int | None, str | None, str | None, str | None, bool, bool],
     *,
     include_unplayed_postseason: bool,
 ) -> str | None:
@@ -620,7 +733,7 @@ def _plan_game(
     ``kbo_seasons`` stage (``first_played``), e.g. a 준PO-stored game on the WC
     date must not make 준PO start on 10/14.
     """
-    old_season_id, old_type, calendar, status, same_day_stage = state
+    old_season_id, old_type, calendar, status, same_day_stage, postseason_id = state
 
     def review(note: str, calendar_type: str | None = calendar, *, blocking: bool = True) -> str | None:
         plan.review.append(
@@ -638,7 +751,13 @@ def _plan_game(
 
     if old_season_id is not None and old_type is None:
         return review("stored season_id is not a known kbo_seasons type; left unchanged")
-    expected, note, blocking = _expected_type(game.game_date, old_type, calendar, same_day_stage=same_day_stage)
+    expected, note, blocking = _expected_type(
+        game.game_date,
+        old_type,
+        calendar,
+        same_day_stage=same_day_stage,
+        postseason_id=postseason_id,
+    )
     if (
         note is not None
         and include_unplayed_postseason
@@ -895,12 +1014,26 @@ def run(argv: Sequence[str] | None = None, *, session_factory: Callable[[], Sess
             return EXIT_ERROR
         except Exception as exc:  # noqa: BLE001 - operator CLI: report cleanly, no raw traceback
             session.rollback()
-            logger.debug("repair_season_classification failed: %r", exc)
+            logger.debug("repair_season_classification failed: %s", type(exc).__name__)
             _write(
-                f"error: unexpected {type(exc).__name__}: {exc}; nothing was committed."
+                f"error: unexpected {type(exc).__name__}: {_safe_error_text(exc)}; nothing was committed."
                 f"{_backup_hint(state.get('backup'))}",
             )
             return EXIT_ERROR
+
+
+_ERROR_TEXT_LIMIT = 300
+
+
+def _safe_error_text(exc: BaseException) -> str:
+    """Error text without SQL bind parameters (which can carry row data), truncated."""
+    orig = getattr(exc, "orig", None)
+    text = str(orig if orig is not None else exc)
+    text = text.split("[parameters:", 1)[0].split("[SQL:", 1)[0].strip()
+    text = " ".join(text.split())
+    if len(text) > _ERROR_TEXT_LIMIT:
+        text = text[: _ERROR_TEXT_LIMIT - 3] + "..."
+    return text
 
 
 def _backup_hint(backup_path: Path | None) -> str:
