@@ -449,7 +449,13 @@ python3 -m src.cli.kbo incidents list --state all --limit 1 --json   # count fie
 python3 -m src.cli.kbo incidents deliveries stats --days 0
 ```
 
-Scheduler process control (launchd, label `com.kbo-playwright.scheduler`):
+Scheduler process control: the scheduler runs on the Windows server under Task
+Scheduler. Status and restart are in
+[`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §5–§6. On Windows, read
+`logs\scheduler.log*` with `Select-String` instead of the `grep` on
+`logs/scheduler.launchd.err.log` above.
+
+Previous setup, no longer used (macOS launchd, label `com.kbo-playwright.scheduler`):
 
 ```bash
 launchctl print   gui/$(id -u)/com.kbo-playwright.scheduler | head -20

@@ -1,8 +1,11 @@
 # Windows DB 호스트 복구 런북 (ch806-08)
 
 > 이 문서는 **Windows 서버 앞(또는 사내망 PC)에서** 실행할 절차다.
-> KBO_playwright/Mac 쪽에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다.
-> Mac 쪽 후속 절차는 §7에 있다.
+> 원격(Mac 등 다른 tailnet 기기)에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다(2026-10 관측).
+>
+> **크롤러 스케줄러도 이 Windows 서버에서 돈다**(2026-10-18 운영자 확인). PostgreSQL만 Windows에 있고 스케줄러는 Mac(launchd)에서 돈다는 이전 설명은 더 이상 맞지 않다.
+> 스케줄러 실행·재시작·로그 위치·작업 스케줄러 등록은 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)를 본다.
+> DB 복구 후 스케줄러 확인 절차는 §7에 있다. §9 이후는 Mac에서 관측·작업하던 시기의 기록이라 "Mac" 표현을 그대로 둔다.
 
 ## 1. 대상과 현재 증상
 
@@ -11,6 +14,7 @@
 | 호스트 | `ch806-08` (Windows) |
 | 네트워크 주소 | Tailscale `100.81.73.13` |
 | 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.81.73.13:5432`) — BEGA 백엔드와 공유 |
+| 역할 (스케줄러) | 크롤러 스케줄러 `scripts/scheduler.py` — Windows 작업 스케줄러로 상주 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)) |
 | 서버 앞 접근 | RDP(3389)·SSH(22)·WinRM(5985/5986) **무응답** → 사내망 PC의 RDP 또는 물리 접근 필요 |
 
 **2026-10-05 Mac 관측 기준**
@@ -51,8 +55,10 @@ New-NetFirewallRule -DisplayName "PostgreSQL 5432 (Tailscale only)" `
     -RemoteAddress 100.64.0.0/10
 ```
 
-> 더 좁게 열려면 `-RemoteAddress 100.103.157.51` (KBO_playwright가 도는 Mac 한 대만).
-> 다른 tailnet 기기가 이 DB를 쓰지 않는다면 이쪽이 최소 권한이다.
+> 스케줄러는 같은 서버에서 붙으므로, 원격 허용이 필요한 것은 이 DB를 쓰는 다른 tailnet 기기뿐이다(BEGA 백엔드 등).
+> 더 좁게 열려면 그 기기들의 IP만 `-RemoteAddress`에 넣는다. 이것이 최소 권한이다.
+> (이전에는 스케줄러가 돌던 Mac `100.103.157.51` 한 대만 열었다. 지금은 그 Mac이 DB에 붙을 일이 없다면 넣지 않는다.)
+> 스케줄러의 `DATABASE_URL`이 이 서버의 Tailscale 주소(`100.81.73.13`)를 쓴다면, 규칙을 좁힌 뒤 스케줄러 연결도 함께 확인한다(§7).
 
 ## 3. 진단 상세 (결과별 분기)
 
@@ -157,40 +163,47 @@ sc.exe failure  "postgresql-x64-16" reset=86400 actions=restart/60000/restart/60
 
 체크리스트:
 - [ ] 서비스 `Automatic` + 복구 옵션 등록
-- [ ] 방화벽 규칙은 **Tailscale 대역(또는 Mac 단일 IP)으로 제한** — 전체 공개 금지
+- [ ] 방화벽 규칙은 **Tailscale 대역(또는 이 DB를 쓰는 기기 IP)으로 제한** — 전체 공개 금지
 - [ ] Windows Update 직후에는 `Get-NetConnectionProfile`로 Tailscale 프로필 재확인
 - [ ] Tailscale 자동 시작 확인 (`Get-Service Tailscale`)
+- [ ] 스케줄러 작업이 부팅 후 자동으로 뜨는지 확인 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §4·§6)
 
 ## 6. 하지 말 것
 
-- `-Profile Any -RemoteAddress Any`로 5432를 인터넷에 공개하지 않는다 (Tailscale 대역/Mac IP로 제한).
+- `-Profile Any -RemoteAddress Any`로 5432를 인터넷에 공개하지 않는다 (Tailscale 대역/필요한 기기 IP로 제한).
 - 서비스 계정·비밀번호를 임의로 바꾸지 않는다 (BEGA 백엔드와 공유 중).
-- PostgreSQL 재시작은 현재 연결을 끊는다(현재는 끊을 연결이 없다).
+- PostgreSQL 재시작은 현재 연결을 끊는다. 같은 서버의 스케줄러 연결도 끊기므로, 가능하면 진행 중인 DB 잡이 없을 때 한다(`logs\scheduler.log` 끝을 먼저 본다).
+- Mac의 launchd 스케줄러를 다시 켜지 않는다. Windows 스케줄러와 함께 돌면 같은 DB에 스케줄러 두 개가 쓴다.
 
-## 7. 복구 후 (Mac/KBO_playwright 쪽에서 실행)
+## 7. 복구 후 (Windows 서버에서 실행)
 
-```bash
-# 1) 도달성
-nc -z -G 3 100.81.73.13 5432
+```powershell
+cd "<프로젝트 경로>"
+
+# 1) 도달성 (스케줄러의 DATABASE_URL이 가리키는 주소로)
+Test-NetConnection -ComputerName 100.81.73.13 -Port 5432
 
 # 2) 마이그레이션 체인 확인 (read-only)
-PGCONNECT_TIMEOUT=5 venv/bin/python -m src.cli.apply_postgres_migrations --check
+$env:PGCONNECT_TIMEOUT = "5"
+& "<파이썬 경로>" -m src.cli.apply_postgres_migrations --check
 
 # 3) 통과하면 Phase G 재개(G1 → G4~G7): DLQ 통계/스냅샷 검증/원장 census
 ```
 
-- 스케줄러는 별도로 꺼져 있다(`~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist.disabled`).
-  **DB 복구 확인 후** 이 Mac에서 스크립트 하나로 재개한다:
-  ```bash
-  bash scripts/restore_scheduler_launchd.sh --dry-run   # 예정 동작 확인 (부작용 없음)
-  bash scripts/restore_scheduler_launchd.sh             # 복구 + 검증 (원샷)
-  ```
-  - 스크립트는 repo 템플릿(`scripts/launchd/`)과 `scripts/install_scheduler_launchd.sh`를 재사용하고,
-    `state = running`·`scheduler.py` 프로세스·`Registered job: crawl_daily_games` 로그까지 확인한 뒤에만
-    `.disabled` 복사본을 정리한다. 이미 로드돼 있으면 아무 것도 하지 않는다(멱등).
-  - DB가 아직 불통이면 경고만 출력하고 진행한다 — fail-fast 게이트가 DB 잡을 조용히 건너뛴다.
-  > `com.kbo.daily_ingest`·`com.kbo.monthly_embed_upgrade`는 다른 프로젝트(KBO_platform/bega_AI) 소유이므로 손대지 않는다.
-  > 복구 스크립트도 스케줄러 라벨만 건드린다.
+- `<프로젝트 경로>`, `<파이썬 경로>`는 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) 첫 표의 값이다.
+- **스케줄러는 DB가 끊겨도 내려가지 않는다.** DB 잡마다 fail-fast 게이트가 먼저 DB를 확인하고, 안 되면 `Job ... skipped: database unreachable`를 남기고 건너뛴다. DB가 돌아오면 다음 실행부터 다시 돈다. 그래서 DB 복구만으로는 보통 재시작이 필요 없다.
+- DB 복구 후 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §6으로 스케줄러를 확인한다.
+  - 작업이 `Running`이고 프로세스가 하나인지
+  - `logs\scheduler.log`에서 `skipped: database unreachable`가 멈추고 잡이 정상 완료되는지
+- 서버 재부팅으로 스케줄러가 안 떠 있으면 `Start-ScheduledTask -TaskName "<작업 이름>"`으로 시작한다. 재시작 절차는 `WINDOWS_SCHEDULER.md` §5를 따른다.
+
+### 7-1. 이전 방식: Mac launchd 스케줄러 재개 (사용하지 않음)
+
+스케줄러가 Mac에서 돌던 시기의 절차다. **지금은 실행하지 않는다.** 실행하면 Windows 스케줄러와 동시에 돌게 된다. 기록용으로만 남긴다.
+
+- 당시 스케줄러는 Mac에서 꺼 두었다(`~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist.disabled`). DB 복구를 확인한 뒤 `bash scripts/restore_scheduler_launchd.sh --dry-run`으로 확인하고 `bash scripts/restore_scheduler_launchd.sh`로 재개했다.
+- 그 스크립트는 repo 템플릿(`scripts/launchd/`)과 `scripts/install_scheduler_launchd.sh`를 재사용했다. `state = running`, `scheduler.py` 프로세스, `Registered job: crawl_daily_games` 로그를 확인한 뒤에만 `.disabled` 복사본을 정리했다.
+- `com.kbo.daily_ingest`·`com.kbo.monthly_embed_upgrade`는 다른 프로젝트(KBO_platform/bega_AI) 소유라서 손대지 않았다.
 
 ## 8. 서버 접근자가 기록해 줄 것
 
@@ -345,6 +358,7 @@ KBO_ALLOW_1982_DEDUP=1 venv/bin/python -m scripts.maintenance.merge_1982_duplica
 
 
 Mac 로컬 스케줄러는 `com.kbo-playwright.scheduler.plist.disabled` 등 3개 모두 비활성이므로, 이 Mac에서 죽은 DB를 향해 재시도하는 프로세스는 없다.
+(2026-10-15 당시 기록이다. 지금 스케줄러는 Windows 서버에서 돈다 — [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md).)
 
 
 - "4,996행 감소": 저장소, 실행 로그, 데이터 파일(2026-10-01 이후 텍스트)에서 근거를 찾지 못했다. 측정 쿼리와 기준 시점이 제시되지 않아 재현하지 못했다. 덤프 대비 실측은 `game` 순감소 5행(27,393 → 27,388), `CANCELLED` 2,614행 감소다. 이 항목은 출처 없음으로 종결한다.
