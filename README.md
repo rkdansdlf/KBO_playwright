@@ -55,6 +55,27 @@ python3 -m src.cli.build_rag_index --source kbo_definitions
 python3 -m src.cli.build_rag_index --source kbo_regulations
 ```
 
+## Scheduler (Windows server)
+
+The crawler scheduler (`scripts/scheduler.py`, APScheduler) runs as a long-lived process on the **Windows server**, the same host as the PostgreSQL database. It is registered in Windows Task Scheduler. Full procedure (run, restart, logs, Task Scheduler registration): **[`Docs/runbooks/WINDOWS_SCHEDULER.md`](Docs/runbooks/WINDOWS_SCHEDULER.md)**.
+
+```powershell
+cd "<project path>"
+# Foreground run for checks (Ctrl+C stops it gracefully)
+& "<venv python.exe>" scripts\scheduler.py --no-startup-run
+
+# Restart the registered task after adding jobs or updating code
+Stop-ScheduledTask  -TaskName "<task name>"
+Start-ScheduledTask -TaskName "<task name>"
+
+# Main log (rotating, 10 MB x 5). Relative to the working directory, so the task's "Start in" must be the project root.
+Get-Content .\logs\scheduler.log -Tail 50
+```
+
+- Only one scheduler may run against the database. A second process exits on the PID guard (`data\locks\scheduler.pid`).
+- The old macOS launchd setup (`scripts/launchd/`, `scripts/install_scheduler_launchd.sh`, `scripts/restore_scheduler_launchd.sh`, `logs/scheduler.launchd.*.log`) is **no longer used**. It is described only as the previous setup ("이전 방식") in the runbook. Do not re-enable it alongside the Windows task.
+- Database outages on the Windows host: [`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md`](Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md).
+
 ## CI/CD Pipeline
 
 14 GitHub Actions workflows under `.github/workflows/`:
@@ -97,7 +118,7 @@ KBO_playwright/
 │   ├── crawling/          # Historical batch crawling
 │   ├── verification/      # Data quality verification
 │   ├── legacy/maintenance/# Active maintenance utilities
-│   └── scheduler.py       # APScheduler job definitions
+│   └── scheduler.py       # Scheduler entrypoint (runs on the Windows server)
 ├── .github/
 │   ├── workflows/         # 14 CI/CD workflow files
 │   └── actions/           # 3 composite actions (python-env, kbo-job-setup, notify)
@@ -127,6 +148,7 @@ Configure via `.env`:
 
 - **[AGENTS.md](AGENTS.md)**: Full command reference, CI/CD secrets, workflow docs
 - **[Docs/](Docs/)**: Runbooks, URL patterns, limitations
+- **[Docs/runbooks/WINDOWS_SCHEDULER.md](Docs/runbooks/WINDOWS_SCHEDULER.md)**: Scheduler operations on the Windows server
 - **[Docs/references/COMMAND_REFERENCE.md](Docs/references/COMMAND_REFERENCE.md)**: CLI command guide
 - **[Docs/schema/](Docs/schema/)**: Database schema documentation
 - **[tests/factories/](tests/factories/)**: Model factory helpers for test development
