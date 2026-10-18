@@ -320,3 +320,62 @@ def test_not_started_postseason_rows_get_no_planned_dates(factory: sessionmaker)
     rows = {row.season_id: row for row in plan.season_rows}
     assert 202604 not in rows  # PO has not started and nothing moves into it: no row, no 10/25
     assert rows[202605].new["start_date"] is None  # KS 10/26 cleared, not set to 11/2
+
+
+def test_review_game_does_not_date_its_stored_stage(
+    factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (round 3): a 준PO-stored game on the WC date (10/14) is a review item.
+
+    Its stored type is unconfirmed, so 준PO must still start on its real first
+    game (10/17), in the plan and after a real --apply.
+    """
+    _add_games(factory, [("20261014SSHT0", date(2026, 10, 14), 202603, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "window boundary" in _review_notes(plan)["20261014SSHT0"]
+    assert "20261014SSHT0" not in {change.game_id for change in plan.games}
+    rows = {row.season_id: row for row in plan.season_rows}
+    assert rows[202603].new["start_date"] == "2026-10-17"
+    assert rows[202602].new["start_date"] == "2026-10-14"  # WC really started (auto-fixed 20261014OBLG0)
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
+    with factory() as db:
+        assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
+        assert db.get(KboSeason, 202602).start_date == date(2026, 10, 14)
+        assert db.query(Game).filter(Game.game_id == "20261014SSHT0").one().season_id == 202603
+        assert build_plan(db, 2026).empty
+
+
+def test_review_game_does_not_start_a_stage_that_has_not_started(
+    factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (round 3): a PO-stored game on 10/18 (준PO window edge) is a review item.
+
+    PO has not started, so the existing PO row keeps no start_date: no change is
+    planned for it and --apply leaves it untouched.
+    """
+    with factory() as db:
+        db.add(KboSeason(season_id=202604, season_year=2026, league_type_code=4, league_type_name="플레이오프"))
+        db.commit()
+    _add_games(factory, [("20261018SSLG0", date(2026, 10, 18), 202604, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "window boundary" in _review_notes(plan)["20261018SSLG0"]
+    assert "20261018SSLG0" not in {change.game_id for change in plan.games}
+    assert 202604 not in {row.season_id for row in plan.season_rows}
+    semi = next(row for row in plan.season_rows if row.season_id == 202603)
+    assert semi.new["start_date"] == "2026-10-17"
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
+    with factory() as db:
+        po = db.get(KboSeason, 202604)
+        assert (po.start_date, po.end_date) == (None, None)
+        assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
+        assert db.query(Game).filter(Game.game_id == "20261018SSLG0").one().season_id == 202604

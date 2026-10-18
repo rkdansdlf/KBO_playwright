@@ -337,15 +337,17 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
         if _is_allstar_game(game, old_type, calendar):
             continue
         status = (game.game_status or "").upper() or None
-        final_type = _plan_game(
+        confirmed_type = _plan_game(
             plan,
             game,
             season_ids,
             (old_season_id, old_type, calendar, status),
             include_unplayed_postseason=include_unplayed_postseason,
         )
-        if status in _STARTED and final_type in POSTSEASON_STAGES:
-            first_played.setdefault(final_type, game.game_date)
+        # Only confirmed types count: a review item keeps its stored type, but
+        # that type is exactly what is in doubt.
+        if status in _STARTED and confirmed_type in POSTSEASON_STAGES:
+            first_played.setdefault(confirmed_type, game.game_date)
 
     _plan_season_rows(session, plan, first_played)
     return plan
@@ -359,7 +361,14 @@ def _plan_game(
     *,
     include_unplayed_postseason: bool,
 ) -> str | None:
-    """Plan one game; return the type it will have after the repair."""
+    """Plan one game; return its *confirmed* type after the repair.
+
+    That is the stored type when it is already right, or the new type when the
+    game is auto-fixed. A game sent to review (or one whose target type has no
+    row) returns None: its stored type is unconfirmed and must not date a
+    ``kbo_seasons`` stage (``first_played``), e.g. a 준PO-stored game on the WC
+    date must not make 준PO start on 10/14.
+    """
     old_season_id, old_type, calendar, status = state
 
     def review(note: str, calendar_type: str | None = calendar) -> str | None:
@@ -373,7 +382,7 @@ def _plan_game(
                 "note": note,
             },
         )
-        return old_type
+        return None
 
     if old_season_id is not None and old_type is None:
         return review("stored season_id is not a known kbo_seasons type; left unchanged")
@@ -382,8 +391,10 @@ def _plan_game(
         if old_season_id is None:
             note += "; season_id is NULL and stays NULL: clean it up by hand"
         return review(note)
-    if expected == old_type or expected not in season_ids:
+    if expected == old_type:
         return old_type
+    if expected not in season_ids:
+        return None
     if (
         old_season_id is not None
         and status in _UNPLAYED

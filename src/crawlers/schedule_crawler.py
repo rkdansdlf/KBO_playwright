@@ -258,6 +258,13 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 # A filtered row is not merely unsaved, it was rejected as invalid;
                 # counting it as failed keeps read/accounted-for reconcilable.
                 run.records_failed = save_result.failed + save_result.filtered
+                if save_result.season_unresolved:
+                    # Already inside records_failed; named here so the skip is visible.
+                    logger.warning(
+                        "[WARN] %s: %s game(s) not saved, season_id unresolved (failure_reason=season_unresolved)",
+                        target,
+                        save_result.season_unresolved,
+                    )
             return games
 
     async def _resolve_month(
