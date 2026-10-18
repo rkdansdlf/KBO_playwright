@@ -115,7 +115,8 @@ Agents should apply the repository's crawler-oriented skill set automatically; t
 - `python3 -m src.cli.run_periodic_extras`: Run periodic data sync tasks.
 - `python3 -m src.cli.run_weekly_maintenance`: Run weekly maintenance tasks (futures profiles, enrichment).
 - `python3 -m src.cli.smart_polling_gate --json`: Lightweight gate to check if today's KBO games are finished (used in CI polling).
-- `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs).
+- `python3 -m src.cli.data_integrity_checker --date YYYYMMDD`: Post-crawl data integrity validation (game existence, terminal status, stats, NULL player IDs, season_id coverage, season-type plausibility).
+- `python3 -m src.cli.repair_season_classification --year 2026 [--apply] [--rollback FILE]`: Re-derive each game's season type (exhibition/regular/WC/준PO/PO/KS) from the calendar in `src/utils/season_classification.py`, fill missing `season_id`, align `kbo_seasons` spans. Dry run by default; `--apply` needs `KBO_ALLOW_SEASON_REPAIR=1` and writes a JSON backup under `data/repair_backups/` first.
 - `python3 -m src.cli.apply_postgres_migrations`: Bootstrap and apply PostgreSQL ORM baseline/migrations against `DATABASE_URL`.
 - `python3 -m src.cli.apply_postgres_migrations --check`: Check PostgreSQL migrations without writing (non-zero exit while anything is pending).
 - `python3 -m src.cli.apply_oracle_migrations`: Legacy Oracle chain (`migrations/oracle/`). Required only for the residual Oracle paths listed in the Database Contract, not for the operational database.
@@ -199,6 +200,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
   - `KBO_ALLOW_CRAWL_REPLAY=1` — `kbo crawl replay --apply`.
   - `KBO_ALLOW_SNAPSHOT_REPLAY=1` — `kbo snapshot replay --apply` (ledger run only).
   - `KBO_ALLOW_SNAPSHOT_PERSIST=1` — `kbo snapshot replay --persist` (writes domain tables; highest risk, separate guard).
+  - `KBO_ALLOW_SEASON_REPAIR=1` — `repair_season_classification --apply` (rewrites `game.season_id` and `kbo_seasons` spans; backup + `--rollback`).
   - `CRAWL_EVIDENCE_DIR` — evidence root for content-addressed artifacts; replay rejects any stored path outside it (default `data/crawl_evidence`). A wrong root surfaces as `success=false` for every snapshot, **not** as drift.
   - Stale thresholds: `DLQ_STALE_RETRYING_SECONDS` (1800), `DLQ_RUN_STALE_SECONDS` (3600). Snapshot drift gate: `SNAPSHOT_DRIFT_SAMPLE_LIMIT` (100), `SNAPSHOT_DRIFT_MAX` (0), `SNAPSHOT_DRIFT_FAIL_MAX` (5).
 - Operational procedures for these commands live in `Docs/runbooks/DATA_RELIABILITY.md`.

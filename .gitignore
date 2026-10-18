@@ -124,3 +124,6 @@ coverage_report.txt
 
 # Vendor (external skill adapters, gitignored)
 /vendor/
+
+# Season classification repair backups (issue #40)
+data/repair_backups/

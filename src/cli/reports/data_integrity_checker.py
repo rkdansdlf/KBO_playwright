@@ -6,6 +6,8 @@ meets quality standards. Checks for:
 - All games have terminal status (COMPLETED, DRAW, CANCELLED, POSTPONED)
 - Batting and pitching stats exist for completed games
 - No unresolved player_id gaps in critical tables
+- Every game of the season has a valid season_id, and each date's played
+  games carry a plausible season type (exhibition / regular / postseason)
 
 Exits with code 0 on success, code 1 on failure (to fail CI pipeline).
 
@@ -40,6 +42,8 @@ from src.constants import DATE_STR_LEN, KST
 from src.db.engine import SessionLocal
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_POSTPONED,
     GAME_STATUS_UNRESOLVED,
     is_terminal_status,
 )
@@ -827,6 +831,172 @@ def check_pa_formula_integrity(session: Session, target: date) -> CheckResult:
     )
 
 
+#: Most game ids listed in a failed season check's details.
+SEASON_CHECK_SAMPLE_LIMIT = 20
+
+_NOT_PLAYED_STATUSES = (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED)
+
+
+def check_game_season_id(session: Session, target: date) -> CheckResult:
+    """Verify every game of the target's season points at a valid ``kbo_seasons`` row.
+
+    A game with no ``season_id`` (or one pointing at a missing row, or at another
+    year's row) has no season context, and the API refuses any date range that
+    contains it with HTTP 409 ("manual baseball data required"). The check spans
+    the whole season, not only the target date, because one such row breaks
+    every range query across it.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
+    from src.models.game import Game
+    from src.models.season import KboSeason
+
+    year_start, year_end = date(target.year, 1, 1), date(target.year, 12, 31)
+    rows = (
+        session.query(Game.game_id, Game.season_id, KboSeason.season_id, KboSeason.season_year)
+        .outerjoin(KboSeason, Game.season_id == KboSeason.season_id)
+        .filter(
+            Game.game_date >= year_start,
+            Game.game_date <= year_end,
+            _primary_game_predicate(session, Game.is_primary),
+        )
+        .all()
+    )
+    null_ids = sorted(str(game_id) for game_id, season_id, _, _ in rows if season_id is None)
+    dangling_ids = sorted(
+        str(game_id) for game_id, season_id, found_id, _ in rows if season_id is not None and found_id is None
+    )
+    wrong_year_ids = sorted(
+        str(game_id)
+        for game_id, _, found_id, season_year in rows
+        if found_id is not None and season_year is not None and int(season_year) != target.year
+    )
+    bad = len(null_ids) + len(dangling_ids) + len(wrong_year_ids)
+    details: dict[str, Any] = {
+        "season_year": target.year,
+        "total": len(rows),
+        "null_season_id": len(null_ids),
+        "dangling_season_id": len(dangling_ids),
+        "wrong_year_season_id": len(wrong_year_ids),
+    }
+    if bad:
+        details["sample_null"] = null_ids[:SEASON_CHECK_SAMPLE_LIMIT]
+        details["sample_dangling"] = dangling_ids[:SEASON_CHECK_SAMPLE_LIMIT]
+        details["sample_wrong_year"] = wrong_year_ids[:SEASON_CHECK_SAMPLE_LIMIT]
+        details["remediation"] = f"python3 -m src.cli.repair_season_classification --year {target.year}"
+        return CheckResult(
+            name="game_season_id",
+            passed=False,
+            message=(
+                f"{bad} of {len(rows)} {target.year} games lack a valid season_id "
+                f"(null={len(null_ids)}, dangling={len(dangling_ids)}, wrong_year={len(wrong_year_ids)})"
+            ),
+            details=details,
+        )
+    return CheckResult(
+        name="game_season_id",
+        passed=True,
+        message=f"All {len(rows)} {target.year} games have a valid season_id",
+        details=details,
+    )
+
+
+def _season_classification_violations(target: date, codes: list[tuple[str, int | None]]) -> dict[str, list[str]]:
+    """Return season-type violations for the played games of one date.
+
+    The rules only use facts that survive rain-outs: an exhibition window, the
+    regular-season span, the first postseason day, and "one postseason game per
+    day". A postseason game pushed past its scheduled window is not flagged.
+    """
+    from src.utils.season_classification import (
+        EXHIBITION,
+        REGULAR_SEASON_SPANS,
+        SEASON_DATE_RULES,
+        SEASON_TYPE_TO_LEAGUE_CODE,
+        calendar_season_type,
+    )
+
+    exhibition_code = SEASON_TYPE_TO_LEAGUE_CODE[EXHIBITION]
+    regular_code = SEASON_TYPE_TO_LEAGUE_CODE["regular"]
+    postseason_codes = {2, 3, 4, 5}
+    violations: dict[str, list[str]] = {}
+
+    postseason_games = [gid for gid, code in codes if code in postseason_codes]
+    if len(postseason_games) > 1:
+        violations["postseason_overflow"] = postseason_games
+
+    if target.year in SEASON_DATE_RULES:
+        in_exhibition = calendar_season_type(target) == EXHIBITION
+        mismatched = [gid for gid, code in codes if code is not None and (code == exhibition_code) != in_exhibition]
+        if mismatched:
+            violations["exhibition_mismatch"] = mismatched
+        postseason_starts = [
+            date.fromisoformat(start)
+            for start, _, name in SEASON_DATE_RULES[target.year]
+            if name in {"와일드카드", "준플레이오프", "플레이오프", "한국시리즈"}
+        ]
+        if postseason_starts and target < min(postseason_starts) and postseason_games:
+            violations["postseason_before_start"] = postseason_games
+
+    span = REGULAR_SEASON_SPANS.get(target.year)
+    if span is not None:
+        start, end = (date.fromisoformat(value) for value in span)
+        if not start <= target <= end:
+            outside = [gid for gid, code in codes if code == regular_code]
+            if outside:
+                violations["regular_outside_span"] = outside
+    return violations
+
+
+def check_season_classification(session: Session, target: date) -> CheckResult:
+    """Verify the played games of the target date carry a plausible season type.
+
+    Catches the failure modes of issue #40: exhibition games stored as regular
+    (teams over 144 games), regular-season games stored as a postseason stage
+    (five "한국시리즈 1차전" a day), and postseason games before the postseason.
+
+    Args:
+        session: Session.
+        target: Target.
+
+    """
+    from src.models.game import Game
+    from src.models.season import KboSeason
+
+    rows = (
+        session.query(Game.game_id, KboSeason.league_type_code)
+        .outerjoin(KboSeason, Game.season_id == KboSeason.season_id)
+        .filter(
+            Game.game_date == target,
+            _primary_game_predicate(session, Game.is_primary),
+            ~func.coalesce(Game.game_status, "").in_(_NOT_PLAYED_STATUSES),
+        )
+        .all()
+    )
+    codes = [(str(game_id), None if code is None else int(code)) for game_id, code in rows]
+    violations = _season_classification_violations(target, codes)
+    if violations:
+        total = len({gid for ids in violations.values() for gid in ids})
+        return CheckResult(
+            name="season_classification",
+            passed=False,
+            message=f"{total} game(s) on {target} have an implausible season type: {', '.join(sorted(violations))}",
+            details={
+                "violations": violations,
+                "remediation": f"python3 -m src.cli.repair_season_classification --year {target.year}",
+            },
+        )
+    return CheckResult(
+        name="season_classification",
+        passed=True,
+        message=f"All {len(codes)} played games on {target} have a plausible season type",
+        details={"total": len(codes)},
+    )
+
+
 CHECKS = [
     check_games_exist,
     check_game_status_populated,
@@ -838,6 +1008,8 @@ CHECKS = [
     check_duplicate_games,
     check_futures_daily_integrity,
     check_pa_formula_integrity,
+    check_game_season_id,
+    check_season_classification,
 ]
 
 

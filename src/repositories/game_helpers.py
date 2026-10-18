@@ -47,6 +47,13 @@ from src.utils.game_status import (
     LIVE_GAME_STATUSES,
 )
 from src.utils.player_positions import get_primary_position
+from src.utils.season_classification import (
+    ALLSTAR,
+    SEASON_TYPE_TO_LEAGUE_CODE,
+    SEASON_TYPE_TO_LEAGUE_NAME,
+    normalize_season_type,
+    season_payload_type,
+)
 from src.utils.team_codes import (
     build_kbo_game_id,
     normalize_kbo_game_id,
@@ -60,51 +67,12 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from sqlalchemy.sql.elements import ColumnElement
 
-SEASON_TYPE_TO_LEAGUE_CODE = {
-    "regular": 0,
-    "exhibition": 1,
-    "wildcard": 2,
-    "semi_playoff": 3,
-    "semi-playoff": 3,
-    "playoff": 4,
-    "korean_series": 5,
-}
-
 MIN_TIME_COMPONENTS = 2
 MIN_PLAYER_NAME_LENGTH = 2
 MAX_PLAYER_NAME_LENGTH = 5
 
-SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
-    2023: [
-        ("2023-03-13", "2023-03-28", "시범경기"),
-        ("2023-10-19", "2023-10-19", "와일드카드"),
-        ("2023-10-22", "2023-10-25", "준플레이오프"),
-        ("2023-10-30", "2023-11-05", "플레이오프"),
-        ("2023-11-07", "2023-11-13", "한국시리즈"),
-    ],
-    2024: [
-        ("2024-03-09", "2024-03-19", "시범경기"),
-        ("2024-07-06", "2024-07-06", "올스타전"),
-        ("2024-10-02", "2024-10-03", "와일드카드"),
-        ("2024-10-05", "2024-10-11", "준플레이오프"),
-        ("2024-10-13", "2024-10-19", "플레이오프"),
-        ("2024-10-21", "2024-10-30", "한국시리즈"),
-    ],
-    2025: [
-        ("2025-03-08", "2025-03-18", "시범경기"),
-        ("2025-10-06", "2025-10-07", "와일드카드"),
-        ("2025-10-09", "2025-10-14", "준플레이오프"),
-        ("2025-10-18", "2025-10-24", "플레이오프"),
-        ("2025-10-26", "2025-11-01", "한국시리즈"),
-    ],
-    2026: [
-        ("2026-03-07", "2026-03-17", "시범경기"),
-        ("2026-10-06", "2026-10-07", "와일드카드"),
-        ("2026-10-09", "2026-10-14", "준플레이오프"),
-        ("2026-10-18", "2026-10-24", "플레이오프"),
-        ("2026-10-26", "2026-11-01", "한국시리즈"),
-    ],
-}
+# The season-type vocabulary and calendar (SEASON_TYPE_TO_LEAGUE_CODE,
+# SEASON_DATE_RULES) live in src.utils.season_classification.
 
 
 @dataclass(frozen=True)
@@ -195,8 +163,8 @@ def _resolve_league_type_code(season_type: object) -> int:
     as_int = _coerce_int(season_type)
     if as_int is not None:
         return as_int
-    key = str(season_type or "regular").strip().lower()
-    return SEASON_TYPE_TO_LEAGUE_CODE.get(key, 0)
+    key = normalize_season_type(season_type)
+    return SEASON_TYPE_TO_LEAGUE_CODE.get(key or "regular", 0)
 
 
 def _resolve_game_date_obj(raw_date: object) -> date | None:
@@ -235,34 +203,6 @@ def _query_db_season_by_date_range(session: Session, season_year: int, game_date
         return None
 
 
-def _apply_season_date_rules(session: Session, season_year: int, game_date: date) -> int | None:
-    rules = SEASON_DATE_RULES.get(season_year, [])
-    for start_str, end_str, type_name in rules:
-        try:
-            start_dt = date.fromisoformat(start_str)
-            end_dt = date.fromisoformat(end_str)
-            if start_dt <= game_date <= end_dt:
-                mapped = _coerce_int(
-                    session.execute(
-                        text(
-                            """
-                            SELECT MIN(season_id)
-
-                            FROM kbo_seasons
-                            WHERE season_year = :season_year
-                              AND league_type_name = :league_type_name
-                            """,
-                        ),
-                        {"season_year": season_year, "league_type_name": type_name},
-                    ).scalar(),
-                )
-                if mapped is not None:
-                    return mapped
-        except SQLAlchemyError:
-            logger.warning("Failed to apply season date rule")
-    return None
-
-
 def _query_db_season_by_code(session: Session, season_year: int, league_type_code: int) -> int | None:
     try:
         return _coerce_int(
@@ -284,11 +224,89 @@ def _query_db_season_by_code(session: Session, season_year: int, league_type_cod
         return None
 
 
+def _query_db_postseason_by_date_range(session: Session, season_year: int, game_date: date) -> int | None:
+    """Return the postseason ``kbo_seasons`` row whose configured span holds a date."""
+    try:
+        return _coerce_int(
+            session.execute(
+                text(
+                    """
+                    SELECT MIN(season_id)
+
+                    FROM kbo_seasons
+                    WHERE season_year = :season_year
+                      AND league_type_code BETWEEN 2 AND 5
+                      AND start_date IS NOT NULL
+                      AND end_date IS NOT NULL
+                      AND :game_date BETWEEN start_date AND end_date
+                    """,
+                ),
+                {"season_year": season_year, "game_date": game_date},
+            ).scalar(),
+        )
+    except SQLAlchemyError:
+        logger.warning("Failed to query postseason season_id from database")
+        return None
+
+
+def _query_db_season_by_name(session: Session, season_year: int, league_type_name: str) -> int | None:
+    try:
+        return _coerce_int(
+            session.execute(
+                text(
+                    """
+                    SELECT MIN(season_id)
+
+                    FROM kbo_seasons
+                    WHERE season_year = :season_year
+                      AND league_type_name = :league_type_name
+                    """,
+                ),
+                {"season_year": season_year, "league_type_name": league_type_name},
+            ).scalar(),
+        )
+    except SQLAlchemyError:
+        logger.warning("Failed to query season_id by league_type_name")
+        return None
+
+
+def _resolve_unknown_postseason_stage(
+    session: Session,
+    game_data: dict[str, Any],
+    game_date_obj: date | None,
+    existing_season_id: int | None,
+) -> int | None:
+    """Resolve a "postseason" game whose stage neither source nor calendar names.
+
+    Trust a configured postseason span in ``kbo_seasons``, then whatever the row
+    already had. Never guess a stage.
+    """
+    if game_date_obj is not None:
+        mapped = _query_db_postseason_by_date_range(session, game_date_obj.year, game_date_obj)
+        if mapped is not None:
+            return mapped
+    logger.warning(
+        "Postseason stage unknown for %s on %s; keeping season_id=%s",
+        game_data.get("game_id"),
+        game_date_obj,
+        existing_season_id,
+    )
+    return existing_season_id
+
+
 def _resolve_schedule_season_id(
     session: Session,
     game_data: dict[str, Any],
     existing_season_id: int | None,
 ) -> int | None:
+    """Resolve the ``kbo_seasons`` row a game belongs to.
+
+    The season *type* is decided first (source signal, then the season
+    calendar, see :mod:`src.utils.season_classification`), and only then mapped
+    to a row by ``(season_year, league_type_code)``. The ``kbo_seasons`` date
+    spans are not used to pick the type: overlapping or stale spans there are
+    what labelled exhibition games as regular and regular games as KS.
+    """
     explicit = _coerce_int(game_data.get("season_id"))
     if explicit is not None:
         return explicit
@@ -297,13 +315,50 @@ def _resolve_schedule_season_id(
     game_date_obj = _resolve_game_date_obj(game_data.get("game_date"))
     if game_date_obj is not None:
         season_year = game_date_obj.year
-        mapped = _query_db_season_by_date_range(session, season_year, game_date_obj)
+    if season_year is None:
+        return existing_season_id
+
+    season_type = season_payload_type({**game_data, "game_date": game_date_obj})
+    if season_type == ALLSTAR:
+        mapped = _query_db_season_by_name(session, season_year, SEASON_TYPE_TO_LEAGUE_NAME[ALLSTAR])
         if mapped is not None:
             return mapped
-        mapped = _apply_season_date_rules(session, season_year, game_date_obj)
-        if mapped is not None:
-            return mapped
-    return _resolve_season_id_fallback(session, game_data, existing_season_id, season_year)
+        season_type = "regular"
+    if season_type is None:
+        return _resolve_unknown_postseason_stage(session, game_data, game_date_obj, existing_season_id)
+
+    return _season_id_for_type(session, season_year, SEASON_TYPE_TO_LEAGUE_CODE[season_type], existing_season_id)
+
+
+def _season_id_for_type(
+    session: Session,
+    season_year: int,
+    league_type_code: int,
+    existing_season_id: int | None,
+) -> int:
+    """Map a decided (year, type) to its kbo_seasons row, creating it when absent."""
+    mapped = _query_db_season_by_code(session, season_year, league_type_code)
+    if mapped is not None:
+        return mapped
+    if existing_season_id is not None and _query_db_league_code_of(session, existing_season_id) is None:
+        # The current id is not a kbo_seasons row we know (an official id the
+        # table does not carry): nothing proves it wrong, so keep it rather than
+        # minting a parallel row.
+        return existing_season_id
+    return _ensure_season_exists(session, season_year, league_type_code)
+
+
+def _query_db_league_code_of(session: Session, season_id: int) -> int | None:
+    try:
+        return _coerce_int(
+            session.execute(
+                text("SELECT league_type_code FROM kbo_seasons WHERE season_id = :season_id"),
+                {"season_id": season_id},
+            ).scalar(),
+        )
+    except SQLAlchemyError:
+        logger.warning("Failed to query league_type_code for season_id")
+        return None
 
 
 def _resolve_season_id_fallback(
@@ -353,14 +408,10 @@ def _ensure_season_exists(
     if result is not None:
         return result
     sid = season_year * 100 + league_type_code
-    name = {
-        0: "정규시즌",
-        1: "시범경기",
-        2: "와일드카드",
-        3: "준플레이오프",
-        4: "플레이오프",
-        5: "한국시리즈",
-    }.get(league_type_code, f"Type {league_type_code}")
+    name = {code: SEASON_TYPE_TO_LEAGUE_NAME[key] for key, code in SEASON_TYPE_TO_LEAGUE_CODE.items()}.get(
+        league_type_code,
+        f"Type {league_type_code}",
+    )
     logger.warning(
         "Auto-creating kbo_seasons row: year=%s, code=%s (%s)",
         season_year,
@@ -404,9 +455,13 @@ def _resolve_game_season_id(
     if existing_season_id is not None:
         return existing_season_id
     season_data = {
+        "game_id": game_data.get("game_id"),
         "season_id": game_data.get("season_id"),
         "season_year": game_data.get("season_year") or game_date.year,
-        "season_type": game_data.get("season_type") or "regular",
+        "game_date": game_date,
+        # No season_type means "not stated", so the calendar decides.
+        "season_type": game_data.get("season_type"),
+        "season_type_confirmed": game_data.get("season_type_confirmed"),
     }
     return _resolve_schedule_season_id(session, season_data, existing_season_id)
 
