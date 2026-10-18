@@ -146,6 +146,7 @@ def test_kbo_page_new_game_with_unknown_stage_is_not_saved_with_null_season(full
     payload = _kbo_page_postseason_payload("2031-10-16", "20311016LGHT0")
     assert payload["season_type"] == "postseason"
     assert save_schedule_game(payload, session=full_session) is False
+    assert payload["failure_reason"] == "season_unresolved"
     assert full_session.query(Game).filter(Game.game_id == "20311016LGHT0").one_or_none() is None
 
 
@@ -156,3 +157,24 @@ def test_kbo_page_new_delayed_postseason_game_is_saved_with_a_season(full_sessio
     assert save_schedule_game(payload, session=full_session) is True
     game = full_session.query(Game).filter(Game.game_id == "20261024LGHT0").one()
     assert game.season_id == 202603
+
+
+def test_schedule_collection_counts_season_unresolved_separately(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.services import schedule_collection_service as service
+
+    def fake_save(game: dict, **_kwargs: object) -> bool:
+        if game["game_id"] == "20311016LGHT0":
+            game["failure_reason"] = "season_unresolved"
+            return False
+        return game["game_id"] != "20311017LGHT0"  # an ordinary save failure
+
+    monkeypatch.setattr(service, "save_schedule_game", fake_save)
+    monkeypatch.setattr(service, "validate_schedule_game_payload", lambda _game: (True, None))
+    games = [
+        _kbo_page_postseason_payload("2031-10-16", "20311016LGHT0"),
+        _kbo_page_postseason_payload("2031-10-17", "20311017LGHT0"),
+        _kbo_page_postseason_payload("2026-10-24", "20261024LGHT0"),
+    ]
+    result = service.save_schedule_games(games, log=None)
+    assert (result.saved, result.failed, result.season_unresolved) == (1, 2, 1)
+    assert [g["failure_reason"] for g in result.failed_games if g.get("failure_reason")] == ["season_unresolved"]

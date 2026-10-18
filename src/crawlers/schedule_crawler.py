@@ -625,7 +625,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         calendar = calendar_season_type(game_date)
         if calendar == EXHIBITION:
             return EXHIBITION, False
-        if calendar is not None and season_type_from_naver_game_id(raw.get("gameId")) is None and raw.get("gameId"):
+        if calendar is not None and raw.get("gameId"):
             # The calendar says postseason/all-star but the id has no series
             # prefix: the id proves it is not such a game.
             return REGULAR, True

@@ -305,6 +305,11 @@ def resolve_canonical_game_id(game_id: str, session: Session | None = None) -> s
     return alias.canonical_game_id if alias else canonical
 
 
+#: ``failure_reason`` set on a schedule payload that was not saved because its
+#: ``season_id`` could not be resolved (see :func:`_refuse_new_game_without_season`).
+SCHEDULE_SEASON_UNRESOLVED = "season_unresolved"
+
+
 def _refuse_new_game_without_season(
     game: Game | None,
     resolved_season_id: int | None,
@@ -320,6 +325,9 @@ def _refuse_new_game_without_season(
     """
     if resolved_season_id is not None or game is not None:
         return False
+    # The bool return carries no reason; the payload carries it for the caller's
+    # failed-game report (src.services.schedule_collection_service).
+    game_data["failure_reason"] = SCHEDULE_SEASON_UNRESOLVED
     logger.warning(
         "[SKIP] %s on %s: season_id unresolved (season_type=%s); not saved with season_id NULL",
         game_id,

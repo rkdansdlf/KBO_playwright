@@ -198,10 +198,16 @@ def _season_ids(session: Session, year: int) -> dict[str, int]:
 
 
 def _plan_season_rows(session: Session, plan: RepairPlan, first_played: dict[str, date]) -> None:
-    """Plan ``kbo_seasons`` creates/updates."""
+    """Plan ``kbo_seasons`` creates/updates.
+
+    A missing postseason row is only created once its stage has started or a
+    planned game moves into it; an empty not-started row would only be a target
+    for a wrong stage move.
+    """
     year = plan.year
     spans = _target_spans(year, first_played)
     by_code = _rows_by_code(session, year)
+    targeted = {change.new_season_id for change in plan.games}
 
     for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items():
         if season_type not in spans:
@@ -210,6 +216,8 @@ def _plan_season_rows(session: Session, plan: RepairPlan, first_played: dict[str
         existing = by_code.get(code, [])
         if not existing:
             season_id = year * 100 + code
+            if season_type in POSTSEASON_STAGES and start is None and season_id not in targeted:
+                continue
             clash = session.get(KboSeason, season_id)
             if clash is not None:
                 msg = (
@@ -279,16 +287,17 @@ def _expected_type(game_date: date, stored_type: str | None, calendar: str | Non
 
     The calendar alone is not evidence against a stored postseason type: rain-outs
     push postseason games outside their planned window (10/24 준PO game 5), and
-    next to a window edge a stage move is as likely to be wrong as right.
+    later into the next stage's window (a 준PO game on 10/27). So a stored stage
+    is only ever moved automatically to an *earlier* stage, and not next to a
+    window edge; moving it to a later stage always goes to review. Moves between
+    the postseason and regular/exhibition are still repaired.
     """
     if calendar is not None:
-        if (
-            stored_type in POSTSEASON_STAGES
-            and calendar in POSTSEASON_STAGES
-            and stored_type != calendar
-            and _near_window_boundary(game_date)
-        ):
-            return None, "postseason stage move next to a window boundary; left unchanged"
+        if stored_type in POSTSEASON_STAGES and calendar in POSTSEASON_STAGES and stored_type != calendar:
+            if POSTSEASON_STAGES.index(stored_type) < POSTSEASON_STAGES.index(calendar):
+                return None, "stored postseason stage is earlier than the calendar stage; left unchanged"
+            if _near_window_boundary(game_date):
+                return None, "postseason stage move next to a window boundary; left unchanged"
         return calendar, None
     if in_regular_season_span(game_date) is not False:
         return REGULAR, None
@@ -370,6 +379,8 @@ def _plan_game(
         return review("stored season_id is not a known kbo_seasons type; left unchanged")
     expected, note = _expected_type(game.game_date, old_type, calendar)
     if note is not None:
+        if old_season_id is None:
+            note += "; season_id is NULL and stays NULL: clean it up by hand"
         return review(note)
     if expected == old_type or expected not in season_ids:
         return old_type

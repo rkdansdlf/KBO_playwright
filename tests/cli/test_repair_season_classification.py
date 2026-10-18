@@ -107,7 +107,6 @@ def test_plan_matches_the_issue(factory: sessionmaker) -> None:
         (202601, "create"),
         (202602, "update"),
         (202603, "update"),
-        (202604, "create"),
         (202605, "update"),
     }
     regular = next(row for row in plan.season_rows if row.season_id == 202600)
@@ -222,15 +221,51 @@ def test_unknown_game_outside_every_window_goes_to_review(factory: sessionmaker)
         plan = build_plan(db, 2026)
     assert "20261024SSHT0" not in {change.game_id for change in plan.games}
     assert "type unknown" in _review_notes(plan)["20261024SSHT0"]
+    assert "clean it up by hand" in _review_notes(plan)["20261024SSHT0"]
 
 
-def test_stage_move_next_to_a_window_boundary_goes_to_review(factory: sessionmaker) -> None:
-    """A 준PO game on PO's first day is as likely a delayed 준PO game as a PO game."""
+def test_later_to_earlier_stage_move_next_to_a_window_boundary_goes_to_review(factory: sessionmaker) -> None:
+    """KS stored on the last 준PO day: an earlier-stage move, but next to a window edge."""
+    _add_games(factory, [("20261023LGHT0", date(2026, 10, 23), 202605, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261023LGHT0" not in {change.game_id for change in plan.games}
+    assert "window boundary" in _review_notes(plan)["20261023LGHT0"]
+
+
+def test_earlier_stored_stage_on_the_next_window_edge_goes_to_review(factory: sessionmaker) -> None:
     _add_games(factory, [("20261025LGHT0", date(2026, 10, 25), 202603, "COMPLETED")])
     with factory() as db:
         plan = build_plan(db, 2026)
     assert "20261025LGHT0" not in {change.game_id for change in plan.games}
-    assert "window boundary" in _review_notes(plan)["20261025LGHT0"]
+    assert "earlier than the calendar stage" in _review_notes(plan)["20261025LGHT0"]
+
+
+def test_delayed_semi_playoff_game_inside_the_po_window_is_not_promoted(
+    factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (round 2): 10/27 준PO game, mid PO window, must not become PO.
+
+    It goes to review, no PO kbo_seasons row is created and no PO start_date is
+    written (which would make LeagueStageResolver show 준PO games as PO).
+    """
+    _add_games(factory, [("20261027LGHT0", date(2026, 10, 27), 202603, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261027LGHT0" not in {change.game_id for change in plan.games}
+    assert "earlier than the calendar stage" in _review_notes(plan)["20261027LGHT0"]
+    assert 202604 not in {row.season_id for row in plan.season_rows}
+    semi = next(row for row in plan.season_rows if row.season_id == 202603)
+    assert semi.new["start_date"] == "2026-10-17"
+
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    assert run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory) == EXIT_OK
+    with factory() as db:
+        assert db.get(KboSeason, 202604) is None
+        assert db.query(KboSeason).filter(KboSeason.league_type_code == 4).count() == 0
+        assert db.query(Game).filter(Game.game_id == "20261027LGHT0").one().season_id == 202603
 
 
 def test_stage_move_inside_a_window_is_still_repaired(factory: sessionmaker) -> None:
@@ -283,5 +318,5 @@ def test_not_started_postseason_rows_get_no_planned_dates(factory: sessionmaker)
     with factory() as db:
         plan = build_plan(db, 2026)
     rows = {row.season_id: row for row in plan.season_rows}
-    assert rows[202604].new["start_date"] is None  # PO created without 10/25
+    assert 202604 not in rows  # PO has not started and nothing moves into it: no row, no 10/25
     assert rows[202605].new["start_date"] is None  # KS 10/26 cleared, not set to 11/2
