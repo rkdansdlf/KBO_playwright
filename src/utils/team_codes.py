@@ -9,7 +9,7 @@ from sqlalchemy import func, or_
 
 from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN
 from src.models.franchise import Franchise
-from src.utils.team_history import resolve_team_code_for_season
+from src.utils.team_history import franchise_id_for_team_code, resolve_team_code_for_season
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -324,6 +324,48 @@ def team_code_from_game_id_segment(segment: str | None, season_year: int | None 
     return mapped
 
 
+#: KBO GameCenter technical tokens that differ from a modern season brand.
+KBO_TECHNICAL_TEAM_CODES = frozenset(KBO_LEGACY_TECHNICAL_CODE.values())
+
+
+def season_team_code(team_code: object, season_year: int | None) -> str | None:
+    """Return the code to store for a team token, mapping KBO technical tokens.
+
+    KBO GameCenter ids and some page fallbacks still carry the technical codes
+    ``HT``/``OB``/``SK``/``WO`` for franchises we store under their season brand
+    (``KIA``/``DB``/``SSG``/``KH`` in modern seasons). Writing the raw token splits
+    one franchise into two codes, so every consumer that groups by the string
+    (standings, the rankings snapshot) loses games (issue #39).
+
+    Only those technical tokens are rewritten, and only to the brand that
+    franchise used in ``season_year`` -- ``HT`` stays ``HT`` in 1995. Any other code
+    is returned stripped and upper-cased but otherwise untouched, so historical
+    rows that use a modern brand are not rewritten here.
+
+    Args:
+        team_code: Raw code as received (``None``/blank is returned as ``None``).
+        season_year: Season year used for brand resolution.
+
+    Returns:
+        The code to store.
+
+    """
+    if team_code is None:
+        return None
+    raw = str(team_code).strip().upper()
+    if not raw:
+        return None
+    if raw not in KBO_TECHNICAL_TEAM_CODES or season_year is None:
+        return raw
+    resolved = team_code_from_game_id_segment(raw, season_year)
+    if not resolved:
+        return raw
+    # Never cross franchises (e.g. the SSG/SL slot reuse in the 1990s).
+    if franchise_id_for_team_code(resolved, season_year) != franchise_id_for_team_code(GAME_ID_SEGMENT_TO_CODE[raw]):
+        return raw
+    return resolved
+
+
 def normalize_kbo_game_id(game_id: str) -> str:
     """Normalize KBO game IDs to always use legacy franchise codes (SK, WO, OB, HT).
 
@@ -414,6 +456,7 @@ STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "
 VALID_TEAM_CODES = STANDARD_TEAM_CODES | set(KBO_GAME_ID_TEAM_CODES) | set(TEAM_NAME_TO_CODE.values())
 
 __all__ = [
+    "KBO_TECHNICAL_TEAM_CODES",
     "STANDARD_TEAM_CODES",
     "TEAM_NAME_TO_CODE",
     "VALID_TEAM_CODES",
@@ -422,5 +465,6 @@ __all__ = [
     "normalize_kbo_game_id",
     "resolve_kbo_legacy_team_code",
     "resolve_team_code",
+    "season_team_code",
     "team_code_from_game_id_segment",
 ]

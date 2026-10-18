@@ -22,6 +22,7 @@ from src.models.game import Game
 from src.models.season import KboSeason
 from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
+from src.utils.team_codes import season_team_code
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -217,14 +218,26 @@ def _team_state_for(teams: dict[str, TeamState], team_code: str) -> TeamState:
     return teams[team_code]
 
 
+def _standings_team_code(team_code: object, season_year: int) -> str:
+    """Collapse legacy/modern aliases of one franchise into its season code.
+
+    ``game.home_team``/``away_team`` can hold the KBO technical code (``HT``,
+    ``OB``, ``SK``, ``WO``) for some rows and the season brand (``KIA``, ``DB``,
+    ``SSG``, ``KH``) for others. Grouping by the raw string split each of those
+    franchises into two standings rows (issue #39), so normalize before
+    aggregating.
+    """
+    return season_team_code(team_code, season_year) or str(team_code or "")
+
+
 def _apply_game_to_standings(game: Game, teams: dict[str, TeamState], game_date: date) -> None:
-    home = game.home_team
-    away = game.away_team
+    home = _standings_team_code(game.home_team, game_date.year)
+    away = _standings_team_code(game.away_team, game_date.year)
     home_score = game.home_score if game.home_score is not None else 0
     away_score = game.away_score if game.away_score is not None else 0
 
-    home_state = _team_state_for(teams, home)  # type: ignore[arg-type]
-    away_state = _team_state_for(teams, away)  # type: ignore[arg-type]
+    home_state = _team_state_for(teams, home)
+    away_state = _team_state_for(teams, away)
 
     if home_score > away_score:
         home_state.add_game(

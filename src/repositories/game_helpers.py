@@ -50,6 +50,7 @@ from src.utils.player_positions import get_primary_position
 from src.utils.team_codes import (
     build_kbo_game_id,
     normalize_kbo_game_id,
+    season_team_code,
     team_code_from_game_id_segment,
 )
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
@@ -555,6 +556,9 @@ def _apply_game_team_identity_with_contract(
     write_contract: GameWriteContract | None,
 ) -> bool:
     before = {
+        "home_team": game.home_team,
+        "away_team": game.away_team,
+        "winning_team": game.winning_team,
         "home_franchise_id": game.home_franchise_id,
         "away_franchise_id": game.away_franchise_id,
         "winning_franchise_id": game.winning_franchise_id,
@@ -589,7 +593,7 @@ def _infer_team_code_from_children(
             .first()
         )
         if row and row[0]:
-            return row[0]
+            return season_team_code(row[0], season_year) or row[0]
 
     segment = game_id[8:10] if team_side == "away" and len(game_id) >= GAME_ID_MIN_LEN else None
     if team_side == "home" and len(game_id) >= GAME_ID_FULL_LEN:
@@ -672,18 +676,20 @@ def _ensure_game_stub(session: Session, game_id: str) -> None:
         logger.warning("Failed to parse game date from game_id")
         game_date = datetime.now(KST).date()
 
-    away_team = None
-    home_team = None
-    if len(game_id) >= GAME_ID_FULL_LEN:
-        away_team = game_id[8:10] or None
-        home_team = game_id[10:12] or None
-
     season_id = None
     try:
         season_year = int(game_id[:4])
     except ValueError:
         logger.warning("Failed to parse season year from game_id")
         season_year = None
+
+    away_team = None
+    home_team = None
+    if len(game_id) >= GAME_ID_FULL_LEN:
+        # Game ids carry KBO technical codes (HT/OB/SK/WO); store the season code
+        # instead so the stub does not split a franchise in standings (#39).
+        away_team = season_team_code(game_id[8:10], season_year)
+        home_team = season_team_code(game_id[10:12], season_year)
     if season_year is not None:
         try:
             season_id = _coerce_int(
@@ -1267,13 +1273,31 @@ def _resolve_terminal_status(home_score: object, away_score: object) -> str:
     return GAME_STATUS_COMPLETED
 
 
+_GAME_TEAM_CODE_FIELDS = (
+    ("home_team", "home_franchise_id"),
+    ("away_team", "away_franchise_id"),
+    ("winning_team", "winning_franchise_id"),
+)
+
+
 def _apply_game_team_identity(game: Game, season_year: int | None) -> None:
-    home_franchise_id, _, _ = _resolve_team_identity(game.home_team, season_year)
-    away_franchise_id, _, _ = _resolve_team_identity(game.away_team, season_year)
-    winning_franchise_id, _, _ = _resolve_team_identity(game.winning_team, season_year)
-    game.home_franchise_id = home_franchise_id
-    game.away_franchise_id = away_franchise_id
-    game.winning_franchise_id = winning_franchise_id
+    """Fill franchise ids and store season-correct team codes on a game row.
+
+    Callers hand in whatever code their source produced, and several sources
+    (GameCenter ids, scoreboard fallbacks) still use the KBO technical codes
+    ``HT``/``OB``/``SK``/``WO``. Child rows were already normalized through
+    :func:`_apply_team_identity_to_mappings`, but the game row kept the raw token,
+    so one franchise ended up under two codes and string-grouped standings lost
+    its games (issue #39). Only those technical tokens are rewritten (see
+    :func:`src.utils.team_codes.season_team_code`); other codes are left as given.
+    """
+    for code_attr, franchise_attr in _GAME_TEAM_CODE_FIELDS:
+        current_code = getattr(game, code_attr)
+        stored_code = season_team_code(current_code, season_year)
+        if stored_code and stored_code != current_code:
+            setattr(game, code_attr, stored_code)
+        franchise_id, _, _ = _resolve_team_identity(getattr(game, code_attr), season_year)
+        setattr(game, franchise_attr, franchise_id)
 
 
 def _apply_team_identity_to_mappings(mappings: list[dict[str, Any]], season_year: int | None) -> None:
