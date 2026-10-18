@@ -92,28 +92,36 @@ def test_postgres_migrations_require_baseline(tmp_path):
         apply_migrations(create_engine("sqlite:///:memory:"), directory=tmp_path)
 
 
-def test_the_migration_runner_uses_psycopg2() -> None:
+def test_the_migration_runner_uses_psycopg() -> None:
     """Which driver runs these migrations decides why a comment-only chunk fails.
 
-    The two installed drivers disagree, so a measurement taken with the wrong one
-    describes a program this repository does not run. Measured on PostgreSQL 15:
+    SQLAlchemy 2.1+ resolves a bare ``postgresql://`` URL to ``psycopg``
+    (psycopg 3) by default, and this project now ships ``psycopg[binary]`` in
+    the ``postgres`` extra, so that is the driver production migrations run
+    under.
 
-    * ``psycopg2`` -- what a bare ``postgresql://`` URL resolves to, and the only
-      driver ``pyproject.toml`` declares -- rejects a comment-only statement
+    The two installed drivers disagree on empty queries, so a measurement taken
+    with the wrong one describes a program this repository does not run:
+
+    * ``psycopg`` (psycopg 3) -- what a bare ``postgresql://`` URL resolves to
+      now -- **accepts** an empty query.
+    * ``psycopg2`` -- still available via an explicit
+      ``postgresql+psycopg2://`` URL, and the only driver the legacy
+      ``sync_sqlite_to_postgres`` path uses -- rejects a comment-only statement
       with ``ProgrammingError: can't execute an empty query``.
-    * ``psycopg`` (psycopg 3) accepts the same statement.
 
-    So the empty-query rejection that motivates dropping comment-only chunks is
-    the driver's, not the server's, and it is specific to the driver in use.
+    The splitter therefore still drops comment-only chunks: it is harmless under
+    psycopg 3 and required under psycopg 2, and migrations may be applied by
+    either driver depending on the URL.
     """
-    assert create_engine("postgresql://localhost/postgres").dialect.dbapi.__name__ == "psycopg2"
+    assert create_engine("postgresql://localhost/postgres").dialect.dbapi.__name__ == "psycopg"
 
     try:
-        import psycopg
-    except ImportError:  # pragma: no cover - psycopg 3 is not a declared dependency
+        import psycopg2  # type: ignore[import-not-found]
+    except ImportError:  # pragma: no cover - psycopg2 is still a declared dependency
         return
 
-    assert create_engine("postgresql+psycopg://localhost/postgres").dialect.dbapi.__name__ == "psycopg"
+    assert create_engine("postgresql+psycopg2://localhost/postgres").dialect.dbapi.__name__ == "psycopg2"
 
 
 class TestStatementSplitting:

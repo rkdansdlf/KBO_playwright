@@ -7,7 +7,7 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
 
 ## 검토 일자
 
-2026-10-18
+2026-10-19 (선별 자산 검토 갱신)
 
 ## 활성화 가능 스킬 (7개)
 
@@ -28,34 +28,50 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
 - 라이선스 파일(LICENSE)을 vendor 디렉터리에 함께 복사한다.
 - fetch 시 네트워크 실패 시 vendor 캐시를 사용한다.
 
-## 보류 스킬 (3개)
+## 보류 스킬 (3개) — 선별 자산 검토 결과 (2026-10-19)
 
 ### caveman
 
 - **저장소**: praxstack/JuliusBrussee-caveman
-- **라이선스**: NOASSERTION
-- **redistribution**: prohibited_pending_review
-- **보류 사유**: 라이선스가 명시되지 않아 redistribution이 금지됨. 활성화 전 라이선스 확인 필요.
-- **현재 상태**: policy-only 모드 (서브에이전트 출력 압축). `executable: false` 유지.
-- **활성화 조건**: 라이선스 명시 + redistribution allowed 확인 후.
+- **라이선스**: **이중 라이선스** — 저장소 루트 `LICENSE`는 MIT이나, `LICENSING.md`에 따라 `engine/`, `proxy/`, `cacheengine/`, `rewriter/`, `browse/`, `mcp/`, `shrink/`, `cavemem` Go core, `shared/platform/` 등 **Engine-linked 디렉터리는 BSL-1.1**이다.
+- **redistribution**: prohibited_pending_review (유지)
+- **검토 결과**: caveman 어댑터의 용도는 서브에이전트 출력 압축(subagent-compression)이며, 이 기능은 BSL-1.1로 보호되는 Engine-linked 런타임(`shrink/`, `mcp/`)에 의존한다. MIT 부분만 vendoring하면 압축 기능이 빠져 의미가 없고, BSL-1.1 부분을 vendoring하면 redistribution 금지 조항에 저촉된다. 따라서 **활성화 불가** — policy-only 모드 유지.
+- **현재 상태**: policy-only (서브에이전트 출력 압축). `executable: false`, `apply: false` 유지.
+- **활성화 조건**: 업스트림이 압축 엔진을 MIT/Apache-2.0으로 재라이선스하거나, BSL-1.1의 Change Date가 도래해 MIT로 전환될 때까지 보류. 그 전까지는 AGENTS.md의 "Caveman only for subagent output" 정책을 로컬 정책으로만 적용한다.
 
 ### aas (agentic-awesome-skills)
 
-- **저장소**: sickn33/agentic-awesome-skills
-- **라이선스**: MIT
-- **redistribution**: selected_asset_review_required
-- **보류 사유**: 선별 자산 검토가 필요함. 전체 fetch가 아닌 선별 자산만 검토 후 활성화.
-- **현재 상태**: control_plane 모드 (skill_registry). `executable: false` 유지, `apply: false`.
-- **활성화 조건**: 선별 자산 검토 완료 후 `apply: true` 전환.
+- **저장소**: sickn33/agentic-awesome-skills (MIT, v19.9.0, 2,712+ skills)
+- **라이선스**: MIT (README 배지 + LICENSE 명시)
+- **redistribution**: selected_asset_review_required → **선별 자산 검토 완료 (2026-10-19)**
+- **검토 결과**: 레포 전체는 MIT이므로 선별 자산의 redistribution은 허용된다. 어댑터 role은 `skill_registry` (catalog, stack-validation, planning)이며, 이 용도에 부합하는 선별 자산은 다음 3종이다:
+  1. `aas stack validate` / `aas stack plan` — 스택 매니페스트 검증·계획 미리보기 (control_plane 용도)
+  2. `compose_stack` MCP 도구 — 에이전트가 선택한 스킬 ID의 구조·identity 검증 (in-memory, apply 없음)
+  3. `skills_index.json` v1 스키마 — 스킬 카탈로그 메타데이터 (발견·검색용)
+- **제외 자산**: `aas stack install-preview` / `--apply` 경로 (실행·설치는 host execution의 몫이며, 하네스는 실행하지 않는다), 외부 호스트 설치 타겟 (Cursor/Codex 등) 관련 코드, Workbench 브라우저 UI.
+- **현재 상태**: `executable: false`, `apply: false` 유지 (라이선스 검토 통과, 실제 fetch/vendor는 명시적 승인 필요).
+- **활성화 조건**: 명시적 승인 시 `apply: true` 전환 후 `python3 -m tools.agent_harness fetch --skill aas` 실행. fetch 실패 시 vendor 캐시 사용.
 
 ### scientific (scientific-agent-skills)
 
-- **저장소**: K-Dense-AI/scientific-agent-skills
-- **라이선스**: MIT
-- **redistribution**: selected_asset_review_required
-- **보류 사유**: 선별 자산 검토가 필요함. analytics 라우트에서 부분 활성화 가능.
-- **현재 상태**: selected_skills_only 모드. `executable: false` 유지.
-- **활성화 조건**: 선별 자산 검토 완료 후 `apply: true` 전환.
+- **저장소**: K-Dense-AI/scientific-agent-skills (MIT, v2.72.0, 177 skills)
+- **라이선스**: MIT (README 배지 + LICENSE.md 명시)
+- **redistribution**: selected_asset_review_required → **선별 자산 검토 완료 (2026-10-19)**
+- **검토 결과**: 레포 전체는 MIT이므로 선별 자산의 redistribution은 허용된다. 어댑터 role은 `analytics` (statistics, time-series, model-evaluation)이며, 이 프로젝트의 sabermetrics/통계/시계열 분석 경로에 부합하는 선별 자산은 다음 3종이다:
+  1. 통계 분석 스킬 (statsmodels/scipy 기반 hypothesis testing, power analysis, experimental design) — `src/analytics/` 및 sabermetrics 엔진 보조
+  2. 시계열 분석 스킬 (aeon, TimesFM) — 시즌/경기 시계열 분석 보조
+  3. 데이터 시각화 스킬 (publication-quality figures) — 리포트/스카우팅 카드 보조
+- **제외 자산**: 라이브 서비스 연동 스킬 (Benchling, LatchBio, Opentrons 등 — 외부 계정/API 키 필요), GPU/대규모 컴퓨팅 스킬 (PyTorch Lightning, Qiskit 등 — 이 프로젝트 범위 밖), 임상/규제 문서 스킬 (clinical-reports 등 — 도메인 부적합).
+- **현재 상태**: `executable: false`, `apply: false` 유지 (라이선스 검토 통과, 실제 fetch/vendor는 명시적 승인 필요).
+- **활성화 조건**: 명시적 승인 시 `apply: true` 전환 후 `python3 -m tools.agent_harness fetch --skill scientific` 실행. fetch 실패 시 vendor 캐시 사용.
+
+## 검토 요약
+
+| 스킬 | 라이선스 | 검토 결과 | apply 전환 가능 |
+|---|---|---|---|
+| caveman | MIT + BSL-1.1 (이중) | 압축 엔진이 BSL-1.1 → vendoring 불가 | 불가 (업스트림 재라이선스 대기) |
+| aas | MIT | 선별 3종 자산 검토 통과 | 가능 (명시적 승인 시) |
+| scientific | MIT | 선별 3종 자산 검토 통과 | 가능 (명시적 승인 시) |
 
 ## 활성화 정책
 
