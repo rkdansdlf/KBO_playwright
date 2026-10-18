@@ -83,7 +83,7 @@ class TestAScoreMissingBesideItsInnings:
     def test_a_game_with_innings_and_no_score_is_reported(self, conn) -> None:
         """The 2026-08-20 shape: everything present except the two totals."""
         _game(conn, "20260820HTHH0", home=None, away=None)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_missing_with_innings")
 
@@ -107,7 +107,7 @@ class TestAScoreMissingBesideItsInnings:
 
     def test_a_complete_game_is_not_reported(self, conn) -> None:
         _game(conn, "20260820HTHH0", home=6, away=10)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_missing_with_innings")
 
@@ -116,7 +116,7 @@ class TestAScoreMissingBesideItsInnings:
     def test_one_missing_side_is_reported(self, conn) -> None:
         """Half a score is still a gap: the missing half has the same evidence."""
         _game(conn, "20260820HTHH0", home=6, away=None)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_missing_with_innings")
 
@@ -138,7 +138,7 @@ class TestAScoreMissingBesideItsInnings:
     def test_a_cancelled_game_is_not_reported(self, conn) -> None:
         """A cancelled game legitimately has no total, even with innings recorded."""
         _game(conn, "20260820HTHH0", home=None, away=None, status="CANCELLED")
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_missing_with_innings")
 
@@ -160,6 +160,40 @@ class TestAScoreMissingBesideItsInnings:
 
         assert result.status == "pass", "half an inning line was treated as a total that should exist"
 
+    def test_a_short_inning_line_is_not_evidence_of_a_missing_total(self, conn) -> None:
+        """The innings have to look like a whole game before they prove anything.
+
+        A partial line sums to a partial score, so it does not say what the final
+        total was. Counting the game here would claim evidence the rows do not
+        carry -- exactly one stored game is in this shape (20230404LTSK0, seven
+        innings on each side) and its innings are the defect, not its score.
+        """
+        _game(conn, "20230404LTSK0", home=None, away=None)
+        _innings(conn, "20230404LTSK0", home=[1, 0, 0, 1, 1, 0, 0], away=[1, 0, 0, 0, 0, 0, 0])
+
+        result = _result(conn, "game_score_missing_with_innings")
+
+        assert result.status == "pass", "a seven-inning line was treated as proof of a final total"
+
+    def test_a_home_line_one_shorter_than_away_is_still_a_whole_game(self, conn) -> None:
+        """The home side does not bat the bottom ninth when it already leads.
+
+        This is 164 of the 365 stored games, so a rule that demanded nine on both
+        sides would quietly stop measuring most of what this check is for.
+        """
+        _game(conn, "20260820HTHH0", home=None, away=None)
+        _innings(
+            conn,
+            "20260820HTHH0",
+            home=[2, 2, 2, 2, 1, 1, 0, 0],
+            away=[1, 1, 1, 1, 1, 0, 0, 0, 0],
+        )
+
+        result = _result(conn, "game_score_missing_with_innings")
+
+        assert result.status == "fail", "a game that ended after the top of the ninth was not measured"
+        assert result.violation_count == 1
+
 
 class TestTheScoreAndTheInningsDisagree:
     def test_a_score_that_disagrees_with_its_innings_is_reported(self, conn) -> None:
@@ -170,7 +204,7 @@ class TestTheScoreAndTheInningsDisagree:
         source page disagreed. Both shapes have to be visible.
         """
         _game(conn, "20260820HTHH0", home=9, away=8)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_disagrees_with_innings")
 
@@ -187,7 +221,7 @@ class TestTheScoreAndTheInningsDisagree:
         disagreement can be on either side.
         """
         _game(conn, "20260820HTHH0", home=6, away=7)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_disagrees_with_innings")
 
@@ -197,7 +231,7 @@ class TestTheScoreAndTheInningsDisagree:
     def test_a_disagreement_in_the_home_total_alone_is_reported(self, conn) -> None:
         """The other direction, so neither comparison can be dropped."""
         _game(conn, "20260820HTHH0", home=7, away=10)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         result = _result(conn, "game_score_disagrees_with_innings")
 
@@ -206,7 +240,7 @@ class TestTheScoreAndTheInningsDisagree:
 
     def test_agreement_is_not_reported(self, conn) -> None:
         _game(conn, "20260820HTHH0", home=6, away=10)
-        _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[5, 2, 1, 2])
+        _innings(conn, "20260820HTHH0", home=[1, 1, 1, 1, 1, 1, 0, 0, 0], away=[2, 2, 2, 1, 1, 1, 1, 0, 0])
 
         assert _result(conn, "game_score_disagrees_with_innings").status == "pass"
 

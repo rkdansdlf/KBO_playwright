@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import inspect, text
 
 from src.constants import KST
+from src.utils.team_history import iter_team_history
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -165,10 +166,19 @@ def _violated_rows(conn: Connection, check_id: str, *, season: int | None = None
     check = next((item for item in _CHECKS if item.check_id == check_id), None)
     if check is None:
         return ()
+    if not _table_exists(conn, check.table):
+        return ()
+    columns = {column["name"] for column in inspect(conn).get_columns(check.table)}
+    # A schema that cannot answer the check has no row to record. Raising here
+    # instead would make the baseline recorder crash on the same lean database the
+    # pack is built to report as "unmeasurable", which turns a missing migration
+    # into a traceback rather than a note on the report.
+    if _missing_columns(columns, check.required_columns):
+        return ()
     # A table with no season column cannot say which run its rows belong to, so
     # the season falls back to the one the caller asked about. Only the season
     # tables carry one, and those are the ones being compared.
-    has_season = season is not None or _table_has_column(conn, check.table, "season")
+    has_season = season is not None or "season" in columns
     if has_season:
         sql = check.count_sql.replace(
             "SELECT COUNT(*)",
@@ -279,9 +289,16 @@ def compare_against_baseline(conn: Connection, path: Path, *, season: int | None
 
 #: The season PA checks a baseline is recorded for, named explicitly so that
 #: retiring one is visible in ``unknown_checks`` rather than silent.
+#:
+#: The pre-2001 half is included even though it reports as ``warn``. Its rows are
+#: static only while nobody writes them, and approved historical backfills are
+#: exactly the case where somebody does -- so a baseline is what notices those
+#: rows changing, which is a different question from whether they should block
+#: the daily run.
 _BASELINE_CHECK_IDS = frozenset(
     {
         "player_season_batting_unaccounted_pa",
+        "player_season_batting_unaccounted_pa_pre2001",
         "player_season_batting_unreconciled_pa",
         "player_season_batting_missing_pa",
     },
@@ -399,9 +416,16 @@ UNRECOVERABLE_TABLE = "pa_unrecoverable"
 BASELINE_TABLE_MISSING = f"{BASELINE_TABLE} is absent; run the migrations"
 
 
-def _table_has_column(conn: Connection, table: str, column: str) -> bool:
-    """Return whether a column exists, without raising on a missing table."""
-    return column in {col["name"] for col in inspect(conn).get_columns(table)}
+def _missing_columns(columns: set[str], required: tuple[str, ...]) -> list[str]:
+    """Name the required columns a table does not have.
+
+    ``source`` is matched against ``data_source`` because the local schema and the
+    deployed one spell it differently and the check's SQL is rewritten for
+    whichever is present, so its absence from ``columns`` is not a gap.
+    """
+    return [
+        column for column in required if column not in columns and not (column == "source" and "data_source" in columns)
+    ]
 
 
 def _table_exists(conn: Connection, table: str) -> bool:
@@ -612,12 +636,60 @@ class _SqlCheck:
     #: is what every other missing-column case already does.
     referenced_tables: tuple[str, ...] = ()
 
+    #: When true, a nonzero violation count is reported as ``warn`` rather than
+    #: ``fail``.
+    #:
+    #: A structural limit is not the same thing as a regression. The pre-2001
+    #: seasons have scores but no boxscore bodies at all -- namuwiki publishes
+    #: only the result -- so counting that absence as a failure produces a gate
+    #: that is red from the moment it is added, which is a gate nobody reads.
+    #: ``warn`` keeps the number visible and reported while leaving ``ok`` --
+    #: and therefore the incident that ``crawl_daily_games`` raises -- to the
+    #: checks that describe something that can go wrong again.
+    informational: bool = False
+
 
 @dataclass(frozen=True)
 class _PackOptions:
     target_date: str | None
     season: int | None
     require_schema: bool
+
+
+def _franchise_case(column: str) -> str:
+    """Build a dialect-portable CASE that folds a team code to its franchise.
+
+    Two games are the same game when they are the same matchup, and a matchup is
+    named by a franchise rather than by a code. ``NX`` (넥센, 2010-2018), ``WO``
+    (우리, 2008-2009) and ``KH`` (키움, 2019-) are one franchise under three
+    codes, and so are ``HT``/``KIA`` and ``OB``/``DB``. Grouping on the raw code
+    therefore reports two copies of one game as two different matchups, which is
+    how this check passed against a database holding 1,161 duplicate pairs while
+    reporting 22.
+
+    The mapping is read from ``_TEAM_HISTORY`` rather than written out here, so
+    the SQL cannot drift from ``src/utils/team_history.py``. Codes that name no
+    franchise -- ``EA`` and ``WE``, the All-Star sides -- deliberately fall to
+    ``code:<value>``: they are two halves of one exhibition, not two clubs, and
+    folding them onto a shared key would make an All-Star game collide with a
+    club game. A code with no mapping is left distinct rather than grouped.
+
+    Args:
+        column: The team-code column to normalize.
+
+    Returns:
+        A SQL expression yielding ``F<franchise id>`` or ``code:<value>``.
+
+    """
+    branches: dict[int, list[str]] = {}
+    for entry in iter_team_history():
+        branches.setdefault(entry.franchise_id, []).append(entry.team_code.upper())
+    whens = " ".join(
+        f"WHEN '{code}' THEN 'F{franchise_id}'"
+        for franchise_id, codes in sorted(branches.items())
+        for code in sorted(codes)
+    )
+    return f"(CASE UPPER({column}) {whens} ELSE 'code:' || UPPER({column}) END)"
 
 
 _CHECKS: tuple[_SqlCheck, ...] = (
@@ -703,12 +775,31 @@ _CHECKS: tuple[_SqlCheck, ...] = (
     # still short of PA, 23 rows in REGULAR/CRAWLER and REGULAR/OFFICIAL_ARCHIVE --
     # is a different defect: either PA is wrong or a sacrifice did not count as
     # one. This check does not claim those.
+    #
+    # Scoped to ``season >= 2001`` because before that year no lawful source for
+    # the sacrifices exists at all: ``game_batting_stats`` holds no pre-2001 row,
+    # so nothing on this side can be re-derived and the subset is a structural
+    # limit rather than a defect. Those rows are reported by the ``_pre2001``
+    # check below as a warning instead. Leaving them here kept the whole pack red
+    # from the day it was added, which is how a gate stops being read -- and the
+    # red was standing backlog, not the thing a gate is for.
+    #
+    # What remains is work that can actually be done: postseason and exhibition
+    # rows written by the ``CRAWLER`` lineage, most of them with game-level rows
+    # a backfill could derive the sacrifices from. Keeping the season in the
+    # predicate is also what lets a baseline watch this half for growth without
+    # 2,122 permanent rows drowning the signal.
+    #
+    # ``season`` is in ``required_columns`` on both halves so a database without
+    # the column reports them as unmeasurable rather than counting every row on
+    # one side of the split.
     _SqlCheck(
         check_id="player_season_batting_unaccounted_pa",
-        description="Season batting PA exceeds AB + BB + HBP with no sacrifice recorded",
+        description="Season batting PA exceeds AB + BB + HBP with no sacrifice recorded (2001 or later)",
         table="player_season_batting",
         required_columns=(
             "player_id",
+            "season",
             "plate_appearances",
             "at_bats",
             "walks",
@@ -719,7 +810,8 @@ _CHECKS: tuple[_SqlCheck, ...] = (
         count_sql="""
             SELECT COUNT(*)
             FROM player_season_batting
-            WHERE COALESCE(plate_appearances, 0) >
+            WHERE season >= 2001
+              AND COALESCE(plate_appearances, 0) >
                 COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
                 AND COALESCE(sacrifice_hits, 0) = 0
                 AND COALESCE(sacrifice_flies, 0) = 0
@@ -727,18 +819,68 @@ _CHECKS: tuple[_SqlCheck, ...] = (
         sample_sql="""
             SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
             FROM player_season_batting
-            WHERE COALESCE(plate_appearances, 0) >
+            WHERE season >= 2001
+              AND COALESCE(plate_appearances, 0) >
                 COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
                 AND COALESCE(sacrifice_hits, 0) = 0
                 AND COALESCE(sacrifice_flies, 0) = 0
             LIMIT 5
         """,
     ),
+    # The pre-2001 half of the check above, split out rather than repaired. The
+    # rows are real -- PA is populated and both sacrifice columns are empty -- but
+    # the source that would fill them is gone: the season pages carry team totals
+    # only and ``game_batting_stats`` has no pre-2001 row to re-derive from, so a
+    # value written here would be invented rather than recovered. ``warn`` keeps
+    # the number on the report without letting a permanent backlog raise the daily
+    # incident, the same treatment ``game_result_without_body`` already gets for
+    # the pre-2001 boxscore gap.
+    #
+    # It is a separate check rather than an exemption inside the one above so the
+    # two halves stay disjoint: ``unaccounted_pa`` plus this check plus
+    # ``unreconciled_pa`` and ``missing_pa`` split the whole season backlog, and no
+    # row is counted on both sides of the ``season`` boundary.
+    _SqlCheck(
+        check_id="player_season_batting_unaccounted_pa_pre2001",
+        description="Season batting PA exceeds AB + BB + HBP with no sacrifice recorded (pre-2001, source-limited)",
+        table="player_season_batting",
+        required_columns=(
+            "player_id",
+            "season",
+            "plate_appearances",
+            "at_bats",
+            "walks",
+            "hbp",
+            "sacrifice_hits",
+            "sacrifice_flies",
+        ),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM player_season_batting
+            WHERE season < 2001
+              AND COALESCE(plate_appearances, 0) >
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                AND COALESCE(sacrifice_hits, 0) = 0
+                AND COALESCE(sacrifice_flies, 0) = 0
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(player_id AS TEXT), 'NULL')
+            FROM player_season_batting
+            WHERE season < 2001
+              AND COALESCE(plate_appearances, 0) >
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                AND COALESCE(sacrifice_hits, 0) = 0
+                AND COALESCE(sacrifice_flies, 0) = 0
+            LIMIT 5
+        """,
+        informational=True,
+    ),
     # The two checks above covered 2,572 of 2,603 season violations and reported
     # the pack clean on the remaining 31 without naming them. This one and the
     # next divide those 31 by what the row is actually missing, and together with
-    # unaccounted_pa the three split the whole 2,603 -- 2,549 / 23 / 31 -- so no
-    # row is counted twice and none goes unreported.
+    # the two ``unaccounted_pa`` halves they split the whole 2,603 -- 2,122
+    # source-limited pre-2001 rows and 427 / 23 / 31 that can still be worked --
+    # so no row is counted twice and none goes unreported.
     #
     # PA <= AB+BB+HBP appears beside "a sacrifice was recorded" because both
     # directions are defects. A check written only for "PA exceeds the columns"
@@ -957,12 +1099,21 @@ _CHECKS: tuple[_SqlCheck, ...] = (
     # 2026-08-20 produced five of these at once, all COMPLETED, all with complete
     # inning lines: away 10 home 6, away 16 home 4, away 4 home 5, away 6 home 4,
     # away 1 home 7. The batch that wrote the innings on 2026-08-26 wrote no
-    # totals and reported success. 369 stored games are in this state.
+    # totals and reported success. 365 stored games are in this state.
     #
     # Cancelled games are excluded: they legitimately have no total even when
     # innings were recorded before the call-off. A game with no innings is
     # excluded too -- it has not been crawled, so there is no evidence that a
     # total should exist.
+    #
+    # The innings must also look like a whole game, for the same reason the save
+    # path refuses a short line. The away side always bats nine innings and the
+    # home side bats nine or one fewer -- it does not bat the bottom ninth when it
+    # already leads, and extra innings stay equal. A line shorter than that is a
+    # partial crawl, so the innings do not prove what the final total was, and
+    # counting the game here would claim evidence the rows do not carry. Exactly
+    # one stored game is in that state (20230404LTSK0, seven innings each side);
+    # its innings are the defect, and audit_historical_invariants reports that.
     _SqlCheck(
         check_id="game_score_missing_with_innings",
         description="Finished games with inning lines should carry both team totals",
@@ -980,6 +1131,9 @@ _CHECKS: tuple[_SqlCheck, ...] = (
                   WHERE s.game_id = game.game_id
                   GROUP BY s.game_id
                   HAVING COUNT(DISTINCT s.team_side) = 2
+                     AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END) >= 9
+                     AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END)
+                       - COUNT(DISTINCT CASE WHEN s.team_side = 'home' THEN s.inning END) IN (0, 1)
               )
         """,
         sample_sql="""
@@ -993,6 +1147,9 @@ _CHECKS: tuple[_SqlCheck, ...] = (
                   WHERE s.game_id = game.game_id
                   GROUP BY s.game_id
                   HAVING COUNT(DISTINCT s.team_side) = 2
+                     AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END) >= 9
+                     AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END)
+                       - COUNT(DISTINCT CASE WHEN s.team_side = 'home' THEN s.inning END) IN (0, 1)
               )
             LIMIT 5
         """,
@@ -1074,6 +1231,30 @@ _CHECKS: tuple[_SqlCheck, ...] = (
     # score of a game that exists, which is exactly this shape. Reporting them
     # would mean this check starts failing before anything has happened again,
     # and a gate that is red on arrival is a gate nobody reads.
+    # A cancelled game has no result, so a row carrying both scores is asserting
+    # something that did not happen. The 2001+ rows that did this were the small
+    # residue of fixtures whose terminal state was written as CANCELLED at load
+    # time: all-star games, Korean Series games and the 2024 World Baseball
+    # Classic, none of which ever had a boxscore collected.
+    #
+    # The 1983-2000 rows that once made this gate 7,995 violations wide are no
+    # longer here either. Both sets were the same fact -- result present, body
+    # absent -- and were relabelled UNRESOLVED_MISSING on 2026-10-16, which is the
+    # state the status means and the one derive_stable_game_status cannot produce
+    # because it only sees scores.
+    #
+    # The era is deliberately absent from the predicate. Scoping this check to
+    # 2001+ while the historical rows were mislabelled was a way to expose the
+    # 50; with both sets relabelled it would be the opposite of a tripwire, since
+    # the failure this check was written for happened entirely before 2001 and a
+    # recurrence there would pass unnoticed. A row that carries both scores is a
+    # result, and a result cannot be cancelled, in any decade.
+    #
+    # is_primary is scoped on purpose. The 241 superseded 1982 duplicate rows
+    # were left CANCELLED on purpose when they were retired -- they carry the
+    # score of a game that exists, which is exactly this shape. Reporting them
+    # would mean this check starts failing before anything has happened again,
+    # and a gate that is red on arrival is a gate nobody reads.
     _SqlCheck(
         check_id="game_cancelled_with_scores",
         description="Cancelled games should not carry both team scores",
@@ -1096,6 +1277,137 @@ _CHECKS: tuple[_SqlCheck, ...] = (
               AND away_score IS NOT NULL
             LIMIT 5
         """,
+    ),
+    # The result is known but the boxscore body was never collected, so lineups,
+    # innings and boxscore rows are all 0. This is a property of the source, not
+    # a regression, and it is exactly the gap that let a 09-23 status sweep reach
+    # 2,848 rows without anything recording it.
+    #
+    # The era is deliberately not part of the predicate. It began as a pre-2001
+    # check because namuwiki publishes only the result for 1982-2000, but the
+    # same shape exists in the modern era and is the same fact: 50 games between
+    # 2011 and 2026 -- all-star fixtures, Korean Series games and the 2024 World
+    # Baseball Classic -- carry a score and no body because no boxscore was ever
+    # collected for them. Scoping this to 2001 would have let those 50 fall out of
+    # the report the moment they were relabelled UNRESOLVED_MISSING, which is how
+    # a gate loses the rows it exists to watch. A structural limit is not a
+    # failure in any decade, so the era does not change the grade.
+    #
+    # The body test spans four tables rather than one. A game can carry lineups
+    # or innings with no batting rows, and calling that "no body" would report a
+    # gap that is not there -- the four-table test is the same one the 2026-10-16
+    # classification of these rows used.
+    #
+    # is_primary is scoped for the same reason as on the check above, and because
+    # it keeps this a stable number. Without it the 241 retired 1982 duplicates
+    # are counted here as well, so retiring them would move a monitoring figure
+    # that is supposed to describe a source limit rather than our housekeeping.
+    _SqlCheck(
+        check_id="game_result_without_body",
+        description="Games carry a result but no boxscore body (source limit)",
+        table="game",
+        required_columns=("game_id", "game_status", "home_score", "away_score", "is_primary"),
+        referenced_tables=("player_game_batting", "game_lineups", "game_inning_scores", "game_batting_stats"),
+        informational=True,
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM player_game_batting b WHERE b.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_lineups l WHERE l.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_inning_scores i WHERE i.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_batting_stats s WHERE s.game_id = game.game_id)
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game_id AS TEXT), '')
+            FROM game
+            WHERE is_primary
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM player_game_batting b WHERE b.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_lineups l WHERE l.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_inning_scores i WHERE i.game_id = game.game_id)
+              AND NOT EXISTS (SELECT 1 FROM game_batting_stats s WHERE s.game_id = game.game_id)
+            LIMIT 5
+        """,
+    ),
+    # Two rows describing one game under two different game_id values.
+    #
+    # The doubleheader suffix is part of the key, not an afterthought. A season
+    # contains 1,000 groups that share a date and both team codes, and every one
+    # of them is a legitimate doubleheader: 2010-05-18 played LG-HT twice, at 잠실
+    # and at 대전, and those are two games. Keying on date and teams alone would
+    # report 1,000 violations that are all real baseball. Keying on the suffix
+    # as well leaves the genuine duplicate, which is the same game reached through
+    # a different team order -- 19820327MBSS0 and 19820327SSMB0.
+    #
+    # That shape is not a hypothetical. The 1982 corpus was loaded once with the
+    # team order the answer set carries and once with the order
+    # build_standard_game_id produces, which is the opposite convention, so all
+    # 241 games of the season existed twice. The two halves agree on date, teams
+    # and score and differ only in the identifier. Any tool that recomputes a
+    # game_id from the teams will therefore re-create them, which is why this
+    # check exists next to the data rather than inside the data.
+    #
+    # The unit is the pair, not the row, so the count is comparable against the
+    # known backlog. Grouping on the raw team code reported 22 groups; grouping on
+    # the franchise reports 1,161 -- 32 from 2010 and the rest from 2011-2018,
+    # where every Heroes game exists twice, once under the era code and once
+    # under the current one.
+    #
+    # That gap is the reason the keys are folded through _franchise_case. NX and
+    # KH are one franchise, so a group whose two rows differ only in that column
+    # is one game reached twice, and a check that cannot see it reports 22
+    # against a database holding 1,161. The stored home_franchise_id and
+    # away_franchise_id columns cannot be used for the same purpose: they are
+    # NULL on 165 rows and wrong on others (20100310KIAHH0 carries
+    # away_franchise_id 11, which is the Heroes franchise, while its away_team is
+    # KIA). The code is the value the loader actually wrote, so the code is what
+    # gets normalized.
+    #
+    # The last character is taken as SUBSTR(game_id, LENGTH(game_id), 1) and not
+    # as SUBSTR(game_id, -1). The negative two-argument form returns the whole
+    # string on PostgreSQL and only the last character on SQLite, so the shorter
+    # spelling reads correctly against the SQLite the unit tests run on and
+    # silently groups by nothing in production. This check was written that way,
+    # passed its tests, and reported 0 duplicate pairs against a database that
+    # has 22. Any cross-dialect function in this file needs the same care.
+    #
+    # This one is a failure rather than a warning. Unlike a missing boxscore,
+    # which is what the source does not publish and no crawl can change, a
+    # duplicate is ours: it was created by loading, it inflates every count that
+    # groups by game, and deleting it loses nothing.
+    _SqlCheck(
+        check_id="game_duplicate_identifiers",
+        description="Games present twice under different game_id values (counted per pair)",
+        table="game",
+        required_columns=("game_id", "game_date", "home_team", "away_team"),
+        count_sql=f"""
+            SELECT COUNT(*)
+            FROM (
+                SELECT 1
+                FROM game
+                WHERE game_date IS NOT NULL
+                  AND home_team IS NOT NULL
+                  AND away_team IS NOT NULL
+                GROUP BY game_date, {_franchise_case("home_team")}, {_franchise_case("away_team")},
+                         SUBSTR(game_id, LENGTH(game_id), 1)
+                HAVING COUNT(*) > 1 AND COUNT(DISTINCT game_id) > 1
+            ) duplicated
+        """,  # noqa: S608 - fragment is generated from iter_team_history, not input
+        sample_sql=f"""
+            SELECT MIN(game_id)
+            FROM game
+            WHERE game_date IS NOT NULL
+              AND home_team IS NOT NULL
+              AND away_team IS NOT NULL
+            GROUP BY game_date, {_franchise_case("home_team")}, {_franchise_case("away_team")},
+                     SUBSTR(game_id, LENGTH(game_id), 1)
+            HAVING COUNT(*) > 1 AND COUNT(DISTINCT game_id) > 1
+            LIMIT 5
+        """,  # noqa: S608 - fragment is generated from iter_team_history, not input
     ),
 )
 
@@ -1190,11 +1502,7 @@ def _run_check(
         target_date=options.target_date,
         season=options.season,
     )
-    missing_columns = [
-        column
-        for column in (*check.required_columns, *scope_columns)
-        if column not in columns and not (column == "source" and "data_source" in columns)
-    ]
+    missing_columns = _missing_columns(columns, (*check.required_columns, *scope_columns))
     if not missing_columns and check.referenced_tables:
         available = set(inspect(conn).get_table_names())
         missing_columns = [f"{name} (table)" for name in check.referenced_tables if name not in available]
@@ -1216,7 +1524,7 @@ def _run_check(
     )
     violation_count = int(conn.execute(text(count_sql), params).scalar_one())
     sample_ids = tuple(str(row[0]) for row in conn.execute(text(sample_sql), params).all())
-    status = "pass" if violation_count == 0 else "fail"
+    status = "pass" if violation_count == 0 else ("warn" if check.informational else "fail")
     message = "ok" if status == "pass" else f"{violation_count} violation(s) found"
     return QualityRegressionResult(
         check_id=check.check_id,

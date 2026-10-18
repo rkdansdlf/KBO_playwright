@@ -24,7 +24,7 @@ from src.crawlers.result import CrawlOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
-from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR, CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
 from src.services.crawl_dead_letter_service import enqueue_failure
@@ -128,11 +128,15 @@ class FoodCrawler(BaseHttpCrawler):
 
         """
         selected = {code: info for code, info in TEAM_FOOD_SOURCES.items() if not team_filter or code == team_filter}
+        # Every page this run will request, not the first one that happens to be
+        # in the dict. The report that judges this crawler by what it actually
+        # fetched reads one URL per run, so naming a single team would hide the
+        # other team's host -- and with it a host that refuses the sweep.
         spec = run_spec or CrawlRunSpec(
             crawler=FOOD_CRAWLER_NAME,
             target_type=FOOD_TARGET_TYPE,
             target_id=team_filter or "all",
-            source_url=next(iter(selected.values()))["url"] if len(selected) == 1 else None,
+            source_url=MULTI_SOURCE_SEPARATOR.join(info["url"] for info in selected.values()) or None,
         )
 
         with track_crawl_run(spec) as run:

@@ -1329,3 +1329,54 @@ AGENTS.md의 "배포 후 `id=37` 회수 여부로 배포 성공을 확인한다"
 - 변경 파일 Ruff/format 통과.
 
 **정직하게 남기는 것**: ① 운영 레터의 잘못된 target 발생 빈도는 여전히 미측정(프로덕션 DB 미접근). ② 거부 outcome 14곳 전부 `error_code="VALIDATION_SCHEMA"`를 달고, `NON_RETRYABLE_CODES` 분류로 `finalize_retry`가 재시도 예산 소진 없이 즉시 `EXHAUSTED`로 종결한다(DLQ 수준 계약 `test_invalid_target_does_not_reschedule`). ③ 커밋은 하지 않았다: dispatcher에 병행 작업자의 미커밋 변경이 함께 있어 커밋 경계는 파일 소유자와 조율이 필요하다.
+
+---
+
+## 8. food 크롤러 관측 공백 해소 (2026-10-18)
+
+### §"부수 발견"의 추론은 틀렸다 — 차단된 것은 KBO URL이 아니었다
+
+인벤토리가 food를 `source_scan`으로 판정하는 이유는 **원장에 관측할 URL이 없기
+때문**이다. 72시간 창에 런이 없고(마지막 런 10-10), 창 안에 있었더라도 전체 스윕은
+`source_url`을 기록하지 않았다. 그런데 위 "호스트 추출의 한계" 절은 원인을
+"`FETCH_BLOCKED`가 KBO 준법 계층에서만 나오므로 **food가 KBO URL을 쓴다**"고 추론했다.
+원장·DLQ 실측은 다르다.
+
+| 런 날짜 | DLQ `target_id` | 코드 | `source_url` | 메시지 |
+|---|---|---|---|---|
+| 10-07 | `ALL` | `FETCH_BLOCKED` | `https://www.gujangfood.com` | `DNS resolution failed for: www.gujangfood.com` |
+| 10-08 | `ALL` | `FETCH_BLOCKED` | (동일) | (동일) |
+| 10-09 | `ALL` | `FETCH_BLOCKED` | (동일) | (동일) |
+| 10-10 | `LT` | `PARSE_EMPTY` | `https://www.giantsclub.com/food` | `no menu items found` |
+| 10-10 | `NC` | `PARSE_EMPTY` | `https://www.ncdinos.com/dinos/stadium.do` | `no menu items found` |
+
+차단된 URL은 KBO 호스트가 아니라 `www.gujangfood.com`이고, 사유는 준법 정책이 아니라
+**DNS 해석 실패**다. 그 소스는 2026-10-10에 코드에서 제거됐고(도메인 만료) 남은 소스는
+`giantsclub.com`·`ncdinos.com` 둘이다. 인벤토리와 원장이 어긋난 진짜 이유는 **관측할
+URL이 원장에 없다는 것** 하나였다.
+
+### 수정
+
+- **계약**: 한 런이 여러 페이지를 읽으면 `source_url`에 `|`로 이어 붙인다
+  (`MULTI_SOURCE_SEPARATOR`, `src/repositories/crawl_execution_repository.py`).
+  `award_crawler`가 이미 이 표기를 쓰고 있었고 food만 빠져 있었다.
+- **food**: 스윕이 읽을 **모든** 팀 URL을 기록한다(기존 `len(selected) == 1` 조건 제거).
+- **인벤토리**: 기록된 값을 `|`로 나눠 호스트마다 판정한다. 이어 붙인 문자열을 URL 하나로
+  읽으면 첫 호스트만 보이고, 거부하는 두 번째 호스트가 영원히 보이지 않는다.
+  같은 이유로 `award_crawler`의 두 소스도 이제 둘 다 판정된다.
+
+검증: `tests/crawlers/test_food_reliability_canary.py`(스윕이 모든 URL을 기록) +
+`tests/reporting/test_source_inventory.py`(분할·빈 조각·관측 판정). 뮤테이션 3건(분할 제거,
+빈 조각 필터 제거, food 단일 URL 복귀)이 각각 실패를 생성했다.
+
+### 남은 것 (측정만, 미수정)
+
+| 크롤러 | 런 수 | 상태 |
+|---|---|---|
+| `relay` | 893 | `source_url` 미기록 |
+| `game_detail` | 618 | `source_url` 미기록 |
+| `parking` | 4 | food와 동일한 `len(selected) == 1` 조건(3팀 3호스트) |
+| `seat` | 0 | 동일 조건(2팀이 같은 호스트를 가리켜 중복 제거가 필요) |
+
+food 수정은 **새 런부터** 관측된다 — 기존 4건은 NULL로 남고 창(기본 72시간)을 벗어나 이미
+측정에서 빠져 있다. parking·seat·game_detail·relay는 아직 승인 범위 밖이다.

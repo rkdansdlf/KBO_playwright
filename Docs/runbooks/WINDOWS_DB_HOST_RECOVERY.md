@@ -1,8 +1,11 @@
 # Windows DB 호스트 복구 런북 (ch806-08)
 
 > 이 문서는 **Windows 서버 앞(또는 사내망 PC)에서** 실행할 절차다.
-> KBO_playwright/Mac 쪽에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다.
-> Mac 쪽 후속 절차는 §7에 있다.
+> 원격(Mac 등 다른 tailnet 기기)에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다(2026-10 관측).
+>
+> **크롤러 스케줄러도 이 Windows 서버에서 돈다**(2026-10-18 운영자 확인). PostgreSQL만 Windows에 있고 스케줄러는 Mac(launchd)에서 돈다는 이전 설명은 더 이상 맞지 않다.
+> 스케줄러 실행·재시작·로그 위치·작업 스케줄러 등록은 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)를 본다.
+> DB 복구 후 스케줄러 확인 절차는 §7에 있다. §9 이후는 Mac에서 관측·작업하던 시기의 기록이라 "Mac" 표현을 그대로 둔다.
 
 ## 1. 대상과 현재 증상
 
@@ -11,6 +14,7 @@
 | 호스트 | `ch806-08` (Windows) |
 | 네트워크 주소 | Tailscale `100.81.73.13` |
 | 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.81.73.13:5432`) — BEGA 백엔드와 공유 |
+| 역할 (스케줄러) | 크롤러 스케줄러 `scripts/scheduler.py` — Windows 작업 스케줄러로 상주 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)) |
 | 서버 앞 접근 | RDP(3389)·SSH(22)·WinRM(5985/5986) **무응답** → 사내망 PC의 RDP 또는 물리 접근 필요 |
 
 **2026-10-05 Mac 관측 기준**
@@ -51,8 +55,10 @@ New-NetFirewallRule -DisplayName "PostgreSQL 5432 (Tailscale only)" `
     -RemoteAddress 100.64.0.0/10
 ```
 
-> 더 좁게 열려면 `-RemoteAddress 100.103.157.51` (KBO_playwright가 도는 Mac 한 대만).
-> 다른 tailnet 기기가 이 DB를 쓰지 않는다면 이쪽이 최소 권한이다.
+> 스케줄러는 같은 서버에서 붙으므로, 원격 허용이 필요한 것은 이 DB를 쓰는 다른 tailnet 기기뿐이다(BEGA 백엔드 등).
+> 더 좁게 열려면 그 기기들의 IP만 `-RemoteAddress`에 넣는다. 이것이 최소 권한이다.
+> (이전에는 스케줄러가 돌던 Mac `100.103.157.51` 한 대만 열었다. 지금은 그 Mac이 DB에 붙을 일이 없다면 넣지 않는다.)
+> 스케줄러의 `DATABASE_URL`이 이 서버의 Tailscale 주소(`100.81.73.13`)를 쓴다면, 규칙을 좁힌 뒤 스케줄러 연결도 함께 확인한다(§7).
 
 ## 3. 진단 상세 (결과별 분기)
 
@@ -157,40 +163,47 @@ sc.exe failure  "postgresql-x64-16" reset=86400 actions=restart/60000/restart/60
 
 체크리스트:
 - [ ] 서비스 `Automatic` + 복구 옵션 등록
-- [ ] 방화벽 규칙은 **Tailscale 대역(또는 Mac 단일 IP)으로 제한** — 전체 공개 금지
+- [ ] 방화벽 규칙은 **Tailscale 대역(또는 이 DB를 쓰는 기기 IP)으로 제한** — 전체 공개 금지
 - [ ] Windows Update 직후에는 `Get-NetConnectionProfile`로 Tailscale 프로필 재확인
 - [ ] Tailscale 자동 시작 확인 (`Get-Service Tailscale`)
+- [ ] 스케줄러 작업이 부팅 후 자동으로 뜨는지 확인 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §4·§6)
 
 ## 6. 하지 말 것
 
-- `-Profile Any -RemoteAddress Any`로 5432를 인터넷에 공개하지 않는다 (Tailscale 대역/Mac IP로 제한).
+- `-Profile Any -RemoteAddress Any`로 5432를 인터넷에 공개하지 않는다 (Tailscale 대역/필요한 기기 IP로 제한).
 - 서비스 계정·비밀번호를 임의로 바꾸지 않는다 (BEGA 백엔드와 공유 중).
-- PostgreSQL 재시작은 현재 연결을 끊는다(현재는 끊을 연결이 없다).
+- PostgreSQL 재시작은 현재 연결을 끊는다. 같은 서버의 스케줄러 연결도 끊기므로, 가능하면 진행 중인 DB 잡이 없을 때 한다(`logs\scheduler.log` 끝을 먼저 본다).
+- Mac의 launchd 스케줄러를 다시 켜지 않는다. Windows 스케줄러와 함께 돌면 같은 DB에 스케줄러 두 개가 쓴다.
 
-## 7. 복구 후 (Mac/KBO_playwright 쪽에서 실행)
+## 7. 복구 후 (Windows 서버에서 실행)
 
-```bash
-# 1) 도달성
-nc -z -G 3 100.81.73.13 5432
+```powershell
+cd "<프로젝트 경로>"
+
+# 1) 도달성 (스케줄러의 DATABASE_URL이 가리키는 주소로)
+Test-NetConnection -ComputerName 100.81.73.13 -Port 5432
 
 # 2) 마이그레이션 체인 확인 (read-only)
-PGCONNECT_TIMEOUT=5 venv/bin/python -m src.cli.apply_postgres_migrations --check
+$env:PGCONNECT_TIMEOUT = "5"
+& "<파이썬 경로>" -m src.cli.apply_postgres_migrations --check
 
 # 3) 통과하면 Phase G 재개(G1 → G4~G7): DLQ 통계/스냅샷 검증/원장 census
 ```
 
-- 스케줄러는 별도로 꺼져 있다(`~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist.disabled`).
-  **DB 복구 확인 후** 이 Mac에서 스크립트 하나로 재개한다:
-  ```bash
-  bash scripts/restore_scheduler_launchd.sh --dry-run   # 예정 동작 확인 (부작용 없음)
-  bash scripts/restore_scheduler_launchd.sh             # 복구 + 검증 (원샷)
-  ```
-  - 스크립트는 repo 템플릿(`scripts/launchd/`)과 `scripts/install_scheduler_launchd.sh`를 재사용하고,
-    `state = running`·`scheduler.py` 프로세스·`Registered job: crawl_daily_games` 로그까지 확인한 뒤에만
-    `.disabled` 복사본을 정리한다. 이미 로드돼 있으면 아무 것도 하지 않는다(멱등).
-  - DB가 아직 불통이면 경고만 출력하고 진행한다 — fail-fast 게이트가 DB 잡을 조용히 건너뛴다.
-  > `com.kbo.daily_ingest`·`com.kbo.monthly_embed_upgrade`는 다른 프로젝트(KBO_platform/bega_AI) 소유이므로 손대지 않는다.
-  > 복구 스크립트도 스케줄러 라벨만 건드린다.
+- `<프로젝트 경로>`, `<파이썬 경로>`는 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) 첫 표의 값이다.
+- **스케줄러는 DB가 끊겨도 내려가지 않는다.** DB 잡마다 fail-fast 게이트가 먼저 DB를 확인하고, 안 되면 `Job ... skipped: database unreachable`를 남기고 건너뛴다. DB가 돌아오면 다음 실행부터 다시 돈다. 그래서 DB 복구만으로는 보통 재시작이 필요 없다.
+- DB 복구 후 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §6으로 스케줄러를 확인한다.
+  - 작업이 `Running`이고 프로세스가 하나인지
+  - `logs\scheduler.log`에서 `skipped: database unreachable`가 멈추고 잡이 정상 완료되는지
+- 서버 재부팅으로 스케줄러가 안 떠 있으면 `Start-ScheduledTask -TaskName "<작업 이름>"`으로 시작한다. 재시작 절차는 `WINDOWS_SCHEDULER.md` §5를 따른다.
+
+### 7-1. 이전 방식: Mac launchd 스케줄러 재개 (사용하지 않음)
+
+스케줄러가 Mac에서 돌던 시기의 절차다. **지금은 실행하지 않는다.** 실행하면 Windows 스케줄러와 동시에 돌게 된다. 기록용으로만 남긴다.
+
+- 당시 스케줄러는 Mac에서 꺼 두었다(`~/Library/LaunchAgents/com.kbo-playwright.scheduler.plist.disabled`). DB 복구를 확인한 뒤 `bash scripts/restore_scheduler_launchd.sh --dry-run`으로 확인하고 `bash scripts/restore_scheduler_launchd.sh`로 재개했다.
+- 그 스크립트는 repo 템플릿(`scripts/launchd/`)과 `scripts/install_scheduler_launchd.sh`를 재사용했다. `state = running`, `scheduler.py` 프로세스, `Registered job: crawl_daily_games` 로그를 확인한 뒤에만 `.disabled` 복사본을 정리했다.
+- `com.kbo.daily_ingest`·`com.kbo.monthly_embed_upgrade`는 다른 프로젝트(KBO_platform/bega_AI) 소유라서 손대지 않았다.
 
 ## 8. 서버 접근자가 기록해 줄 것
 
@@ -345,6 +358,7 @@ KBO_ALLOW_1982_DEDUP=1 venv/bin/python -m scripts.maintenance.merge_1982_duplica
 
 
 Mac 로컬 스케줄러는 `com.kbo-playwright.scheduler.plist.disabled` 등 3개 모두 비활성이므로, 이 Mac에서 죽은 DB를 향해 재시도하는 프로세스는 없다.
+(2026-10-15 당시 기록이다. 지금 스케줄러는 Windows 서버에서 돈다 — [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md).)
 
 
 - "4,996행 감소": 저장소, 실행 로그, 데이터 파일(2026-10-01 이후 텍스트)에서 근거를 찾지 못했다. 측정 쿼리와 기준 시점이 제시되지 않아 재현하지 못했다. 덤프 대비 실측은 `game` 순감소 5행(27,393 → 27,388), `CANCELLED` 2,614행 감소다. 이 항목은 출처 없음으로 종결한다.
@@ -406,22 +420,56 @@ D4 병합(`scripts/maintenance/merge_1982_duplicate_games.py`)은 정본 쪽을 
 - **`game_cancelled_with_scores` (fail)** — 소스 제한이 아니라 우리 쪽 오류다. 어느 세대든 점수를 가진 행은 결과이므로 취소될 수 없다. 연대 조건을 넣지 않는 이유: 이 검사가 존재하게 만든 실패(7,995행)는 전부 2001년 이전에 발생했고, 연대로 한정하면 같은 스윕이 재발해도 조용히 통과한다. `is_primary` 로 한정하는 것은 은퇴한 중복 행을 보고하지 않기 위함이며, 그 행도 실제 점수를 갖는다.
 - **`game_result_without_body` (warn)** — 나무위키가 1982~2000 결과를만 제공하고, 2011~2026 의 특수 경기 50건은 박스스코어 자체를 수집한 적이 없다. 소스 제한이라 실패가 아니다. 네 테이블(`player_game_batting`/`game_lineups`/`game_inning_scores`/`game_batting_stats`) 중 하나라도 있으면 본문이 있는 것으로 본다 — 라인업만 있는 경기를 "본문 없음"으로 보고하면 없는 공백이 보고된다. **연대 조건을 넣지 않는다**: 그랬다면 50건은 `UNRESOLVED_MISSING` 로 바뀐 순간 보고에서 빠지고, 게이트는 그것이 지켜야 할 행을 잃는다.
 
-## 12. 2026-10-16 작업 중 발견한 별개 문제 (미해결)
+## 12. 2026-10-16 작업 중 발견한 별개 문제
 
-### 12.1 두 규칙이 서로 모순된다
+### 12.1 두 규칙이 서로 모순된다 — 2026-10-17 해결 (정책 우선)
 
-`src/repositories/game_status.py` 에 두 개입이 동시에 있고 순서가 문제다.
+`src/repositories/game_status.py` 에 두 개입이 동시에 있고 순서가 문제였다.
 
 | 규칙 | 위치 | 내용 |
 | --- | --- | --- |
 | 하드 바닥 | `game_status.py` pre-2001 가드 | `dt.year < 2001` 이면 **무조건 거부** |
 | 정책 승인 | `historical_backfill_policy.py::status_write_allowed` | `approved_dates` 에 있으면 **허용** |
 
-하드 바닥이 정책 검사보다 먼저 실행되므로 `approved_dates={"19950624"}` 로 1995년 날짜를 승인해도 정책까지 도달하지 못한다. `Docs/config/historical_backfill_dates.yaml` 의 승인 기반 쓰기 정책과 정면으로 부딪힌다. 어느 쪽이 우선인지는 issue #32 작업의 결정 사항이며 **이 문서 작성 시점까지 미해결**이다.
+하드 바닥이 정책 검사보다 먼저 실행되므로 `approved_dates={"19950624"}` 로 1995년 날짜를 승인해도 정책까지 도달하지 못했다. `Docs/config/historical_backfill_dates.yaml` 의 승인 기반 쓰기 정책과 정면으로 부딪혔다.
 
-### 12.2 Oracle 벡터 테스트 10건
+**결정(소유자, 2026-10-17): 정책 우선.** 근거 셋.
 
-`AGENTS.md` 는 이제 Oracle 다이얼렉트를 `OracleEmbeddingColumnUnsupportedError` 로 **거부**한다고 명시한다. `tests/sync/test_oracle_writer_vector.py` 10건은 Oracle 네이티브 VECTOR 바인딩이 동작한다고 가정하므로 거절된 계약과 어긋난다. 테스트가 옛 계약을 유지하고 있다.
+- 정책 모듈이 더 최신이다(10-16 21:50, `9d446ba6` 21:47 이후). `9d446ba6` 는 하드 바닥을 확정한 커밋이 아니라 #36 테스트를 그 바닥에 맞춘 커밋이다.
+- 두 규칙의 목적은 같고(자동 스윕이 역사를 되쓰지 못하게) 정책이 더 정밀하다. 하드 바닥은 승인 경로를 죽였을 뿐 아니라 거부 시 `transitions` 를 보고하지 않아 "거부해도 무엇을 하려 했는지 보고한다"는 계약도 깼다.
+- `update_game_status` 의 `allow_historical` 옵트인(단일 운영자 지정 행)은 그대로 남는다. 역할이 나뉜다 — 날짜 스캔은 정책 파일 승인, 단일 쓰기는 인자 옵트인.
+
+**변경 내용**: `refresh_game_status_for_date` 의 pre-2001 하드 바닥을 제거하고 정책을 유일한 게이트로 두었다. 기본 정책은 오래된 시즌을 거부하므로 기본 동작은 변하지 않는다(승인 없는 날짜는 여전히 `skipped=True`). 커밋된 `tests/repositories/test_game_status_historical_guard.py` 를 정책 계약에 맞게 갱신하고 승인 경로 테스트를 추가했다(거부 1 + 승인 1 + 2001+ 1).
+
+### 12.2 Oracle 벡터 테스트 10건 — 2026-10-17 정정: 모순이 아니었다
+
+작성 시점의 서술: `AGENTS.md` 가 Oracle 다이얼렉트를 `OracleEmbeddingColumnUnsupportedError`
+로 거부한다고 명시하는데 `tests/sync/test_oracle_writer_vector.py` 10건은 Oracle 네이티브
+VECTOR 바인딩이 동작한다고 가정하므로 어긋난다.
+
+**정정**: 두 계약은 서로 다른 대상을 가리키며 모순이 아니다.
+
+- `OracleEmbeddingColumnUnsupportedError`(`_OracleEmbeddingGuard`)는 **canonical 이름**
+  `rag_chunks.embedding` 을 Oracle 다이얼렉트로 매핑할 때만 거부한다. 그 이름이 Oracle 에서는
+  **레거시 JSON `EMBEDDING`** 컬럼을 가리키므로, 매핑하면 조용히 다른 컬럼을 읽고 쓴다.
+- 그래서 같은 파일에 `OracleVectorType`(`VECTOR(FLOAT32, DENSE)` + `array.array("f")` 바인딩)이
+  따로 있다. **명시적으로 네이티브 VECTOR 를 쓰는** 경로이고,
+  `oracle_vector_search_repository` 의 쿼리 바인딩이 이것을 쓴다(`tests/repositories/
+  test_oracle_vector_search_repository.py`·`tests/db/test_oracle_dialect_contract.py` 가 고정).
+- `src/sync/oracle_writer.py` 의 raw 바인딩(`DB_TYPE_VECTOR` 로 `setinputsizes`)도 같은
+  성격이다. SQLAlchemy 모델을 거치지 않으므로 guard 를 지나지 않는다.
+
+`tests/sync/test_oracle_writer_vector.py` 는 **지금 저장소에 없다.** 그 자리에 남은 것은
+`src/sync/oracle_writer.py` 의 미커밋 VECTOR 바인딩 경로이고 **테스트가 없었다**. 2026-10-17 에
+`tests/sync/test_oracle_writer_vector_binds.py`(28건)를 추가해 값 정규화(placeholder → SQL
+NULL, 문자열·시퀀스 → float 리스트, 파싱 불가 → 원본 유지), 바인드 이름 계산, 바인드 타입
+선언, 청크 실패 시 롤백 부재를 고정했다. 같은 변경에 PLR0911 이 1건 있었다(함수 하나가
+return 9개) — 문자열 파싱을 `_parse_vector_string` 으로 분리해 해소했고 동작은 그대로다.
+
+**롤백 테스트를 뮤테이션으로 검증했다**: `execute_batch` 의 청크 실패 경로에
+`self.conn.rollback()` 을 다시 넣으면 그 테스트 하나가 실패하고(나머지 27건 통과), 제거하면
+28건 전부 통과한다. 이 롤백이 남아 있으면 청크 하나의 실패가 앞선 청크의 **커밋되지 않은**
+행을 버리는데, 호출자는 부분 실패로만 보고받아 조용한 손실이 된다.
 
 ### 12.3 작업 트리에 병합 충돌이 남아 있었다
 
@@ -528,3 +576,163 @@ I/O가 포화되어 응답이 매달릴 수 있다. 다만 그것만으로 **별
 
 §1대로 Mac에서 RDP·SSH·WinRM이 닫혀 있어 서버 앞에서만 가능하다. §2의 빠른 복구 카드를
 따르되 **세 컨테이너가 함께 죽었으므로 Docker 데몬 상태부터** 본다.
+
+### 14.5 회복 관측 (2026-10-17 02:10~02:13)
+
+Mac 쪽에서 **02:10~02:13 사이에 회복**을 관측했다. `SELECT COUNT(*) FROM game` 이
+26,505를 반환했고 ping은 3/3 0% 손실이었다. 회복 직후 §15의 재분류를 실행했고,
+그 사이 §14.3의 읽기 작업도 모두 가능해졌다.
+
+서버에서 무엇이 조치되었는지는 로그가 없어 **미확인**이다. 다만 §14.2의 대량 DELETE
+autovacuum 가설은 이 회복 형태와 모순되지 않는다(자연 소멸과 조치를 구분할 근거가 없다).
+같은 증상이 다시 오면 §14.4를 따르되, **이번처럼 몇 분~수십 분 안에 스스로 돌아올 수
+있으므로 즉시 서버 작업을 시작하기 전에 1회 재시도**하는 것이 좋다.
+
+## 15. pre-2001 동점 경기 `DRAW` 재분류 (2026-10-17 완료)
+
+### 15.1 왜 `UNRESOLVED_MISSING` 이 틀렸는가
+
+1982~2000 8,236행이 "결과를 알 수 없다"(`UNRESOLVED_MISSING`)로 저장돼 있었다. 그중
+**196행은 동점**이었고 **1행은 `COMPLETED`** 였다. 동점은 결과가 없는 상태가 아니라
+**무승부라는 결과 자체**이며, 저장소 정본(`src/utils/game_status.py`)도 두 점수가 같으면
+`DRAW` 로 판정한다. 즉 이 197행은 다른 데이터가 아니라 **잘못된 상태 라벨**이었다.
+
+`game_result_without_body` (warn)와는 무관하다 — 그 검사는 점수 컬럼만 보고
+`game_status` 를 읽지 않는다. 실제로 재분류 뒤에도 8,281로 **변동이 없었다**.
+
+### 15.2 도구와 안전장치
+
+`scripts/maintenance/reclassify_historical_draws.py` (신규).
+
+- 드라이런 기본. 쓰기에는 `--apply` **와** `KBO_ALLOW_HISTORICAL_RESTORE=1` 이 필요하다.
+- 실행 전 스냅샷과 **행별** 되돌림 SQL을 남긴다. 묶음으로 한 status 를 복원하면 나머지
+  절반이 오염되므로, 되돌림은 식별자마다 이전 값을 복원한다.
+- 대상은 `game_date < 2001-01-01` + 점수 보유 + 동점 + `game_status IN
+  ('UNRESOLVED_MISSING','COMPLETED')` 로 한정했다. 점수 없는 행은 동점이 아니고
+  (NULL 은 등가가 아니다), 2001년 이후는 크롤러가 담당한다.
+- 회귀 테스트 16건 (`tests/scripts/test_reclassify_historical_draws.py`): 선택 경계
+  (미결정·현대·비활성·무점수·이미 DRAW), 드라이런 무쓰기, 상태 외 불변, 되돌림 재생,
+  이중 가드.
+
+### 15.3 실행 결과
+
+드라이런이 197행(UNRESOLVED_MISSING 196 + COMPLETED 1, 1982~2000 전 시즌)을 확인했고
+그대로 적용했다.
+
+| 항목 | 전 | 후 |
+| --- | --- | --- |
+| pre-2001 `UNRESOLVED_MISSING` | 8,236 | **8,040** |
+| pre-2001 `DRAW` | 0 | **197** |
+| pre-2001 동점인데 `DRAW` 아님 | 197 | **0** |
+| `game` 전체 행 | 26,505 | 26,505 |
+
+멱등성 확인: 재실행 시 `tied_matched=0 updated=0`.
+
+되돌림: `data/archive/historical_draws_snapshot_20261017_021310.json` +
+`data/archive/historical_draws_rollback_20261017_021310.sql`.
+
+게이트(재분류 후): `game_duplicate_identifiers` pass(0), `game_cancelled_with_scores`
+pass(0), `game_result_without_body` warn(8,281, 변동 없음).
+
+### 15.4 이 작업이 아닌 것
+
+`data_quality_regression_pack` 의 **실패 3건**은 이 작업과 무관한 별도 트랙이다:
+`player_season_batting_unaccounted_pa`·`player_season_batting_unreconciled_pa`·
+`player_season_batting_missing_pa`. 재분류 전후로 동일하게 실패한다.
+→ 2026-10-18 에 **§16** 으로 처리했다.
+
+## 16. 시즌 PA 게이트를 2001 경계로 분리 (2026-10-18)
+
+§15.4 가 별도 트랙으로 남겨 둔 실패 3건을 정리했다. 목표는 게이트를 초록으로 만드는 것이
+아니라, **고칠 수 없는 것과 고칠 수 있는 것을 같은 빨강으로 보고하지 않는 것**이었다.
+
+### 16.1 왜 나눌 수밖에 없었나
+
+`player_season_batting_unaccounted_pa` 는 2,549행을 붙잡고 있었고 그중 2,122행이 2001년
+이전이다. 이 행들은 `PA > AB+BB+HBP` 이고 두 희생타 컬럼이 모두 비어 있는데, **값을 채울
+합법적 원천이 없다**:
+
+| 확인 | 값 |
+| --- | --- |
+| `game_batting_stats` 의 최초 시즌 | **2001** |
+| `game_batting_stats` 의 2001년 이전 행 | **0** |
+| `player_game_batting` 의 2001년 이전 행 | **0** |
+| 2001년 `unaccounted` 위반 행 | 1 |
+| 2000년 `unaccounted` 위반 행 | 145 |
+
+즉 경계는 임의값이 아니라 **게임 단위 기록이 시작되는 지점**이다. PA 정체성으로 값을
+계산하면 통계를 지어내는 것이 되므로 복원이 아니라 조작이 된다.
+
+이 2,122행이 실패로 집계되는 동안 게이트는 **추가된 날부터 빨강**이었고, 백필로 실제
+고칠 수 있는 481행이 같은 음량으로 보고됐다. 늘 빨간 게이트는 읽히지 않는다.
+
+### 16.2 무엇을 했나
+
+- `player_season_batting_unaccounted_pa` → `season >= 2001`, **fail 유지**.
+- `player_season_batting_unaccounted_pa_pre2001` → `season < 2001`, **informational
+  (warn)**. `game_result_without_body` 가 pre-2001 박스스코어 공백에 이미 받는 처리와 같다.
+- 두 검사의 `required_columns` 에 `season` 을 넣었다. 컬럼이 없는 DB 는 한쪽으로 몰아
+  세지 않고 **unmeasurable(skipped)** 로 보고한다.
+- `_BASELINE_CHECK_IDS` 에 pre-2001 검사를 추가했다. 이 행들이 정적이라는 보장은 없고
+  §12.1 의 승인 기반 역사 쓰기가 바로 이 행들을 건드릴 수 있는 경로다.
+- `_violated_rows` 가 필수 컬럼 부재를 먼저 확인하도록 고쳤다. 그렇지 않으면 기준선
+  기록기가 팩이 "측정 불가"라고 부른 **같은 DB 에서 트레이스백**을 낸다.
+
+### 16.3 실측 결과 (2026-10-18, 운영 DB)
+
+```
+{"ok": false, "check_count": 19, "failure_count": 3, ...}
+```
+
+| 검사 | 상태 | 건수 |
+| --- | --- | --- |
+| `player_season_batting_unaccounted_pa` | **fail** | **427** |
+| `player_season_batting_unaccounted_pa_pre2001` | **warn** | **2,122** |
+| `player_season_batting_unreconciled_pa` | fail | 23 |
+| `player_season_batting_missing_pa` | fail | 31 |
+| 합계 | | **2,603** |
+
+427 + 2,122 + 23 + 31 = 2,603 으로 **분할 전 합계와 정확히 일치**한다. 행이 사라지거나
+양쪽에 계상된 것이 아니며, 두 버킷의 교집합이 비어 있다는 것은 합성 행 스케일 테스트가
+따로 단언한다.
+
+`game_duplicate_identifiers` 는 **pass(0)** 이다(§13 정리 반영).
+
+### 16.4 남은 빨강 481행과 그 성격
+
+| 무리 | 행 | 성격 |
+| --- | --- | --- |
+| 2001+ `unaccounted` | 427 | `CRAWLER` 계보의 포스트시즌·시범 행. **381행은 게임 기록이 있어 백필 가능** |
+| `unreconciled` | 23 | 실제 값 오류(예: 2001 `PA=490, AB=400, BB=125, HBP=400`) |
+| `missing_pa` | 31 | 2026 `ROLLUP` 9 · 2025 `PROFILE` 18 · 2001 `CRAWLER` 4 |
+
+427 안에 원천 결측이 남아 있다(2026 시범경기는 게임 기록이 없다). 시즌 경계로 **구분
+가능한** 결측은 pre-2001 뿐이므로, 그 나머지는 이 작업의 범위 밖으로 명시해 둔다.
+
+### 16.5 하지 않은 것
+
+- **백필을 실행하지 않았다** — 도구도 만들지 않았다. 381행의 희생타를 게임 기록에서
+  채우는 작업은 별도 승인 대상이다.
+- **`--write-baseline` 을 실행하지 않았다.** 기준선은 DB(`pa_violation_baseline`)에 있고,
+  새 검사 ID 가 추가됐으므로 다음 재기록 때 pre-2001 항목이 새로 들어간다. 재기록 없이
+  비교하면 기존 `unaccounted_pa` 항목의 2,122행이 일시적으로 "복구됨"으로 보인다 —
+  **게이트 판정에는 영향이 없고**(기준선 비교는 `ok` 를 바꾸지 않는다) 다음 기록에서
+  정리된다.
+- **운영 DB 에 쓰지 않았다.** 이 작업의 변경은 전부 코드와 테스트다.
+
+### 16.6 되돌림
+
+코드 변경(게이트 정의 2개·`_BASELINE_CHECK_IDS`·`_violated_rows` 가드)을 되돌리면 분할
+전 2,549 단일 검사로 돌아간다. DB 변경이 없으므로 되돌림에 데이터 조작은 필요 없다.
+
+### 16.7 함께 고친 테스트 오염
+
+검증 중 리포지토리 루트에 `test_*_[0-9]/` 디렉터리 13개가 생겨 **staged 로 올라가 있는
+것**을 발견했다. 원인은 `tests/test_data_quality_regression_pack_core.py` 의
+`Path(self._tmpdir.name)` 였다 — `Path.name` 은 마지막 경로 성분만 취하므로 CWD 기준
+상대경로가 되고, `tmp_path` 대신 **리포지토리 루트**에 썼다. 테스트는 반환값만 보므로
+15곳 모두 조용히 통과했다.
+
+`self._tmpdir` 로 고치고, 잘못 추가된 13개 디렉터리를 인덱스와 디스크에서 제거했다.
+재발 방지는 픽스처가 아니라 호출부의 경로 표현이 문제였으므로 경로 자체를 고치는 것으로
+충분하다.

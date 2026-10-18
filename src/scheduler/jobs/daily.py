@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.cli.pipelines.run_daily_update import format_stability_alert_summary
 from src.cli.pipelines.run_daily_update import main as run_daily_update_main
+from src.config.historical_backfill_policy import (
+    HistoricalBackfillPolicy,
+    load_historical_backfill_policy,
+)
 from src.db.engine import SessionLocal
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_success, alert_warning
@@ -474,8 +478,32 @@ def _from_compact_date(value: str) -> date:
     return datetime.strptime(_to_compact_date(value), "%Y%m%d").replace(tzinfo=KST).date()
 
 
+#: Oldest season the backfill loop may treat as a recoverable collection gap.
+#:
+#: Measured 2026-10-12 across all 8,237 answer-set games of 1982~2000: zero rows
+#: in ``game_inning_scores``, ``game_lineups``, ``game_batting_stats`` and
+#: ``game_pitching_stats``. Re-crawling cannot fill them, and treating them as a
+#: gap produced the non-converging sweep: each ``run_daily_update`` dropped the
+#: row out of the query by rewriting ``game_status``, so the loop reported
+#: progress while recovering nothing.
+SOURCE_LIMITED_SEASON_FLOOR = 2001
+
+
 def _find_detail_gaps(session: object, start_date: date) -> list[str]:
-    """Find dates with COMPLETED/DRAW games missing batting or pitching stats."""
+    """Find dates with COMPLETED/DRAW games missing batting or pitching stats.
+
+    Dates before ``SOURCE_LIMITED_SEASON_FLOOR`` are excluded: those seasons
+    published no boxscore bodies, so the query cannot converge on them and each
+    pass "resolved" them by rewriting ``game_status`` rather than by collecting.
+
+    Args:
+        session: DB Session.
+        start_date: Earliest date to consider.
+
+    Returns:
+        Compact dates with recoverable detail gaps.
+
+    """
     from sqlalchemy import text as sa_text
 
     rows = (
@@ -486,11 +514,12 @@ def _find_detail_gaps(session: object, start_date: date) -> list[str]:
             LEFT JOIN game_batting_stats b ON g.game_id = b.game_id
             LEFT JOIN game_pitching_stats p ON g.game_id = p.game_id
             WHERE g.game_date >= :start
+              AND g.game_date >= :season_floor
               AND g.game_status IN ('COMPLETED', 'DRAW')
               AND (b.game_id IS NULL OR p.game_id IS NULL)
             ORDER BY g.game_date
         """),
-            {"start": start_date},
+            {"start": start_date, "season_floor": date(SOURCE_LIMITED_SEASON_FLOOR, 1, 1)},
         )
         .scalars()
         .all()
@@ -509,11 +538,12 @@ def _find_pbp_gaps(session: object, start_date: date) -> list[str]:
             FROM game g
             LEFT JOIN game_play_by_play p ON g.game_id = p.game_id
             WHERE g.game_date >= :start
+              AND g.game_date >= :season_floor
               AND g.game_status IN ('COMPLETED', 'DRAW')
               AND p.game_id IS NULL
             ORDER BY g.game_date
         """),
-            {"start": start_date},
+            {"start": start_date, "season_floor": date(SOURCE_LIMITED_SEASON_FLOOR, 1, 1)},
         )
         .scalars()
         .all()
@@ -610,10 +640,38 @@ def _dispatch_find_player_profile_gaps(session: object) -> list[int]:
     return _find_player_profile_gaps(session)
 
 
-def _backfill_phase_detail(start: date, backfilled: list[str]) -> list[str]:
+def _merge_window_and_approved(
+    scanned: list[str],
+    extra_dates: list[date],
+) -> list[str]:
+    """Merge scanned dates with the approved historical ones.
+
+    Args:
+        scanned: Dates the gap query returned inside the window.
+        extra_dates: Approved dates outside the window.
+
+    Returns:
+        Compact dates to process, oldest first and without duplicates.
+
+    """
+    merged = set(scanned)
+    merged.update(value.strftime("%Y%m%d") for value in extra_dates)
+    return sorted(merged)
+
+
+def _backfill_phase_detail(
+    start: date,
+    backfilled: list[str],
+    *,
+    extra_dates: list[date] | None = None,
+) -> list[str]:
+    """Run ``run_daily_update`` for every date with a recoverable detail gap."""
     session_factory = _get_session_local()
     with session_factory() as session:
-        detail_dates = _dispatch_find_detail_gaps(session, start)
+        detail_dates = _merge_window_and_approved(
+            _dispatch_find_detail_gaps(session, start),
+            extra_dates or [],
+        )
     run_update = _get_run_daily_update()
     for date_compact in detail_dates:
         logger.warning("Phase 1 — Detail backfill needed for %s", date_compact)
@@ -628,10 +686,21 @@ def _backfill_phase_detail(start: date, backfilled: list[str]) -> list[str]:
     return detail_dates
 
 
-def _backfill_phase_pbp(start: date, detail_dates: list[str], backfilled: list[str]) -> None:
+def _backfill_phase_pbp(
+    start: date,
+    detail_dates: list[str],
+    backfilled: list[str],
+    *,
+    extra_dates: list[date] | None = None,
+) -> None:
+    """Re-run relay/PBP collection for dates still missing either dataset."""
     session_factory = _get_session_local()
     with session_factory() as session:
-        all_dates = sorted(set(detail_dates + _dispatch_find_pbp_gaps(session, start)))
+        scanned = _dispatch_find_pbp_gaps(session, start)
+    all_dates = _merge_window_and_approved(
+        sorted(set(detail_dates) | set(scanned)),
+        extra_dates or [],
+    )
     run_update = _get_run_daily_update()
     for date_compact in all_dates:
         with session_factory() as verify_session:
@@ -691,8 +760,37 @@ def _backfill_phase_profiles(backfilled: list[str]) -> None:
         logger.exception("Phase 4 — Profile backfill failed")
 
 
+def _approved_historical_dates(policy: HistoricalBackfillPolicy) -> tuple[list[date], str | None]:
+    """Return the approved historical dates one run may consume.
+
+    Args:
+        policy: Committed historical backfill policy.
+
+    Returns:
+        The dates and, when the per-run cap bit, why.
+
+    """
+    approved = sorted(policy.approved_dates)
+    allowed, cap_reason = policy.approve_for_run(approved)
+    return [_from_compact_date(value) for value in allowed], cap_reason
+
+
 def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
-    """Execute multi-phase backfill for missed details, PBP, preview, and player profiles."""
+    """Execute multi-phase backfill for missed details, PBP, preview, and player profiles.
+
+    The lookback window covers the current season only. Dates older than the
+    policy's grace window are processed when, and only when, they appear in the
+    committed approval list, and never more than the list's per-run cap. The
+    default therefore reaches today's games and nothing before the last two
+    seasons.
+
+    Args:
+        lookback_days: Window ending today that is scanned automatically.
+
+    Returns:
+        The backfill markers produced by each phase.
+
+    """
     _register_job("backfill_missed_daily_crawls", dependencies=["crawl_daily_games"])
 
     can_run, reason = _can_run_job("backfill_missed_daily_crawls")
@@ -701,17 +799,25 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         logger.warning("Skipping backfill_missed_daily_crawls: %s", reason)
         return []
 
-    start = datetime.now(KST).date() - timedelta(days=lookback_days)
+    policy = load_historical_backfill_policy()
+    today = datetime.now(KST).date()
+    window_start = today - timedelta(days=lookback_days)
+    window_start = max(window_start, date(policy.season_floor(today), 1, 1))
+    approved_dates, cap_reason = _approved_historical_dates(policy)
+    if cap_reason:
+        logger.warning("Historical backfill capped: %s", cap_reason)
+    if approved_dates:
+        logger.info("Historical backfill approved for %d date(s)", len(approved_dates))
     backfilled: list[str] = []
 
     _register_job("backfill_phase_detail", dependencies=["crawl_daily_games"])
-    detail_dates = _backfill_phase_detail(start, backfilled)
+    detail_dates = _backfill_phase_detail(window_start, backfilled, extra_dates=approved_dates)
 
     _register_job("backfill_phase_pbp", dependencies=["backfill_phase_detail"])
-    _backfill_phase_pbp(start, detail_dates, backfilled)
+    _backfill_phase_pbp(window_start, detail_dates, backfilled, extra_dates=approved_dates)
 
     _register_job("backfill_phase_preview", dependencies=["backfill_phase_pbp"])
-    _backfill_phase_preview(start, backfilled)
+    _backfill_phase_preview(window_start, backfilled)
 
     _register_job("backfill_phase_profiles", dependencies=["backfill_phase_preview"])
     _backfill_phase_profiles(backfilled)

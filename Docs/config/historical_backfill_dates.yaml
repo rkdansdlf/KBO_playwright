@@ -1,0 +1,26 @@
+# Historical target_date processing policy.
+#
+# The 1982~2000 seasons have no published boxscore bodies, so a crawl over them
+# cannot find data and cannot recover. What it could do was rewrite
+# `game_status`, and it did so for 2,848 rows on 2026-09-23 in a date-ordered
+# sweep that no audit record covered.
+#
+# This file is the approval boundary. Writes outside the grace window require
+# the date to be listed under `approved_dates`; there is no command-line
+# override, so the approval that let a historical row change is a reviewable
+# commit rather than a flag someone typed.
+#
+# Verified with `python3 -m tools.agent_harness verify <run-id>` and the
+# repository gates after any edit.
+
+# Seasons that may rewrite game status without an explicit approval, counting
+# the current one. 1 keeps the current season plus the one before it, which is
+# what the 03:00 KST finalize needs when it rolls over a new year.
+current_season_grace_seasons: 1
+
+# Dates approved for one status rewrite, as YYYYMMDD. Empty on purpose: no
+# historical date is currently approved.
+approved_dates: []
+
+# Ceiling on how many approved dates a single run may consume.
+max_dates_per_run: 10

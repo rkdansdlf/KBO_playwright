@@ -22,6 +22,16 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+#: Separator for a run that reads more than one source.
+#:
+#: The ledger records one row per run and a single ``source_url`` column, so a
+#: sweep that reads several pages names every URL it will request, joined by
+#: this character, rather than the first one. A reader that takes the joined
+#: string for a single URL judges the run by a host the others may not share and
+#: never looks at the rest -- ``source_inventory`` splits on it for exactly that
+#: reason.
+MULTI_SOURCE_SEPARATOR = "|"
+
 
 def _utcnow() -> datetime:
     """Return a naive UTC timestamp matching the rest of the schema."""
@@ -38,6 +48,9 @@ class CrawlRunSpec:
     season: int | None = None
     game_id: str | None = None
     attempt: int = 1
+    #: The URL this run requests, or every URL it requests joined by
+    #: :data:`MULTI_SOURCE_SEPARATOR` when the run reads more than one source.
+    #: ``None`` when no single source describes the run and nobody recorded one.
     source_url: str | None = None
     parser_version: str | None = None
     parent_run_id: str | None = None
