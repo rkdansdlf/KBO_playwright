@@ -7,7 +7,13 @@ spans that do not match the real calendar, and games with no ``season_id``.
 The repair re-derives each game's season type from the season calendar in
 :mod:`src.utils.season_classification` and points the game at the matching
 ``kbo_seasons`` row (creating a missing row), and aligns each ``kbo_seasons``
-row's ``start_date``/``end_date`` with the calendar.
+row's ``start_date``/``end_date`` with the calendar (a postseason stage takes
+its actual first game date, and no dates until it has started).
+
+The calendar is not trusted blindly: a date outside the regular season that
+falls in no window (a rain-delayed postseason game) keeps its stored postseason
+type, a stage move next to a window boundary goes to review, and the All-Star
+game is never touched.
 
 Safety:
 
@@ -41,7 +47,14 @@ from typing import TYPE_CHECKING, Any
 from src.constants import KST
 from src.models.game import Game
 from src.models.season import KboSeason
-from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DRAW,
+    GAME_STATUS_LIVE,
+    GAME_STATUS_POSTPONED,
+    GAME_STATUS_SUSPENDED,
+)
 from src.utils.season_classification import (
     ALLSTAR,
     LEAGUE_CODE_TO_SEASON_TYPE,
@@ -52,8 +65,11 @@ from src.utils.season_classification import (
     SEASON_DATE_RULES,
     SEASON_TYPE_TO_LEAGUE_CODE,
     SEASON_TYPE_TO_LEAGUE_NAME,
-    resolve_effective_season_type,
+    calendar_season_type,
+    in_regular_season_span,
+    postseason_window_of,
 )
+from src.validators.season_team_code import ALL_STAR_TEAM_CODES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -68,6 +84,10 @@ ALLOW_ENV = "KBO_ALLOW_SEASON_REPAIR"
 DEFAULT_BACKUP_DIR = Path("data/repair_backups")
 BACKUP_KIND = "season_classification_repair"
 _UNPLAYED = frozenset({GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED})
+#: Statuses that prove a game was actually played (or is being played).
+_STARTED = frozenset({GAME_STATUS_LIVE, GAME_STATUS_SUSPENDED, GAME_STATUS_COMPLETED, GAME_STATUS_DRAW})
+#: A postseason stage move this many days from a window edge goes to review.
+POSTSEASON_BOUNDARY_DAYS = 1
 
 
 class RepairError(RuntimeError):
@@ -127,35 +147,67 @@ def _iso(value: date | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _target_spans(year: int) -> dict[str, tuple[str, str]]:
-    """Return ``season_type -> (start, end)`` for every type of the season."""
+def _target_spans(year: int, first_played: dict[str, date]) -> dict[str, tuple[str | None, str | None]]:
+    """Return ``season_type -> (start, end)`` for every type of the season.
+
+    Exhibition and regular season take the calendar span. A postseason stage
+    takes its *actual* first game date (``first_played``) as ``start_date``;
+    a stage that has not started yet gets no dates at all. The backend's
+    ``LeagueStageResolver`` promotes games to a higher stage from
+    ``start_date``, so a planned date (e.g. PO 10/25) on a stage that has not
+    begun would show a delayed 준PO game as PO.
+    """
     if year not in SEASON_DATE_RULES or year not in REGULAR_SEASON_SPANS:
         msg = (
             f"No complete season calendar for {year}; add it to SEASON_DATE_RULES and "
             "REGULAR_SEASON_SPANS in src/utils/season_classification.py first"
         )
         raise RepairError(msg)
-    spans: dict[str, tuple[str, str]] = {REGULAR: REGULAR_SEASON_SPANS[year]}
+    spans: dict[str, tuple[str | None, str | None]] = {REGULAR: REGULAR_SEASON_SPANS[year]}
     for start, end, name in SEASON_DATE_RULES[year]:
         season_type = LEAGUE_NAME_TO_SEASON_TYPE.get(name)
-        if season_type in SEASON_TYPE_TO_LEAGUE_CODE:
-            spans[season_type] = (start, end)
+        if season_type not in SEASON_TYPE_TO_LEAGUE_CODE:
+            continue
+        if season_type in POSTSEASON_STAGES:
+            first = first_played.get(season_type)
+            if first is None:
+                spans[season_type] = (None, None)
+                continue
+            spans[season_type] = (first.isoformat(), max(first, date.fromisoformat(end)).isoformat())
+            continue
+        spans[season_type] = (start, end)
     return spans
 
 
-def _plan_season_rows(session: Session, plan: RepairPlan) -> dict[str, int]:
-    """Plan ``kbo_seasons`` creates/updates; return ``season_type -> season_id``."""
-    year = plan.year
-    spans = _target_spans(year)
-    rows = session.query(KboSeason).filter(KboSeason.season_year == year).all()
+def _rows_by_code(session: Session, year: int) -> dict[int, list[KboSeason]]:
     by_code: dict[int, list[KboSeason]] = {}
-    for row in rows:
+    for row in session.query(KboSeason).filter(KboSeason.season_year == year).all():
         by_code.setdefault(int(row.league_type_code), []).append(row)
+    for rows in by_code.values():
+        rows.sort(key=lambda row: row.season_id)
+    return by_code
 
-    season_ids: dict[str, int] = {}
+
+def _season_ids(session: Session, year: int) -> dict[str, int]:
+    """Return ``season_type -> season_id`` (existing row, or the id a create would use)."""
+    by_code = _rows_by_code(session, year)
+    return {
+        season_type: int(by_code[code][0].season_id) if by_code.get(code) else year * 100 + code
+        for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items()
+    }
+
+
+def _plan_season_rows(session: Session, plan: RepairPlan, first_played: dict[str, date]) -> None:
+    """Plan ``kbo_seasons`` creates/updates."""
+    year = plan.year
+    spans = _target_spans(year, first_played)
+    by_code = _rows_by_code(session, year)
+
     for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items():
-        start, end = spans.get(season_type, (None, None))
-        existing = sorted(by_code.get(code, []), key=lambda row: row.season_id)
+        if season_type not in spans:
+            continue
+        start, end = spans[season_type]
+        existing = by_code.get(code, [])
         if not existing:
             season_id = year * 100 + code
             clash = session.get(KboSeason, season_id)
@@ -180,10 +232,6 @@ def _plan_season_rows(session: Session, plan: RepairPlan) -> dict[str, int]:
                     },
                 ),
             )
-            season_ids[season_type] = season_id
-            continue
-        season_ids[season_type] = int(existing[0].season_id)
-        if start is None:
             continue
         for row in existing:
             if (_iso(row.start_date), _iso(row.end_date)) != (start, end):
@@ -196,7 +244,57 @@ def _plan_season_rows(session: Session, plan: RepairPlan) -> dict[str, int]:
                         new={"start_date": start, "end_date": end},
                     ),
                 )
-    return season_ids
+
+
+def _row_season_type(row: KboSeason) -> str | None:
+    """Season type of a ``kbo_seasons`` row (an all-star name wins over its code)."""
+    by_name = LEAGUE_NAME_TO_SEASON_TYPE.get(str(row.league_type_name or "").strip())
+    if by_name == ALLSTAR:
+        return ALLSTAR
+    code_type = None if row.league_type_code is None else LEAGUE_CODE_TO_SEASON_TYPE.get(int(row.league_type_code))
+    return code_type or by_name
+
+
+def _is_allstar_game(game: Game, stored_type: str | None, calendar: str | None) -> bool:
+    """Return whether a game is the All-Star game, which the repair never touches.
+
+    The All-Star game has no ``kbo_seasons`` type the repair manages.
+    """
+    if ALLSTAR in (stored_type, calendar):
+        return True
+    teams = {str(game.home_team or "").upper(), str(game.away_team or "").upper()}
+    return bool(teams & ALL_STAR_TEAM_CODES)
+
+
+def _near_window_boundary(game_date: date) -> bool:
+    window = postseason_window_of(game_date)
+    if window is None:
+        return False
+    _stage, start, end = window
+    return (game_date - start).days <= POSTSEASON_BOUNDARY_DAYS or (end - game_date).days <= POSTSEASON_BOUNDARY_DAYS
+
+
+def _expected_type(game_date: date, stored_type: str | None, calendar: str | None) -> tuple[str | None, str | None]:
+    """Return ``(expected_type, review_note)``; a note means "do not change, review".
+
+    The calendar alone is not evidence against a stored postseason type: rain-outs
+    push postseason games outside their planned window (10/24 준PO game 5), and
+    next to a window edge a stage move is as likely to be wrong as right.
+    """
+    if calendar is not None:
+        if (
+            stored_type in POSTSEASON_STAGES
+            and calendar in POSTSEASON_STAGES
+            and stored_type != calendar
+            and _near_window_boundary(game_date)
+        ):
+            return None, "postseason stage move next to a window boundary; left unchanged"
+        return calendar, None
+    if in_regular_season_span(game_date) is not False:
+        return REGULAR, None
+    if stored_type in POSTSEASON_STAGES:
+        return None, "outside the regular season and every postseason window; kept the stored postseason type"
+    return None, "outside the regular season and every postseason window; type unknown, left unchanged"
 
 
 def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool = False) -> RepairPlan:
@@ -213,8 +311,9 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
 
     """
     plan = RepairPlan(year=year)
-    season_ids = _plan_season_rows(session, plan)
-    code_by_season_id = {int(row.season_id): int(row.league_type_code) for row in session.query(KboSeason).all()}
+    season_ids = _season_ids(session, year)
+    type_by_season_id = {int(row.season_id): _row_season_type(row) for row in session.query(KboSeason).all()}
+    first_played: dict[str, date] = {}
 
     games = (
         session.query(Game)
@@ -223,44 +322,76 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
         .all()
     )
     for game in games:
-        expected = resolve_effective_season_type(None, game.game_date)
-        if expected == ALLSTAR or expected not in season_ids:
-            continue
         old_season_id = None if game.season_id is None else int(game.season_id)
-        old_code = code_by_season_id.get(old_season_id) if old_season_id is not None else None
-        old_type = LEAGUE_CODE_TO_SEASON_TYPE.get(old_code) if old_code is not None else None
-        if old_type == expected:
+        old_type = type_by_season_id.get(old_season_id) if old_season_id is not None else None
+        calendar = calendar_season_type(game.game_date)
+        if _is_allstar_game(game, old_type, calendar):
             continue
         status = (game.game_status or "").upper() or None
-        if (
-            old_season_id is not None
-            and status in _UNPLAYED
-            and expected in POSTSEASON_STAGES
-            and not include_unplayed_postseason
-        ):
-            plan.review.append(
-                {
-                    "game_id": game.game_id,
-                    "game_date": game.game_date.isoformat(),
-                    "game_status": status,
-                    "current_type": old_type,
-                    "calendar_type": expected,
-                    "note": "unplayed game inside a postseason window; left unchanged",
-                },
-            )
-            continue
-        plan.games.append(
-            GameChange(
-                game_id=str(game.game_id),
-                game_date=game.game_date.isoformat(),
-                game_status=status,
-                old_season_id=old_season_id,
-                old_type=old_type,
-                new_season_id=season_ids[expected],
-                new_type=expected,
-            ),
+        final_type = _plan_game(
+            plan,
+            game,
+            season_ids,
+            (old_season_id, old_type, calendar, status),
+            include_unplayed_postseason=include_unplayed_postseason,
         )
+        if status in _STARTED and final_type in POSTSEASON_STAGES:
+            first_played.setdefault(final_type, game.game_date)
+
+    _plan_season_rows(session, plan, first_played)
     return plan
+
+
+def _plan_game(
+    plan: RepairPlan,
+    game: Game,
+    season_ids: dict[str, int],
+    state: tuple[int | None, str | None, str | None, str | None],
+    *,
+    include_unplayed_postseason: bool,
+) -> str | None:
+    """Plan one game; return the type it will have after the repair."""
+    old_season_id, old_type, calendar, status = state
+
+    def review(note: str, calendar_type: str | None = calendar) -> str | None:
+        plan.review.append(
+            {
+                "game_id": game.game_id,
+                "game_date": game.game_date.isoformat(),
+                "game_status": status,
+                "current_type": old_type,
+                "calendar_type": calendar_type,
+                "note": note,
+            },
+        )
+        return old_type
+
+    if old_season_id is not None and old_type is None:
+        return review("stored season_id is not a known kbo_seasons type; left unchanged")
+    expected, note = _expected_type(game.game_date, old_type, calendar)
+    if note is not None:
+        return review(note)
+    if expected == old_type or expected not in season_ids:
+        return old_type
+    if (
+        old_season_id is not None
+        and status in _UNPLAYED
+        and expected in POSTSEASON_STAGES
+        and not include_unplayed_postseason
+    ):
+        return review("unplayed game inside a postseason window; left unchanged", expected)
+    plan.games.append(
+        GameChange(
+            game_id=str(game.game_id),
+            game_date=game.game_date.isoformat(),
+            game_status=status,
+            old_season_id=old_season_id,
+            old_type=old_type,
+            new_season_id=season_ids[expected],
+            new_type=expected,
+        ),
+    )
+    return expected
 
 
 def write_backup(plan: RepairPlan, backup_dir: Path) -> Path:
@@ -294,8 +425,8 @@ def apply_plan(session: Session, plan: RepairPlan) -> None:
             if row is None:
                 msg = f"kbo_seasons.season_id={change.season_id} disappeared while applying"
                 raise RepairError(msg)
-            row.start_date = date.fromisoformat(values["start_date"])
-            row.end_date = date.fromisoformat(values["end_date"])
+            row.start_date = date.fromisoformat(values["start_date"]) if values["start_date"] else None
+            row.end_date = date.fromisoformat(values["end_date"]) if values["end_date"] else None
     session.flush()
     for change in plan.games:
         game = session.query(Game).filter(Game.game_id == change.game_id).one()

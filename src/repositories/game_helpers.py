@@ -52,6 +52,7 @@ from src.utils.season_classification import (
     SEASON_TYPE_TO_LEAGUE_CODE,
     SEASON_TYPE_TO_LEAGUE_NAME,
     normalize_season_type,
+    ongoing_postseason_stage,
     season_payload_type,
 )
 from src.utils.team_codes import (
@@ -279,19 +280,39 @@ def _resolve_unknown_postseason_stage(
     """Resolve a "postseason" game whose stage neither source nor calendar names.
 
     Trust a configured postseason span in ``kbo_seasons``, then whatever the row
-    already had. Never guess a stage.
+    already had. A game with no ``season_id`` yet (a new row) takes the stage
+    still in progress on its date (:func:`ongoing_postseason_stage`: a series
+    only slips later, so a game between two windows belongs to the series that
+    already began). When even that is unknown, None is returned and the caller
+    must not create the row with ``season_id`` NULL.
     """
     if game_date_obj is not None:
         mapped = _query_db_postseason_by_date_range(session, game_date_obj.year, game_date_obj)
         if mapped is not None:
             return mapped
+    if existing_season_id is not None:
+        logger.warning(
+            "Postseason stage unknown for %s on %s; keeping season_id=%s",
+            game_data.get("game_id"),
+            game_date_obj,
+            existing_season_id,
+        )
+        return existing_season_id
+    stage = ongoing_postseason_stage(game_date_obj) if game_date_obj is not None else None
+    if stage is not None and game_date_obj is not None:
+        logger.warning(
+            "Postseason stage unknown for %s on %s; using the stage in progress (%s)",
+            game_data.get("game_id"),
+            game_date_obj,
+            stage,
+        )
+        return _season_id_for_type(session, game_date_obj.year, SEASON_TYPE_TO_LEAGUE_CODE[stage], None)
     logger.warning(
-        "Postseason stage unknown for %s on %s; keeping season_id=%s",
+        "Postseason stage unknown for %s on %s and no season_id stored; not resolvable",
         game_data.get("game_id"),
         game_date_obj,
-        existing_season_id,
     )
-    return existing_season_id
+    return None
 
 
 def _resolve_schedule_season_id(

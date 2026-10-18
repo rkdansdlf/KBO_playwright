@@ -602,21 +602,34 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         return season_type
 
     @staticmethod
-    def _naver_season_type(raw: dict[str, Any], game_date: str, day_season_type: str | None) -> str:
+    def _naver_season_type(raw: dict[str, Any], game_date: str, day_season_type: str | None) -> tuple[str, bool]:
         """Classify one Naver schedule entry.
 
         Postseason (and all-star) ids carry the KBO series id as a prefix, so a
         date-prefixed id is never a postseason game; it is an exhibition game
         when the detail lookup or the season calendar says so, otherwise regular.
+
+        Returns:
+            ``(season_type, confirmed)``. ``confirmed`` is True only when the type
+            was actually established from the game id prefix (a series prefix,
+            or a plain date id on a postseason/all-star calendar date, which the
+            id itself rules out) or from the detail ``roundCode``. A type taken
+            from the calendar or the regular default is not confirmed.
+
         """
         prefixed = season_type_from_naver_game_id(raw.get("gameId"))
         if prefixed is not None:
-            return prefixed
+            return prefixed, True
         if day_season_type is not None:
-            return day_season_type
-        if calendar_season_type(game_date) == EXHIBITION:
-            return EXHIBITION
-        return REGULAR
+            return day_season_type, True
+        calendar = calendar_season_type(game_date)
+        if calendar == EXHIBITION:
+            return EXHIBITION, False
+        if calendar is not None and season_type_from_naver_game_id(raw.get("gameId")) is None and raw.get("gameId"):
+            # The calendar says postseason/all-star but the id has no series
+            # prefix: the id proves it is not such a game.
+            return REGULAR, True
+        return REGULAR, False
 
     def _naver_game_to_payload(
         self,
@@ -664,14 +677,16 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         if len(date_time) >= NAVER_DATETIME_MIN_LEN:
             game_time = date_time[11:16]
 
+        season_type, season_type_confirmed = self._naver_season_type(raw, game_date, day_season_type)
         schedule_game = {
             "game_id": normalize_kbo_game_id(game_id),
             "game_date": f"{game_date[:4]}-{game_date[4:6]}-{game_date[6:]}",
             "season_year": year,
-            "season_type": self._naver_season_type(raw, game_date, day_season_type),
-            # The Naver id prefix is a positive signal, so the calendar must not
-            # override it (see src.utils.season_classification).
-            "season_type_confirmed": True,
+            "season_type": season_type,
+            # Only a type established from the id prefix / roundCode is
+            # confirmed; the calendar must not override it, but may still
+            # decide a calendar-or-default guess (src.utils.season_classification).
+            "season_type_confirmed": season_type_confirmed,
             "away_team_code": away_code,
             "home_team_code": home_code,
             "doubleheader_no": dh_no,

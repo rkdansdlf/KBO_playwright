@@ -150,7 +150,9 @@ def test_apply_is_idempotent_and_rollback_restores(
     assert after["20261015OBLG0"] == 202600  # review item left alone
     with factory() as db:
         assert build_plan(db, 2026).empty
-        assert db.get(KboSeason, 202605).start_date == date(2026, 11, 2)
+        # KS has not started: no planned date is written (LeagueStageResolver).
+        assert db.get(KboSeason, 202605).start_date is None
+        assert db.get(KboSeason, 202603).start_date == date(2026, 10, 17)
 
     backups = list(tmp_path.glob("season_classification_2026_*.json"))
     assert len(backups) == 1
@@ -190,3 +192,96 @@ def test_include_unplayed_postseason(factory: sessionmaker) -> None:
 
 def test_year_without_calendar_is_an_error(factory: sessionmaker) -> None:
     assert run(["--year", "2031"], session_factory=factory) == 1
+
+
+def _add_games(make: sessionmaker, rows: list[tuple[str, date, int | None, str]], **extra: str) -> None:
+    with make() as db:
+        db.add_all(
+            Game(game_id=gid, game_date=day, season_id=sid, game_status=status, is_primary=True, **extra)
+            for gid, day, sid, status in rows
+        )
+        db.commit()
+
+
+def _review_notes(plan) -> dict[str, str]:
+    return {item["game_id"]: item["note"] for item in plan.review}
+
+
+def test_delayed_postseason_game_outside_every_window_keeps_its_stage(factory: sessionmaker) -> None:
+    """10/24 준PO game 5 (rain-delayed past the 준PO window) must not become regular."""
+    _add_games(factory, [("20261024LGHT0", date(2026, 10, 24), 202603, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261024LGHT0" not in {change.game_id for change in plan.games}
+    assert "kept the stored postseason type" in _review_notes(plan)["20261024LGHT0"]
+
+
+def test_unknown_game_outside_every_window_goes_to_review(factory: sessionmaker) -> None:
+    _add_games(factory, [("20261024SSHT0", date(2026, 10, 24), None, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261024SSHT0" not in {change.game_id for change in plan.games}
+    assert "type unknown" in _review_notes(plan)["20261024SSHT0"]
+
+
+def test_stage_move_next_to_a_window_boundary_goes_to_review(factory: sessionmaker) -> None:
+    """A 준PO game on PO's first day is as likely a delayed 준PO game as a PO game."""
+    _add_games(factory, [("20261025LGHT0", date(2026, 10, 25), 202603, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261025LGHT0" not in {change.game_id for change in plan.games}
+    assert "window boundary" in _review_notes(plan)["20261025LGHT0"]
+
+
+def test_stage_move_inside_a_window_is_still_repaired(factory: sessionmaker) -> None:
+    _add_games(factory, [("20261020LGHT0", date(2026, 10, 20), 202605, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert changes["20261020LGHT0"] == "semi_playoff"
+
+
+def test_regular_to_postseason_on_a_window_edge_is_repaired(factory: sessionmaker) -> None:
+    """Only stage-to-stage moves are held back at a boundary; 10/14 regular -> WC still moves."""
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    assert "20261014OBLG0" in {change.game_id for change in plan.games}
+
+
+def test_allstar_game_is_never_repaired(factory: sessionmaker) -> None:
+    """2026 has no all-star window and no all-star league code: the game must be left alone."""
+    _add_games(factory, [("20260711EAWE0", date(2026, 7, 11), 202600, "COMPLETED")], home_team="WE", away_team="EA")
+    with factory() as db:
+        db.add(KboSeason(season_id=202609, season_year=2026, league_type_code=9, league_type_name="올스타전"))
+        db.commit()
+    _add_games(factory, [("20260712EAWE0", date(2026, 7, 12), 202609, "COMPLETED")])
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    touched = {change.game_id for change in plan.games} | {item["game_id"] for item in plan.review}
+    assert "20260711EAWE0" not in touched
+    assert "20260712EAWE0" not in touched
+
+
+def test_postseason_start_date_is_the_actual_first_game(factory: sessionmaker) -> None:
+    """PO opens late (10/26, not the planned 10/25); a scheduled KS game does not start KS."""
+    _add_games(
+        factory,
+        [
+            ("20261026SSLG0", date(2026, 10, 26), None, "COMPLETED"),
+            ("20261102SSLG0", date(2026, 11, 2), None, "SCHEDULED"),
+        ],
+    )
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    rows = {row.season_id: row for row in plan.season_rows}
+    assert rows[202604].new["start_date"] == "2026-10-26"
+    assert rows[202605].new == {"start_date": None, "end_date": None}
+    assert rows[202602].new["start_date"] == "2026-10-14"
+
+
+def test_not_started_postseason_rows_get_no_planned_dates(factory: sessionmaker) -> None:
+    with factory() as db:
+        plan = build_plan(db, 2026)
+    rows = {row.season_id: row for row in plan.season_rows}
+    assert rows[202604].new["start_date"] is None  # PO created without 10/25
+    assert rows[202605].new["start_date"] is None  # KS 10/26 cleared, not set to 11/2

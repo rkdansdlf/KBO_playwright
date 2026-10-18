@@ -102,3 +102,57 @@ def test_unconfirmed_regular_default_follows_calendar(misconfigured_2026: Sessio
 def test_detail_path_without_season_fills_regular_id(misconfigured_2026: Session) -> None:
     # 20260816HHSS0 had no season_id at all; any write path must fill one.
     assert _resolve_game_season_id(misconfigured_2026, {"game_id": "20260816HHSS0"}, date(2026, 8, 16), None) == 202600
+
+
+def test_new_postseason_game_between_windows_takes_the_stage_in_progress(session: Session) -> None:
+    """KBO page "3,4,5,7" row on 10/24 (준PO ended 10/23, PO opens 10/25): delayed 준PO, not NULL."""
+    payload = {"game_id": "20261024LGHT0", "game_date": "2026-10-24", "season_year": 2026, "season_type": "postseason"}
+    assert _resolve_schedule_season_id(session, payload, None) == 202603
+
+
+def test_new_postseason_game_without_any_stage_evidence_is_unresolved(session: Session) -> None:
+    payload = {"game_date": "2031-10-16", "season_year": 2031, "season_type": "postseason"}
+    assert _resolve_schedule_season_id(session, payload, None) is None
+
+
+@pytest.fixture
+def full_session() -> Session:
+    from src.models.base import Base
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def _kbo_page_postseason_payload(game_date: str, game_id: str) -> dict:
+    from src.crawlers.schedule_crawler import ScheduleCrawler
+
+    season_type, confirmed = ScheduleCrawler._kbo_page_season_type("postseason", game_date)
+    return {
+        "game_id": game_id,
+        "game_date": game_date,
+        "season_year": int(game_date[:4]),
+        "season_type": season_type,
+        "season_type_confirmed": confirmed,
+        "away_team_code": "LG",
+        "home_team_code": "HT",
+        "game_status": "SCHEDULED",
+    }
+
+
+def test_kbo_page_new_game_with_unknown_stage_is_not_saved_with_null_season(full_session: Session) -> None:
+    from src.repositories.game_save import save_schedule_game
+
+    payload = _kbo_page_postseason_payload("2031-10-16", "20311016LGHT0")
+    assert payload["season_type"] == "postseason"
+    assert save_schedule_game(payload, session=full_session) is False
+    assert full_session.query(Game).filter(Game.game_id == "20311016LGHT0").one_or_none() is None
+
+
+def test_kbo_page_new_delayed_postseason_game_is_saved_with_a_season(full_session: Session) -> None:
+    from src.repositories.game_save import save_schedule_game
+
+    payload = _kbo_page_postseason_payload("2026-10-24", "20261024LGHT0")
+    assert save_schedule_game(payload, session=full_session) is True
+    game = full_session.query(Game).filter(Game.game_id == "20261024LGHT0").one()
+    assert game.season_id == 202603

@@ -305,6 +305,30 @@ def resolve_canonical_game_id(game_id: str, session: Session | None = None) -> s
     return alias.canonical_game_id if alias else canonical
 
 
+def _refuse_new_game_without_season(
+    game: Game | None,
+    resolved_season_id: int | None,
+    game_id: str,
+    game_data: dict[str, Any],
+) -> bool:
+    """Return True when a new game would be created with ``season_id`` NULL.
+
+    That happens for a postseason game whose stage nothing can name (KBO page
+    "3,4,5,7" option, no calendar window, no kbo_seasons span). The 04:45
+    integrity check and /api/matches/range reject such rows; the Naver path
+    (id prefix) saves the game instead.
+    """
+    if resolved_season_id is not None or game is not None:
+        return False
+    logger.warning(
+        "[SKIP] %s on %s: season_id unresolved (season_type=%s); not saved with season_id NULL",
+        game_id,
+        game_data.get("game_date"),
+        game_data.get("season_type"),
+    )
+    return True
+
+
 def save_schedule_game(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
@@ -364,6 +388,9 @@ def save_schedule_game(  # noqa: PLR0913
         write_contract.claim_game(game_id, source)
 
     game = session.query(Game).filter(Game.game_id == game_id).one_or_none()
+    resolved_season_id = _resolve_schedule_season_id(session, game_data, getattr(game, "season_id", None))
+    if _refuse_new_game_without_season(game, resolved_season_id, game_id, game_data):
+        return False
     changed = False
     if not game:
         game = Game(game_id=game_id)
@@ -396,16 +423,14 @@ def save_schedule_game(  # noqa: PLR0913
         source=source,
         write_contract=write_contract,
     )
-    resolved_season_id = _resolve_schedule_season_id(session, game_data, game.season_id)
-    if resolved_season_id is not None:
-        changed |= _assign_field_if_changed(
-            game,
-            "season_id",
-            resolved_season_id,
-            game_id=game_id,
-            source=source,
-            write_contract=write_contract,
-        )
+    changed |= resolved_season_id is not None and _assign_field_if_changed(
+        game,
+        "season_id",
+        resolved_season_id,
+        game_id=game_id,
+        source=source,
+        write_contract=write_contract,
+    )
     changed |= _apply_game_team_identity_with_contract(
         game,
         game_date.year,

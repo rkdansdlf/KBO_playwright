@@ -229,6 +229,62 @@ def calendar_season_type(game_date: object) -> str | None:
     return None
 
 
+def _postseason_windows(year: int) -> list[tuple[str, date, date]]:
+    """Return ``(stage, start, end)`` for each postseason window of a season, in date order."""
+    windows: list[tuple[str, date, date]] = []
+    for start, end, name in SEASON_DATE_RULES.get(year, []):
+        stage = LEAGUE_NAME_TO_SEASON_TYPE.get(name)
+        if stage in POSTSEASON_STAGES:
+            windows.append((stage, date.fromisoformat(start), date.fromisoformat(end)))
+    return sorted(windows, key=lambda window: window[1])
+
+
+def postseason_window_of(game_date: object) -> tuple[str, date, date] | None:
+    """Return the postseason window ``(stage, start, end)`` holding a date, if any."""
+    day = _coerce_date(game_date)
+    if day is None:
+        return None
+    for window in _postseason_windows(day.year):
+        if window[1] <= day <= window[2]:
+            return window
+    return None
+
+
+def in_regular_season_span(game_date: object) -> bool | None:
+    """Whether a date lies inside the season's regular-season span.
+
+    Returns:
+        True/False, or None when the date is unusable or the season has no span
+        in :data:`REGULAR_SEASON_SPANS`.
+
+    """
+    day = _coerce_date(game_date)
+    if day is None or day.year not in REGULAR_SEASON_SPANS:
+        return None
+    start, end = REGULAR_SEASON_SPANS[day.year]
+    return date.fromisoformat(start) <= day <= date.fromisoformat(end)
+
+
+def ongoing_postseason_stage(game_date: object) -> str | None:
+    """Return the postseason stage still in progress on a date outside every window.
+
+    A postseason series only ever slips *later* (rain-outs), so a postseason
+    game dated after one window closed and before the next opened belongs to the
+    series that already started (e.g. 10/24 준PO game 5 when PO opens 10/25).
+
+    Returns:
+        The latest stage whose window started on or before the date; None when
+        the season has no calendar, the date precedes the first postseason
+        window, or the date falls inside the regular-season span.
+
+    """
+    day = _coerce_date(game_date)
+    if day is None or in_regular_season_span(day):
+        return None
+    started = [stage for stage, start, _end in _postseason_windows(day.year) if start <= day]
+    return started[-1] if started else None
+
+
 def has_season_calendar(year: int) -> bool:
     """Whether the exhibition/postseason windows of a season are known."""
     return year in SEASON_DATE_RULES
@@ -329,7 +385,10 @@ __all__ = [
     "WILDCARD",
     "calendar_season_type",
     "has_season_calendar",
+    "in_regular_season_span",
     "normalize_season_type",
+    "ongoing_postseason_stage",
+    "postseason_window_of",
     "resolve_effective_season_type",
     "season_payload_type",
     "season_type_from_kbo_series",

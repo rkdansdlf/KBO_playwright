@@ -8,6 +8,7 @@ import pytest
 
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.schedule_crawler import ScheduleCrawler
+from src.utils.season_classification import season_payload_type
 
 
 def _raw(game_id: str, game_date: str, away: str, home: str) -> dict:
@@ -29,14 +30,16 @@ def crawler() -> ScheduleCrawler:
 
 
 @pytest.mark.parametrize(
-    ("raw", "month", "expected"),
+    ("raw", "month", "expected", "confirmed"),
     [
-        (_raw("20260320HTHH02026", "2026-03-20", "HT", "HH"), 3, "exhibition"),
-        (_raw("20260328KTLG02026", "2026-03-28", "KT", "LG"), 3, "regular"),
-        (_raw("20261006KTWO02026", "2026-10-06", "KT", "WO"), 10, "regular"),
-        (_raw("20261012LGHT02026", "2026-10-12", "LG", "HT"), 10, "regular"),
-        (_raw("44441014OBLG02026", "2026-10-14", "OB", "LG"), 10, "wildcard"),
-        (_raw("33331017LGHT02026", "2026-10-17", "LG", "HT"), 10, "semi_playoff"),
+        # Calendar / default answers are not confirmed ...
+        (_raw("20260320HTHH02026", "2026-03-20", "HT", "HH"), 3, "exhibition", False),
+        (_raw("20260328KTLG02026", "2026-03-28", "KT", "LG"), 3, "regular", False),
+        (_raw("20261006KTWO02026", "2026-10-06", "KT", "WO"), 10, "regular", False),
+        (_raw("20261012LGHT02026", "2026-10-12", "LG", "HT"), 10, "regular", False),
+        # ... a series prefix is.
+        (_raw("44441014OBLG02026", "2026-10-14", "OB", "LG"), 10, "wildcard", True),
+        (_raw("33331017LGHT02026", "2026-10-17", "LG", "HT"), 10, "semi_playoff", True),
     ],
 )
 def test_naver_payload_carries_the_real_season_type(
@@ -44,11 +47,28 @@ def test_naver_payload_carries_the_real_season_type(
     raw: dict,
     month: int,
     expected: str,
+    confirmed: bool,
 ) -> None:
     game = crawler._naver_game_to_payload(raw, 2026, month, {})
     assert game is not None
     assert game["season_type"] == expected
+    assert game["season_type_confirmed"] is confirmed
+    # Whatever the flag, the stored type is the same.
+    assert season_payload_type(game) == expected
+
+
+def test_naver_round_code_answer_is_confirmed(crawler: ScheduleCrawler) -> None:
+    raw = _raw("20310315HTHH02031", "2031-03-15", "HT", "HH")
+    game = crawler._naver_game_to_payload(raw, 2031, 3, {}, day_season_type="regular")
+    assert game["season_type"] == "regular"
     assert game["season_type_confirmed"] is True
+
+
+def test_naver_unprefixed_id_on_a_postseason_date_is_confirmed_regular(crawler: ScheduleCrawler) -> None:
+    """The missing series prefix is the id telling us "not postseason"; the calendar must not override it."""
+    game = crawler._naver_game_to_payload(_raw("20261014KTSS02026", "2026-10-14", "KT", "SS"), 2026, 10, {})
+    assert game["season_type_confirmed"] is True
+    assert season_payload_type(game) == "regular"
 
 
 def test_naver_postseason_game_id_is_normalized_to_date_form(crawler: ScheduleCrawler) -> None:
