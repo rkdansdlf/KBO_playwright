@@ -313,6 +313,32 @@ class TestCrawlerRulesContent:
 
         assert "sum by (crawler)" in freshness.replace("\n", " ")
 
+    def test_sweep_stall_aggregates_across_exporters(self):
+        """`KboDlqSweepStalled` reads a gauge that more than one process exports.
+
+        The heartbeat is label-less in `src/utils/metrics.py`, and both sides
+        serve that default registry -- the scheduler through `start_http_server`,
+        the API server through `/metrics` returning `generate_latest()`. So both
+        publish a series, while only the scheduler ever advances it. Read per
+        series, the API server's never-set 0 is permanently older than the 2h
+        allowance: measured 2026-10-19, the rule had been firing since the
+        previous evening with a healthy sweep, which is the noise that hides a
+        real stall. The assertions below pin the premise and the aggregation;
+        both firing directions -- and the case where the scheduler's own series
+        is gone, which a `{job=...}` filter would silence -- are pinned in
+        `monitoring/prometheus/tests/crawler_alert_dlq_sweep_test.yml`.
+        """
+        stalled = next(e for e in _rule_expressions(CRAWLER_RULES) if "last_successful_sweep_timestamp" in e)
+        metrics_source = (ROOT / "src/utils/metrics.py").read_text(encoding="utf-8")
+        api_health_router = (ROOT / "src/api/routers/health.py").read_text(encoding="utf-8")
+
+        # The premise: the shared module is served by more than one process, so
+        # a label-less gauge in it cannot be read as if there were one series.
+        assert "start_http_server" in metrics_source
+        assert "generate_latest()" in api_health_router
+
+        assert "max(kbo_crawl_dlq_last_successful_sweep_timestamp)" in stalled.replace("\n", " ")
+
     def test_every_rule_declares_severity_and_annotations(self):
         document = yaml.safe_load(CRAWLER_RULES.read_text(encoding="utf-8"))
 

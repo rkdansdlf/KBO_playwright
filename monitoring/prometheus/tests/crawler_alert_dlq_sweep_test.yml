@@ -15,6 +15,13 @@
 # "no sweep has ever succeeded", but it is a behaviour worth proving rather than
 # assuming.
 #
+# The gauge is label-less in the shared metrics module, so more than one exporter
+# publishes it and only the scheduler advances it (measured 2026-10-19: the API
+# server's series sat at 0 while the scheduler's was current). The rule therefore
+# aggregates (`max(...)`), and the fixtures below pin both directions of that:
+# the never-set series must not hold it on, and its presence must not stop a real
+# stall -- or a vanished scheduler series -- from firing.
+#
 # `for: 10m` on both rules means evaluation has to run long enough for the pending
 # window to elapse; the interval below is 30s to keep that tractable.
 
@@ -103,6 +110,87 @@ tests:
       - eval_time: 12h
         alertname: KboDlqSweepStalled
         exp_alerts: []
+
+  # ── KboDlqSweepStalled: two exporters, only one of them sweeps ────
+  # The measured production shape. The gauge is label-less in the shared metrics
+  # module, so the API server exports the same series and never advances it:
+  # `{job="kbo-api-server"}` sat at 0 while `{job="kbo-scheduler"}` was current.
+  # Read per series that 0 is permanently older than the allowance, so the rule
+  # fired on a healthy system and a real stall became indistinguishable from the
+  # noise. This case is the regression: the never-set series must not be able to
+  # hold the rule on, however old it reads on its own.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
+        values: '0+1800x200'
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-api-server"}'
+        values: '0x200'
+    alert_rule_test:
+      # 12h in, the false firing that was observed in production would long since
+      # have arrived. It is `max()` in the rule that keeps this quiet.
+      - eval_time: 12h
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+  # ── KboDlqSweepStalled: a real stall with the never-set series ────
+  # Aggregating must not hide the fault the rule exists for: the scheduler's
+  # heartbeat frozen, the never-set series still present. Same timing as "ran,
+  # then stopped" above, plus the series that made the rule fire permanently in
+  # production.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
+        values: '1000x400'
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-api-server"}'
+        values: '0x400'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+      - eval_time: 2h27m
+        alertname: KboDlqSweepStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            # `max()` drops the input labels, so this is the same alert the
+            # single-series case produces -- which is the point: a second,
+            # never-updated exporter must not change what the rule says.
+            exp_annotations:
+              summary: "DLQ 스위프 정지: 2h 10m 20s 동안 큐를 읽지 못함"
+              description: >-
+                최근 2h 10m 20s 동안 dead letter 큐를 한 번도 읽지 못했습니다.
+                큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다.
+                `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── KboDlqSweepStalled: the scheduler series is gone entirely ─────
+  # The obvious alternative fix -- filtering on the scheduler's job label --
+  # cannot match a series that is no longer exported, so it would go silent here.
+  # That is the state that matters most for a heartbeat: the process that is
+  # supposed to read the queue is not running. Aggregating keeps reading the only
+  # surviving series, so this still pages instead of dropping the signal.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-api-server"}'
+        values: '0x400'
+    alert_rule_test:
+      - eval_time: 2h5m
+        alertname: KboDlqSweepStalled
+        exp_alerts: []
+
+      - eval_time: 2h10m30s
+        alertname: KboDlqSweepStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "DLQ 스위프 정지: 2h 10m 30s 동안 큐를 읽지 못함"
+              description: >-
+                최근 2h 10m 30s 동안 dead letter 큐를 한 번도 읽지 못했습니다.
+                큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다.
+                `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
   # ── KboDlqSweepFailing ────────────────────────────────────────────
   - interval: 30s

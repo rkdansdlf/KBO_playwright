@@ -250,8 +250,21 @@ groups:
       # late here is one missed detection, while paging on every deferral would
       # train the reader to ignore it. Not yet calibrated against production
       # (BUG-002) -- the tick interval is the basis, not a measurement.
+      #
+      # `max()` is load-bearing, not decoration. The gauge is label-less and
+      # lives in the shared metrics module, so every process that imports it
+      # exports a series of its own -- the API server's `/metrics` serves the
+      # same default registry -- and only the scheduler ever advances it. Read
+      # per series, that never-set 0 is permanently older than the allowance and
+      # the rule fires on a healthy system: measured 2026-10-19, it had been
+      # firing since the previous evening (`{job="kbo-api-server"}` at 0 while
+      # `{job="kbo-scheduler"}` was current), which is exactly the noise that
+      # hides a real stall. Aggregating restores the intended reading, "when did
+      # anyone last manage to look at the queue", and unlike filtering on the
+      # scheduler's job label it still fires if that series disappears with the
+      # scheduler -- the case where the heartbeat matters most.
       - alert: KboDlqSweepStalled
-        expr: time() - kbo_crawl_dlq_last_successful_sweep_timestamp > 7200
+        expr: time() - max(kbo_crawl_dlq_last_successful_sweep_timestamp) > 7200
         for: 10m
         labels:
           severity: critical
