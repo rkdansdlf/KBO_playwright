@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, select, update
+from sqlalchemy.dialects import postgresql as postgresql_dialect
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -27,6 +29,14 @@ from src.notifications.alert_dto import (
 from src.notifications.incident import IncidentManager
 
 BASE_TIME = datetime(2026, 9, 25, 4, 45, 0)
+
+#: Both dialects whose create path is the same "insert-if-absent, ask RETURNING"
+#: shape. Compiling the captured statement against each is what proves the
+#: decision is available to the caller at all.
+_DIALECTS = {
+    "postgresql": postgresql_dialect.dialect(),
+    "sqlite": sqlite_dialect.dialect(),
+}
 
 
 @pytest.fixture
@@ -410,6 +420,87 @@ class TestConcurrencyInvariants:
         row = manager.get(self.KEY)
         assert row is not None
         assert row.notification_count == 8
+
+
+class TestTheCreateDecisionComesFromTheStatement:
+    """Whether this call created the row may not be read off the driver.
+
+    psycopg3 reports ``rowcount = -1`` for ``INSERT ... ON CONFLICT DO NOTHING``
+    whether or not the row was inserted, and ``bool(-1)`` is ``True``. A
+    ``rowcount`` test therefore told every racing publisher that *it* had created
+    the incident: nobody bumped ``occurrence_count`` (12 concurrent publications
+    left it at 1) and every loser returned a ``NEW`` transition for an incident a
+    peer had opened. That measurement needs a PostgreSQL server and lives in
+    ``test_incident_concurrency_integration.py``; this case pins the decision
+    rule itself -- the statement's own ``RETURNING`` output -- so reverting to
+    ``rowcount`` fails on the default SQLite run as well.
+    """
+
+    KEY = "integrity:game_stats:20260925"
+
+    class _ResultThatLies:
+        """A psycopg3-shaped result: ``rowcount`` is ``-1`` either way."""
+
+        def __init__(self, returned_row: object | None) -> None:
+            self.rowcount = -1
+            self._returned_row = returned_row
+            self.first_calls = 0
+
+        def first(self) -> object | None:
+            self.first_calls += 1
+            return self._returned_row
+
+    class _RecordingSession:
+        """The session surface the create path uses, plus a statement log.
+
+        Deliberately not a ``Session``: the contract under test is how an
+        execution *result* is interpreted, and a real backend cannot be asked to
+        report the losing driver's numbers on demand.
+        """
+
+        def __init__(self, dialect_name: str, result: object) -> None:
+            self._dialect_name = dialect_name
+            self._result = result
+            self.statements: list[object] = []
+
+        def get_bind(self) -> object:
+            return SimpleNamespace(dialect=SimpleNamespace(name=self._dialect_name))
+
+        def execute(self, statement: object) -> object:
+            self.statements.append(statement)
+            return self._result
+
+    @pytest.mark.parametrize("dialect_name", ["postgresql", "sqlite"])
+    @pytest.mark.parametrize(("returned_row", "expected"), [(None, False), ((7,), True)])
+    def test_the_statement_is_asked_whether_the_row_was_inserted(
+        self,
+        dialect_name: str,
+        returned_row: object | None,
+        expected: bool,
+    ) -> None:
+        result = self._ResultThatLies(returned_row)
+        session = self._RecordingSession(dialect_name, result)
+
+        inserted = IncidentManager(session)._insert_if_absent(_event(), BASE_TIME)
+
+        assert inserted is expected
+        # consulted exactly once, and consulted at all: a truthy rowcount must
+        # not be able to answer in its place
+        assert result.first_calls == 1
+
+    @pytest.mark.parametrize("dialect_name", ["postgresql", "sqlite"])
+    def test_the_insert_is_conflict_safe_and_returns_the_created_key(self, dialect_name: str) -> None:
+        result = self._ResultThatLies(None)
+        session = self._RecordingSession(dialect_name, result)
+
+        IncidentManager(session)._insert_if_absent(_event(), BASE_TIME)
+
+        assert len(session.statements) == 1
+        compiled = str(session.statements[0].compile(dialect=_DIALECTS[dialect_name]))
+        assert "ON CONFLICT DO NOTHING" in compiled
+        assert "RETURNING" in compiled
+        # sqlite emits a bare ``id``; postgresql qualifies it with the table name
+        assert "id" in compiled.split("RETURNING", 1)[1]
 
 
 class TestCreateAtomicityContract:

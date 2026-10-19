@@ -184,7 +184,17 @@ class IncidentManager:
         )
 
     def _insert_if_absent(self, event: AlertEvent, moment: datetime) -> bool:
-        """Insert the incident row atomically; return whether this call inserted it."""
+        """Insert the incident row atomically; return whether this call inserted it.
+
+        The answer comes from the statement's own ``RETURNING`` output, not from
+        the driver's ``rowcount``. psycopg3 reports ``-1`` for ``INSERT ... ON
+        CONFLICT DO NOTHING`` whether or not the row was inserted and ``bool(-1)``
+        is ``True``, so a ``rowcount`` test told every racing publisher that it
+        had created the incident: none of them bumped ``occurrence_count``, and
+        each returned a ``NEW`` transition for an incident a peer had just
+        opened. Measured at 12 concurrent publishers, the counter landed on 1
+        instead of 12. Only the statement can answer this, so it is asked.
+        """
         values = {
             "incident_key": event.incident_key,
             "source": event.source.value,
@@ -205,26 +215,26 @@ class IncidentManager:
         if dialect == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-            stmt = pg_insert(NotificationIncident).values(**values).on_conflict_do_nothing()
-            return bool(self.session.execute(stmt).rowcount)
-
-        if dialect == "sqlite":
+            statement = pg_insert(NotificationIncident).values(**values).on_conflict_do_nothing()
+        elif dialect == "sqlite":
             from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-            stmt = sqlite_insert(NotificationIncident).values(**values).on_conflict_do_nothing()
-            return bool(self.session.execute(stmt).rowcount)
-
-        if dialect == "oracle":
+            statement = sqlite_insert(NotificationIncident).values(**values).on_conflict_do_nothing()
+        elif dialect == "oracle":
             return self._oracle_merge_insert(values)
+        else:
+            # Unknown dialect: fall back to a savepoint-scoped insert and catch the
+            # unique violation. Safe on dialects with real SAVEPOINT semantics.
+            try:
+                with self.session.begin_nested():
+                    self.session.execute(insert(NotificationIncident).values(**values))
+            except IntegrityError:
+                return False
+            return True
 
-        # Unknown dialect: fall back to a savepoint-scoped insert and catch the
-        # unique violation. Safe on dialects with real SAVEPOINT semantics.
-        try:
-            with self.session.begin_nested():
-                self.session.execute(insert(NotificationIncident).values(**values))
-        except IntegrityError:
-            return False
-        return True
+        # A skipped insert returns no row, which is the one thing rowcount cannot
+        # be trusted to report on every driver.
+        return self.session.execute(statement.returning(NotificationIncident.id)).first() is not None
 
     def _oracle_merge_insert(self, values: dict[str, object]) -> bool:
         """Oracle `MERGE` equivalent of INSERT ... ON CONFLICT DO NOTHING."""
