@@ -135,3 +135,15 @@ coverage_report.txt
 # `test_<test_name><n>` at the repo root. Legit test code lives in tests/, so a
 # root-anchored guard cannot hide anything real and keeps them out of `git add -A`.
 /test_*/
+
+# One-off root probes and benches. These are throwaway connection/dimension
+# diagnostics, not part of the product; `testpaths = tests` means the two
+# `test_*.py` entries never run under pytest, but they were committed by
+# accident (f461779b) and stayed in the tree. Root-anchored so a future module
+# of the same name under src/ is unaffected.
+/bench_common.py
+/diag_conn.py
+/probe_*.py
+/verify_dim256.py
+/test_db_conn.py
+/test_nemotron.py
