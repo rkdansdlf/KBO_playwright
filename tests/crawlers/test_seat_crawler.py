@@ -4,7 +4,7 @@ import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -15,6 +15,7 @@ from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.seat_crawler import TEAM_SEAT_SOURCES, SeatCrawler
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
+from src.models.stadium_seat_section import StadiumSeatSection
 
 
 @pytest.fixture(autouse=True)
@@ -174,3 +175,38 @@ class TestSeatCrawlerOperations:
         repo.save.assert_called_once_with(section)
         session.commit.assert_called_once()
         assert crawler._raw_pages == []
+
+    def test_a_section_carrying_the_team_code_really_reaches_the_table(self):
+        """The attribution key is not a column, and the save path caught the error.
+
+        The crawler stamps ``team_code`` onto every section so the rows can be
+        grouped per team and the raw snapshots can be keyed. The table has no
+        such column, so handing the collected dict to the ORM raised
+        ``TypeError``, ``SEAT_SAVE_EXCEPTIONS`` swallowed it as one of its own,
+        and the run reported zero rows written while every section had failed.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        StadiumSeatSection.__table__.create(engine)
+        session = sessionmaker(bind=engine)()
+
+        crawler = SeatCrawler()
+        crawler._raw_pages = []
+
+        with (
+            patch("src.crawlers.seat_crawler.SessionLocal", return_value=session),
+            patch("src.crawlers.seat_crawler.save_raw_snapshots", return_value=0),
+        ):
+            saved, failed = crawler._save_to_db(
+                [
+                    {
+                        "stadium_id": "JAMSIL",
+                        "section_name": "블루석",
+                        "seat_grade": "블루석",
+                        "team_code": "LG",
+                    },
+                ],
+            )
+
+        assert (saved, failed) == (1, 0)
+        rows = session.execute(select(StadiumSeatSection)).scalars().all()
+        assert [row.section_name for row in rows] == ["블루석"]

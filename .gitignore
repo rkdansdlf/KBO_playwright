@@ -51,7 +51,13 @@ scratch/
 inspect_*.py
 !scripts/investigations/inspect_tool.py
 find_boxscore.py
+# One-off bulk-rewrite helpers. They are ad-hoc, they rewrite tracked
+# sources in place, and they have no place in the repository.
+fix_all.py
+fix_critical.py
 scripts/investigations/dump_*.py
+# Ad-hoc query scripts: they embed production connection strings.
+scripts/investigations/_tmp_*.py
 gamecenter_*.png
 gamecenter_*.html
 *_debug.png
