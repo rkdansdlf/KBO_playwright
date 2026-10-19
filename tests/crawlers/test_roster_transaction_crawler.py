@@ -19,6 +19,12 @@ from src.models.crawl_execution import CrawlExecutionRun
 @pytest.fixture(autouse=True)
 def allow_kbo_source(monkeypatch):
     monkeypatch.setattr("src.crawlers.roster_transaction_crawler.compliance.is_allowed", AsyncMock(return_value=True))
+    # `goto_with_retry` runs the SSRF guard, which resolves the host over DNS
+    # before navigating. A unit test must not depend on the resolver: when it
+    # fails, the navigation raises ``ValueError("DNS resolution failed for:
+    # www.koreabaseball.com")`` and the crawler reports FETCH_HTTP_ERROR, so the
+    # same test passes or fails with the network rather than the code.
+    monkeypatch.setattr("src.crawlers.base.validate_url", lambda url: (True, "OK"))
 
 
 class FakeResponseContext:
