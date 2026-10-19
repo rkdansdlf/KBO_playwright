@@ -21,6 +21,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.cli.calc.monthly_unified_audit import crawl_monthly_unified_audit_job
+from src.monitoring.crawler_cadence import publish_crawler_cadence
 from src.scheduler.cadence import expected_interval_seconds
 from src.scheduler.config import (
     KST,
@@ -566,6 +567,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
 
     _publish_job_cadence_contract(scheduler)
+    publish_crawler_cadence(scheduler)
 
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)

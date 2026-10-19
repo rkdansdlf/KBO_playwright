@@ -100,9 +100,59 @@ CRAWL_LEDGER_FAILURES_TOTAL = Counter(
 LEDGER_OPERATION_OPEN = "open"
 LEDGER_OPERATION_FINALIZE = "finalize"
 
+#: The status a run records when every record it attempted was accepted.
+FULL_SUCCESS_STATUS = "success"
+
+#: The status a run records when it completed and rejected some records.
+PARTIAL_STATUS = "partial"
+
+#: Statuses that count as a success for freshness purposes.
+SUCCESS_STATUSES = frozenset({FULL_SUCCESS_STATUS, PARTIAL_STATUS})
+
 CRAWL_LAST_SUCCESS_TIMESTAMP = Gauge(
     "kbo_crawl_last_success_timestamp",
-    "Unix time of the last successful run, or 0 when a crawler has never succeeded.",
+    "Unix time of the last run that ended success or partial, or 0 when a crawler has "
+    "never succeeded. Answers 'did anything land at all' without distinguishing the two.",
+    ["crawler"],
+)
+
+CRAWL_LAST_FULL_SUCCESS_TIMESTAMP = Gauge(
+    "kbo_crawl_last_full_success_timestamp",
+    "Unix time of the last run that ended success, or 0 when a crawler has never completed "
+    "one. Unlike kbo_crawl_last_success_timestamp this does not advance on a partial run, "
+    "which is the reading a freshness threshold needs.",
+    ["crawler"],
+)
+
+CRAWL_LAST_PARTIAL_SUCCESS_TIMESTAMP = Gauge(
+    "kbo_crawl_last_partial_success_timestamp",
+    "Unix time of the last run that ended partial, or 0 when none has. Compared with the "
+    "full-success gauge it says whether the most recent success was a clean one.",
+    ["crawler"],
+)
+
+CRAWL_LAST_FAILURE_TIMESTAMP = Gauge(
+    "kbo_crawl_last_failure_timestamp",
+    "Unix time of the last run that ended in anything other than success or partial, or 0 "
+    "when none has. Compared with kbo_crawl_last_run_timestamp it answers 'is the latest "
+    "result a failure' without waiting for the next run.",
+    ["crawler"],
+)
+
+CRAWL_LAST_RUN_TIMESTAMP = Gauge(
+    "kbo_crawl_last_run_timestamp",
+    "Unix time of the most recent run that reached a terminal state, whatever its status. "
+    "The guard that keeps a cadence rule from reporting a crawler that stopped running "
+    "altogether, which is the scheduler's own staleness rule's question.",
+    ["crawler"],
+)
+
+CRAWL_EXPECTED_INTERVAL_SECONDS = Gauge(
+    "kbo_crawl_expected_interval_seconds",
+    "Longest gap, in seconds, between two runs of this crawler according to the trigger of "
+    "the job that starts it. Published by src.monitoring.crawler_cadence at scheduler "
+    "start. Absent when the crawler has no periodic collection: the cadence rules skip "
+    "such a crawler rather than read the absence as zero, which would mean 'always late'.",
     ["crawler"],
 )
 
@@ -113,9 +163,6 @@ CRAWL_RECORDS_WRITTEN_LAST = Gauge(
     "per-run average; use the run ledger for exact per-run analysis.",
     ["crawler"],
 )
-
-#: Statuses that count as a success for freshness purposes.
-SUCCESS_STATUSES = frozenset({"success", "partial"})
 
 CRAWL_SOURCE_LIMITED_TOTAL = Counter(
     "kbo_crawl_source_limited_total",
@@ -207,6 +254,20 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
     rule would find no series at all and stay silent for exactly the crawler it
     needs to report on.
 
+    The four timestamps answer four different questions, and collapsing them
+    would hide the cases the alerts exist for:
+
+    - `last_run` -- when did anything finish, whatever the outcome. The guard
+      that separates "not succeeding" from "not running at all".
+    - `last_full_success` -- when did a run finish clean. A crawler stuck on
+      `partial` never advances this, which is how a freshness rule notices it.
+    - `last_partial_success` -- when did a run finish with rejected records.
+      Exported so the operator can read the last clean completion and the last
+      partial one side by side instead of inferring either.
+    - `last_failure` -- when did a run end in anything else. Compared with
+      `last_run` it says whether the *latest* result failed, which the
+      freshness rule cannot answer for two cycles.
+
     Args:
         run: A `CrawlExecutionRun` that has reached a terminal state.
 
@@ -227,9 +288,18 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
     # Create the freshness series first so a never-successful crawler is visible.
     if crawler not in _INITIALIZED_CRAWLERS:
         CRAWL_LAST_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(0)
+        CRAWL_LAST_FULL_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(0)
+        CRAWL_LAST_PARTIAL_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(0)
+        CRAWL_LAST_FAILURE_TIMESTAMP.labels(crawler=crawler).set(0)
         CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP.labels(crawler=crawler).set(0)
         CRAWL_RECORDS_WRITTEN_LAST.labels(crawler=crawler).set(0)
         _INITIALIZED_CRAWLERS.add(crawler)
+
+    # One reading for the whole record: `_epoch_seconds` falls back to "now" when
+    # the run has no finish time, so calling it per gauge would make the four
+    # timestamps describe four slightly different moments.
+    finished_at = _epoch_seconds(getattr(run, "finished_at", None))
+    CRAWL_LAST_RUN_TIMESTAMP.labels(crawler=crawler).set(finished_at)
 
     CRAWL_RUNS_TOTAL.labels(crawler=crawler, status=status).inc()
 
@@ -239,8 +309,7 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
     else:
         # Only a run that actually asked sets this. Setting it on a skipped run
         # would reproduce the defect it exists to expose.
-        consulted_at = _epoch_seconds(getattr(run, "finished_at", None))
-        CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP.labels(crawler=crawler).set(consulted_at)
+        CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP.labels(crawler=crawler).set(finished_at)
 
     records_read = _safe_int(getattr(run, "records_read", 0))
     records_written = _safe_int(getattr(run, "records_written", 0))
@@ -257,8 +326,13 @@ def record_crawl_run(run: CrawlExecutionRun) -> bool:
         CRAWL_DURATION_SECONDS.labels(crawler=crawler).observe(duration)
 
     if status in SUCCESS_STATUSES:
-        CRAWL_LAST_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(_epoch_seconds(getattr(run, "finished_at", None)))
+        CRAWL_LAST_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(finished_at)
+        if status == PARTIAL_STATUS:
+            CRAWL_LAST_PARTIAL_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(finished_at)
+        else:
+            CRAWL_LAST_FULL_SUCCESS_TIMESTAMP.labels(crawler=crawler).set(finished_at)
     else:
+        CRAWL_LAST_FAILURE_TIMESTAMP.labels(crawler=crawler).set(finished_at)
         error_code, failure_stage = _resolve_failure_labels(getattr(run, "error_code", None))
         CRAWL_FAILURES_TOTAL.labels(
             crawler=crawler,
@@ -302,7 +376,12 @@ def _epoch_seconds(value: object) -> float:
 
 __all__ = [
     "CRAWL_DURATION_SECONDS",
+    "CRAWL_EXPECTED_INTERVAL_SECONDS",
     "CRAWL_FAILURES_TOTAL",
+    "CRAWL_LAST_FAILURE_TIMESTAMP",
+    "CRAWL_LAST_FULL_SUCCESS_TIMESTAMP",
+    "CRAWL_LAST_PARTIAL_SUCCESS_TIMESTAMP",
+    "CRAWL_LAST_RUN_TIMESTAMP",
     "CRAWL_LAST_SOURCE_CONSULTED_TIMESTAMP",
     "CRAWL_LAST_SUCCESS_TIMESTAMP",
     "CRAWL_RECORDS_FAILED_TOTAL",
@@ -312,6 +391,8 @@ __all__ = [
     "CRAWL_RUNS_TOTAL",
     "CRAWL_SOURCE_LIMITED_TOTAL",
     "DURATION_BUCKETS",
+    "FULL_SUCCESS_STATUS",
+    "PARTIAL_STATUS",
     "SAFE_LABEL_PATTERN",
     "SOURCE_LIMITED_OUTCOME",
     "SOURCE_LIMITED_REASONS",

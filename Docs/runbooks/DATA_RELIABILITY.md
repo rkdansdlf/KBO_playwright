@@ -229,10 +229,11 @@ incidents for conditions that were never evaluated.
 
 One rule covers the quietest failure mode in the crawl family: a crawler that
 keeps recording `partial` -- some sources failing while others succeed. It is
-quiet by construction for the other rules, because `partial` is in
-`SUCCESS_STATUSES` (it advances `kbo_crawl_last_success_timestamp`, so
-`KboCrawlerNoRecentSuccess` stays healthy) and the surviving sources keep
-writing (so `KboCrawlerWriteDrop` usually stays healthy). "One source of three
+quiet by construction for the other rules, because the surviving sources keep
+writing (so `KboCrawlerWriteDrop` usually stays healthy) and `partial` is a
+success for the ledger. It is no longer invisible to `KboCrawlerNoRecentSuccess`,
+which thresholds on full success (§3.2h), but that rule waits two of the
+crawler's own cycles; this one is the early rung at 24h. "One source of three
 quietly fails" is exactly that shape.
 
 | Alert | Condition | Severity | First response |
@@ -290,7 +291,8 @@ question ("why") has an answer.
 
 | Signal | Question it answers |
 | --- | --- |
-| `kbo_crawl_last_success_timestamp` | did the run finish without an error? |
+| `kbo_crawl_last_success_timestamp` | did the run finish successfully or partially? |
+| `kbo_crawl_last_full_success_timestamp` | did a run finish **clean**? (what the freshness rule thresholds, §3.2h) |
 | `kbo_crawl_last_source_consulted_timestamp` | did it actually ask the source? |
 | `kbo_crawl_source_limited_total{reason}` | why not, if it did not |
 
@@ -316,14 +318,19 @@ Thresholds, and what they are worth:
 - 48h rather than 7d: these crawlers run daily, so two missed days is a change
   in behaviour rather than a blip. Not yet calibrated against a real recovery
   (BUG-014) — the cadence is the basis, not a measurement.
-- The 6-hour run guard mirrors `KboCrawlerNoRecentSuccess`: a crawler that
-  stopped running entirely is that rule's business, and reporting it here as well
-  would raise two alerts for one condition.
+- The run guard is `kbo_crawl_last_run_timestamp` against the crawler's own
+  period (§3.2h), not the 6-hour `increase()`: a counter window shorter than the
+  period was closed most of the time, so a crawler skipped for weeks produced a
+  warning that resolved and reopened every day. A crawler that stopped running
+  entirely is `KboSchedulerJobNotRunning`'s business, and reporting it here as
+  well would raise two alerts for one condition.
 
 Firing behaviour is pinned by
 `monitoring/prometheus/tests/crawler_alert_source_limited_test.yml` — a crawler
-skipped for days, one still asking, one that stopped running, one that skipped
-once and resumed, and a brand-new crawler whose gauge has never been set.
+skipped for days, one still asking, one that stopped running, one that stopped
+45h ago (still inside the two-cycle guard, so still judged), one that skipped
+once and resumed, a brand-new crawler whose gauge has never been set, and an
+exempt crawler with no published interval.
 
 ### 3.2d Sustained-partial alerting — measured, and its premise does not hold
 
@@ -514,6 +521,103 @@ run collects the data and no letter is needed.
 Firing behaviour and the verdict are pinned by
 `tests/services/test_replay_source_limited_verdict.py` and
 `tests/cli/test_dlq_operator_cli.py`.
+
+### 3.2h Freshness is measured in the crawler's own period
+
+Two rules read the outcome of the last run rather than a fixed window:
+
+| Alert | Condition | Severity |
+| --- | --- | --- |
+| `KboCrawlerNoRecentSuccess` | `time() - kbo_crawl_last_full_success_timestamp > 2 * kbo_crawl_expected_interval_seconds` **and** the last run is inside the same window | critical |
+| `KboCrawlerRecentFailure` | `kbo_crawl_last_failure_timestamp >= kbo_crawl_last_run_timestamp` **and** the last run is inside the window | warning |
+
+**Six hours was the defect, not the threshold.** The freshness rule used
+`increase(kbo_crawl_runs_total[6h]) > 0` as its guard and a flat `21600`
+threshold. No scheduled crawler fits inside six hours: measured against the run
+ledger on 2026-10-19, `food` and `seat` each run once a day. Those crawlers were
+therefore judged for the six hours after their run and silent for the other
+eighteen — the alert resolved and reopened every day, and the eighteen quiet
+hours read as health. A constant cannot be right for a set that contains daily,
+weekly and ten-minute crawlers.
+
+`kbo_crawl_expected_interval_seconds` replaces the constant. It is published once
+at scheduler start from the trigger of the job that starts the crawler — the
+mapping lives in `CRAWLER_JOBS` in `src/monitoring/crawler_cadence.py`, and the
+value is `expected_interval_seconds()` from `src/scheduler/cadence.py`, the same
+function §5.1 describes. Moving a job's cron moves the alert window with it,
+because nothing restates the period.
+
+The old guard had the same shape of problem: a counter window shorter than the
+period is a guard that is usually closed. Both rules now ask "is the last run
+recent" against the crawler's own period instead.
+
+#### Four timestamps, four questions
+
+| Gauge | Question |
+| --- | --- |
+| `kbo_crawl_last_run_timestamp` | when did anything finish, whatever the outcome? |
+| `kbo_crawl_last_full_success_timestamp` | when did a run finish **clean**? |
+| `kbo_crawl_last_partial_success_timestamp` | when did a run finish with rejected records? |
+| `kbo_crawl_last_failure_timestamp` | when did a run end in anything else? |
+
+`kbo_crawl_last_success_timestamp` (success **or** partial) is kept for "did
+anything land at all" and for the dashboards, but no rule thresholds on it any
+more: a crawler stuck on `partial` advances it forever, so a rule reading it
+cannot see the case it exists for.
+
+- **`last_full_success`, not `last_success`.** `partial` is a success for the
+  ledger and stays one — reclassifying it would report a working crawler as an
+  outage. The freshness rule asks a narrower question, and a crawler stuck on
+  partial reaches the critical only after two of its own cycles. The warning
+  rung that fires first is `KboCrawlerSustainedPartial` (§3.2c).
+- **A crawler that never succeeded exposes `0`**, so its age is huge and it
+  fires from its first recorded run instead of staying silent.
+- **`last_run` guards both rules** because a crawler that stopped running is
+  `KboSchedulerJobNotRunning`'s question (§5.1). Without the guard, every
+  retired crawler would page forever.
+- **`KboCrawlerRecentFailure` exists because the critical waits.** One failed
+  run after a good one leaves yesterday's clean success inside the window, and
+  that grace is deliberate: a 06:45 failure is usually replayed from the dead
+  letter queue within minutes. What was missing was the reading when the grace
+  runs out — `last_failure >= last_run` says the most recent terminal result is a
+  failure, and it clears the moment a later run succeeds. Warning, not critical,
+  because a retry may still fix it.
+
+#### Crawlers that are not judged
+
+`NOT_SCHEDULED` in `src/monitoring/crawler_cadence.py` lists the crawlers with no
+periodic local collection, with the reason: `awards` (monthly, CI
+`periodic_extras.yml`), `kbo_event` and `realtime_issue` (CLI dispatch),
+`player_batting_all_series` / `player_pitching_all_series` (weekly, CI), and
+`snapshot_replay` (follows a recording, not a calendar). Their runs happen in a
+process Prometheus does not scrape, so no window here could describe them. The
+rules skip a crawler whose interval was never published — the absence of a
+period is not a period of zero.
+
+**When one fires.** Read the ledger before the metric:
+
+```bash
+python3 -m src.cli.kbo dlq list --crawler <crawler> --status pending
+```
+
+then `kbo_crawl_last_partial_success_timestamp` next to
+`kbo_crawl_last_full_success_timestamp` — a partial that keeps landing while no
+clean run does is the "one source of three" shape, and the per-source results in
+the run entry say which one.
+
+Firing behaviour is pinned by
+`monitoring/prometheus/tests/crawler_alert_freshness_test.yml` (fires 20h after a
+daily crawler's run, the case the 6h window could not express; quiet for a
+healthy daily run, a weekly crawler inside its window, a stopped crawler and an
+exempt crawler) and
+`monitoring/prometheus/tests/crawler_alert_recent_failure_test.yml` (fires on a
+failed latest run, stays quiet after a later success, on an old failure, on a
+partial last run and without a published cadence):
+
+```bash
+promtool test rules monitoring/prometheus/tests/crawler_alert_freshness_test.yml
+promtool test rules monitoring/prometheus/tests/crawler_alert_recent_failure_test.yml
+```
 
 ### 3.3 Retry policy
 
