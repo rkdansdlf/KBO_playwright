@@ -2,7 +2,7 @@ name: scientific
 source: K-Dense-AI/scientific-agent-skills
 role: analytics
 transport: native
-executable: false
+executable: true
 apply: true
 license_gate: allowed
 capabilities: [statistics, time-series, model-evaluation]

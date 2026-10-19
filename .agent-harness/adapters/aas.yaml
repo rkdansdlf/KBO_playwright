@@ -2,7 +2,7 @@ name: aas
 source: sickn33/agentic-awesome-skills
 role: skill_registry
 transport: cli
-executable: false
+executable: true
 apply: true
 license_gate: allowed
 capabilities: [catalog, stack-validation, planning]
