@@ -124,8 +124,8 @@ batch; the last two read the sweep's own heartbeat.
 | --- | --- | --- | --- |
 | `KboDlqRecoveryStalled` | `kbo_crawl_dlq_stale_retrying_letters > 0` for 1m | critical | a letter outlived the staleness cutoff — recovery itself stopped. Check the `crawl_dead_letter_recovery` job ran, then `dlq list --status retrying` |
 | `KboDlqBacklogAgeHigh` | `kbo_crawl_dlq_oldest_due_age_seconds > 86400` for 30m | warning | the drain is not keeping up. `dlq stats` for queue depth, then raise the retry batch limit or fix the failing crawler |
-| `KboDlqSweepStalled` | `time() - kbo_crawl_dlq_last_successful_sweep_timestamp > 7200` for 10m | critical | **nobody is looking.** The two rules above are reading frozen gauges. Check the recovery job and DB reachability first — do not trust the queue numbers until a sweep has succeeded |
-| `KboDlqSweepFailing` | `increase(kbo_crawl_dlq_sweep_failures_total[30m]) > 0` for 10m | warning | the DB is reachable but the queue read is not. `dlq stats` directly, because the gauges can look healthy while frozen |
+| `KboDlqSweepStalled` | `time() - kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"} > 7200` for 10m | critical | **nobody is looking.** The two rules above are reading frozen gauges. Check the recovery job and DB reachability first — do not trust the queue numbers until a sweep has succeeded |
+| `KboDlqSweepFailing` | `increase(kbo_crawl_dlq_sweep_failures_total{job="kbo-scheduler"}[30m]) > 0` for 10m | warning | the DB is reachable but the queue read is not. `dlq stats` directly, because the gauges can look healthy while frozen |
 
 The first two answer different questions and need different responses: a
 *stranded* letter means a worker died mid-replay, while an *aged* backlog means
@@ -147,6 +147,18 @@ what separates them:
   Distinct from `kbo_crawl_dlq_failures_total`, which counts failures *found in*
   the queue. This counts times the queue itself was unreadable, which is the case
   that leaves every other gauge frozen and is therefore the least visible.
+
+Both heartbeat rules carry a `{job="kbo-scheduler"}` matcher, and that matcher is
+load-bearing. The two series are registered by the shared metrics module, so every
+process that imports it exports them — including `api-server`, which never runs a
+sweep and therefore publishes both at their registered default of `0`. Unscoped,
+`time() - 0` reads as ~20,700 days and `KboDlqSweepStalled` fired against a process
+that could never satisfy it (observed 2026-10-18 on `api-server:8000`). The
+heartbeat is a claim about **one** process, so the rule names that process. If the
+sweep is ever moved to a different process, widen the matcher — do not delete it;
+the unscoped expression is the false positive. Losing the scheduler entirely is a
+different fault and is covered by `KBOSchedulerDown`
+(`up{job="kbo-scheduler"} == 0`).
 
 The 2h stall window is four times the 30-minute recovery tick. It is deliberately
 loose: the condition is "the observer is gone", a busy maintenance window can

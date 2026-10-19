@@ -42,12 +42,12 @@ TEAM_SEAT_SOURCES: dict[str, dict[str, Any]] = {
     "LG": {
         "source_key": "lg_twins_seat",
         "stadium_id": "JAMSIL",
-        "url": "https://www.lgtwins.com/ticket/seatinfo",
+        "url": "https://www.lgtwins.com/ticket/general",
     },
     "OB": {
         "source_key": "seoul_stadium_seat",
         "stadium_id": "JAMSIL",
-        "url": "https://www.lgtwins.com/ticket/seatinfo",
+        "url": "https://www.lgtwins.com/ticket/general",
     },
 }
 
@@ -323,13 +323,17 @@ class SeatCrawler(BaseHttpCrawler):
 
         saved = 0
         failed = 0
+        # Index raw pages by team once, before the per-team transaction loop.
+        # The old code called _raw_pages_by_team() inside the loop, which cleared
+        # self._raw_pages on the first iteration and left nothing for subsequent teams.
+        raw_by_team = self._raw_pages_by_team()
         for team_code, items in by_team.items():
             with SessionLocal() as session:
                 try:
                     repo = StadiumSeatSectionRepository(session)
                     for item in items:
                         repo.save(item)
-                    saved_snaps = save_raw_snapshots(session, self._raw_pages_by_team().pop(team_code, []))
+                    saved_snaps = save_raw_snapshots(session, raw_by_team.pop(team_code, []))
                     session.commit()
                     saved += len(items)
                     logger.info("[SEAT] %s saved %s sections, %s snapshots.", team_code or "-", len(items), saved_snaps)

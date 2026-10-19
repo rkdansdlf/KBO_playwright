@@ -298,6 +298,17 @@ groups:
       # timestamp within seconds -- remaining at 0 past `for` is a real fault,
       # not a boot.
       #
+      # The `job="kbo-scheduler"` matcher is load-bearing. Both heartbeat series
+      # are registered by the shared metrics module, so every process that
+      # imports it exports them -- including api-server, which never runs a sweep
+      # and therefore leaves them at their registered default of 0. Unscoped,
+      # `time() - 0` made api-server age ~20,700 days and this rule fired against
+      # a process that could never satisfy it (observed 2026-10-18, instance
+      # api-server:8000). The heartbeat is a claim about one process, so the rule
+      # names that process. If the sweep is ever moved or duplicated, widen the
+      # matcher -- do not delete it. Losing the scheduler entirely is a different
+      # fault, covered by KBOSchedulerDown (`up{job="kbo-scheduler"} == 0`).
+      #
       # 2 hours is four times the 30-minute tick. It is deliberately loose
       # because the failure it reports is "the observer is gone", and a busy
       # maintenance window can defer a tick past one interval; the cost of being
@@ -318,7 +329,16 @@ groups:
       # scheduler's job label it still fires if that series disappears with the
       # scheduler -- the case where the heartbeat matters most.
       - alert: KboDlqSweepStalled
+<<<<<<< Updated upstream
         expr: time() - max(kbo_crawl_dlq_last_successful_sweep_timestamp) > 7200
+=======
+        # Only alert if a sweep HAS run (timestamp > 0) AND it's stale.
+        # A fresh process with timestamp=0 is not a stall; it's just not run yet.
+        expr: |
+          kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"} > 0
+          and
+          time() - kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"} > 7200
+>>>>>>> Stashed changes
         for: 10m
         labels:
           severity: critical
@@ -333,8 +353,12 @@ groups:
       # KBODatabaseUnavailable, and two criticals for one outage trains the
       # reader to treat a page as noise. What is new here is the narrower case:
       # the database is reachable but this read is not.
+      #
+      # Scoped to the scheduler for the same reason as the rule above: the counter
+      # is registered by the shared metrics module and exported at 0 by processes
+      # that never sweep.
       - alert: KboDlqSweepFailing
-        expr: increase(kbo_crawl_dlq_sweep_failures_total[30m]) > 0
+        expr: increase(kbo_crawl_dlq_sweep_failures_total{job="kbo-scheduler"}[30m]) > 0
         for: 10m
         labels:
           severity: warning
