@@ -332,7 +332,7 @@ class SeatCrawler(BaseHttpCrawler):
                 try:
                     repo = StadiumSeatSectionRepository(session)
                     for item in items:
-                        repo.save(item)
+                        repo.save(self._orm_payload(item))
                     saved_snaps = save_raw_snapshots(session, raw_by_team.pop(team_code, []))
                     session.commit()
                     saved += len(items)
@@ -343,6 +343,26 @@ class SeatCrawler(BaseHttpCrawler):
                     logger.exception("Seat section save failed for %s", team_code or "-")
         self._raw_pages.clear()
         return saved, failed
+
+    @staticmethod
+    def _orm_payload(item: dict[str, Any]) -> dict[str, Any]:
+        """Return the section fields the table actually has a column for.
+
+        ``team_code`` says which team a section was read for. It is what
+        groups the rows into one transaction per team and what keys the raw
+        snapshots, but a seat section belongs to a stadium, and the table has
+        no column for it. Handing it to the ORM raised ``TypeError``, the save
+        path caught it as one of its own exceptions, and the run reported
+        zero rows written while every section had actually failed.
+
+        Args:
+            item: A section as the crawler collected it.
+
+        Returns:
+            The same section without the attribution keys.
+
+        """
+        return {key: value for key, value in item.items() if key != "team_code"}
 
     def _raw_pages_by_team(self) -> dict[str, list[dict]]:
         """Index the captured pages by team, consuming them as they are saved.
