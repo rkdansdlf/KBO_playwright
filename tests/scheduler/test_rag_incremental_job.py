@@ -93,6 +93,20 @@ def test_sync_rag_incremental_restores_env_after_failure() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _silence_alert_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the job's build-outcome alerts out of the incident ledger.
+
+    The job now reports both outcomes through ``alert_warning``/``alert_success``,
+    and the real bridge writes a delivery-audit row. ``tests/scheduler/conftest.py``
+    refuses that write from a scheduler unit test, because whether it happens at
+    all depends on ambient channel config rather than on the behaviour under test.
+    Nothing here asserts on the alerts, so stubbing the seam is enough.
+    """
+    monkeypatch.setattr("src.scheduler.jobs.maintenance.alert_warning", lambda *_a, **_k: None)
+    monkeypatch.setattr("src.scheduler.jobs.maintenance.alert_success", lambda *_a, **_k: None)
+
+
+@pytest.fixture(autouse=True)
 def _reachable_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the DB fail-fast gate out of these tests.
 

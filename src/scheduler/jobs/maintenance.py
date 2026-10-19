@@ -444,8 +444,12 @@ def sync_rag_incremental_job() -> None:
                     else:
                         os.environ[key] = value
             logger.info("=== RAG Vector DB Incremental Sync Completed Successfully ===")
+            # Clears ``scheduler:sync_rag_incremental:warning`` from an earlier
+            # failed run. Without it the failure incident outlives the failure.
+            alert_success("sync_rag_incremental", "RAG 인덱스 증분 빌드 성공")
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("RAG Vector DB Incremental Sync job failed")
+            alert_warning("sync_rag_incremental", "RAG 인덱스 빌드 실패 — 스케줄러 로그를 확인하세요")
 
 
 @_with_db_fail_fast_guard
