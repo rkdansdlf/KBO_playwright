@@ -92,7 +92,12 @@ suppresses the recovery notice without skipping the state change.
 
 - An incident still closes on its own when its check recovers
   (`bridge.apply_incidents`, Section 4.1). The operator commands are a
-  correction path, not the normal lifecycle.
+  correction path, not the normal lifecycle. The mirror image is not covered: a
+  check that stops running leaves its incident open, and nothing in the ledger
+  separates "still broken" from "no longer reporting".
+  `Docs/references/NOTIFICATION_INCIDENT_RECOVERY.md` is the design draft for a
+  derived `STALE` column and a `list --stale` filter — **nothing in it is
+  implemented yet**.
 - The `SUPPRESSED` decision is **not stored anywhere**. `IncidentManager` computes
   it per `process()` call and discards it, so a suppressed notification leaves no
   delivery row *and* no column in the ledger. Two CLI columns answer the question
@@ -111,6 +116,15 @@ suppresses the recovery notice without skipping the state change.
   `ALERT_MIN_SEVERITY` changes the answer without touching a row. That is why it
   is a column and not a schema migration, and why it could not have been
   backfilled: those decisions were never written.
+  Two layers drop a notification and neither leaves a delivery row:
+  `IncidentManager` computes `AlertDecision.SUPPRESSED` per `process()` call and
+  discards it, and `NotificationDispatcher` drops a repeat inside its
+  `suppress_window` with a `SUPPRESSED` result that `DeliveryRecorder` filters
+  out on purpose — the message never entered the dispatch pipeline, and the
+  window exists to stop a sustained outage from writing one row per repeat. Both
+  empty the same `occurrence_count` − `notification_count` gap, which is why
+  Section 3.2, not this table, is what separates a policy from a transport
+  failure.
 - `SILENCED_BY` names the **policy**, not the transport. A send that fails also
   leaves `notification_count` unmoved, so a gap in the counters has one cause the
   column cannot report: use Section 3.3 for that.
