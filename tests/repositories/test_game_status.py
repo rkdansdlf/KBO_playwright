@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import patch
 
 import src.repositories.game_status as game_status_repo
+from src.models.audit_trail import CorrectionAuditTrail
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -33,6 +34,9 @@ class TestGameStatus:
         GameLineup.__table__.create(engine)
         GameBattingStat.__table__.create(engine)
         GamePitchingStat.__table__.create(engine)
+        # A status change now records an audit row in the caller's transaction,
+        # so the table has to exist for the refresh path to work at all.
+        CorrectionAuditTrail.__table__.create(engine)
         return engine, sessionmaker(bind=engine)()
 
     @patch("src.repositories.game_status.current_season_year", new=lambda today=None: 2024)

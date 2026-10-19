@@ -18,6 +18,11 @@ def _targets(games, today):
     session.commit()
 
     with patch.object(run_daily_update, "SessionLocal", sessionmaker(bind=engine)):
+        # ``today`` has to be close to the 2026 row: the collector applies
+        # RECOVERY_LOOKBACK_DAYS (14) on top of the pre-2001 floor, so a today
+        # in 2010 put the wanted row in the future and returned an empty list.
+        # The assertion then passed for the wrong reason -- it was not the floor
+        # that excluded anything, nothing was in range at all.
         targets = run_daily_update._collect_past_scheduled_recovery_targets(today)
 
     return [t["game_id"] for t in targets]
