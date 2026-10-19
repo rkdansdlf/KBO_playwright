@@ -4,6 +4,6 @@ from scripts.verification.debug_crawl import main
 
 class TestMain:
     def test_is_coroutine(self):
-        import asyncio
+        import inspect
 
-        assert asyncio.iscoroutinefunction(main)
+        assert inspect.iscoroutinefunction(main)
