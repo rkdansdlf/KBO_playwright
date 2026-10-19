@@ -1,7 +1,7 @@
 """Immediate in-process verification of the crawl_p1p2_data_job lock fix.
 
-Reproduces the 2026-07 contention scenario WITHOUT touching operational data
-or sending alerts:
+Reproduces the 2026-07 contention scenario WITHOUT touching operational data,
+sending alerts, or leaving a run marker behind:
 
 1. Simulate ``crawl_daily_games`` holding ``DAILY_LOCK`` (as the real 03:00 job
    does via ``run_daily_update_main(acquire_lock=False)``).
@@ -12,8 +12,13 @@ or sending alerts:
    instead of crashing.
 
 The P1/P2 crawler ``main`` functions are monkeypatched to no-ops so no
-operational DB writes or Telegram alerts occur. We only assert the lock path
-does not raise ``LockAcquisitionError`` / crash the process.
+operational DB writes occur. The stub returns an outcome rather than a return
+code, because the job reads what was collected -- a bare ``0`` would fail this
+scenario with an ``AttributeError`` that says nothing about the lock. The alert
+fan-out and the run marker are redirected as well: the marker is what the daily
+lock-health check reads to decide whether the scheduled job ran, so a
+verification that wrote the real one would answer that question for a run that
+never happened.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,10 +35,17 @@ sys.path.insert(0, str(REPO_ROOT))
 logger = logging.getLogger("verify_p1p2_lock_fix")
 
 from scripts import scheduler
+from src.crawlers.sweep_outcome import CrawlSweepOutcome
+from src.models.crawl_execution import RUN_STATUS_SUCCESS
 
 
 def _noop_main(argv=None):
-    return 0
+    """Stand in for a crawler entrypoint, returning what the job reads."""
+    return CrawlSweepOutcome(crawler="stub", status=RUN_STATUS_SUCCESS)
+
+
+def _noop_alert(*args, **kwargs) -> None:
+    """Absorb the job's alert fan-out so the verification sends nothing."""
 
 
 def run_contention_scenario(acquire_lock, release_lock, run_job) -> int:
@@ -84,11 +97,15 @@ def main() -> int:
     import src.cli.crawl_parking as cp
     import src.cli.crawl_seat_sections as cs
     import src.cli.crawl_stadium_food as cf
+    from src.scheduler.jobs import daily
 
-    saved = (cp.main, cs.main, cf.main)
+    saved = (cp.main, cs.main, cf.main, daily.alert_success, daily.alert_warning, daily.P1P2_RUN_MARKER)
     cp.main = _noop_main
     cs.main = _noop_main
     cf.main = _noop_main
+    daily.alert_success = _noop_alert
+    daily.alert_warning = _noop_alert
+    daily.P1P2_RUN_MARKER = Path(tempfile.mkdtemp(prefix="verify_p1p2_lock_fix_")) / "p1p2_data.json"
 
     lock = scheduler.DAILY_LOCK
     try:
@@ -98,7 +115,7 @@ def main() -> int:
             scheduler.crawl_p1p2_data_job,
         )
     finally:
-        cp.main, cs.main, cf.main = saved
+        (cp.main, cs.main, cf.main, daily.alert_success, daily.alert_warning, daily.P1P2_RUN_MARKER) = saved
 
 
 if __name__ == "__main__":

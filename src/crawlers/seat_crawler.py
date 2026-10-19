@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.crawlers.base import BaseHttpCrawler
 from src.crawlers.failure_taxonomy import FailureCode, classify_failure, stage_for_code
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
@@ -89,6 +90,14 @@ class SeatCrawler(BaseHttpCrawler):
         # call `_crawl_team_seats` directly, and a failure that raises
         # AttributeError there is a failure that cannot be reported at all.
         self._team_failures: list[tuple[str, str, str]] = []
+        #: What the last completed ``run()`` did, for an in-process caller that
+        #: has no other way to tell a full sweep from a failed one.
+        self._last_outcome: CrawlSweepOutcome | None = None
+
+    @property
+    def last_run_outcome(self) -> CrawlSweepOutcome | None:
+        """Return what the last completed ``run()`` did, or ``None`` before one."""
+        return self._last_outcome
 
     async def run(
         self,
@@ -149,6 +158,11 @@ class SeatCrawler(BaseHttpCrawler):
                     logger.info(section)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            self._last_outcome = CrawlSweepOutcome.from_run(
+                run,
+                crawler=SEAT_CRAWLER_NAME,
+                failed_units=[team for team, _, _ in self._team_failures],
+            )
             return all_sections
 
     def _record_team_failures(

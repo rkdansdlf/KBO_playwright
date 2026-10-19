@@ -21,6 +21,7 @@ from src.crawlers.failure_taxonomy import (
 )
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome
+from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
@@ -91,11 +92,19 @@ class ParkingCrawler(BaseHttpCrawler):
         #: status cannot distinguish "the source said nothing" from "the source
         #: answered and the write died" unless the two are counted separately.
         self._persist_failures: list[tuple[str, str, str]] = []
+        #: What the last completed ``run()`` did, for an in-process caller that
+        #: has no other way to tell a full sweep from a failed one.
+        self._last_outcome: CrawlSweepOutcome | None = None
         self._http = CrawlerHttpClient(
             name=type(self).__name__,
             policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
             headers=HEADERS,
         )
+
+    @property
+    def last_run_outcome(self) -> CrawlSweepOutcome | None:
+        """Return what the last completed ``run()`` did, or ``None`` before one."""
+        return self._last_outcome
 
     async def run(
         self,
@@ -173,6 +182,13 @@ class ParkingCrawler(BaseHttpCrawler):
                     logger.info(lot)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            # Captured before the optional re-raise so the sweep's result exists
+            # even for a caller that asked to be told the failure.
+            self._last_outcome = CrawlSweepOutcome.from_run(
+                run,
+                crawler=PARKING_CRAWLER_NAME,
+                failed_units=[team for team, _, _ in [*self._team_failures, *self._persist_failures]],
+            )
             self._raise_persist_error(raise_on_persist_error=raise_on_persist_error)
             return all_lots
 
