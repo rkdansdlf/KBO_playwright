@@ -235,7 +235,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     needs: test
-    if: always() && needs.test.result == 'success'
+    if: always() && !cancelled()
     steps:
       - uses: actions/checkout@v7
 
@@ -269,7 +269,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     needs: test
-    if: always() && needs.test.result == 'success'
+    if: always() && !cancelled()
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -318,7 +318,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     needs: test
-    if: always() && needs.test.result == 'success'
+    if: always() && !cancelled()
     steps:
       - uses: actions/checkout@v7
 
@@ -353,7 +353,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     needs: test
-    if: always() && needs.test.result == 'success'
+    if: always() && !cancelled()
     services:
       postgres:
         image: pgvector/pgvector:pg16
