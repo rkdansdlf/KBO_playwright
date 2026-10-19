@@ -17,7 +17,7 @@ from src.db.engine import (
     database_reachable,
 )
 
-POSTGRES_URL = "postgresql+psycopg2://probe_user:probe_secret@db.example:5432/kbo"
+POSTGRES_URL = "postgresql+psycopg://probe_user:probe_secret@db.example:5432/kbo"
 
 #: More URLs than a build actually opens. The constant is checked against the
 #: realistic set above; this one exists to make eviction *happen* if the cache is

@@ -212,23 +212,23 @@ jobs:
           init-db: 'false'
       - name: Initialize PostgreSQL ORM baseline schema
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_migrations
         run: python -c "from src.db.engine import init_db; init_db()"
       - name: Verify PostgreSQL ORM baseline views
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_migrations
         run: python -c "from sqlalchemy import inspect; from src.db.engine import Engine; assert 'vw_player_season_batting_recalc' in inspect(Engine).get_view_names()"
       - name: Apply PostgreSQL incremental migrations
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_migrations
         run: python3 -m src.cli.apply_postgres_migrations
       - name: Reapply PostgreSQL migrations
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_migrations
         run: python3 -m src.cli.apply_postgres_migrations
       - name: Check PostgreSQL migrations are current
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_migrations
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_migrations
         run: python3 -m src.cli.apply_postgres_migrations --check
 
   integration-test:
@@ -292,19 +292,19 @@ jobs:
           playwright: "false"
           init-db: 'false'
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_integration
 
       - name: Initialize PostgreSQL integration schema
         run: python -c "from src.db.engine import init_db; init_db()"
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_integration
 
       - name: Run PostgreSQL integration tests
         run: |
           set -o pipefail
           pytest -m integration --ignore=tests/crawlers/test_award_crawler.py --tb=short -v --durations=10 -n 1 2>&1 | tee pytest-integration-postgres.log
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_integration
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_integration
 
       - name: Upload PostgreSQL integration profile
         if: always()
@@ -388,29 +388,29 @@ jobs:
           init-db: 'false'
       - name: Initialize primary evaluation schema
         env:
-          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
+          RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
         run: python -c "from src.db.engine import init_db; init_db()"
       - name: Initialize pgvector evaluation schema
         env:
-          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+          PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
         run: python -c "from src.models.rag_chunk_vector import RagChunkVector; from src.db.vector_engine import init_vector_db; init_vector_db()"
       - name: Validate evaluation corpus and golden IDs
         run: python -m src.cli.bootstrap_rag_eval_corpus --json
       - name: Index evaluation corpus into both stores
         env:
           RAG_EVAL_ALLOW_WRITE: "1"
-          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
-          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+          RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
         run: python -m src.cli.bootstrap_rag_eval_corpus --apply --json
       - name: Audit sparse/vector identity
         env:
-          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
-          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+          RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
         run: python -m src.cli.audit_rag_index --require-nonempty --json
       - name: Evaluate retrieval variants
         env:
-          RAG_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/kbo_rag_primary
-          PGVECTOR_TEST_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/kbo_rag_vector
+          RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
+          PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
           GIT_COMMIT: ${{ github.sha }}
         run: >-
           python -m src.cli.evaluate_rag_retrieval

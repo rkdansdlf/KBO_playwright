@@ -272,7 +272,7 @@ def _create_oracle_engine(
     return eng
 
 
-#: Bound the connect phase for the operational database. Without it psycopg2 waits
+#: Bound the connect phase for the operational database. Without it psycopg waits
 #: for the OS TCP timeout (~300s against the remote Tailscale host), so during the
 #: 2026-10-03 outage every DB-bound scheduler job stalled for minutes while holding
 #: its tier lock and starved the jobs that shared it. A ``connect_timeout`` bounds

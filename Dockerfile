@@ -19,8 +19,8 @@ COPY pyproject.toml README.md ./
 # NOTE: `--extra postgres` is required, not optional, for this image. The
 # driver lives in `[project.optional-dependencies]` because a pure-SQLite
 # local run skips it, but every container here talks to PostgreSQL
-# (`src/db/engine.py`, `postgresql+psycopg2://` URLs). Omitting the extra
-# builds an image that crashes on startup with `No module named 'psycopg2'`.
+# (`src/db/engine.py`, bare `postgresql://` URLs resolved to psycopg 3). Omitting the extra
+# builds an image that crashes on startup with `No module named 'psycopg'`.
 RUN --mount=type=cache,id=uv-cache-v2,target=/root/.cache/uv \
     uv pip compile pyproject.toml --extra postgres -o /tmp/requirements.txt && \
     uv pip install --system -r /tmp/requirements.txt && \

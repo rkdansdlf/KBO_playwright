@@ -100,28 +100,10 @@ def test_the_migration_runner_uses_psycopg() -> None:
     the ``postgres`` extra, so that is the driver production migrations run
     under.
 
-    The two installed drivers disagree on empty queries, so a measurement taken
-    with the wrong one describes a program this repository does not run:
-
-    * ``psycopg`` (psycopg 3) -- what a bare ``postgresql://`` URL resolves to
-      now -- **accepts** an empty query.
-    * ``psycopg2`` -- still available via an explicit
-      ``postgresql+psycopg2://`` URL, and the only driver the legacy
-      ``sync_sqlite_to_postgres`` path uses -- rejects a comment-only statement
-      with ``ProgrammingError: can't execute an empty query``.
-
-    The splitter therefore still drops comment-only chunks: it is harmless under
-    psycopg 3 and required under psycopg 2, and migrations may be applied by
-    either driver depending on the URL.
+    psycopg 3 **accepts** an empty query, but the splitter still drops
+    comment-only chunks as harmless hygiene.
     """
     assert create_engine("postgresql://localhost/postgres").dialect.dbapi.__name__ == "psycopg"
-
-    try:
-        import psycopg2  # type: ignore[import-not-found]
-    except ImportError:  # pragma: no cover - psycopg2 is still a declared dependency
-        return
-
-    assert create_engine("postgresql+psycopg2://localhost/postgres").dialect.dbapi.__name__ == "psycopg2"
 
 
 class TestStatementSplitting:
@@ -373,7 +355,7 @@ class TestProductionDetection:
         "url",
         [
             "postgresql://user:pw@100.81.73.13:5432/bega_prod",
-            "postgresql+psycopg2://user:pw@db.internal:5432/bega_prod",
+            "postgresql+psycopg://user:pw@db.internal:5432/bega_prod",
             "postgresql://user:pw@10.0.0.5:5432/BEGA_PROD",
         ],
     )
@@ -383,7 +365,7 @@ class TestProductionDetection:
     @pytest.mark.parametrize(
         "url",
         [
-            "postgresql+psycopg2://user:pw@127.0.0.1:5434/bega_prod",
+            "postgresql+psycopg://user:pw@127.0.0.1:5434/bega_prod",
             "postgresql://user:pw@localhost:5432/bega_prod",
             "postgresql://user:pw@127.0.0.1:5432/bega_prod",
         ],
@@ -394,7 +376,7 @@ class TestProductionDetection:
     @pytest.mark.parametrize(
         "url",
         [
-            "postgresql+psycopg2://user:pw@127.0.0.1:5434/kbo",
+            "postgresql+psycopg://user:pw@127.0.0.1:5434/kbo",
             "postgresql://user:pw@100.81.73.13:5432/some_other_db",
             "postgresql://user:pw@100.81.73.13:5432/bega_prod_staging",
         ],

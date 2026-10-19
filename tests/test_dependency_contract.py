@@ -34,7 +34,6 @@ IMPORT_TO_DISTRIBUTION = {
     "opentelemetry": "opentelemetry-api",
     "PIL": "pillow",
     "playwright": "playwright",
-    "psycopg2": "psycopg2-binary",
     "pydantic": "pydantic",
     "sentry_sdk": "sentry-sdk",
     "sklearn": "scikit-learn",

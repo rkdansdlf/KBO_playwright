@@ -37,7 +37,7 @@ def _no_settings_singleton() -> None:
     ("url", "expected"),
     [
         ("postgresql://kbo:secret@db.internal:5432/kbo", "postgresql"),
-        ("postgresql+psycopg2://kbo:secret@db.internal:5432/kbo", "postgresql"),
+        ("postgresql+psycopg://kbo:secret@db.internal:5432/kbo", "postgresql"),
         ("sqlite:///./data/kbo_dev.db", "sqlite"),
         ("oracle+thick://kbo:secret@db.internal:1521/kbo", "oracle"),
         ("mysql://kbo:secret@db.internal:3306/kbo", "mysql"),
