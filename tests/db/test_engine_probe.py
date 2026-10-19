@@ -103,6 +103,29 @@ def test_one_dead_target_fails_the_whole_gate(monkeypatch) -> None:
     assert database_reachable(urls=["postgresql://live/db"]) is True
 
 
+def test_a_target_whose_driver_is_missing_is_unreachable_not_fatal() -> None:
+    """드라이버가 없는 URL은 게이트를 죽이지 않고 도달 불가로 실패한다.
+
+    ``PGVECTOR_URL``은 그것이 지정한 의존성보다 오래 산다: psycopg2가 제거된
+    뒤에도 ``postgresql+psycopg2://``가 남아 있으면 ``create_engine``이
+    ``import_dbapi``에서 ``ModuleNotFoundError``를 던진다. 이는
+    ``SQLAlchemyError``가 아니므로 ``database_reachable``을 그대로 빠져나가
+    잡이 **스킵하기도 전에** 죽는다 -- fail-fast의 정반대다. 게이트가 답할
+    질문은 "이 잡이 이름 붙인 저장소를 열 수 있는가"이고, 설치되지 않은
+    드라이버는 열 수 없는 저장소다.
+
+    psycopg2가 설치된 환경에서도 이 주소는 즉시 연결이 거부되므로 단언은
+    두 경우 모두에서 성립한다.
+    """
+    assert (
+        database_reachable(
+            urls=("postgresql+psycopg2://probe:probe@127.0.0.1:1/kbo",),
+            timeout_seconds=1,
+        )
+        is False
+    )
+
+
 def test_an_empty_target_list_falls_back_to_the_operational_database(monkeypatch) -> None:
     """Probing nothing would report every gate as passing.
 

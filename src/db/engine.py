@@ -385,14 +385,28 @@ def database_reachable(
         timeout_seconds: Connect timeout per database.
 
     Returns:
-        Whether every named database answered.
+        Whether every named database answered. A URL whose engine cannot even be
+        built -- a driver that is not installed, a dialect that is unknown -- is
+        reported as unreachable rather than raised, because the URL outlives the
+        dependency it names and that is a configuration state this gate exists
+        to answer for.
 
     """
     from src.monitoring.db_availability import probe_engine
 
     targets = tuple(urls) if urls else (Engine.url.render_as_string(hide_password=False),)
     for url in targets:
-        available, _latency = probe_engine(_probe_engine(url, timeout_seconds))
+        try:
+            probe = _probe_engine(url, timeout_seconds)
+        except SQLAlchemyError, ImportError:
+            # ``create_engine`` raises ``ModuleNotFoundError`` out of
+            # ``import_dbapi`` when the URL names a dialect whose DBAPI is not
+            # installed -- not a ``SQLAlchemyError``, so it used to escape this
+            # function and kill the calling job *before* the skip it was
+            # supposed to take. Failing the gate is the honest answer: a store
+            # this job cannot open is not reachable.
+            return False
+        available, _latency = probe_engine(probe)
         if not available:
             return False
     return True
