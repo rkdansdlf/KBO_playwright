@@ -21,7 +21,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
   - `.github/workflows/oci_connection_probe.yml` and `oci_live_verification.yml` still exercise Oracle via `OCI_DB_URL`.
   - `src/cli/sync/sync_sqlite_to_oci.py` is a legacy loader, not the primary path.
   - `src/orchestration/master.py` carries a note that its live Oracle sync stage is **unwired**; the DAG does not depend on it.
-- **Known footgun**: `kbo migrate --dialect` still defaults to `oracle`, so a bare `kbo migrate` inspects the wrong chain. Pass `--dialect postgresql` explicitly.
+- **`kbo migrate --dialect` is required, not defaulted** (`6137a8f8`): a bare `kbo migrate` stops at argparse (exit 2) instead of inspecting the wrong chain. Pass `--dialect postgresql` explicitly. Earlier revisions of this file recorded an `oracle` default — the flag became required, so that footgun no longer exists.
 - **Do not** describe a PostgreSQL production write as SQLite-lock protected, and do not reintroduce `OCI_DB_URL` as a primary URL.
 
 ## Agent Skill Defaults
