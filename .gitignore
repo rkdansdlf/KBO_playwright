@@ -52,6 +52,8 @@ inspect_*.py
 !scripts/investigations/inspect_tool.py
 find_boxscore.py
 scripts/investigations/dump_*.py
+# Ad-hoc query scripts: they embed production connection strings.
+scripts/investigations/_tmp_*.py
 gamecenter_*.png
 gamecenter_*.html
 *_debug.png

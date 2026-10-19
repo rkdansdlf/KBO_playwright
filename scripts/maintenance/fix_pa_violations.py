@@ -183,8 +183,10 @@ def _fix_unreconciled_pa(session: Any, year: int | None = None, dry_run: bool = 
         hbp = (row.hbp or 0) if (row.hbp or 0) <= 50 else 0
         pa = (row.at_bats or 0) + (row.walks or 0) + hbp + (row.sacrifice_hits or 0) + (row.sacrifice_flies or 0)
         if dry_run:
-            print(f"  [dry-run] unreconciled_pa: id={row.id} player={row.player_id} season={row.season} "
-                  f"PA {row.plate_appearances}→{pa} (HBP {row.hbp}→{hbp})")
+            print(
+                f"  [dry-run] unreconciled_pa: id={row.id} player={row.player_id} season={row.season} "
+                f"PA {row.plate_appearances}→{pa} (HBP {row.hbp}→{hbp})"
+            )
         else:
             session.execute(
                 text("""
@@ -228,8 +230,10 @@ def _fix_unfixable_unaccounted_pa(session: Any, year: int | None = None, dry_run
     for row in rows:
         pa = (row.at_bats or 0) + (row.walks or 0) + (row.hbp or 0)
         if dry_run:
-            print(f"  [dry-run] unaccounted_pa→recalc: id={row.id} player={row.player_id} season={row.season} "
-                  f"PA {row.plate_appearances}→{pa}")
+            print(
+                f"  [dry-run] unaccounted_pa→recalc: id={row.id} player={row.player_id} season={row.season} "
+                f"PA {row.plate_appearances}→{pa}"
+            )
         else:
             session.execute(
                 text("UPDATE player_season_batting SET plate_appearances = :pa, updated_at = NOW() WHERE id = :id"),

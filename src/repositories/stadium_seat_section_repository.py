@@ -57,9 +57,7 @@ class StadiumSeatSectionRepository:
             existing = self.session.execute(stmt).scalar_one_or_none()
 
         if existing:
-            for key, value in data.items():
-                if key not in ("stadium_id", "section_code", "section_name") and value is not None:
-                    setattr(existing, key, value)
+            self._apply_updates(existing, data)
             return existing
 
         # Use PostgreSQL ON CONFLICT for atomic upsert on (stadium_id, section_name)
@@ -68,20 +66,49 @@ class StadiumSeatSectionRepository:
             stmt = pg_insert(StadiumSeatSection).values(**data)
             stmt = stmt.on_conflict_do_update(
                 index_elements=["stadium_id", "section_name"],
-                set_={
-                    k: v for k, v in data.items()
-                    if k not in ("stadium_id", "section_name")
-                },
+                set_={k: v for k, v in data.items() if k not in ("stadium_id", "section_name")},
             ).returning(StadiumSeatSection)
-            result = self.session.execute(stmt).scalar_one()
-            return result
+            return self.session.execute(stmt).scalar_one()
 
         # Fallback for other dialects (SQLite, Oracle)
+        return self._insert_with_retry(data, stadium_id, name)
+
+    @staticmethod
+    def _apply_updates(existing: StadiumSeatSection, data: dict) -> None:
+        """Copy the mutable payload fields onto a row that already exists.
+
+        Args:
+            existing: The row already stored for this section.
+            data: Section data dict.
+
+        """
+        for key, value in data.items():
+            if key not in ("stadium_id", "section_code", "section_name") and value is not None:
+                setattr(existing, key, value)
+
+    def _insert_with_retry(self, data: dict, stadium_id: str, name: str) -> StadiumSeatSection:
+        """Insert a section, recovering from a concurrent insert.
+
+        A flush that trips the unique constraint means another writer got there
+        first. The rollback clears the poisoned transaction, so the row has to
+        be looked up again rather than reused.
+
+        Args:
+            data: Section data dict.
+            stadium_id: Stadium the section belongs to.
+            name: Section name, the fallback lookup key.
+
+        Returns:
+            The inserted row, or the row a concurrent writer inserted.
+
+        Raises:
+            Exception: Whatever the flush raised, when the row cannot be found.
+
+        """
         new_record = StadiumSeatSection(**data)
         self.session.add(new_record)
         try:
             self.session.flush()
-            return new_record
         except Exception:
             self.session.rollback()
             # Retry lookup after rollback
@@ -91,11 +118,11 @@ class StadiumSeatSectionRepository:
             )
             existing = self.session.execute(stmt).scalar_one_or_none()
             if existing:
-                for key, value in data.items():
-                    if key not in ("stadium_id", "section_code", "section_name") and value is not None:
-                        setattr(existing, key, value)
+                self._apply_updates(existing, data)
                 return existing
             raise
+        else:
+            return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumSeatSection]:
         """Get by stadium.
