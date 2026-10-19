@@ -18,11 +18,14 @@ def test_doctor_reports_activation_states(capsys: pytest.CaptureFixture[str]) ->
     assert payload["status"] == "PASS"
     assert payload["skill_count"] == 10
     activated = [skill for skill in payload["skills"] if skill["mode"] == "activated"]
+    policy_only = [skill for skill in payload["skills"] if skill["mode"] == "policy_only"]
     reference_only = [skill for skill in payload["skills"] if skill["mode"] == "reference_only"]
-    # Seven license-cleared adapters are activated; the three gated ones
-    # (caveman NOASSERTION, aas/scientific selected-asset review) stay locked.
+    # Seven license-cleared adapters are activated; aas/scientific passed
+    # selected-asset review (policy_only, executable stays false); only caveman
+    # (BSL-1.1) stays locked (reference_only).
     assert len(activated) == 7
-    assert {skill["name"] for skill in reference_only} == {"caveman", "aas", "scientific"}
+    assert {skill["name"] for skill in policy_only} == {"aas", "scientific"}
+    assert {skill["name"] for skill in reference_only} == {"caveman"}
 
 
 def test_plan_routes_crawler_task(capsys: pytest.CaptureFixture[str]) -> None:
