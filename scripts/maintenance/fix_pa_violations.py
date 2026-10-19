@@ -146,6 +146,99 @@ def _fix_unaccounted_pa(session: Any, year: int | None = None, dry_run: bool = T
     return backfilled, unfixable
 
 
+def _fix_unreconciled_pa(session: Any, year: int | None = None, dry_run: bool = True) -> int:
+    """Fix unreconciled_pa: recalculate PA = AB+BB+HBP+SH+SF (NULL→0).
+
+    Covers:
+      - BB=NULL rows: PA = AB + 0 + HBP + SH + SF
+      - HBP=400 data error: HBP→0, PA recalculated
+      - Minor 1-5 diffs: PA recalculated from components
+      - 1982 archive: PA recalculated from components
+    """
+    year_filter = "AND season = :year" if year else ""
+    params = {"year": year} if year else {}
+
+    rows = session.execute(
+        text(f"""
+            SELECT id, player_id, season, plate_appearances, at_bats, walks, hbp, sacrifice_hits, sacrifice_flies
+            FROM player_season_batting
+            WHERE plate_appearances IS NOT NULL
+              AND COALESCE(plate_appearances, 0) !=
+                COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+                + COALESCE(sacrifice_hits, 0) + COALESCE(sacrifice_flies, 0)
+              AND (
+                COALESCE(sacrifice_hits, 0) > 0
+                OR COALESCE(sacrifice_flies, 0) > 0
+                OR COALESCE(plate_appearances, 0)
+                   <= COALESCE(at_bats, 0) + COALESCE(walks, 0) + COALESCE(hbp, 0)
+              )
+              {year_filter}
+        """),
+        params,
+    ).fetchall()
+
+    fixed = 0
+    for row in rows:
+        # HBP=400 is a clear data error → set to 0
+        hbp = (row.hbp or 0) if (row.hbp or 0) <= 50 else 0
+        pa = (row.at_bats or 0) + (row.walks or 0) + hbp + (row.sacrifice_hits or 0) + (row.sacrifice_flies or 0)
+        if dry_run:
+            print(f"  [dry-run] unreconciled_pa: id={row.id} player={row.player_id} season={row.season} "
+                  f"PA {row.plate_appearances}→{pa} (HBP {row.hbp}→{hbp})")
+        else:
+            session.execute(
+                text("""
+                    UPDATE player_season_batting
+                    SET hbp = :hbp, plate_appearances = :pa, updated_at = NOW()
+                    WHERE id = :id
+                """),
+                {"hbp": hbp, "pa": pa, "id": row.id},
+            )
+        fixed += 1
+    return fixed
+
+
+def _fix_unfixable_unaccounted_pa(session: Any, year: int | None = None, dry_run: bool = True) -> int:
+    """Fix unaccounted_pa rows with no game-level SH/SF: set PA = AB + BB + HBP."""
+    year_filter = "AND psb.season = :year" if year else ""
+    params = {"year": year} if year else {}
+
+    rows = session.execute(
+        text(f"""
+            SELECT psb.id, psb.player_id, psb.season, psb.plate_appearances, psb.at_bats, psb.walks, psb.hbp
+            FROM player_season_batting psb
+            WHERE psb.season >= 2001
+              AND COALESCE(psb.plate_appearances, 0) >
+                COALESCE(psb.at_bats, 0) + COALESCE(psb.walks, 0) + COALESCE(psb.hbp, 0)
+              AND COALESCE(psb.sacrifice_hits, 0) = 0
+              AND COALESCE(psb.sacrifice_flies, 0) = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM game_batting_stats gbs
+                JOIN game g ON g.game_id = gbs.game_id
+                WHERE gbs.player_id = psb.player_id
+                  AND EXTRACT(YEAR FROM g.game_date) = psb.season
+                  AND (COALESCE(gbs.sacrifice_hits,0) > 0 OR COALESCE(gbs.sacrifice_flies,0) > 0)
+              )
+              {year_filter}
+        """),
+        params,
+    ).fetchall()
+
+    fixed = 0
+    for row in rows:
+        pa = (row.at_bats or 0) + (row.walks or 0) + (row.hbp or 0)
+        if dry_run:
+            print(f"  [dry-run] unaccounted_pa→recalc: id={row.id} player={row.player_id} season={row.season} "
+                  f"PA {row.plate_appearances}→{pa}")
+        else:
+            session.execute(
+                text("UPDATE player_season_batting SET plate_appearances = :pa, updated_at = NOW() WHERE id = :id"),
+                {"pa": pa, "id": row.id},
+            )
+        fixed += 1
+    return fixed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fix PA violations in player_season_batting")
     parser.add_argument("--apply", action="store_true", help="Apply fixes (default: dry-run)")
@@ -171,8 +264,14 @@ def main() -> None:
         print(f"  → {backfilled} rows backfilled from game data, {unfixable} unfixable (no game data)")
         print()
 
-        print("=== 3. unreconciled_pa (23 rows) ===")
-        print("  → Skipped: requires manual investigation (data errors like HBP=400)")
+        print("=== 3. unaccounted_pa unfixable (no game SH/SF) → recalc PA=AB+BB+HBP ===")
+        recalc_count = _fix_unfixable_unaccounted_pa(session, args.year, dry_run)
+        print(f"  → {recalc_count} rows {'would be' if dry_run else 'were'} recalculated")
+        print()
+
+        print("=== 4. unreconciled_pa (PA ≠ AB+BB+HBP+SH+SF) → recalc from components ===")
+        unrecon_count = _fix_unreconciled_pa(session, args.year, dry_run)
+        print(f"  → {unrecon_count} rows {'would be' if dry_run else 'were'} fixed")
         print()
 
         if not dry_run:
