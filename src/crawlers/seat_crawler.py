@@ -52,8 +52,8 @@ TEAM_SEAT_SOURCES: dict[str, dict[str, Any]] = {
 }
 
 SECTION_PATTERNS = [
-    re.compile(r"([가-힣]+(?:석|존|zone|Zone))"),
-    re.compile(r"(블루|오렌지|레드|네이비|그린|화이트|골드|[1-3][Ff])\s*(.*?)(?:석|존)"),
+    re.compile(r"([가-힣]+(?:석|존|Zone|zone))\b"),
+    re.compile(r"\b(블루|오렌지|레드|네이비|그린|화이트|골드|블랙|핑크|옐로우|퍼플|스카이|마젠타|브라운|그레이|실버|골드|VIP|테이블|가족|휠체어|응원|내야|외야|중앙|프리미엄|익사이팅|치어|응원석)\s*(석|존)\b"),
 ]
 
 
@@ -294,7 +294,7 @@ class SeatCrawler(BaseHttpCrawler):
                     {
                         "stadium_id": info["stadium_id"],
                         "section_name": name,
-                        "section_code": name,
+                        "section_code": None,
                         "seat_grade": name,
                         "source_id": None,
                     },
