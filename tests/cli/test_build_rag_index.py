@@ -148,17 +148,127 @@ def test_staging_candidate_iterator_uses_lightweight_projection() -> None:
 
 
 def test_staging_candidate_iterator_rolls_back_before_legacy_fallback() -> None:
-    """Reset a failed lightweight query before retrying the compatible projection."""
+    """Reset a failed lightweight query and re-raise (no SELECT * fallback, OOM risk)."""
     session = MagicMock()
-    fallback = MagicMock()
-    fallback.mappings.return_value = []
-    session.execute.side_effect = [SQLAlchemyError("missing optional column"), fallback]
+    session.execute.side_effect = SQLAlchemyError("missing optional column")
 
+    with pytest.raises(SQLAlchemyError):
+        list(build_rag_index._iter_staging_candidate_chunks(session, None, None))
+
+    session.rollback.assert_called_once_with()
+
+
+def test_staging_query_applies_keyset_cursor() -> None:
+    """Resume the staging scan past rows the previous run already consumed."""
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "postgresql"
+
+    without_cursor = str(build_rag_index._staging_query(session, skip_populated=True, lightweight=True))
+    with_cursor = str(build_rag_index._staging_query(session, skip_populated=True, lightweight=True, last_id=42))
+
+    assert "id > 42" not in without_cursor
+    assert "id > 42" in with_cursor
+    assert "embedding IS NULL" in with_cursor
+    assert "AND id > 42" in with_cursor
+
+
+def test_staging_cursor_round_trips_through_the_file(monkeypatch, tmp_path) -> None:
+    """Persist and read the keyset cursor so a crashed scan can resume."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    build_rag_index._save_staging_cursor(1234)
+
+    assert build_rag_index._read_staging_cursor() == 1234
+
+
+def test_staging_cursor_prefers_the_environment_override(monkeypatch, tmp_path) -> None:
+    """An explicit env cursor wins so an operator can replay or rewind."""
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 10}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+    monkeypatch.setenv("RAG_STAGING_LAST_ID", "77")
+
+    assert build_rag_index._read_staging_cursor() == 77
+
+
+@pytest.mark.parametrize("payload", ["{not json", '{"last_id": "nope"}'])
+def test_staging_cursor_treats_a_corrupt_file_as_unset(monkeypatch, tmp_path, payload) -> None:
+    """A damaged cursor must not stop a build -- restart from the beginning."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text(payload, encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    assert build_rag_index._read_staging_cursor() == 0
+
+
+def test_staging_cursor_reseeds_per_call(monkeypatch, tmp_path) -> None:
+    """A short run must not inherit an earlier call's high-water mark.
+
+    The holder is module-level, so without re-seeding, a second call in the same
+    process would keep the previous (larger) value and save it -- skipping rows
+    that were never processed. Silent data loss, so it is pinned here.
+    """
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = [
+        {"id": 150, "source_table": "player_basic", "source_row_id": "1", "content": "본문", "is_active": True}
+    ]
+
+    build_rag_index._STAGING_CURSOR_MAX_ID[0] = 999  # leakage from a previous call
     rows = list(build_rag_index._iter_staging_candidate_chunks(session, None, None))
 
-    assert rows == []
-    session.rollback.assert_called_once_with()
-    assert "SELECT *" in str(session.execute.call_args_list[1].args[0])
+    assert len(rows) == 1
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 150
+
+
+def test_staging_cursor_seeds_from_file_when_nothing_is_read(monkeypatch, tmp_path) -> None:
+    """A query that yields nothing must leave the cursor where it was found."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = []
+
+    build_rag_index._STAGING_CURSOR_MAX_ID[0] = 999
+    assert list(build_rag_index._iter_staging_candidate_chunks(session, None, None)) == []
+
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
+
+
+def test_staging_cursor_does_not_advance_for_an_abandoned_scan(monkeypatch, tmp_path) -> None:
+    """An interrupted scan must resume from where it started, never skip ahead.
+
+    The embedding call can fail mid-batch. The generator is then dropped without
+    running its final bookkeeping, so the cursor stays put and the next run
+    re-reads the same rows (the upserts are idempotent). Advancing here would
+    turn a transient API error into permanently unindexed rows.
+    """
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = [
+        {"id": 150, "source_table": "player_basic", "source_row_id": "1", "content": "본문", "is_active": True},
+        {"id": 160, "source_table": "player_basic", "source_row_id": "2", "content": "다음", "is_active": True},
+    ]
+
+    scan = build_rag_index._iter_staging_candidate_chunks(session, None, None)
+    assert next(scan)["source_row_id"] == "1"
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
+    scan.close()
+
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
 
 
 def test_prepare_staging_chunks_uses_populated_vector_filter() -> None:
@@ -321,7 +431,7 @@ def test_full_rebuild_yields_healthy_rows_but_blocks_terminal_rows() -> None:
 
 
 def test_full_rebuild_reports_but_does_not_apply_metadata_only_gap() -> None:
-    """Keep legacy fingerprint repair behind a separate approval gate."""
+    """Leave a legacy fingerprint gap alone unless the repair gate is opened."""
     index_session = MagicMock()
     index_session.execute.return_value.all.return_value = [
         ("player_basic", "1", chunk_content_hash("", "same"), "rag-v1", "ACTIVE", True, {})
@@ -340,6 +450,110 @@ def test_full_rebuild_reports_but_does_not_apply_metadata_only_gap() -> None:
     )
 
     assert result == []
+
+
+def test_repair_gate_reembeds_a_legacy_fingerprint_row() -> None:
+    """Open the gate so a fingerprint-less row is re-embedded, even under --skip-existing."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        ("player_basic", "1", chunk_content_hash("", "same"), "rag-v1", "ACTIVE", True, {})
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "same"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == [{"source_table": "player_basic", "source_row_id": "1", "content": "same"}]
+
+
+def test_repair_gate_leaves_a_current_fingerprint_row_alone() -> None:
+    """Keep the gate narrow: a row already labelled for this model is not re-embedded."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        (
+            "player_basic",
+            "1",
+            chunk_content_hash("", "same"),
+            "rag-v1",
+            "ACTIVE",
+            True,
+            {"embedding_fingerprint": "model-a:1536:rag-v1"},
+        )
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "same"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == []
+
+
+def test_repair_gate_does_not_resurrect_a_terminal_identity() -> None:
+    """A blocked row stays blocked: the gate repairs metadata, not lifecycle state."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        ("player_basic", "1", chunk_content_hash("", "gone"), "rag-v1", "DELETED", False, {})
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "gone"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == []
+
+
+def test_iter_candidate_chunks_passes_the_repair_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Carry the repair gate from BuildSourceOptions into the selector."""
+    captured: dict[str, object] = {}
+
+    def _capture(chunk_iter: object, index_session: object, options: object = None, **kwargs: object) -> object:
+        captured["options"] = options
+        return iter([])
+
+    monkeypatch.setattr(build_rag_index, "_prepare_source_chunks", lambda *args, **kwargs: iter([]))
+    monkeypatch.setattr(build_rag_index, "_skip_existing_index_rows", _capture)
+
+    source_name = next(iter(build_rag_index._SOURCE_MAP))
+    list(
+        build_rag_index._iter_candidate_chunks(
+            source_name,
+            MagicMock(),
+            MagicMock(),
+            None,
+            build_rag_index.BuildSourceOptions(skip_existing=True, repair_legacy_fingerprint=True),
+        )
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.repair_legacy_fingerprint is True
 
 
 def test_skip_existing_index_rows_reads_real_sqlalchemy_projection() -> None:

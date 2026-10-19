@@ -115,6 +115,8 @@ _DEFAULT_LANGUAGE = "ko"
 # 순위 청크당 상위 N위까지만 포함
 _RANKING_TOP_N = 20
 _PBP_SCAN_BATCH_SIZE = 5_000
+# staging keyset 커서: 마지막으로 처리한 rag_chunks.id (재개용)
+_STAGING_CURSOR_MAX_ID = [0]
 _SEASON_ID_YEAR_THRESHOLD = 100_000
 _SEASON_ID_YEAR_MULTIPLIER = 100
 _PBP_KEYWORDS = (
@@ -197,6 +199,7 @@ class IncrementalSelectionOptions:
     desired_index_version: str | None = None
     desired_embedding_fingerprint: str | None = None
     include_healthy: bool = False
+    repair_legacy_fingerprint: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +211,7 @@ class BuildSourceOptions:
     offset: int = 0
     skip_existing: bool = False
     desired_embedding_fingerprint: str | None = None
+    repair_legacy_fingerprint: bool = False
 
 
 def _redact_url(url: str | None) -> str:
@@ -1446,22 +1450,59 @@ def _row_metadata(row: Mapping[Any, Any]) -> dict[str, Any]:
     return metadata
 
 
-_STAGING_LIGHTWEIGHT_QUERY = (
-    "SELECT id, source_table, source_row_id, title, content, team_id, player_id, season_year, "
-    "season_id, league_type_code, document_type, game_date, published_at, source_url, language, "
-    "content_hash, index_status, is_active, meta FROM rag_chunks ORDER BY id"
+_STAGING_COLUMNS = (
+    "id, source_table, source_row_id, title, content, team_id, player_id, season_year, "
+    "season_id, league_type_code, game_date, published_at, source_url, language, "
+    "content_hash, index_status, is_active, meta"
 )
 
+_STAGING_LIGHTWEIGHT_QUERY = f"SELECT {_STAGING_COLUMNS} FROM rag_chunks ORDER BY id"  # noqa: S608
 
-def _staging_query(session: Session, *, skip_populated: bool, lightweight: bool) -> str:
+
+def _staging_query(session: Session, *, skip_populated: bool, lightweight: bool, last_id: int = 0) -> str:
     """Build the staging query for the requested payload mode."""
+    cursor_clause = f" AND id > {int(last_id)}" if last_id > 0 else ""
     if skip_populated:
         dialect_name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
         embedding_column = "embedding_vector" if dialect_name == "oracle" else "embedding"
-        return f"SELECT * FROM rag_chunks WHERE {embedding_column} IS NULL ORDER BY id"  # noqa: S608
+        return f"SELECT {_STAGING_COLUMNS} FROM rag_chunks WHERE {embedding_column} IS NULL{cursor_clause} ORDER BY id"  # noqa: S608
     if lightweight:
+        if last_id > 0:
+            return f"SELECT {_STAGING_COLUMNS} FROM rag_chunks WHERE id > {int(last_id)} ORDER BY id"  # noqa: S608
         return _STAGING_LIGHTWEIGHT_QUERY
-    return "SELECT * FROM rag_chunks ORDER BY id"
+    if last_id > 0:
+        return f"SELECT {_STAGING_COLUMNS} FROM rag_chunks WHERE id > {int(last_id)} ORDER BY id"  # noqa: S608
+    return f"SELECT {_STAGING_COLUMNS} FROM rag_chunks ORDER BY id"  # noqa: S608
+
+
+def _read_staging_cursor() -> int:
+    """Read the staging keyset cursor from env or file."""
+    cursor_env = os.getenv("RAG_STAGING_LAST_ID")
+    if cursor_env:
+        try:
+            return int(cursor_env)
+        except ValueError, TypeError:
+            return 0
+    cursor_file = os.getenv("RAG_STAGING_CURSOR_FILE", "data/rag/staging_cursor.json")
+    try:
+        path = Path(cursor_file)
+        with path.open(encoding="utf-8") as f:
+            cursor_data = json.load(f)
+            return int(cursor_data.get("last_id", 0))
+    except FileNotFoundError, json.JSONDecodeError, ValueError, TypeError, OSError:
+        return 0
+
+
+def _save_staging_cursor(last_id: int) -> None:
+    """Persist the staging keyset cursor to file."""
+    cursor_file = os.getenv("RAG_STAGING_CURSOR_FILE", "data/rag/staging_cursor.json")
+    try:
+        path = Path(cursor_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump({"last_id": last_id}, f)
+    except OSError, TypeError, ValueError:
+        logger.warning("staging 커서 저장 실패: %s", cursor_file)
 
 
 def _iter_staging_rag_chunks(
@@ -1471,18 +1512,21 @@ def _iter_staging_rag_chunks(
     *,
     skip_populated: bool = False,
     lightweight: bool = False,
+    last_id: int = 0,
 ) -> Iterator[dict[str, Any]]:
     """Yield staging RAG content while deliberately discarding old vectors."""
-    query = _staging_query(session, skip_populated=skip_populated, lightweight=lightweight)
+    query = _staging_query(session, skip_populated=skip_populated, lightweight=lightweight, last_id=last_id)
     try:
         rows = session.execute(text(query)).mappings()
     except SQLAlchemyError:
-        if not lightweight:
-            raise
         session.rollback()
-        rows = session.execute(text("SELECT * FROM rag_chunks ORDER BY id")).mappings()
+        raise
     yielded = 0
+    max_id_seen = last_id
     for row in rows:
+        row_id = row.get("id")
+        if isinstance(row_id, int) and row_id > max_id_seen:
+            max_id_seen = row_id
         if row.get("is_active") is False or row.get("is_active") == 0:
             continue
         if str(row.get("index_status") or "").upper() in {"DELETED", "TOMBSTONED", "PURGED"}:
@@ -1517,7 +1561,8 @@ def _iter_staging_rag_chunks(
         }
         yielded += 1
         if limit and yielded >= limit:
-            return
+            break
+    _STAGING_CURSOR_MAX_ID[0] = max(_STAGING_CURSOR_MAX_ID[0], max_id_seen)
 
 
 def _iter_staging_missing_rag_chunks(
@@ -1526,7 +1571,14 @@ def _iter_staging_missing_rag_chunks(
     limit: int | None,
 ) -> Iterator[dict[str, Any]]:
     """Yield only staging rows without a populated vector in the same store."""
-    return _iter_staging_rag_chunks(session, season, limit, skip_populated=True)
+    last_id = _read_staging_cursor()
+    # Re-seed the accumulator from the real cursor on every call. The holder is
+    # module-level so a generator can record its high-water mark, which means a
+    # second call in the same process would otherwise inherit the first one's
+    # value and, after a short run, save that larger number -- skipping the rows
+    # in between without ever having processed them.
+    _STAGING_CURSOR_MAX_ID[0] = last_id
+    return _iter_staging_rag_chunks(session, season, limit, skip_populated=True, last_id=last_id)
 
 
 def _iter_staging_candidate_chunks(
@@ -1535,7 +1587,12 @@ def _iter_staging_candidate_chunks(
     limit: int | None,
 ) -> Iterator[dict[str, Any]]:
     """Yield staging chunks without loading vector payloads during selection."""
-    return _iter_staging_rag_chunks(session, season, limit, lightweight=True)
+    last_id = _read_staging_cursor()
+    # See ``_iter_staging_missing_rag_chunks``: the holder is module-level, so it
+    # has to be re-seeded per call or a later short run inherits an earlier run's
+    # high-water mark and skips the rows it never touched.
+    _STAGING_CURSOR_MAX_ID[0] = last_id
+    return _iter_staging_rag_chunks(session, season, limit, lightweight=True, last_id=last_id)
 
 
 # ─── 소스 매핑 ────────────────────────────────────────────────────────────────
@@ -1703,6 +1760,7 @@ def _skip_existing_index_rows(
     )
     version = selection.desired_index_version or current_index_version()
     metadata_gap_count = 0
+    repaired_count = 0
     blocked_count = 0
     for chunk in chunk_iter:
         key = (str(chunk.get("source_table") or ""), str(chunk.get("source_row_id") or ""))
@@ -1722,16 +1780,28 @@ def _skip_existing_index_rows(
             logger.debug("RAG incremental candidate blocked: %s (%s)", decision.source_key, decision.reason)
             continue
         if decision.metadata_repair and not decision.should_reembed:
-            metadata_gap_count += 1
+            if not selection.repair_legacy_fingerprint:
+                metadata_gap_count += 1
+                continue
+            # The approved repair is a re-embed, not a metadata stamp. The row's
+            # content, version, and vector are healthy, so the fingerprint is the
+            # one thing nobody measured; writing the desired value into meta
+            # without producing that embedding would assert a provenance the
+            # store never had. Yielding routes the row through the ordinary
+            # write path, which is where both stores learn the truth.
+            repaired_count += 1
+            yield chunk
             continue
         if decision.should_reembed or selection.include_healthy:
             yield chunk
     if metadata_gap_count:
         logger.warning(
             "RAG incremental selection found %d legacy rows without embedding fingerprint; "
-            "metadata repair was not applied",
+            "metadata repair was not applied (pass --repair-legacy-fingerprint to re-embed them)",
             metadata_gap_count,
         )
+    if repaired_count:
+        logger.info("RAG incremental selection re-embedded %d legacy rows to record their fingerprint", repaired_count)
     if blocked_count:
         logger.info("RAG incremental selection blocked %d terminal identities", blocked_count)
 
@@ -1838,7 +1908,7 @@ def _prepare_source_chunks(
     the source session release its connection before OpenRouter work begins.
     """
     chunk_iter = chunk_fn(source_session, season, limit)
-    if source_name in {"markdown_docs", "kbo_definitions", "kbo_regulations"}:
+    if source_name in {"markdown_docs", "kbo_definitions", "kbo_regulations", "staging_rag_chunks"}:
         return chunk_iter
 
     chunks = list(chunk_iter)
@@ -1896,6 +1966,7 @@ def _iter_candidate_chunks(
             desired_index_version=current_index_version(),
             desired_embedding_fingerprint=options.desired_embedding_fingerprint,
             include_healthy=not options.skip_existing,
+            repair_legacy_fingerprint=options.repair_legacy_fingerprint,
         ),
     )
 
@@ -1912,7 +1983,7 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
     """KBO RAG 인덱스를 구축합니다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -1945,6 +2016,14 @@ def main(argv: list[str] | None = None) -> None:
         "--skip-existing",
         action="store_true",
         help="신규·변경·stale version·누락 vector만 처리하고 정상 identity는 건너뜀",
+    )
+    parser.add_argument(
+        "--repair-legacy-fingerprint",
+        action="store_true",
+        help=(
+            "내용·버전·vector는 정상이나 embedding_fingerprint가 없는 legacy 행을 "
+            "재임베딩해 fingerprint를 기록 (기본 비활성, 승인 게이트)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -1996,7 +2075,9 @@ def main(argv: list[str] | None = None) -> None:
     embedding_service = _embedding_service(args.embedding_mode, cache_enabled=not args.dry_run)
 
     # 소스 선택
-    sources = list(_SOURCE_MAP.keys()) if args.source == "all" else [args.source]
+    # staging_rag_chunks는 일회성 대규모 백필 성격이므로 야간 --source all에서 제외.
+    # 수동 실행: --source staging_rag_chunks (keyset 커서로 재개 가능)
+    sources = [s for s in _SOURCE_MAP if s != "staging_rag_chunks"] if args.source == "all" else [args.source]
 
     logger.info(
         "RAG 인덱스 빌드 시작 | 소스: %s | 시즌: %s | 제한: %s | dry-run: %s | embedding: %s",
@@ -2020,6 +2101,7 @@ def main(argv: list[str] | None = None) -> None:
         offset=args.offset,
         skip_existing=args.skip_existing,
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
+        repair_legacy_fingerprint=args.repair_legacy_fingerprint,
     )
     with (
         get_rag_source_session() as source_session,
@@ -2028,24 +2110,44 @@ def main(argv: list[str] | None = None) -> None:
     ):
         if sparse_is_oracle and not _oracle_vector_schema_available(index_session):
             raise RagIndexUnavailableError(_ORACLE_VECTOR_SCHEMA_MISSING)
+        failed_sources: list[str] = []
         for source_name in sources:
             logger.info("▶ [%s] 처리 시작...", source_name)
-            chunk_iter = _iter_candidate_chunks(
-                source_name,
-                source_session,
-                index_session,
-                vector_session,
-                build_source_options,
-            )
-            count = _process_source(
-                source_name,
-                chunk_iter,
-                embedding_service,
-                index_session,
-                dry_run=args.dry_run,
-            )
+            try:
+                chunk_iter = _iter_candidate_chunks(
+                    source_name,
+                    source_session,
+                    index_session,
+                    vector_session,
+                    build_source_options,
+                )
+                count = _process_source(
+                    source_name,
+                    chunk_iter,
+                    embedding_service,
+                    index_session,
+                    dry_run=args.dry_run,
+                )
+            except Exception:
+                failed_sources.append(source_name)
+                logger.exception("❌ [%s] 처리 실패 — 다음 소스로 계속합니다", source_name)
+                continue
             logger.info("✅ [%s] %d 청크 완료", source_name, count)
             grand_total += count
+        if failed_sources:
+            logger.error("RAG 빌드에서 실패한 소스: %s", ", ".join(failed_sources))
+
+        # staging keyset 커서 저장 (dry-run이 아닌 경우)
+        if not args.dry_run and "staging_rag_chunks" in sources:
+            _save_staging_cursor(_STAGING_CURSOR_MAX_ID[0])
+            logger.info("staging 커서 저장: last_id=%d", _STAGING_CURSOR_MAX_ID[0])
+
+    if failed_sources:
+        failed_message = "RAG 빌드 실패 소스: " + ", ".join(failed_sources)
+        raise RagIndexUnavailableError(
+            failed_message,
+            exit_code=1,
+        )
 
     logger.info(
         "🎉 RAG 인덱스 빌드 완료 — 총 %d 청크 처리%s",
