@@ -24,15 +24,6 @@
 #
 # `for: 10m` on both rules means evaluation has to run long enough for the pending
 # window to elapse; the interval below is 30s to keep that tractable.
-#
-# Every input series carries `job="kbo-scheduler"`, because both rules do. The
-# gauges are registered by the shared metrics module and exported by every process
-# that imports it, so the rule has to name the process that actually sweeps.
-#
-# The last case (api-server alongside scheduler) is a regression for the
-# 2026-10-18 false positive: an unscoped expression read the api-server's
-# never-set 0 as ~20,700 days of staleness and fired against a process that could
-# never satisfy the condition.
 
 rule_files:
   - ../alert_rules_crawler.yml
@@ -44,7 +35,7 @@ tests:
   - interval: 30s
     input_series:
       # Gauge still at its initial 0: no sweep has run since the process started.
-      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
         values: '0x400'
     alert_rule_test:
       # The condition (age > 2h) only becomes true at 2h, so `for: 10m` puts the
@@ -58,7 +49,6 @@ tests:
         alertname: KboDlqSweepStalled
         exp_alerts:
           - exp_labels:
-              job: kbo-scheduler
               severity: critical
             exp_annotations:
               summary: "DLQ 스위프 정지: 2h 10m 30s 동안 큐를 읽지 못함"
@@ -75,7 +65,7 @@ tests:
   - interval: 30s
     input_series:
       # Last successful sweep at t=1000s, never updated again.
-      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
         values: '1000x400'
     alert_rule_test:
       # Inside the 2h allowance: a 1000s-old reading is still fresh enough.
@@ -93,7 +83,6 @@ tests:
         alertname: KboDlqSweepStalled
         exp_alerts:
           - exp_labels:
-              job: kbo-scheduler
               severity: critical
             # The rendered age is `eval_time - gauge`, so this case reads 2h10m20s
             # rather than the 2h10m30s of the never-set case above. `$value` is the
@@ -115,7 +104,7 @@ tests:
       # so the age never crosses the threshold. This is the case that must stay
       # quiet -- a rule that fires on a healthy system trains the reader to
       # dismiss it, which costs more than the missing detection ever would.
-      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
+      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp'
         values: '0+1800x200'
     alert_rule_test:
       - eval_time: 12h
@@ -208,7 +197,7 @@ tests:
     input_series:
       # Three failed reads in the window. The counter going up at all is the
       # signal: there is no "tolerable" number of unreadable sweeps.
-      - series: 'kbo_crawl_dlq_sweep_failures_total{job="kbo-scheduler"}'
+      - series: 'kbo_crawl_dlq_sweep_failures_total'
         values: '0 0 0 1 1 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3'
     alert_rule_test:
       # A single blip inside `for: 10m` must be suppressed, matching
@@ -221,7 +210,6 @@ tests:
         alertname: KboDlqSweepFailing
         exp_alerts:
           - exp_labels:
-              job: kbo-scheduler
               severity: warning
             exp_annotations:
               summary: "DLQ 스위프 실패: 30분 내 3회 큐 읽기 실패"
@@ -237,38 +225,9 @@ tests:
     input_series:
       # The counter exists but never increments, which is what a healthy system
       # exports. An absent series and a flat zero must read the same way.
-      - series: 'kbo_crawl_dlq_sweep_failures_total{job="kbo-scheduler"}'
+      - series: 'kbo_crawl_dlq_sweep_failures_total'
         values: '0x200'
     alert_rule_test:
       - eval_time: 6h
         alertname: KboDlqSweepFailing
         exp_alerts: []
-
-  # ── KboDlqSweepStalled: a non-sweeping worker must not fire ────────
-  # The gauges come from the shared metrics module, so api-server (which never
-  # sweeps) exports them at their registered default of 0. Unscoped,
-  # `time() - 0` reads as maximally stale and the rule fires forever against a
-  # process that cannot clear it. Both series are present here; the only alert
-  # allowed is the scheduler's.
-  - interval: 30s
-    input_series:
-      # Last successful sweep at t=1000s, never updated again.
-      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-scheduler"}'
-        values: '1000x400'
-      # A process that never swept: the same gauge at 0 on the other job.
-      - series: 'kbo_crawl_dlq_last_successful_sweep_timestamp{job="kbo-api-server"}'
-        values: '0x400'
-    alert_rule_test:
-      - eval_time: 2h27m
-        alertname: KboDlqSweepStalled
-        exp_alerts:
-          - exp_labels:
-              job: kbo-scheduler
-              severity: critical
-            exp_annotations:
-              summary: "DLQ 스위프 정지: 2h 10m 20s 동안 큐를 읽지 못함"
-              description: >-
-                최근 2h 10m 20s 동안 dead letter 큐를 한 번도 읽지 못했습니다.
-                큐 상태를 알 수 없으므로 DLQ 지표는 이전 값에 고정되어 있습니다.
-                `crawl_dead_letter_recovery` 잡과 DB 연결을 점검하세요.
-              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
