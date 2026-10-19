@@ -278,6 +278,13 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 Last updated: 2026-10-19
 
+### 2026-10-19: 2026 시즌 boxscore 누락 복구 · 취소 경기 대상 결함 · CRAWLER SH NULL
+- **13경기 boxscore 복구 완료**: 2026 시즌에서 `COMPLETED`/`DRAW`인데 boxscore가 없던 13경기가 **9-01(5)·9-18(4)·9-19(4) 세 날짜에만** 몰려 있었다(다른 9월 날짜는 전부 정상). 그 3일에는 **`game_detail` 런 자체가 없었다** — 실패가 아니라 미시도다. `collect_games --year 2026 --game-ids <13개>`로 전부 복구해 **2026 종료/무승부 781경기의 타격·투구·PBP·라인업 누락 0**이 됐다. 우천 중단으로 보였던 `20260901LGOB0`(0:0, PBP 5)도 타격 23·투구 8이 들어왔다 — **"우천 무효" 가설은 틀렸고 데이터는 원래 있었다.**
+- **복구 후 파생 집계를 반드시 다시 돌려야 한다**: boxscore만 넣으면 `quality_gate_check --year 2026`이 **팀 통계 불일치로 FAILURE**를 낸다(팀 904 vs 선수합 914 등). 순서는 `recalc_player_stats --season 2026`(타격 376·투구 310 upsert) → `recalc_team_stats --season 2026`(11·11 upsert)이고 그 뒤 게이트가 통과한다. **boxscore → 선수 집계 → 팀 집계가 한 묶음**이다.
+- **취소 경기를 크롤 대상으로 삼던 결함 (`7ddafc5d`)**: `game_detail`의 19:00 실패 4건 대상이 **모두 `CANCELLED`**(`20261014OBLG0`, `20261017LGHT0`)였다. 취소 경기에는 boxscore가 없으니 실패하고 DLQ에 `pending`으로 쌓여 **`dlq:exhausted` 39회 반복**의 원인이 된다. `load_game_targets_from_db`에 상태 필터가 없던 것이 원인이고, `or_(game_status IS NULL, game_status NOT IN (CANCELLED, POSTPONED))`를 추가했다. **`UNRESOLVED_MISSING`(8,083건)은 제외하지 않는다** — 복구 시도 대상이라 빼면 복구 경로가 닫힌다. 실 DB 10월에서 취소 3경기가 빠지고 `COMPLETED` 39·`DRAW` 1이 남는 것을 확인했다.
+- **시즌 PA 위반 37건(2026)은 `CRAWLER` 소스다**: `player_season_batting`을 `source`로 가르면 `AGGREGATED`(recalc 산출 376행)는 SH 누락 **0**인 반면 **`CRAWLER`(235행)·`PROFILE`(386행)는 SH가 전부 NULL**이다. 게임 레벨에는 SH가 있다(2026: SH>0 554·SF>0 460) — 즉 **크롤 시즌 기록이 희생타를 버린다**. 재계산으로는 해소되지 않고(위반 427 → 427) 별도 백필 설계가 필요하다.
+- **§14 진단 정정 수용**: 이 세션이 런북 §14에 적은 "호스트 전역" 가설은 틀렸다. 다른 세션이 §14.7에서 `bega_prod` 컨테이너 init 실패로 정정했고 **`kbo_postgres`(10-17 16:07 UTC 기동)가 정본**임을 확인했다(실측 일치: `game` 26,510).
+
 ### 2026-10-19: psycopg3 전환 — SQLAlchemy 2.1 채택
 - **전환 완료**: `pyproject.toml`에서 SQLAlchemy 상한 `<2.1`을 제거하고 `psycopg[binary]>=3.1.0`을 `postgres` extra에 추가했다. `uv lock` 재해석 결과 SQLAlchemy 2.1.5 / psycopg 3.3.6 (psycopg-binary 3.3.6) 확정, venv 동기화 완료.
 - **드라이버 계약 변경**: bare `postgresql://` URL은 이제 **psycopg 3**으로 해석된다 (SQLAlchemy 2.1+ 기본값). `tests/cli/test_apply_postgres_migrations.py::test_the_migration_runner_uses_psycopg`가 이를 고정한다. psycopg2는 `postgresql+psycopg2://` 명시 URL과 `sync_sqlite_to_postgres.py`의 `psycopg2.extras` 사용처를 위해 `postgres` extra에 유지한다.
