@@ -746,6 +746,53 @@ before it fires, an every-15-minute job must miss two ticks (22.5m). Loose
 enough that a long maintenance window is not a page, tight enough that a day of
 silence is.
 
+#### Silence is ambiguous — check the deployment first
+
+A rule that was never loaded cannot fire, and a gauge that was never exported
+leaves `KBOSchedulerJobNotRunning` quiet for a reason that has nothing to do with
+the scheduler. Both were true on 2026-10-19: the rules and gauges below were
+already on `origin/main` while the running stack was an older build. Treat the
+silence as a question, not as an answer:
+
+```bash
+# from anywhere that can reach the deployment's Prometheus
+curl -sG --data-urlencode 'query=count(kbo_scheduler_job_last_run_timestamp)' \
+    http://<prometheus>:9090/api/v1/query                 # empty => not deployed
+curl -s http://<prometheus>:9090/api/v1/rules | grep -c KBOSchedulerJobNotRunning
+```
+
+An empty first result is the signature to look for: the series is **absent from
+the scrape** rather than stale, which is the one state the rule itself cannot
+see. `kbo_scheduler_job_total` is the control — if it carries a series per
+registered job while the cadence gauges are missing, scraping is fine and the
+*build* is older, not the metric server.
+
+Record three facts separately, because they fail separately:
+
+| Fact | Evidence | It does not prove |
+| --- | --- | --- |
+| The code is released | `git merge-base --is-ancestor <commit> origin/main` | that the host runs it |
+| The instrumentation is live | the two probes above (all three gauges, all three rules) | that the crawler behaviour behind it is deployed |
+| What the runs came from | `crawl_execution_runs.checkpoint->'contract'` (`src/db/build_contract.py`) | anything about a selective deployment |
+
+The third row needs no host access and is the tie-breaker: a run stamped
+`{'migrations': '065'}` was written by a build carrying PostgreSQL migration 065,
+so it is a *floor* on the deployed revision, never a ceiling. Measured 2026-10-19
+— ledger floor `065`, cadence gauges absent at every point in the previous 48h,
+and `food` runs still writing `source_url = NULL` although `4ba108f5` (newer than
+the cadence work) populates it. Three independent markers, one conclusion:
+released, not deployed.
+
+Activation is a host action, not a repository one. `docker-compose.prod.yml`
+builds the scheduler from the checkout (`build: .`), so a plain `restart` reuses
+the old image — the host needs a pull and a rebuild/`up --build`, and
+`kbo_prometheus` needs its own restart because the compose mounts the rule files
+read-only and Prometheus runs without `--web.enable-lifecycle` (it reads them only
+at startup). Before restarting either, run
+`python3 scripts/diagnose_scheduler_locks.py` and confirm
+`data/locks/scheduler.pid` holds no live PID — two schedulers scraping under one
+`job` label is the state in which these rules stop being trustworthy.
+
 #### When one fires
 
 1. Read `up{job="kbo-scheduler"}`. If it is `0`, the scheduler or its metric
