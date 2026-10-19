@@ -287,9 +287,9 @@ Last updated: 2026-10-19
 
 ### 2026-10-19: psycopg3 전환 — SQLAlchemy 2.1 채택
 - **전환 완료**: `pyproject.toml`에서 SQLAlchemy 상한 `<2.1`을 제거하고 `psycopg[binary]>=3.1.0`을 `postgres` extra에 추가했다. `uv lock` 재해석 결과 SQLAlchemy 2.1.5 / psycopg 3.3.6 (psycopg-binary 3.3.6) 확정, venv 동기화 완료.
-- **드라이버 계약 변경**: bare `postgresql://` URL은 이제 **psycopg 3**으로 해석된다 (SQLAlchemy 2.1+ 기본값). `tests/cli/test_apply_postgres_migrations.py::test_the_migration_runner_uses_psycopg`가 이를 고정한다. psycopg2는 `postgresql+psycopg2://` 명시 URL과 `sync_sqlite_to_postgres.py`의 `psycopg2.extras` 사용처를 위해 `postgres` extra에 유지한다.
+- **드라이버 계약 변경**: bare `postgresql://` URL은 이제 **psycopg 3**으로 해석된다 (SQLAlchemy 2.1+ 기본값). `tests/cli/test_apply_postgres_migrations.py::test_the_migration_runner_uses_psycopg`가 이를 고정한다. psycopg2는 **완전히 제거**됐다(`39b1081f`) — `postgres` extra는 `psycopg[binary]`·`pgvector`만 담는다.
 - **마이그레이션 러너 실측**: `apply_postgres_migrations --check` 가 운영 DB(bega_prod)에서 exit 0 (pending 0) — psycopg3 경로로 정상.
-- **남은 정리**: AGENTS.md의 "SQLAlchemy <2.1 상한" 기록은 역사 항목으로 유지; sync 경로의 psycopg2.extras 의존은 추후 psycopg3 API로 이전 가능(현재는 호환 유지).
+- **남은 정리**: AGENTS.md의 "SQLAlchemy <2.1 상한" 기록은 역사 항목으로 유지. ~~sync 경로의 psycopg2.extras 의존~~ → **해소**(`fb2c4a3f`: `psycopg.types.json.Json/Jsonb`·`executemany` 전환, `39b1081f`: 의존성·문서·CI URL까지 제거).
 
 ### 2026-10-17: RAG 정본 근거 확정 · 런북 §14 · 커밋 귀속 정정
 - **새 인덱스의 신원은 도메인과 분리돼 있다 (`b0e793d5`)**: `bega_prod` 583K의 `source_row_id`가 도메인 PK와 대응하지 않는다 — `game` **0/6,199**(청크 1~6,241 vs 도메인 6320~598,409), `game_batting_stats` **0/139,189**(291,750~440,838 vs 29,129,541~36,549,718), `game_summary`는 814,774,416까지 나온다. **"컬럼이 맞는다"와 "신원이 맞는다"는 다른 문제**이며, `32c5fffb`가 컬럼을 정합시킨 뒤에도 신원이 도메인에 매이는 쪽은 폐기 저장소뿐이다. 따라서 "폐기 저장소(5435) 정본 유지" 결정은 근거가 있다. 근거·표는 `Docs/references/RAG_RECONCILIATION.md`의 2026-10-16 절.
