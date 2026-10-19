@@ -138,13 +138,20 @@ KBO_NOTIFICATION_DELIVERIES_PERSISTED_TOTAL = Counter(
     ["channel"],
 )
 
+#: Name this Counter publishes and ``kbo incidents metrics`` reads back out of a
+#: live process's exposition; the two have to agree or the CLI queries nothing.
+DELIVERY_AUDIT_FAILURES_METRIC = "kbo_notification_delivery_audit_failures_total"
+
 KBO_NOTIFICATION_DELIVERY_AUDIT_FAILURES_TOTAL = Counter(
-    "kbo_notification_delivery_audit_failures_total",
+    DELIVERY_AUDIT_FAILURES_METRIC,
     "Total count of delivery audit writes that failed (transport result is unaffected)",
 )
 
+#: Same contract as ``DELIVERY_AUDIT_FAILURES_METRIC``.
+INCIDENT_APPLY_FAILURES_METRIC = "kbo_notification_incident_apply_failures_total"
+
 KBO_NOTIFICATION_INCIDENT_APPLY_FAILURES_TOTAL = Counter(
-    "kbo_notification_incident_apply_failures_total",
+    INCIDENT_APPLY_FAILURES_METRIC,
     "Total count of incident ledger writes that failed (the check result is unaffected)",
 )
 
