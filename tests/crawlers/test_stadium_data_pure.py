@@ -112,7 +112,10 @@ class TestSeatParsePage:
         section = result[0]
         assert section["stadium_id"] == "JAMSIL"
         assert section["section_name"] == "골드석"
-        assert section["section_code"] == "골드석"
+        # The parser deliberately leaves the code empty: the unique key is (stadium_id,
+        # section_name), and reusing the name as a code made the repository's code lookup
+        # miss rows saved by name (commit 409e7cf7).
+        assert section["section_code"] is None
         assert section["seat_grade"] == "골드석"
 
     def test_section_patterns(self):

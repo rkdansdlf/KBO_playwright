@@ -8,7 +8,12 @@ import sys
 from typing import TYPE_CHECKING
 
 from src.db.engine import get_rag_index_session
-from src.db.vector_engine import get_vector_session, is_oracle_vector_backend, is_pgvector_available
+from src.db.vector_engine import (
+    get_vector_session,
+    is_oracle_vector_backend,
+    is_pgvector_available,
+    shares_operational_database,
+)
 from src.services.rag_index_consistency import audit_index_sessions, audit_single_store_session
 
 #: Exit codes, named because the scheduler job that runs this must tell them
@@ -77,6 +82,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         with get_rag_index_session() as primary_session:
             report = audit_single_store_session(primary_session)
             postings_missing = _count_missing_postings(primary_session)
+    elif shares_operational_database():
+        # One database holding one ``rag_chunks`` table: load it once. The
+        # postings gate stays Oracle-only -- PostgreSQL retrieves through
+        # ``content_tsv``, and counting missing terms in the 27.8M-row
+        # ``rag_chunk_terms`` table exceeds the scheduler window.
+        with get_rag_index_session() as primary_session:
+            report = audit_single_store_session(primary_session)
     else:
         with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
             report = audit_index_sessions(primary_session, vector_session)
