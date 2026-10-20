@@ -412,6 +412,39 @@ def _rag_target_urls() -> tuple[str, ...]:
     return tuple(sorted(planned_rag_target_urls()))
 
 
+def rag_incremental_invocations(year: int) -> list[list[str]]:
+    """Return the builder argument lists for one nightly RAG sync.
+
+    Every source except PBP runs as before. PBP runs on its own with the play-identity and
+    content-hash filters. The canonical store holds no PBP rows, so without those filters every
+    stored play would look missing and be embedded again.
+    """
+    from src.cli.rag.build_rag_index import rag_all_source_names, rag_source_table_names
+
+    season = str(year)
+    mapped = rag_source_table_names()
+    others = [name for name in rag_all_source_names() if name != "pbp"]
+    invocations = []
+    for name in others:
+        argv = ["--source", name, "--season", season, "--skip-existing"]
+        if name in mapped:
+            argv += ["--vector-presence", "--content-presence"]
+        invocations.append(argv)
+    invocations.append(
+        [
+            "--source",
+            "pbp",
+            "--season",
+            season,
+            "--skip-existing",
+            "--vector-presence",
+            "--content-presence",
+            "--play-presence",
+        ]
+    )
+    return invocations
+
+
 @_with_db_fail_fast_guard(urls=_rag_target_urls)
 @_with_lock_skip_guard
 def sync_rag_incremental_job() -> None:
@@ -428,15 +461,8 @@ def sync_rag_incremental_job() -> None:
             os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
             try:
                 current_year = datetime.now(KST).year
-                build_rag_index_main(
-                    [
-                        "--source",
-                        "all",
-                        "--season",
-                        str(current_year),
-                        "--skip-existing",
-                    ]
-                )
+                for argv in rag_incremental_invocations(current_year):
+                    build_rag_index_main(argv)
             finally:
                 for key, value in previous_env.items():
                     if value is None:

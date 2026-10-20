@@ -1,0 +1,239 @@
+"""Pin the team-code-agnostic play key and the three-way candidate split."""
+
+from __future__ import annotations
+
+from src.cli.rag.verify_pbp_candidates import classify, play_key
+
+NEW_CODE = "경기일: 2026-08-16, 경기: DB vs KIA, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃"
+OLD_CODE = "경기일: 2026-08-16, 경기: OB vs HT, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃"
+
+
+def test_team_code_variants_share_one_play_key() -> None:
+    """Only the team field differs; the play itself is the same."""
+    assert play_key(NEW_CODE) == play_key(OLD_CODE)
+    assert play_key(NEW_CODE) is not None
+
+
+def test_a_different_batter_is_a_different_play() -> None:
+    """Keep plays of different batters apart even in the same inning."""
+    other = NEW_CODE.replace("김대한", "박준순")
+
+    assert play_key(NEW_CODE) != play_key(other)
+
+
+def test_unparsed_text_is_reported_not_guessed() -> None:
+    """Text outside the template is counted as unparsed, never matched."""
+    assert play_key("임의 문장") is None
+
+
+def test_classify_splits_matched_new_and_unparsed() -> None:
+    """Matched = same play already stored under another code; new = absent; unparsed = not classifiable."""
+    candidates = [
+        {"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE},
+        {"source_row_id": "20260816DBKIA0_9", "content": NEW_CODE.replace("김대한", "정수빈")},
+        {"source_row_id": "bad", "content": "임의 문장"},
+    ]
+    dense = [("1680134", OLD_CODE)]
+
+    result = classify(candidates, dense)
+
+    assert result["candidates"] == 3
+    assert result["matched"] == 1
+    assert result["new"] == 1
+    assert result["unparsed"] == 1
+    assert result["samples"][0]["dense_source_row_ids"] == ["1680134"]
+
+
+def test_ambiguous_match_is_flagged() -> None:
+    """Two stored rows for one play make the match ambiguous, so it is reported separately."""
+    result = classify(
+        [{"source_row_id": "c", "content": NEW_CODE}],
+        [("1680134", OLD_CODE), ("1680198", OLD_CODE)],
+    )
+
+    assert result["matched"] == 1
+    assert result["ambiguous"] == 1
+
+
+def test_team_pairs_show_whether_a_match_stays_inside_one_game() -> None:
+    """A match should pair the same two teams under their own codes; any other pair is suspect."""
+    result = classify(
+        [{"source_row_id": "c", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+    )
+
+    assert result["team_pairs"] == [
+        {"candidate_teams": "DB vs KIA", "dense_teams": "OB vs HT", "count": 1},
+    ]
+
+
+def test_old_and_new_team_codes_give_the_same_game_key() -> None:
+    """OB/HT and DB/KIA name the same game once the aliases are applied."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("20260816DBKIA0") == game_key("20260816OBHT0")
+    assert game_key("20260816DBKIA0") is not None
+
+
+def test_doubleheader_index_separates_two_games_of_one_day() -> None:
+    """The trailing digit is the game of the day, so the two games of a doubleheader differ."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("20260816DBKIA0") != game_key("20260816DBKIA1")
+
+
+def test_legacy_numeric_ids_have_no_game_key() -> None:
+    """A legacy numeric key carries no game id, so it cannot confirm or refute a game."""
+    from src.cli.rag.verify_pbp_candidates import game_key
+
+    assert game_key("1680134") is None
+
+
+def test_game_verdict_confirms_same_game_and_flags_other_games() -> None:
+    """Confirmed: same game. Conflicting: stored under another game. Unverified: nothing to compare."""
+    from src.cli.rag.verify_pbp_candidates import game_verdict
+
+    assert game_verdict("20260816DBKIA0_7", ["20260816OBHT0_7"]) == "confirmed"
+    assert game_verdict("20260816DBKIA0_7", ["20260816OBHT1_7"]) == "conflicting"
+    assert game_verdict("20260816DBKIA0_7", ["1680134"]) == "unverified"
+
+
+def test_legacy_key_does_not_decide_the_game_even_when_the_source_row_names_one() -> None:
+    """A legacy numeric key points at other games in the source, so its game must not decide anything."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {"1680134": ("20260901HHKT0", 2, "top", "김대한")},
+        frozenset(),
+    )
+
+    assert result["game_identity"]["conflicting"] == 0
+    assert result["source_row_ids"]["text_confirmed"] == ["20260816DBKIA0_7"]
+
+
+def test_legacy_key_missing_from_source_stays_unverified() -> None:
+    """Without a source row there is nothing to compare, so the match stays unverified."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify([{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}], [("1680134", OLD_CODE)], {})
+
+    assert result["game_identity"]["unverified"] == 1
+
+
+def test_inning_half_agrees_in_either_spelling() -> None:
+    """Korean and English half names describe the same inning half, so both must agree."""
+    from src.cli.rag.verify_pbp_candidates import mapping_agrees, play_key
+
+    key = play_key(OLD_CODE)
+
+    assert key is not None
+    assert mapping_agrees((None, 1, "top", "김대한"), key)
+    assert mapping_agrees((None, 1, "초", "김대한"), key)
+    assert not mapping_agrees((None, 1, "bottom", "김대한"), key)
+
+
+def test_candidates_repeating_one_play_are_counted_as_internal_duplicates() -> None:
+    """Two identical candidates are one play listed twice; the gate requires zero."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "a", "content": NEW_CODE}, {"source_row_id": "b", "content": NEW_CODE}],
+        [],
+    )
+
+    assert result["candidate_internal_duplicates"] == 2
+
+
+def test_duplicate_groups_name_the_rows_and_whether_they_are_matched() -> None:
+    """The report lists each duplicate pair so the pair can be judged by hand."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "a", "content": NEW_CODE}, {"source_row_id": "b", "content": NEW_CODE}],
+        [],
+    )
+
+    group = result["candidate_duplicate_groups"][0]
+    assert [row["source_row_id"] for row in group["rows"]] == ["a", "b"]
+    assert all(row["in_matched"] is False for row in group["rows"])
+
+
+def test_hidden_rows_are_removed_before_classification() -> None:
+    """Hiding the rows a run inserted gives the pre-insert store to classify against."""
+    from src.cli.rag.verify_pbp_candidates import classify, hide_rows
+
+    dense = [("1680134", OLD_CODE), ("20260816DBKIA0_7", NEW_CODE)]
+    visible = hide_rows(dense, frozenset({"20260816DBKIA0_7"}))
+
+    before = classify([{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}], visible)
+    assert before["matched"] == 1
+    assert before["new"] == 0
+    assert hide_rows(dense, frozenset()) == dense
+
+
+def test_canonical_pair_maps_old_codes_and_ignores_order() -> None:
+    """The same two teams name the same pair whatever their code generation or order."""
+    from src.cli.rag.verify_pbp_candidates import canonical_pair
+
+    assert canonical_pair("DB vs KIA") == canonical_pair("HT vs OB") == ("DB", "KIA")
+    assert canonical_pair("KIA vs DB") == ("DB", "KIA")
+    assert canonical_pair("nonsense") is None
+
+
+def test_double_header_days_are_the_days_the_same_pair_played_twice() -> None:
+    """A day with one game per pair is not a doubleheader."""
+    from src.cli.rag.verify_pbp_candidates import double_header_keys
+
+    rows = [
+        ("2026-08-16", "DB", "KIA"),
+        ("2026-08-16", "OB", "HT"),
+        ("2026-08-17", "DB", "KIA"),
+    ]
+
+    assert double_header_keys(rows) == frozenset({("2026-08-16", ("DB", "KIA"))})
+
+
+def test_match_without_a_game_id_is_text_confirmed_when_its_day_has_no_double_header() -> None:
+    """Same date, same alias team pair, same play, and no doubleheader that day: the match stands."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {},
+        frozenset(),
+    )
+
+    assert result["source_row_ids"]["text_confirmed"] == ["20260816DBKIA0_7"]
+    assert result["matched_details"][0]["verdict"] == "text_confirmed"
+
+
+def test_match_on_a_double_header_day_stays_unverified() -> None:
+    """With two games between the same teams that day, the text alone cannot pick the game."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", OLD_CODE)],
+        {},
+        frozenset({("2026-08-16", ("DB", "KIA"))}),
+    )
+
+    assert result["source_row_ids"]["unverified"] == ["20260816DBKIA0_7"]
+
+
+def test_match_with_different_teams_is_a_team_conflict() -> None:
+    """The same batter and event under different teams is a different game."""
+    from src.cli.rag.verify_pbp_candidates import classify
+
+    other = OLD_CODE.replace("OB vs HT", "LG vs LT")
+    result = classify(
+        [{"source_row_id": "20260816DBKIA0_7", "content": NEW_CODE}],
+        [("1680134", other)],
+        {},
+        frozenset(),
+    )
+
+    assert result["source_row_ids"]["team_conflict"] == ["20260816DBKIA0_7"]

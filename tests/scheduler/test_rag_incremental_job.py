@@ -23,6 +23,7 @@ WRITE_ENV_KEYS = (
 def _run_job_with_fake_build(captured: dict[str, Any], *, build_error: Exception | None = None) -> None:
     def fake_main(argv: list[str]) -> None:
         captured["argv"] = list(argv)
+        captured.setdefault("calls", []).append(list(argv))
         captured["env"] = {key: os.environ.get(key) for key in WRITE_ENV_KEYS}
         if build_error is not None:
             raise build_error
@@ -64,16 +65,15 @@ def test_sync_rag_incremental_declares_production_write_intent() -> None:
 
 @pytest.mark.usefixtures("_clean_write_env")
 def test_sync_rag_incremental_passes_incremental_source_argv() -> None:
+    """Every source but PBP runs as before; PBP runs last, alone, with its presence filters."""
+    from src.scheduler.jobs.maintenance import rag_incremental_invocations
+
     captured: dict[str, Any] = {}
     _run_job_with_fake_build(captured)
 
-    assert captured["argv"] == [
-        "--source",
-        "all",
-        "--season",
-        str(datetime.now(KST).year),
-        "--skip-existing",
-    ]
+    assert captured["calls"] == rag_incremental_invocations(datetime.now(KST).year)
+    assert captured["argv"][:2] == ["--source", "pbp"]
+    assert "all" not in [argv[1] for argv in captured["calls"] if len(argv) > 1]
 
 
 @pytest.mark.usefixtures("_clean_write_env")
