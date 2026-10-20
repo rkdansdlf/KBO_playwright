@@ -31,7 +31,7 @@ from src.scheduler.locks import (
 logger = logging.getLogger("src.scheduler.jobs.maintenance")
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -412,6 +412,63 @@ def _rag_target_urls() -> tuple[str, ...]:
     return tuple(sorted(planned_rag_target_urls()))
 
 
+#: Sources the nightly sync never runs. ``staging_rag_chunks`` is an operator-run, cursor-based source:
+#: it reads the whole canonical ``rag_chunks`` table into memory and has no table mapping, so the
+#: presence filters cannot apply to it. Running it nightly lost the database connection and aborted
+#: every source that came after it.
+_NIGHTLY_EXCLUDED_SOURCES: frozenset[str] = frozenset({"staging_rag_chunks"})
+
+
+def rag_incremental_invocations(year: int) -> list[list[str]]:
+    """Return the builder argument lists for one nightly RAG sync.
+
+    Every source except PBP and the excluded ones runs as before. PBP runs on its own with the
+    play-identity and content-hash filters. The canonical store holds no PBP rows for most plays, so
+    without those filters every stored play would look missing and be embedded again.
+    """
+    from src.cli.rag.build_rag_index import rag_all_source_names, rag_source_table_names
+
+    season = str(year)
+    mapped = rag_source_table_names()
+    others = [name for name in rag_all_source_names() if name != "pbp" and name not in _NIGHTLY_EXCLUDED_SOURCES]
+    invocations = []
+    for name in others:
+        argv = ["--source", name, "--season", season, "--skip-existing"]
+        if name in mapped:
+            argv += ["--vector-presence", "--content-presence"]
+        invocations.append(argv)
+    invocations.append(
+        [
+            "--source",
+            "pbp",
+            "--season",
+            season,
+            "--skip-existing",
+            "--vector-presence",
+            "--content-presence",
+            "--play-presence",
+        ]
+    )
+    return invocations
+
+
+def _run_rag_invocations(run: Callable[[list[str]], None], invocations: list[list[str]]) -> list[str]:
+    """Run each builder invocation, keep going after a failure, and return the failed sources.
+
+    One source failing must not stop the ones after it: PBP runs last, and an earlier failure used
+    to leave it unrun without any alert.
+    """
+    failed: list[str] = []
+    for argv in invocations:
+        source = argv[argv.index("--source") + 1] if "--source" in argv else "?"
+        try:
+            run(argv)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("RAG incremental sync failed for source %s; continuing with the next source", source)
+            failed.append(source)
+    return failed
+
+
 @_with_db_fail_fast_guard(urls=_rag_target_urls)
 @_with_lock_skip_guard
 def sync_rag_incremental_job() -> None:
@@ -428,21 +485,22 @@ def sync_rag_incremental_job() -> None:
             os.environ.update(_RAG_INCREMENTAL_WRITE_ENV)
             try:
                 current_year = datetime.now(KST).year
-                build_rag_index_main(
-                    [
-                        "--source",
-                        "all",
-                        "--season",
-                        str(current_year),
-                        "--skip-existing",
-                    ]
-                )
+                failed_sources = _run_rag_invocations(build_rag_index_main, rag_incremental_invocations(current_year))
             finally:
                 for key, value in previous_env.items():
                     if value is None:
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
+            if failed_sources:
+                logger.error(
+                    "=== RAG Vector DB Incremental Sync finished with failures: %s ===", ", ".join(failed_sources)
+                )
+                alert_warning(
+                    "sync_rag_incremental",
+                    "RAG 인덱스 빌드 일부 실패: " + ", ".join(failed_sources) + " — 스케줄러 로그를 확인하세요",
+                )
+                return
             logger.info("=== RAG Vector DB Incremental Sync Completed Successfully ===")
             # Clears ``scheduler:sync_rag_incremental:warning`` from an earlier
             # failed run. Without it the failure incident outlives the failure.
