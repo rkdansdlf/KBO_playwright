@@ -66,8 +66,14 @@ class IndexConsistencyReport:
         }
         sparse_only = len(issue_keys["MISSING_IN_VECTOR"])
         vector_only = len(issue_keys["MISSING_IN_PRIMARY"])
-        hash_mismatch = len(issue_keys["CONTENT_HASH_MISMATCH"] | issue_keys["CONTENT_HASH_MISSING"])
-        version_mismatch = len(issue_keys["INDEX_VERSION_MISMATCH"] | issue_keys["INDEX_VERSION_MISSING"])
+        # A row whose hash or version is NULL has not been measured, which is a
+        # different claim from a row measured and found to disagree. Counting
+        # the two together means a bulk load that never wrote the columns reads
+        # as 583k corruptions rather than as one unbackfilled migration.
+        hash_mismatch = len(issue_keys["CONTENT_HASH_MISMATCH"])
+        hash_unmeasured = len(issue_keys["CONTENT_HASH_MISSING"])
+        version_mismatch = len(issue_keys["INDEX_VERSION_MISMATCH"])
+        version_unmeasured = len(issue_keys["INDEX_VERSION_MISSING"])
         embedding_missing = len(issue_keys["VECTOR_EMBEDDING_MISSING"])
         total = self.total_keys or max(self.primary_count, self.vector_count)
         non_healthy = finding_keys | set(self.stale_keys) | set(self.deleted_keys)
@@ -80,7 +86,10 @@ class IndexConsistencyReport:
             "vector_only": vector_only,
             "orphan": vector_only,
             "hash_mismatch": hash_mismatch,
+            "hash_unmeasured": hash_unmeasured,
             "version_mismatch": version_mismatch,
+            "version_unmeasured": version_unmeasured,
+            "identity_unmeasured": len(issue_keys["CONTENT_HASH_MISSING"] | issue_keys["INDEX_VERSION_MISSING"]),
             "embedding_missing": embedding_missing,
             "stale": len(self.stale_keys),
             "deleted": len(self.deleted_keys),

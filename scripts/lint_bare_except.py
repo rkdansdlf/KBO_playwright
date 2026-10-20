@@ -63,7 +63,11 @@ class BareExceptVisitor(ast.NodeVisitor):
 
 def scan_file(path: Path) -> list:
     try:
-        tree = ast.parse(path.read_text(), filename=str(path))
+        # The encoding is explicit on purpose: without it the file is decoded
+        # with the locale default, and a cp949 locale cannot read the UTF-8
+        # sources this repository is written in, so the hook crashed on a file
+        # it was supposed to check.
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     except SyntaxError:
         return []
     visitor = BareExceptVisitor()

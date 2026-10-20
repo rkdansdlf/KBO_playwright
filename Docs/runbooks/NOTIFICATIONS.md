@@ -46,6 +46,9 @@ python3 -m src.cli.kbo incidents deliveries stats [--channel ...] [--status ...]
                                                  [--error-code CODE] [--incident-id N] [--batch-id ID]
                                                  [--days N] [--json]
 
+# Read the two failure counters no database table can hold (read-only).
+python3 -m src.cli.kbo incidents metrics [--url URL] [--json]
+
 # Inspect the alert rules and prove they still parse and still fire.
 promtool check rules monitoring/prometheus/alert_rules_notifications.yml
 promtool test  rules monitoring/prometheus/tests/notification_alert_delivery_test.yml
@@ -61,7 +64,10 @@ an all-time mix describes history rather than the current transport.
 
 The metrics exporter is started by `start_metrics_server(port)`
 (`src/utils/metrics.py`) and scraped by Prometheus from `scheduler:8000`
-(`monitoring/prometheus/prometheus.yml`).
+(`monitoring/prometheus/prometheus.yml`). `kbo incidents metrics` reads the same
+exposition directly: it takes `--url`, else `$KBO_METRICS_URL`, else
+`http://127.0.0.1:$PROMETHEUS_PORT/metrics` (port 8000). A remote or containerised
+process therefore needs the variable or the flag — one URL names one process.
 
 ### 1.2 Mutating commands
 
@@ -79,13 +85,19 @@ suppresses the recovery notice without skipping the state change.
 | Command | Codes |
 | --- | --- |
 | `kbo incidents list\|show\|deliveries` | `0` ok (incl. preview) · `1` not found (`show` only) |
+| `kbo incidents metrics` | `0` ok · `2` metrics endpoint unreachable |
 | `kbo incidents ack\|resolve` | `0` ok/preview · `1` not found · `2` invalid state or lost race · `3` guard denied |
 
 ### 1.4 What is still missing
 
 - An incident still closes on its own when its check recovers
   (`bridge.apply_incidents`, Section 4.1). The operator commands are a
-  correction path, not the normal lifecycle.
+  correction path, not the normal lifecycle. The mirror image is not covered: a
+  check that stops running leaves its incident open, and nothing in the ledger
+  separates "still broken" from "no longer reporting".
+  `Docs/references/NOTIFICATION_INCIDENT_RECOVERY.md` is the design draft for a
+  derived `STALE` column and a `list --stale` filter — **nothing in it is
+  implemented yet**.
 - The `SUPPRESSED` decision is **not stored anywhere**. `IncidentManager` computes
   it per `process()` call and discards it, so a suppressed notification leaves no
   delivery row *and* no column in the ledger. Two CLI columns answer the question
@@ -104,16 +116,29 @@ suppresses the recovery notice without skipping the state change.
   `ALERT_MIN_SEVERITY` changes the answer without touching a row. That is why it
   is a column and not a schema migration, and why it could not have been
   backfilled: those decisions were never written.
+  Two layers drop a notification and neither leaves a delivery row:
+  `IncidentManager` computes `AlertDecision.SUPPRESSED` per `process()` call and
+  discards it, and `NotificationDispatcher` drops a repeat inside its
+  `suppress_window` with a `SUPPRESSED` result that `DeliveryRecorder` filters
+  out on purpose — the message never entered the dispatch pipeline, and the
+  window exists to stop a sustained outage from writing one row per repeat. Both
+  empty the same `occurrence_count` − `notification_count` gap, which is why
+  Section 3.2, not this table, is what separates a policy from a transport
+  failure.
 - `SILENCED_BY` names the **policy**, not the transport. A send that fails also
   leaves `notification_count` unmoved, so a gap in the counters has one cause the
   column cannot report: use Section 3.3 for that.
-- No CLI surfaces `kbo_notification_delivery_audit_failures_total` — that
-  counter is the only way to tell "delivery failed" from "the audit row could
-  not be written" (Section 3.4), and it is metric-only by design.
-  `kbo_notification_incident_apply_failures_total` is the same: it tells you
-  writes were lost but not *which* keys, and the ledger cannot — that is what
-  `apply_incidents` counts when it swallows the error, and Section 8.5 covers the
-  re-run.
+- `kbo_notification_delivery_audit_failures_total` is the only way to tell
+  "delivery failed" from "the audit row could not be written" (Section 3.4), and it
+  stays metric-only by design: no table holds it. **`kbo incidents metrics` reads
+  it — and `kbo_notification_incident_apply_failures_total` — out of a live
+  process's exposition**, so an operator without Prometheus access is no longer
+  blind to either. What the command cannot do is window or sum them: the exposition
+  reports the running total since that process started, and one URL names one
+  process, so `increase(...)` over a range and a deployment-wide total still come
+  from Prometheus. The incident-apply counter keeps its own limit unchanged — it
+  says writes were lost but not *which* keys: that is what `apply_incidents` counts
+  when it swallows the error, and Section 8.5 covers the re-run.
 
 Do not assume a missing incident means a healthy one — check
 `occurrence_count` and `notification_count` (Section 3.2).
@@ -256,19 +281,24 @@ the transport.
 increase(kbo_notification_delivery_audit_failures_total[15m])
 ```
 
-Any non-zero value here is a database problem. A known cause is a SAVEPOINT-based
-insert on SQLite: pysqlite's default transaction handling does not make a
-`SAVEPOINT` participate in the outer transaction, so a row survives a rollback.
-The insert path therefore uses dialect-native insert-if-absent and the
-`begin_nested()` fallback is **forbidden repository-wide**
-(`tests/notifications/test_incident_manager.py` is the regression that catches a
-reintroduction).
+Any non-zero value here is a database problem. Without Prometheus access,
+`kbo incidents metrics` prints the same counter's running total out of one
+process (add `--url` per process); it cannot compute the 15-minute increase.
+A known cause is a SAVEPOINT-based insert on SQLite: pysqlite's default
+transaction handling does not make a `SAVEPOINT` participate in the outer
+transaction, so a row survives a rollback. The insert path therefore uses
+dialect-native insert-if-absent and the `begin_nested()` fallback is
+**forbidden repository-wide** (`tests/notifications/test_incident_manager.py` is
+the regression that catches a reintroduction).
 
 ### 3.5 Step 5 — incident ledger unwritable?
 
 ```promql
 increase(kbo_notification_incident_apply_failures_total[15m])
 ```
+
+`kbo incidents metrics` reports the same counter without Prometheus, with the
+same caveat as Section 3.4: one process's running total, not a window.
 
 The same containment exists one layer up: `apply_incidents` logs and swallows
 persistence errors so a check result is never lost because alerting broke. The

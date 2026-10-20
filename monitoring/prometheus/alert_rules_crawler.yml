@@ -22,28 +22,73 @@ groups:
           summary: "크롤러 실패 급증: {{ $labels.crawler }}"
           description: "최근 15분 동안 {{ $labels.crawler }} 실패가 {{ $value }}회 발생했습니다."
 
-      # ── No recent success ────────────────────────────────────────────
-      # Self-configuring: a crawler that did not run at all has no increase(),
-      # so a weekly or monthly job never fires. A crawler that ran but has not
-      # succeeded inside the window is exactly the case worth reporting.
-      # A crawler that has never succeeded exposes last_success = 0, so it is
-      # caught from its first failure rather than staying silent.
+      # ── No recent complete success ───────────────────────────────────
+      # The window is the crawler's own period, not a constant. Six hours was
+      # the previous choice and no scheduled crawler fits inside it: a daily
+      # collector was judged for the six hours after its run and silent for the
+      # other eighteen, so the alert resolved and reopened once a day and its
+      # silence read as health. Measured 2026-10-19 in the run ledger: `food` and
+      # `seat` each run once a day. `kbo_crawl_expected_interval_seconds` is
+      # published from the trigger of the job that starts the crawler, so moving
+      # a job's cron moves this window with it instead of leaving it behind.
       #
-      # `sum by (crawler)` is not cosmetic: without it the result carries
-      # `status`, so a crawler with both success and failure series would raise
-      # the same alert under two different label sets, which breaks grouping
-      # and dedup downstream.
+      # `last_full_success`, not `last_success`: partial is a success for the
+      # ledger but not for the collector, because "one source of three quietly
+      # fails" keeps writing through the other two (BUG-001). A crawler stuck on
+      # partial warns after 24h through KboCrawlerSustainedPartial and reaches
+      # this critical once two of its own cycles pass without a clean run.
+      #
+      # Two conditions keep it honest:
+      #   * a crawler that never succeeded exposes 0, so the age is huge and it
+      #     fires from its first recorded run rather than staying silent;
+      #   * a crawler that stopped running entirely is the scheduler's staleness
+      #     rule's question (`KboSchedulerJobNotRunning`), so `last_run` must be
+      #     recent for this rule to report. Without that guard, every retired
+      #     crawler would page forever.
+      # A crawler with no published interval matches nothing, deliberately: the
+      # absence of a period is not a period of zero. `NOT_SCHEDULED` in
+      # src/monitoring/crawler_cadence.py names which crawlers those are and why.
       - alert: KboCrawlerNoRecentSuccess
         expr: |
-          (sum by (crawler) (increase(kbo_crawl_runs_total[6h])) > 0)
+          (time() - kbo_crawl_last_full_success_timestamp)
+            > 2 * kbo_crawl_expected_interval_seconds
           and on (crawler)
-          (time() - kbo_crawl_last_success_timestamp > 21600)
+          (time() - kbo_crawl_last_run_timestamp)
+            < 2 * kbo_crawl_expected_interval_seconds
         for: 15m
         labels:
           severity: critical
         annotations:
-          summary: "크롤러 성공 없음: {{ $labels.crawler }}"
-          description: "{{ $labels.crawler }} 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+          summary: "크롤러 완전 성공 없음: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 은(는) 자기 주기의 두 배 동안 완전 성공 없이 실행만 반복했습니다. 부분 성공이 이어지는 경우에는 24시간 경고(KboCrawlerSustainedPartial)가 먼저 울립니다. `kbo_crawl_last_partial_success_timestamp` 와 원장의 최근 결과를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+      # ── The latest run failed ────────────────────────────────────────
+      # The rule above cannot answer this for two cycles: one failed run after a
+      # good one leaves the last clean success inside the window, and that grace
+      # is deliberate -- a 06:45 failure is usually replayed from the dead letter
+      # queue within minutes. What was missing was the reading when the grace
+      # runs out: `last_failure >= last_run` says the most recent terminal result
+      # is a failure, and it stays true until a later run succeeds, so a single
+      # missed collection cannot hide behind a stale success.
+      #
+      # Warning, not critical: a retry may still clear it, and the critical rung
+      # is the rule above once two cycles pass without a clean run. The recency
+      # guard is the same cadence window, for the same reason -- a crawler that
+      # has not run since is not this rule's question.
+      - alert: KboCrawlerRecentFailure
+        expr: |
+          (kbo_crawl_last_failure_timestamp >= kbo_crawl_last_run_timestamp)
+          and on (crawler)
+          (time() - kbo_crawl_last_run_timestamp)
+            < 2 * kbo_crawl_expected_interval_seconds
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "크롤러 최근 실행 실패: {{ $labels.crawler }}"
+          description: "{{ $labels.crawler }} 의 가장 최근 실행이 실패로 끝났습니다. DLQ 재시도가 성공하면 다음 실행에서 자동으로 해제됩니다. 원장의 error_code 와 `python3 -m src.cli.kbo dlq list --crawler {{ $labels.crawler }}` 를 확인하세요."
+          runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
       # ── Write drop ───────────────────────────────────────────────────
       # The dangerous failure is a 200 with no exception that writes almost
@@ -68,13 +113,15 @@ groups:
           description: "{{ $labels.crawler }} 의 최근 쓰기 건수가 7일 기준의 20% 미만으로 떨어졌습니다. selector 변경 가능성을 확인하세요."
 
       # ── Sustained partial ────────────────────────────────────────────
-      # The two rules above cannot see this one, and that is the point of it.
-      # `partial` is in SUCCESS_STATUSES, so a crawler that partially fails
-      # every day keeps advancing `kbo_crawl_last_success_timestamp` and stays
-      # healthy for KboCrawlerNoRecentSuccess; and "one source of three quietly
-      # fails" keeps writing through the other two, so the write-drop rule
-      # stays healthy too. What is left is the outcome mix: runs landed, and
-      # none of them completed (BUG-001).
+      # This is the early rung of the case the rule above reaches late. Partial is
+      # in SUCCESS_STATUSES, so a crawler that partially fails every day keeps
+      # advancing `kbo_crawl_last_success_timestamp`; and "one source of three
+      # quietly fails" keeps writing through the other two, so the write-drop
+      # rule stays healthy too. KboCrawlerNoRecentSuccess thresholds on *full*
+      # success and does see it, but only after two of the crawler's own cycles
+      # -- for a daily collector that is day three. Twenty-four hours of
+      # partial-only is already worth a warning, so this rule reads the outcome
+      # mix directly (BUG-001).
       #
       # `unless` rather than `== 0` on the success side is deliberate. A
       # crawler that has never recorded a success has no success series at all,
@@ -116,20 +163,27 @@ groups:
       #
       # The rule reads `kbo_crawl_last_source_consulted_timestamp`, which only a
       # run that actually asked sets -- climbing it back onto `last_success`
-      # would reproduce the defect. The run-count guard is the same shape as
-      # KboCrawlerNoRecentSuccess: a crawler that stopped running entirely is
-      # that rule's business, and reporting it here too would double-page.
+      # would reproduce the defect. The run guard is the same cadence-derived
+      # window as KboCrawlerNoRecentSuccess: a crawler that stopped running
+      # entirely is that rule's business, and reporting it here too would
+      # double-page. The previous guard was `increase(kbo_crawl_runs_total[6h])`,
+      # which made a daily crawler skipped for weeks raise a warning that
+      # resolved and reopened every day -- the same six-hour defect, and the same
+      # noise this file's DLQ rules were cleaned of.
       #
-      # 48h rather than 7d: these crawlers run daily, so two missed days is
-      # already a change in behaviour rather than a blip. Warning, not critical,
-      # because being blocked by policy is not the same as being broken -- the
-      # reader decides whether the block is acceptable, and the decision is
-      # recorded in the runbook rather than in the alert's severity.
+      # 48h rather than the cadence window: these crawlers run daily, so two
+      # missed days is already a change in behaviour rather than a blip, and the
+      # threshold is also long enough that a transient robots decision cannot
+      # reach it. Warning, not critical, because being blocked by policy is not
+      # the same as being broken -- the reader decides whether the block is
+      # acceptable, and the decision is recorded in the runbook rather than in
+      # the alert's severity.
       - alert: KboCrawlerSourceNeverConsulted
         expr: |
-          (sum by (crawler) (increase(kbo_crawl_runs_total[6h])) > 0)
-          and on (crawler)
           (time() - kbo_crawl_last_source_consulted_timestamp > 172800)
+          and on (crawler)
+          (time() - kbo_crawl_last_run_timestamp)
+            < 2 * kbo_crawl_expected_interval_seconds
         for: 30m
         labels:
           severity: warning
@@ -250,8 +304,21 @@ groups:
       # late here is one missed detection, while paging on every deferral would
       # train the reader to ignore it. Not yet calibrated against production
       # (BUG-002) -- the tick interval is the basis, not a measurement.
+      #
+      # `max()` is load-bearing, not decoration. The gauge is label-less and
+      # lives in the shared metrics module, so every process that imports it
+      # exports a series of its own -- the API server's `/metrics` serves the
+      # same default registry -- and only the scheduler ever advances it. Read
+      # per series, that never-set 0 is permanently older than the allowance and
+      # the rule fires on a healthy system: measured 2026-10-19, it had been
+      # firing since the previous evening (`{job="kbo-api-server"}` at 0 while
+      # `{job="kbo-scheduler"}` was current), which is exactly the noise that
+      # hides a real stall. Aggregating restores the intended reading, "when did
+      # anyone last manage to look at the queue", and unlike filtering on the
+      # scheduler's job label it still fires if that series disappears with the
+      # scheduler -- the case where the heartbeat matters most.
       - alert: KboDlqSweepStalled
-        expr: time() - kbo_crawl_dlq_last_successful_sweep_timestamp > 7200
+        expr: time() - max(kbo_crawl_dlq_last_successful_sweep_timestamp) > 7200
         for: 10m
         labels:
           severity: critical

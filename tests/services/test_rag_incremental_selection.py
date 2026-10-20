@@ -47,12 +47,14 @@ def _options(
     fingerprint: str | None = None,
     require_vector: bool = False,
     require_primary_embedding: bool = True,
+    vector_key_presence: bool = False,
 ) -> IncrementalDecisionOptions:
     return IncrementalDecisionOptions(
         desired_index_version=version,
         desired_embedding_fingerprint=fingerprint,
         require_vector=require_vector,
         require_primary_embedding=require_primary_embedding,
+        vector_key_presence=vector_key_presence,
     )
 
 
@@ -225,3 +227,138 @@ def test_projection_reads_json_metadata_fingerprint() -> None:
     )
 
     assert state.embedding_fingerprint == embedding_fingerprint("model-a", 1536, "chunk-v1")
+
+
+def test_vector_key_presence_skips_a_canonical_miss_when_the_vector_row_exists() -> None:
+    """A row the vector store already holds is not a gap, even when the canonical row is absent."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        _state(version="rag-v1"),
+        _options(require_vector=True, require_primary_embedding=False, vector_key_presence=True),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "vector_key_present"
+
+
+def test_canonical_miss_with_vector_row_still_reembeds_without_the_option() -> None:
+    """The default keeps the old behaviour: a canonical miss always re-embeds."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        _state(version="rag-v1"),
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "primary_missing"
+
+
+def test_vector_key_presence_still_embeds_a_key_missing_from_both_stores() -> None:
+    """The option only removes identities the vector store holds; true gaps stay selected."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False, vector_key_presence=True),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"
+
+
+def test_content_presence_skips_a_canonical_miss_whose_text_is_already_embedded() -> None:
+    """Same text under another key is not a new play, even when the canonical row is absent."""
+    present = frozenset({chunk_content_hash("제목", "본문")})
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_content_hashes=present,
+        ),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "content_present"
+
+
+def test_content_presence_still_embeds_text_the_store_does_not_hold() -> None:
+    """A hash that is not in the store stays a candidate."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_content_hashes=frozenset({"other-hash"}),
+        ),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"
+
+
+def test_content_presence_is_off_by_default() -> None:
+    """Without the hash set the decision is unchanged."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"
+    assert decision.reason == "new"
+
+
+def test_play_presence_skips_a_canonical_miss_whose_play_is_already_stored() -> None:
+    """A play stored under another team code is present, even when its key and hash are not."""
+    from src.services.rag_play_identity import play_identity
+
+    other_code = {
+        "source_table": "game_play_by_play",
+        "source_row_id": "x",
+        "title": "t",
+        "content": "경기일: 2026-08-16, 경기: OB vs HT, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃",
+    }
+    present = frozenset({play_identity(other_code["content"])})
+    chunk = {
+        "source_table": "game_play_by_play",
+        "source_row_id": "20260816DBKIA0_7",
+        "title": "t",
+        "content": "경기일: 2026-08-16, 경기: DB vs KIA, 이닝: 1회top, 투수: 미상, 타자: 김대한, 내용: 김대한 : 삼진 아웃",
+    }
+
+    decision = decide_incremental_candidate(
+        chunk,
+        None,
+        None,
+        IncrementalDecisionOptions(
+            desired_index_version="rag-v1",
+            require_vector=True,
+            require_primary_embedding=False,
+            present_play_identities=present,
+        ),
+    )
+
+    assert decision.should_reembed is False
+    assert decision.reason == "play_present"
+
+
+def test_play_presence_is_off_by_default() -> None:
+    """Without the identity set the decision does not change."""
+    decision = decide_incremental_candidate(
+        _chunk(),
+        None,
+        None,
+        _options(require_vector=True, require_primary_embedding=False),
+    )
+
+    assert decision.action == "REEMBED"

@@ -46,10 +46,11 @@ def get_invalid_games_for_year(year: int) -> list[dict[str, str]]:
                 SELECT game_id, game_date
                 FROM game
                 WHERE game_status IN ('COMPLETED', 'DRAW')
-                  AND game_date LIKE :year_pattern
+                  AND game_date >= CAST(:year_start AS date)
+                  AND game_date < CAST(:year_end AS date)
                   AND NOT EXISTS (SELECT 1 FROM game_batting_stats WHERE game_id = game.game_id)
             """),
-                {"year_pattern": f"{year}%"},
+                {"year_start": f"{year}-01-01", "year_end": f"{year + 1}-01-01"},
             )
             .mappings()
             .all()

@@ -19,6 +19,7 @@ from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameSummary, GameValidationMetrics
 from src.repositories.game_repository import refresh_game_status_for_date
+from src.repositories.game_status import StatusRefreshOptions
 from src.services.context_aggregator import ContextAggregator
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
@@ -114,12 +115,22 @@ async def run_review_batch(target_date: str) -> list[str]:
     logger.info("🚀 Starting Post-game Review Data Batch for %s...", target_date)
 
     target_dt_obj = parse_date_str(target_date)
-    status_result = refresh_game_status_for_date(target_date)
+    status_result = refresh_game_status_for_date(
+        target_date,
+        options=StatusRefreshOptions(caller="daily_review_batch"),
+    )
     if status_result.get("updated", 0):
         logger.info(
-            "🔄 Refreshed game statuses before review: updated=%s counts=%s",
+            "🔄 Refreshed game statuses before review: updated=%s counts=%s transitions=%s",
             status_result.get("updated", 0),
             status_result.get("status_counts", {}),
+            status_result.get("transition_counts", {}),
+        )
+    if status_result.get("skipped"):
+        logger.warning(
+            "   [warn] Status write refused for %s (%s); review proceeds on stored statuses",
+            target_date,
+            status_result.get("skip_reason"),
         )
     saved_ids: list[str] = []
 

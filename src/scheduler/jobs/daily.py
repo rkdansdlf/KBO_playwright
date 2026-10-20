@@ -25,7 +25,9 @@ from src.config.historical_backfill_policy import (
     HistoricalBackfillPolicy,
     load_historical_backfill_policy,
 )
+from src.crawlers.sweep_outcome import CrawlSweepOutcome, SweepSummary, summarize_sweep
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_SUCCESS
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_success, alert_warning
 from src.scheduler.config import (
@@ -851,22 +853,110 @@ def crawl_phase1_extra_job() -> None:
             _update_job_status("crawl_phase1_extra_job", JobStatus.FAILURE, "Exception")
 
 
-def _write_p1p2_run_marker(status: str) -> None:
-    """Record the last P1/P2 job run so the lock-health check can verify it ran today."""
+def _write_p1p2_run_marker(status: str, collection: dict[str, Any] | None = None) -> None:
+    """Record the last P1/P2 job run so the lock-health check can verify it ran today.
+
+    ``status`` is the execution state (``ok``/``skipped``/``error``) that
+    ``scripts/check_p1p2_lock_health.py`` reads, and it keeps meaning only that:
+    a fatal error in the job itself. ``collection`` is the separate data state.
+    One job can execute cleanly and collect nothing, and a marker that collapsed
+    the two would have to either hide the clean execution or invent a lock
+    problem out of a data one.
+
+    Args:
+        status: Execution state for the lock-health check.
+        collection: Optional sweep report from :func:`SweepSummary.as_dict`.
+
+    """
     try:
         P1P2_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
-        P1P2_RUN_MARKER.write_text(
-            json.dumps({"ts": datetime.now(KST).isoformat(), "status": status}, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        payload: dict[str, Any] = {"ts": datetime.now(KST).isoformat(), "status": status}
+        if collection is not None:
+            payload["collection"] = collection
+        P1P2_RUN_MARKER.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     except OSError:
         logger.exception("Failed to write P1/P2 run marker")
+
+
+def _run_p1p2_child(name: str, runner: Callable[[list[str] | None], CrawlSweepOutcome | None]) -> CrawlSweepOutcome:
+    """Run one P1/P2 child in-process and describe what it did.
+
+    A child that raises is recorded rather than propagated. Every child writes
+    its own ledger row and dead letter before it raises, so letting the
+    exception out would abandon the children that had not run yet -- losing
+    their collection for the day -- while the failure it carries is already
+    written down. The sweep reports it through its own status instead, which is
+    also what keeps a second attempt from re-crawling every team and adding a
+    duplicate dead letter for a failure this run already recorded.
+
+    Args:
+        name: The child's short name, as the sweep reports it.
+        runner: The child's CLI entrypoint.
+
+    Returns:
+        The child's outcome; a raising or silent child becomes a failed one.
+
+    """
+    logger.info("Running %s crawler...", name)
+    try:
+        outcome = runner(["--save"])
+    except SCHEDULER_JOB_EXCEPTIONS as exc:
+        logger.exception("P1/P2 child crawler %s raised", name)
+        return CrawlSweepOutcome.launch_failure(crawler=name, error=exc)
+    if outcome is None:
+        logger.warning("P1/P2 child %s returned no outcome", name)
+        return CrawlSweepOutcome.unreported(crawler=name)
+    return outcome
+
+
+def _report_p1p2_sweep(summary: SweepSummary) -> None:
+    """Project a finished sweep onto the tracker, the marker and the incident ledger.
+
+    The three channels answer different questions, and none can stand in for
+    another: the tracker says whether the job executed, the marker records that
+    next to what was collected, and the incident is what an operator is actually
+    told about.
+
+    Args:
+        summary: The sweep's aggregated child outcomes.
+
+    """
+    detail = summary.describe()
+    collection = summary.as_dict()
+    if summary.status == RUN_STATUS_SUCCESS:
+        logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
+        alert_success("crawl_p1p2_data_job", detail)
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status("crawl_p1p2_data_job", JobStatus.SUCCESS, "Completed", details=collection)
+    elif summary.status == RUN_STATUS_FAILED:
+        logger.error("=== P1/P2 Data Crawlers Collected Nothing: %s ===", detail)
+        alert_warning("crawl_p1p2_data_job", f"every crawler failed: {detail}")
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status(
+            "crawl_p1p2_data_job",
+            JobStatus.FAILURE,
+            f"Every crawler failed: {detail}",
+            details=collection,
+        )
+    else:
+        logger.warning("=== P1/P2 Data Crawlers Finished Partially: %s ===", detail)
+        alert_warning("crawl_p1p2_data_job", f"partial sweep: {detail}")
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status("crawl_p1p2_data_job", JobStatus.WARNING, f"Partial sweep: {detail}", details=collection)
 
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_p1p2_data_job() -> None:
-    """P1/P2 Crawlers: seat sections, parking, stadium food."""
+    """P1/P2 Crawlers: seat sections, parking, stadium food.
+
+    Each child is aggregated rather than judged by whether it raised. The three
+    entrypoints returned ``None`` until 2026-10-19, so a sweep in which every
+    team failed and one in which everything was stored were the same event, and
+    the job alerted success for both while ``seat`` lost all teams to
+    ``FETCH_HTTP_ERROR``. The children now return their outcome, and this job
+    reports what the sweep collected separately from the fact that it ran.
+    """
     _register_job("crawl_p1p2_data_job", dependencies=["crawl_daily_games"])
 
     can_run, reason = _can_run_job("crawl_p1p2_data_job")
@@ -882,21 +972,17 @@ def crawl_p1p2_data_job() -> None:
             from src.cli.collection.crawl_parking import main as parking_main
             from src.cli.collection.crawl_seat_sections import main as seat_main
             from src.cli.collection.crawl_stadium_food import main as food_main
-
-            logger.info("Running seat sections crawler...")
-            seat_main(["--save"])
-            logger.info("Running parking crawler...")
-            parking_main(["--save"])
-            logger.info("Running stadium food crawler...")
-            food_main(["--save"])
-            logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
-            alert_success("crawl_p1p2_data_job")
-            _write_p1p2_run_marker("ok")
-            _update_job_status("crawl_p1p2_data_job", JobStatus.SUCCESS, "Completed")
         except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("P1/P2 data crawlers failed")
+            logger.exception("P1/P2 data crawlers could not be loaded")
             _write_p1p2_run_marker("error")
-            _update_job_status("crawl_p1p2_data_job", JobStatus.FAILURE, "Exception")
+            _update_job_status("crawl_p1p2_data_job", JobStatus.FAILURE, "Import failure")
+            return
+
+        outcomes = [
+            _run_p1p2_child(name, runner)
+            for name, runner in (("seat", seat_main), ("parking", parking_main), ("food", food_main))
+        ]
+        _report_p1p2_sweep(summarize_sweep(outcomes))
 
 
 def db_reachability_check_job() -> None:

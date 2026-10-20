@@ -50,6 +50,8 @@ class SlaTracker:
             Dictionary result.
 
         """
+        from src.utils.game_status import GAME_STATUS_CANCELLED
+
         if isinstance(target_date, str) and len(target_date) == DATE_STR_LEN:
             query_date = date(int(target_date[:4]), int(target_date[4:6]), int(target_date[6:8]))
         elif isinstance(target_date, str):
@@ -58,11 +60,14 @@ class SlaTracker:
             query_date = target_date
 
         games = self.session.query(Game).filter(Game.game_date == query_date).all()
-        total = len(games)
+        # Exclude CANCELLED games from denominator -- they are not played,
+        # so no data collection is expected.
+        actionable = [g for g in games if g.game_status != GAME_STATUS_CANCELLED]
+        total = len(actionable)
         if total == 0:
             return {"date": target_date, "total": 0}
 
-        completed = [g for g in games if g.game_status in COMPLETED_LIKE_GAME_STATUSES]
+        completed = [g for g in actionable if g.game_status in COMPLETED_LIKE_GAME_STATUSES]
         if not completed:
             return {
                 "date": target_date,

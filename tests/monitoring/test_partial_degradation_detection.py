@@ -4,9 +4,18 @@ BUG-001 (`Docs/certification/bug-hunt/BH0_CONTRACTS.md`): a crawler that recorde
 ``partial`` instead of ``success`` indefinitely was not detectable. The state was:
 
     PARTIAL PARTIAL PARTIAL ... (continues)
-    AND KboCrawlerNoRecentSuccess = healthy   (partial advances last_success)
+    AND KboCrawlerNoRecentSuccess = healthy   (at the time: partial advanced last_success)
     AND KboCrawlerWriteDrop       = healthy   (records_written may be normal)
     AND degradation alert         = none      (no rule read status="partial")
+
+Half of that has moved since. ``KboCrawlerNoRecentSuccess`` now thresholds on
+``kbo_crawl_last_full_success_timestamp`` (runbook §3.2h), so a partial-only
+crawler does reach the critical -- but only after two of its own cycles, which
+for a daily collector is day three. The 24h warning below is the earlier rung,
+and it is still the only rule that reads ``status="partial"`` directly. This
+module therefore pins the invariant rather than the timeline: something must
+distinguish a partial run from a complete one, whether that is the warning or a
+dedicated series.
 
 The most dangerous shape is the one ``KboCrawlerWriteDrop`` cannot help with:
 "one of three sources quietly fails" leaves ``records_written`` healthy, so the
@@ -38,6 +47,12 @@ NOTIFICATION_RULES = PROM_DIR / "alert_rules_notifications.yml"
 #: Series that would carry a dedicated partial-degradation signal, should one
 #: be added. Checked because a series nothing reads is the same silence wearing
 #: a different hat.
+#:
+#: ``kbo_crawl_last_partial_success_timestamp`` is deliberately **not** listed.
+#: It is a diagnostic gauge (read by an operator next to the full-success one),
+#: not a degradation signal any rule thresholds on, and it carries an explicit
+#: exemption in ``tests/monitoring/test_crawler_alert_rules_contract.py``. Listing
+#: it here would demand a rule reader it is not meant to have.
 _PARTIAL_SIGNAL_PREFIXES = (
     "kbo_crawl_partial",
     "kbo_crawl_last_usable",
@@ -85,12 +100,12 @@ class TestSustainedPartialMustBeDetectable:
         assert reads_status or has_signal, (
             'BUG-001: no alert rule reads kbo_crawl_runs_total{status="partial"}, and no '
             "dedicated partial/usable-run series exists. A crawler that keeps reporting "
-            "'partial' advances kbo_crawl_last_success_timestamp (so KboCrawlerNoRecentSuccess "
-            "stays healthy) and may keep a normal records_written (so KboCrawlerWriteDrop stays "
-            "healthy). Sustained partial degradation is therefore undetectable. "
-            'Fix by adding a degradation rule on status="partial" -- deliberately NOT by '
-            "removing partial from SUCCESS_STATUSES, which would reclassify a working crawler "
-            "as an outage."
+            "'partial' may keep a normal records_written (so KboCrawlerWriteDrop stays "
+            "healthy), and the freshness rule only reaches it after two of its own cycles. "
+            "Nothing then distinguishes a partial run from a complete one, so a crawler "
+            "losing one source of three degrades silently. Fix by keeping the rule on "
+            'status="partial" -- deliberately NOT by removing partial from SUCCESS_STATUSES, '
+            "which would reclassify a working crawler as an outage."
         )
 
     def test_the_partial_signal_is_not_itself_silent(self) -> None:

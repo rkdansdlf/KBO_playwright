@@ -80,8 +80,12 @@ def main(argv: list[str] | None = None) -> int:
     with engine.connect() as conn:
         if args.year:
             rows = conn.execute(
-                text("SELECT DISTINCT game_date FROM game WHERE game_date LIKE :y ORDER BY game_date"),
-                {"y": f"{args.year}-%"},
+                text(
+                    "SELECT DISTINCT game_date FROM game"
+                    " WHERE game_date >= CAST(:start AS date) AND game_date < CAST(:end AS date)"
+                    " ORDER BY game_date"
+                ),
+                {"start": f"{args.year}-01-01", "end": f"{args.year + 1}-01-01"},
             ).fetchall()
         else:
             rows = conn.execute(text("SELECT DISTINCT game_date FROM game ORDER BY game_date")).fetchall()
@@ -98,7 +102,9 @@ def main(argv: list[str] | None = None) -> int:
         if game_date in processed:
             skipped += 1
             continue
-        ymd = game_date.replace("-", "")
+        # ``game_date`` 는 date 객체다(postgres). 문자열로 가정하면
+        # ``date.replace(sep, altsep)`` 가 인자를 정수로 읽어 TypeError 가 난다.
+        ymd = str(game_date).replace("-", "")
         try:
             buf = StringIO()
             with redirect_stdout(buf):

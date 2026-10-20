@@ -70,6 +70,7 @@ class RefreshManifestSpec:
     topics: Sequence[str] | None = None
     output_dir: Path | None = None
     stability: Mapping[str, Any] | None = None
+    status_transitions: Mapping[str, Any] | None = None
 
 
 def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: object) -> Path:
@@ -106,6 +107,12 @@ def write_refresh_manifest(spec: RefreshManifestSpec | None = None, **kwargs: ob
     }
     if spec.stability is not None:
         payload["stability"] = dict(spec.stability)
+    if spec.status_transitions is not None:
+        # A manifest already records which games a phase touched. It did not
+        # record what it did to them, so a sweep that rewrote 2,848 statuses left
+        # behind a manifest that read like an ordinary run. The aggregate belongs
+        # here; the per-game rows belong in the audit table.
+        payload["status_transitions"] = dict(spec.status_transitions)
     path = output_path / f"{stamp}_{spec.phase}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path

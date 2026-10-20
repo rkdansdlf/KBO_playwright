@@ -1212,6 +1212,94 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    # A game cannot be finished in fewer than five innings. Five is the
+    # league's own minimum for a result to exist: below it there is no winner to
+    # record, which is why such a game is declared a no-game and replayed.
+    #
+    # This check exists because the database has no vocabulary for that verdict.
+    # 20260830LGLT0 was declared a no-game by the umpire after three innings of
+    # rain -- the declaration is stored in its own play-by-play, "3회말 1번타순
+    # 3구 후 우천으로 인한 노게임 선언" -- yet it sits as COMPLETED carrying the
+    # partial 0-2 line as a result, and both teams count a game that produced
+    # none. Neither game_status nor the schedule parser knows what a no-game is,
+    # so nothing upstream can stop the next one.
+    #
+    # The check reads the shape rather than the verdict, and that is the point:
+    # a wrong score, a wrong status and a lost body all end in the same
+    # impossible shape, so none of them hides. It also catches the one row's
+    # repair being undone -- see scripts/maintenance/repair_no_game_declared.py,
+    # which records why that reversal is possible -- and that is what makes this
+    # a tripwire instead of a statement about one game.
+    #
+    # Both sides must have innings. A game with no innings at all is a
+    # different gap, and game_result_without_body already reports it; counting
+    # it here as well would report the same rows under two headings.
+    #
+    # The floor is five rather than nine. A game called by weather between five
+    # and eight innings is a real result, and 23 stored games sit in that range
+    # as legitimate called games, so requiring nine would report them all as
+    # defects. Only below five is a result structurally impossible, which is
+    # also why the threshold cannot be triggered by a valid game.
+    #
+    # The difference clause covers what the floor alone cannot. The away side
+    # always bats at least as many innings as the home side, and the home side
+    # at most one fewer, so six away against three home is impossible however
+    # long the line is. No stored game has that shape, so the branch is covered
+    # synthetically rather than by production data.
+    #
+    # Years 2024 and 2025 pad every game to twelve innings with three zero
+    # extra slots, so a truncated line there reads exactly like a complete one
+    # and this check is blind for those two seasons. That blindness is not
+    # fixable by a predicate: a game called after five and a crawl that lost the
+    # ninth are the same twelve rows.
+    #
+    # The status list carries the two dead literals 'FINAL' and '종료' that its
+    # neighbouring checks also carry. Neither appears on a stored row today, but
+    # the set is the shape a future writer would most plausibly introduce, and a
+    # check that does not recognise it would report zero while the defect it
+    # exists for was happening.
+    _SqlCheck(
+        check_id="game_final_with_too_few_innings",
+        description="Finished games should have at least five innings per side",
+        table="game",
+        required_columns=("game_id", "game_status", "is_primary"),
+        referenced_tables=("game_inning_scores",),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND game_status IN ('COMPLETED', 'FINAL', 'DRAW', '종료')
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+                     AND NOT (
+                         COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END) >= 5
+                         AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END)
+                           - COUNT(DISTINCT CASE WHEN s.team_side = 'home' THEN s.inning END) IN (0, 1)
+                     )
+              )
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game.game_id AS TEXT), ''), game.game_status
+            FROM game
+            WHERE game.is_primary
+              AND game.game_status IN ('COMPLETED', 'FINAL', 'DRAW', '종료')
+              AND EXISTS (
+                  SELECT 1 FROM game_inning_scores s
+                  WHERE s.game_id = game.game_id
+                  GROUP BY s.game_id
+                  HAVING COUNT(DISTINCT s.team_side) = 2
+                     AND NOT (
+                         COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END) >= 5
+                         AND COUNT(DISTINCT CASE WHEN s.team_side = 'away' THEN s.inning END)
+                           - COUNT(DISTINCT CASE WHEN s.team_side = 'home' THEN s.inning END) IN (0, 1)
+                     )
+              )
+            LIMIT 5
+        """,
+    ),
     # A cancelled game has no result, so a row carrying both scores is asserting
     # something that did not happen. The 2001+ rows that do this are the small
     # residue of finished matches whose terminal state was overwritten, and the

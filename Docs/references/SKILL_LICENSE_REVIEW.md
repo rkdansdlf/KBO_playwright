@@ -9,7 +9,7 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
 
 2026-10-19 (선별 자산 검토 갱신)
 
-## 활성화 가능 스킬 (7개)
+## 활성화 가능 스킬 (9개)
 
 | 스킬 | 저장소 | 라이선스 | redistribution | 활성화 |
 |---|---|---|---|---|
@@ -20,6 +20,8 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
 | last30days | mvanhorn/last30days-skill | MIT | allowed | ✅ |
 | i-have-adhd | ayghri/i-have-adhd | MIT | allowed | ✅ |
 | diagram-design | cathrynlavery/diagram-design | MIT | allowed | ✅ |
+| aas | sickn33/agentic-awesome-skills | MIT | allowed | ✅ (2026-10-19 승인) |
+| scientific | K-Dense-AI/scientific-agent-skills | MIT | allowed | ✅ (2026-10-19 승인) |
 
 ### 활성화 조건
 
@@ -28,7 +30,7 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
 - 라이선스 파일(LICENSE)을 vendor 디렉터리에 함께 복사한다.
 - fetch 시 네트워크 실패 시 vendor 캐시를 사용한다.
 
-## 보류 스킬 (3개) — 선별 자산 검토 결과 (2026-10-19)
+## 선별 자산 검토 결과 (2026-10-19)
 
 ### caveman
 
@@ -49,8 +51,8 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
   2. `compose_stack` MCP 도구 — 에이전트가 선택한 스킬 ID의 구조·identity 검증 (in-memory, apply 없음)
   3. `skills_index.json` v1 스키마 — 스킬 카탈로그 메타데이터 (발견·검색용)
 - **제외 자산**: `aas stack install-preview` / `--apply` 경로 (실행·설치는 host execution의 몫이며, 하네스는 실행하지 않는다), 외부 호스트 설치 타겟 (Cursor/Codex 등) 관련 코드, Workbench 브라우저 UI.
-- **현재 상태**: `executable: false`, `apply: false` 유지 (라이선스 검토 통과, 실제 fetch/vendor는 명시적 승인 필요).
-- **활성화 조건**: 명시적 승인 시 `apply: true` 전환 후 `python3 -m tools.agent_harness fetch --skill aas` 실행. fetch 실패 시 vendor 캐시 사용.
+- **현재 상태**: `executable: true`, `apply: true` (2026-10-19 활성화 완료 — 사용자 명시 승인). `python3 -m tools.agent_harness fetch --skill aas`로 vendored됐고 `doctor`에서 `activated`로 보고된다.
+- **활성화 조건 (충족됨)**: 명시적 승인 시 `apply: true` + `executable: true` 전환 후 `python3 -m tools.agent_harness fetch --skill aas` 실행. fetch 실패 시 vendor 캐시 사용. `executable: true`가 바꾸는 것은 `doctor`의 모드 표기뿐이며, 하네스가 외부 스킬을 직접 실행하지 않는다는 `external_execution: reference_only` 계약은 그대로다.
 
 ### scientific (scientific-agent-skills)
 
@@ -62,16 +64,16 @@ AGENTS.md 계약: "Do not fetch, vendor, install, or claim execution of third-pa
   2. 시계열 분석 스킬 (aeon, TimesFM) — 시즌/경기 시계열 분석 보조
   3. 데이터 시각화 스킬 (publication-quality figures) — 리포트/스카우팅 카드 보조
 - **제외 자산**: 라이브 서비스 연동 스킬 (Benchling, LatchBio, Opentrons 등 — 외부 계정/API 키 필요), GPU/대규모 컴퓨팅 스킬 (PyTorch Lightning, Qiskit 등 — 이 프로젝트 범위 밖), 임상/규제 문서 스킬 (clinical-reports 등 — 도메인 부적합).
-- **현재 상태**: `executable: false`, `apply: false` 유지 (라이선스 검토 통과, 실제 fetch/vendor는 명시적 승인 필요).
-- **활성화 조건**: 명시적 승인 시 `apply: true` 전환 후 `python3 -m tools.agent_harness fetch --skill scientific` 실행. fetch 실패 시 vendor 캐시 사용.
+- **현재 상태**: `executable: true`, `apply: true` (2026-10-19 활성화 완료 — 사용자 명시 승인). `python3 -m tools.agent_harness fetch --skill scientific`로 vendored됐고 `doctor`에서 `activated`로 보고된다.
+- **활성화 조건 (충족됨)**: 명시적 승인 시 `apply: true` + `executable: true` 전환 후 `python3 -m tools.agent_harness fetch --skill scientific` 실행. fetch 실패 시 vendor 캐시 사용. `executable: true`가 바꾸는 것은 `doctor`의 모드 표기뿐이며, `external_execution: reference_only` 계약은 그대로다.
 
 ## 검토 요약
 
-| 스킬 | 라이선스 | 검토 결과 | apply 전환 가능 |
+| 스킬 | 라이선스 | 검토 결과 | 활성화 |
 |---|---|---|---|
 | caveman | MIT + BSL-1.1 (이중) | 압축 엔진이 BSL-1.1 → vendoring 불가 | 불가 (업스트림 재라이선스 대기) |
-| aas | MIT | 선별 3종 자산 검토 통과 | 가능 (명시적 승인 시) |
-| scientific | MIT | 선별 3종 자산 검토 통과 | 가능 (명시적 승인 시) |
+| aas | MIT | 선별 3종 자산 검토 통과 | **활성화 완료 (2026-10-19)** |
+| scientific | MIT | 선별 3종 자산 검토 통과 | **활성화 완료 (2026-10-19)** |
 
 ## 활성화 정책
 

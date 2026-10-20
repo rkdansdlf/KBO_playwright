@@ -1,4 +1,16 @@
-"""Current-season guard for game_status writes (issue #32)."""
+"""Pre-2001 writes for refresh_game_status_for_date (issue #32).
+
+The floor is a policy decision rather than a hard-coded year. The default
+policy refuses any season outside its grace window, and an approval recorded in
+``Docs/config/historical_backfill_dates.yaml`` is the one thing that lets a
+historical date be rewritten. ``update_game_status`` keeps its own
+``allow_historical`` opt-in for a single operator-specified row; this file
+covers the date-scoped scan.
+
+A refusal still reports the games it found and the transitions it would have
+made. The caller is a batch that must carry on, so "refused" has to be
+answerable from the result rather than from an exception.
+"""
 
 from datetime import date
 
@@ -6,6 +18,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from src.config.historical_backfill_policy import (
+    REASON_SEASON_NOT_APPROVED,
+    HistoricalBackfillPolicy,
+)
+from src.models.audit_trail import CorrectionAuditTrail
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -15,7 +32,11 @@ from src.models.game import (
     GamePitchingStat,
 )
 from src.repositories import game_status
-from src.repositories.game_status import refresh_game_status_for_date, update_game_status
+from src.repositories.game_status import (
+    StatusRefreshOptions,
+    refresh_game_status_for_date,
+    update_game_status,
+)
 
 SEASON = 2026
 
@@ -27,7 +48,15 @@ def _pin_season(monkeypatch):
 
 def _session(*games):
     engine = create_engine("sqlite:///:memory:")
-    for table in (Game, GameMetadata, GameInningScore, GameLineup, GameBattingStat, GamePitchingStat):
+    for table in (
+        Game,
+        GameMetadata,
+        GameInningScore,
+        GameLineup,
+        GameBattingStat,
+        GamePitchingStat,
+        CorrectionAuditTrail,
+    ):
         table.__table__.create(engine)
     session = sessionmaker(bind=engine)()
     session.add_all(games)
@@ -35,25 +64,64 @@ def _session(*games):
     return session
 
 
-@pytest.mark.parametrize(
-    ("game_id", "game_date"),
-    [("19950415LTSS0", date(1995, 4, 15)), ("20251004LTSS0", date(2025, 10, 4))],
-)
-def test_refresh_skips_prior_season_rows(game_id, game_date):
-    session = _session(
-        Game(game_id=game_id, game_date=game_date, home_score=None, away_score=None, game_status="UNRESOLVED_MISSING"),
+def _historical_game(session, *, game_status: str = "UNRESOLVED_MISSING", with_result: bool = False) -> None:
+    """Add one 1995 game with no bodies -- the shape the guard protects.
+
+    ``with_result`` gives the row a score and metadata, which is what makes the
+    refresh want to change it: a past game with a score and no body is the
+    ``CANCELLED`` inference, and a row the refresh leaves alone cannot show that
+    an approval reached the write path.
+    """
+    session.add(
+        Game(
+            game_id="19950415LTSS0",
+            game_date=date(1995, 4, 15),
+            home_score=4 if with_result else None,
+            away_score=1 if with_result else None,
+            game_status=game_status,
+        ),
     )
+    if with_result:
+        session.add(GameMetadata(game_id="19950415LTSS0", stadium_code="JAMSIL"))
+    session.commit()
+    return session
 
-    result = refresh_game_status_for_date(game_date.strftime("%Y%m%d"), today=date(2026, 10, 15), session=session)
 
-    assert result["total"] == 1
+def test_refresh_refuses_an_unapproved_pre_2001_date():
+    session = _session()
+    _historical_game(session)
+
+    result = refresh_game_status_for_date("19950415", today=date(2026, 10, 15), session=session)
+
+    assert result["skipped"] is True
+    assert result["write_allowed"] is False
     assert result["updated"] == 0
-    assert result["skipped_past_season"] == 1
+    assert result["skip_reason"] is not None
+    assert result["skip_reason"].startswith(REASON_SEASON_NOT_APPROVED)
     assert session.query(Game).one().game_status == "UNRESOLVED_MISSING"
 
 
-def test_refresh_processes_current_season_rows():
-    session = _session(
+def test_refresh_writes_an_approved_pre_2001_date():
+    """An approval in the committed policy file is what opens the write."""
+    session = _session()
+    _historical_game(session, game_status="COMPLETED", with_result=True)
+    policy = HistoricalBackfillPolicy(approved_dates=frozenset({"19950415"}))
+
+    result = refresh_game_status_for_date(
+        "19950415",
+        today=date(2026, 10, 15),
+        session=session,
+        options=StatusRefreshOptions(caller="test", policy=policy),
+    )
+
+    assert result["skipped"] is False
+    assert result["write_allowed"] is True
+    assert result["updated"] == 1
+
+
+def test_refresh_allows_2001_and_later():
+    session = _session()
+    session.add(
         Game(
             game_id="20261016LTSS0",
             game_date=date(2026, 10, 16),

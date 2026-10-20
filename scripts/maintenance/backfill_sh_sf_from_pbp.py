@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -31,11 +32,14 @@ def find_candidate_games(session: Any, year: int | None = None) -> list[str]:
     year_filter = ""
     params: dict = {}
     if year:
-        year_filter = "AND g.game_date LIKE :year_pattern"
-        params["year_pattern"] = f"{year}%"
+        # ``game_date`` 는 date 타입이라 ``LIKE '2025%'`` 가 PostgreSQL 에서 죽는다.
+        # 반열린 구간으로 걸어 dialect 중립적으로 만든다.
+        year_filter = "AND g.game_date >= :year_start AND g.game_date < :year_end"
+        params["year_start"] = date(year, 1, 1)
+        params["year_end"] = date(year + 1, 1, 1)
 
     sql = text(f"""
-        SELECT DISTINCT g.game_id
+        SELECT DISTINCT g.game_id, g.game_date
         FROM game g
         WHERE g.game_status IN ('COMPLETED', 'DRAW')
           {year_filter}
@@ -61,8 +65,11 @@ def count_rows_in_need(session: Any, year: int | None = None) -> int:
     year_filter = ""
     params: dict = {}
     if year:
-        year_filter = "AND g.game_date LIKE :year_pattern"
-        params["year_pattern"] = f"{year}%"
+        # ``game_date`` 는 date 타입이라 ``LIKE '2025%'`` 가 PostgreSQL 에서 죽는다.
+        # 반열린 구간으로 걸어 dialect 중립적으로 만든다.
+        year_filter = "AND g.game_date >= :year_start AND g.game_date < :year_end"
+        params["year_start"] = date(year, 1, 1)
+        params["year_end"] = date(year + 1, 1, 1)
 
     sql = text(f"""
         SELECT COUNT(*)

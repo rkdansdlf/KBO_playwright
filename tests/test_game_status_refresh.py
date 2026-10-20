@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.repositories.game_status as game_status_module
+from src.models.audit_trail import CorrectionAuditTrail
 from src.models.game import Game, GameBattingStat, GameInningScore, GameLineup, GameMetadata, GamePitchingStat
 from src.models.player import PlayerBasic
 from src.utils.game_status import GAME_STATUS_COMPLETED, GAME_STATUS_UNRESOLVED
@@ -21,6 +22,8 @@ def test_refresh_game_status_recovers_past_scores_from_inning_totals(monkeypatch
         GameLineup.__table__,
         GameBattingStat.__table__,
         GamePitchingStat.__table__,
+        # A status change now records an audit row in the caller's transaction.
+        CorrectionAuditTrail.__table__,
     ):
         table.create(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

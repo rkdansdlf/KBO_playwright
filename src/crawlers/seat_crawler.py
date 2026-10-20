@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.crawlers.base import BaseHttpCrawler
 from src.crawlers.failure_taxonomy import FailureCode, classify_failure, stage_for_code
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
+from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
@@ -41,18 +42,20 @@ TEAM_SEAT_SOURCES: dict[str, dict[str, Any]] = {
     "LG": {
         "source_key": "lg_twins_seat",
         "stadium_id": "JAMSIL",
-        "url": "https://www.lgtwins.com/ticket/seatinfo",
+        "url": "https://www.lgtwins.com/ticket/general",
     },
     "OB": {
         "source_key": "seoul_stadium_seat",
         "stadium_id": "JAMSIL",
-        "url": "https://www.lgtwins.com/ticket/seatinfo",
+        "url": "https://www.lgtwins.com/ticket/general",
     },
 }
 
 SECTION_PATTERNS = [
-    re.compile(r"([가-힣]+(?:석|존|zone|Zone))"),
-    re.compile(r"(블루|오렌지|레드|네이비|그린|화이트|골드|[1-3][Ff])\s*(.*?)(?:석|존)"),
+    re.compile(r"([가-힣]+(?:석|존|Zone|zone))\b"),
+    re.compile(
+        r"\b(블루|오렌지|레드|네이비|그린|화이트|골드|블랙|핑크|옐로우|퍼플|스카이|마젠타|브라운|그레이|실버|골드|VIP|테이블|가족|휠체어|응원|내야|외야|중앙|프리미엄|익사이팅|치어|응원석)\s*(석|존)\b"
+    ),
 ]
 
 
@@ -89,6 +92,14 @@ class SeatCrawler(BaseHttpCrawler):
         # call `_crawl_team_seats` directly, and a failure that raises
         # AttributeError there is a failure that cannot be reported at all.
         self._team_failures: list[tuple[str, str, str]] = []
+        #: What the last completed ``run()`` did, for an in-process caller that
+        #: has no other way to tell a full sweep from a failed one.
+        self._last_outcome: CrawlSweepOutcome | None = None
+
+    @property
+    def last_run_outcome(self) -> CrawlSweepOutcome | None:
+        """Return what the last completed ``run()`` did, or ``None`` before one."""
+        return self._last_outcome
 
     async def run(
         self,
@@ -149,6 +160,11 @@ class SeatCrawler(BaseHttpCrawler):
                     logger.info(section)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            self._last_outcome = CrawlSweepOutcome.from_run(
+                run,
+                crawler=SEAT_CRAWLER_NAME,
+                failed_units=[team for team, _, _ in self._team_failures],
+            )
             return all_sections
 
     def _record_team_failures(
@@ -280,7 +296,7 @@ class SeatCrawler(BaseHttpCrawler):
                     {
                         "stadium_id": info["stadium_id"],
                         "section_name": name,
-                        "section_code": name,
+                        "section_code": None,
                         "seat_grade": name,
                         "source_id": None,
                     },
@@ -309,13 +325,17 @@ class SeatCrawler(BaseHttpCrawler):
 
         saved = 0
         failed = 0
+        # Index raw pages by team once, before the per-team transaction loop.
+        # The old code called _raw_pages_by_team() inside the loop, which cleared
+        # self._raw_pages on the first iteration and left nothing for subsequent teams.
+        raw_by_team = self._raw_pages_by_team()
         for team_code, items in by_team.items():
             with SessionLocal() as session:
                 try:
                     repo = StadiumSeatSectionRepository(session)
                     for item in items:
-                        repo.save(item)
-                    saved_snaps = save_raw_snapshots(session, self._raw_pages_by_team().pop(team_code, []))
+                        repo.save(self._orm_payload(item))
+                    saved_snaps = save_raw_snapshots(session, raw_by_team.pop(team_code, []))
                     session.commit()
                     saved += len(items)
                     logger.info("[SEAT] %s saved %s sections, %s snapshots.", team_code or "-", len(items), saved_snaps)
@@ -325,6 +345,26 @@ class SeatCrawler(BaseHttpCrawler):
                     logger.exception("Seat section save failed for %s", team_code or "-")
         self._raw_pages.clear()
         return saved, failed
+
+    @staticmethod
+    def _orm_payload(item: dict[str, Any]) -> dict[str, Any]:
+        """Return the section fields the table actually has a column for.
+
+        ``team_code`` says which team a section was read for. It is what
+        groups the rows into one transaction per team and what keys the raw
+        snapshots, but a seat section belongs to a stadium, and the table has
+        no column for it. Handing it to the ORM raised ``TypeError``, the save
+        path caught it as one of its own exceptions, and the run reported
+        zero rows written while every section had actually failed.
+
+        Args:
+            item: A section as the crawler collected it.
+
+        Returns:
+            The same section without the attribution keys.
+
+        """
+        return {key: value for key, value in item.items() if key != "team_code"}
 
     def _raw_pages_by_team(self) -> dict[str, list[dict]]:
         """Index the captured pages by team, consuming them as they are saved.

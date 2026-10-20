@@ -14,12 +14,18 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.cli.incidents import _delivery_notice_state, _suppression_reason
+from src.cli.incidents import (
+    _delivery_notice_state,
+    _suppression_reason,
+    parse_exposition_counters,
+    resolve_metrics_url,
+)
 from src.cli.incidents import main as incidents_main
 from src.cli.kbo import main as kbo_main
 from src.notifications.incident import (
@@ -42,6 +48,7 @@ from src.models.notification_incident import (
     NotificationIncident,
 )
 from src.notifications.alert_dto import utcnow
+from src.utils.metrics import DELIVERY_AUDIT_FAILURES_METRIC, INCIDENT_APPLY_FAILURES_METRIC
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -649,3 +656,155 @@ class TestMasterRouting:
     ) -> None:
         assert kbo_main(["incidents", "deliveries", "stats", "--json"]) == 0
         assert '"total": 4' in capsys.readouterr().out
+
+    def test_master_cli_dispatches_metrics(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from src.cli import incidents as module
+
+        monkeypatch.setattr(module, "fetch_exposition", lambda url: f"{DELIVERY_AUDIT_FAILURES_METRIC} 1.0\n")
+        assert kbo_main(["incidents", "metrics", "--json"]) == 0
+        assert DELIVERY_AUDIT_FAILURES_METRIC in capsys.readouterr().out
+
+
+class TestMetricsEndpoint:
+    """``kbo incidents metrics`` reads counters no table can hold.
+
+    The counters are process-local, so the command cannot import them: it would
+    read its own zero. It fetches one live process's exposition instead, which
+    makes "absent" the failure mode worth pinning down — a counter missing from
+    the exposition is not a counter that read zero.
+    """
+
+    EXPOSITION = (
+        "# HELP kbo_notification_dispatch_total Total notification deliveries\n"
+        "# TYPE kbo_notification_dispatch_total counter\n"
+        'kbo_notification_dispatch_total{channel="telegram",status="SENT"} 7.0\n'
+        f"# TYPE {DELIVERY_AUDIT_FAILURES_METRIC} counter\n"
+        f"{DELIVERY_AUDIT_FAILURES_METRIC} 3.0\n"
+        f"# TYPE {INCIDENT_APPLY_FAILURES_METRIC} counter\n"
+        f"{INCIDENT_APPLY_FAILURES_METRIC} 0.0\n"
+    )
+
+    @pytest.fixture
+    def served(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Answer the fetch with ``EXPOSITION`` instead of opening a socket."""
+        from src.cli import incidents as module
+
+        monkeypatch.setattr(module, "fetch_exposition", lambda url: self.EXPOSITION)
+
+    @staticmethod
+    def _rendered(out: str) -> dict[str, str]:
+        return {line.split()[0]: line.split()[-1] for line in out.splitlines() if line.startswith("  ")}
+
+    def test_renders_both_counters(self, served: None, capsys: pytest.CaptureFixture[str]) -> None:
+        assert incidents_main(["metrics", "--url", "http://host:8000/metrics"]) == 0
+        out = capsys.readouterr().out
+        assert "http://host:8000/metrics" in out
+        rendered = self._rendered(out)
+        assert rendered[DELIVERY_AUDIT_FAILURES_METRIC] == "3"
+        assert rendered[INCIDENT_APPLY_FAILURES_METRIC] == "0"
+
+    def test_a_missing_series_is_absent_not_zero(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from src.cli import incidents as module
+
+        monkeypatch.setattr(module, "fetch_exposition", lambda url: f"{DELIVERY_AUDIT_FAILURES_METRIC} 3.0\n")
+        assert incidents_main(["metrics"]) == 0
+        rendered = self._rendered(capsys.readouterr().out)
+        assert rendered[INCIDENT_APPLY_FAILURES_METRIC] == "(absent)"
+
+    def test_unreachable_endpoint_exits_two(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from src.cli import incidents as module
+
+        def _refuse(url: str) -> str:
+            raise httpx.ConnectError("connection refused")
+
+        monkeypatch.setattr(module, "fetch_exposition", _refuse)
+        assert incidents_main(["metrics"]) == 2
+        assert "unreachable" in capsys.readouterr().err
+
+    def test_json_reports_url_and_values(self, served: None, capsys: pytest.CaptureFixture[str]) -> None:
+        assert incidents_main(["metrics", "--url", "http://host:8000/metrics", "--json"]) == 0
+        payload = _payload(capsys)
+        assert payload["url"] == "http://host:8000/metrics"
+        assert payload["counters"][DELIVERY_AUDIT_FAILURES_METRIC] == 3
+        assert payload["counters"][INCIDENT_APPLY_FAILURES_METRIC] == 0
+
+    def test_json_marks_absence_with_null(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from src.cli import incidents as module
+
+        monkeypatch.setattr(module, "fetch_exposition", lambda url: f"{DELIVERY_AUDIT_FAILURES_METRIC} 3.0\n")
+        assert incidents_main(["metrics", "--json"]) == 0
+        assert _payload(capsys)["counters"][INCIDENT_APPLY_FAILURES_METRIC] is None
+
+
+class TestExpositionParsing:
+    """The parser against the format, not only against a hand-written fixture."""
+
+    def test_reads_what_prometheus_client_emits(self) -> None:
+        from prometheus_client import generate_latest
+
+        # ``src.utils.metrics`` is imported at module scope, so its counters sit in
+        # this process's registry — the same registration a live process exposes.
+        text = generate_latest().decode()
+        assert DELIVERY_AUDIT_FAILURES_METRIC in parse_exposition_counters(text, [DELIVERY_AUDIT_FAILURES_METRIC])
+
+    def test_labelled_samples_are_a_different_series(self) -> None:
+        """The counters are unlabelled; summing a labelled sample would overstate them."""
+        text = f'{DELIVERY_AUDIT_FAILURES_METRIC}{{channel="telegram"}} 9.0\n'
+        assert parse_exposition_counters(text, [DELIVERY_AUDIT_FAILURES_METRIC]) == {}
+
+    def test_tolerates_a_trailing_timestamp(self) -> None:
+        text = f"{DELIVERY_AUDIT_FAILURES_METRIC} 4.0 1690000000000\n"
+        parsed = parse_exposition_counters(text, [DELIVERY_AUDIT_FAILURES_METRIC])
+        assert parsed == {DELIVERY_AUDIT_FAILURES_METRIC: 4.0}
+
+    def test_ignores_help_type_and_unrelated_metrics(self) -> None:
+        text = (
+            "# HELP kbo_notification_dispatch_total Total notification deliveries\n"
+            "# TYPE kbo_notification_dispatch_total counter\n"
+            "kbo_notification_dispatch_total 1.0\n"
+        )
+        assert parse_exposition_counters(text, [DELIVERY_AUDIT_FAILURES_METRIC]) == {}
+
+    def test_skips_an_unparsable_value(self) -> None:
+        text = f"{DELIVERY_AUDIT_FAILURES_METRIC} not-a-number\n"
+        assert parse_exposition_counters(text, [DELIVERY_AUDIT_FAILURES_METRIC]) == {}
+
+
+class TestMetricsUrl:
+    """One URL is one process; the exporter is the scheduler's by default."""
+
+    def test_explicit_url_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KBO_METRICS_URL", "http://env:1/metrics")
+        monkeypatch.setenv("PROMETHEUS_PORT", "9999")
+        assert resolve_metrics_url("http://explicit:2/metrics") == "http://explicit:2/metrics"
+
+    def test_env_url_beats_the_port(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("KBO_METRICS_URL", "http://env:1/metrics")
+        monkeypatch.setenv("PROMETHEUS_PORT", "9999")
+        assert resolve_metrics_url(None) == "http://env:1/metrics"
+
+    def test_defaults_to_the_scheduler_exporter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("KBO_METRICS_URL", raising=False)
+        monkeypatch.setenv("PROMETHEUS_PORT", "9123")
+        assert resolve_metrics_url(None) == "http://127.0.0.1:9123/metrics"
+
+    def test_falls_back_to_port_8000(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("KBO_METRICS_URL", raising=False)
+        monkeypatch.delenv("PROMETHEUS_PORT", raising=False)
+        assert resolve_metrics_url(None) == "http://127.0.0.1:8000/metrics"

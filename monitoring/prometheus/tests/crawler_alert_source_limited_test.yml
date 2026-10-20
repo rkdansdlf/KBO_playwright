@@ -7,20 +7,26 @@
 #
 #   promtool test rules monitoring/prometheus/tests/crawler_alert_source_limited_test.yml
 #
-# The two series answer different questions and the fixtures keep them apart:
+# The two gauges answer different questions and the fixtures keep them apart:
 #
-#   kbo_crawl_runs_total                        -> is the crawler running?
-#   kbo_crawl_last_source_consulted_timestamp   -> did it actually ask the source?
+#   kbo_crawl_last_source_consulted_timestamp  -> did it actually ask the source?
+#   kbo_crawl_last_run_timestamp               -> is it still running?
+#
+# The run guard used to be `increase(kbo_crawl_runs_total[6h]) > 0`. That left the
+# rule firing only in the six hours after each daily run, so a crawler skipped for
+# weeks produced a warning that resolved and reopened every day. The guard is now
+# `last_run` against the crawler's own period, the same shape as
+# KboCrawlerNoRecentSuccess, so the question "is it running" is read directly.
 #
 # `for: 30m` needs an interval that can reach it; 30s keeps the arithmetic
 # simple. `time()` starts at 0 in promtool, so a gauge left at 0 reads as
 # maximally stale -- which is the correct meaning of "never consulted", and is
 # pinned as its own case below.
 #
-# Every series runs to the end of its test. A series that stops early makes
-# `increase(...)` return no sample at all, which would let a case "pass" because
-# the data ran out rather than because the guard worked -- the exact confusion
-# these fixtures exist to prevent.
+# Every series runs to the end of its test. A series that stops early leaves no
+# sample at the evaluation time, which would let a case "pass" because the data
+# ran out rather than because the guard worked -- the exact confusion these
+# fixtures exist to prevent.
 
 rule_files:
   - ../alert_rules_crawler.yml
@@ -29,12 +35,15 @@ evaluation_interval: 30s
 
 tests:
   # ── Fires: running, but nothing has been asked for two days ────────
-  # 50h at a 30s interval is 6000 samples.
+  # 50h at a 30s interval is 6000 samples, so the advancing timestamps use a
+  # +30 step and read as real epoch seconds.
   - interval: 30s
     input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="roster_transactions"}'
+        values: '86400x6000'
       # Runs keep arriving, so this is not a stopped crawler.
-      - series: 'kbo_crawl_runs_total{crawler="roster_transactions",status="success"}'
-        values: '0+1x6000'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="roster_transactions"}'
+        values: '0+30x6000'
       # Last consulted at t=0; never updated again.
       - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="roster_transactions"}'
         values: '0x6000'
@@ -63,8 +72,10 @@ tests:
   # 60h at 30s is 7200 samples.
   - interval: 30s
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="game_detail",status="success"}'
-        values: '0+1x7200'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="game_detail"}'
+        values: '86400x7200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="game_detail"}'
+        values: '0+30x7200'
       # Advances with the clock, so the age never crosses the threshold. This is
       # the healthy case that must not fire -- a rule that pages on a working
       # crawler teaches the reader to dismiss it.
@@ -75,20 +86,53 @@ tests:
         alertname: KboCrawlerSourceNeverConsulted
         exp_alerts: []
 
-  # ── Stays quiet: a crawler that stopped running ─────────────────────
-  # The runs counter goes flat early and stays flat to the end, so the only
-  # reason this does not fire is the 6h guard -- if the series merely ran out,
-  # `increase()` would return nothing and the case would pass without testing it.
+  # ── Stays quiet: a crawler that has not run for two of its cycles ───
+  # `last_run` stays at 0, so its age and the consulted age cross 48h together.
+  # The guard therefore never opens for a full `for: 30m`, and a crawler that is
+  # not running is left to the scheduler's staleness rule instead of being
+  # reported twice. Before the guard existed the series would simply have run
+  # out; pinning it here is what proves the guard is doing the work.
   - interval: 30s
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="parking",status="success"}'
-        values: '0+1x240 240x5760'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="parking"}'
+        values: '86400x6000'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="parking"}'
+        values: '0x6000'
       - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="parking"}'
         values: '0x6000'
     alert_rule_test:
       - eval_time: 50h
         alertname: KboCrawlerSourceNeverConsulted
         exp_alerts: []
+
+  # ── Fires: a crawler that stopped 45h ago is still judged ───────────
+  # The window is two of the crawler's own cycles (2 x 24h), not one: a daily
+  # crawler that last ran 45h ago is late, and its source has not been asked for
+  # even longer. Narrowing the guard to a single cycle would silence this case.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="food"}'
+        values: '86400x6000'
+      # Ran normally until t=18000 (5h), then stopped: at the 50h evaluation the
+      # last run is 45h old -- still inside two cycles, so the guard is open.
+      - series: 'kbo_crawl_last_run_timestamp{crawler="food"}'
+        values: '0+30x601 18000x5399'
+      - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="food"}'
+        values: '0x6000'
+    alert_rule_test:
+      - eval_time: 50h
+        alertname: KboCrawlerSourceNeverConsulted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: food
+            exp_annotations:
+              summary: "크롤러 소스 미조회: food"
+              description: >-
+                food 은(는) 48시간 넘게 소스를 한 번도 조회하지 않았습니다.
+                실행은 계속되고 있으므로 정지가 아니라 준법·robots 정책으로 건너뛰고 있을 가능성이 높습니다.
+                `kbo_crawl_source_limited_total` 로 사유를 확인하고, 그 차단이 수용 가능한지 판단하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
   # ── Fires: a crawler reporting success without ever asking ──────────
   # The gauge is initialised to 0 so the series exists at all, which reads as
@@ -98,8 +142,10 @@ tests:
   # source is the condition worth seeing, not an edge to suppress.
   - interval: 30s
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="brand_new",status="success"}'
-        values: '0+1x6000'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="brand_new"}'
+        values: '86400x6000'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="brand_new"}'
+        values: '0+30x6000'
       - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="brand_new"}'
         values: '0x6000'
     alert_rule_test:
@@ -122,17 +168,34 @@ tests:
   # consults the source, so the age returns inside the threshold.
   - interval: 30s
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="food",status="success"}'
-        values: '0+1x6000'
-      # Stale for a while, then brought current at t=100000s and kept there.
-      - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="food"}'
-        values: '0x3333 100050x2667'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="roster_transactions"}'
+        values: '86400x6000'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="roster_transactions"}'
+        values: '0+30x6000'
+      # Stale past 48h (t=172980), then brought current and kept there.
+      - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="roster_transactions"}'
+        values: '0x5767 172980x233'
     alert_rule_test:
-      # Before the refresh the age is over 48h, but `for: 30m` has not elapsed.
-      - eval_time: 96600s
+      # Ten minutes after the threshold the rule is pending at most: `for: 30m`
+      # has not elapsed, so one skipped run does not page.
+      - eval_time: 173400s
         alertname: KboCrawlerSourceNeverConsulted
         exp_alerts: []
 
+      - eval_time: 50h
+        alertname: KboCrawlerSourceNeverConsulted
+        exp_alerts: []
+
+  # ── Stays quiet: a crawler with no published interval ───────────────
+  # An exempt crawler has no `kbo_crawl_expected_interval_seconds` series, so the
+  # cadence guard matches nothing and the rule skips it. Absence is not zero.
+  - interval: 30s
+    input_series:
+      - series: 'kbo_crawl_last_run_timestamp{crawler="awards"}'
+        values: '0+30x6000'
+      - series: 'kbo_crawl_last_source_consulted_timestamp{crawler="awards"}'
+        values: '0x6000'
+    alert_rule_test:
       - eval_time: 50h
         alertname: KboCrawlerSourceNeverConsulted
         exp_alerts: []

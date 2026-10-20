@@ -55,13 +55,15 @@ def conn():
         yield c
 
 
-def _game(conn, game_id: str, *, home: int | None, away: int | None, status: str = "COMPLETED") -> None:
+def _game(
+    conn, game_id: str, *, home: int | None, away: int | None, status: str = "COMPLETED", primary: bool = True
+) -> None:
     conn.execute(
         text(
             "INSERT INTO game (game_id, game_date, game_status, home_score, away_score, is_primary)"
-            " VALUES (:g, '2026-08-20', :s, :h, :a, 1)"
+            " VALUES (:g, '2026-08-20', :s, :h, :a, :p)"
         ),
-        {"g": game_id, "s": status, "h": home, "a": away},
+        {"g": game_id, "s": status, "h": home, "a": away, "p": 1 if primary else 0},
     )
 
 
@@ -261,3 +263,131 @@ class TestTheScoreAndTheInningsDisagree:
         _innings(conn, "20260820HTHH0", home=[3, 1, 0, 2], away=[])
 
         assert _result(conn, "game_score_disagrees_with_innings").status == "pass"
+
+
+class TestAFinishedGameCannotBeShorterThanTheMinimum:
+    """Five is the league's own floor for a result, so below it is impossible.
+
+    The check exists because the database cannot say what a no-game is.
+    ``20260830LGLT0`` was declared void after three innings of rain, is stored
+    COMPLETED, and carries the partial 0-2 as a result -- and nothing upstream
+    can stop the next one, because neither the status vocabulary nor the
+    schedule parser knows the verdict exists. Every case below is about the
+    shape being impossible rather than about any particular score, because that
+    is the only property the database retains after the verdict is lost.
+    """
+
+    def test_a_three_inning_result_is_reported(self, conn) -> None:
+        """The stored row's shape: a result out of an inning line that cannot hold one."""
+        _game(conn, "20260830LGLT0", home=0, away=2)
+        _innings(conn, "20260830LGLT0", away=[0, 0, 0], home=[0, 0, 0])
+
+        result = _result(conn, "game_final_with_too_few_innings")
+
+        assert result is not None, "no check reports a finished game shorter than any real one"
+        assert result.status == "fail"
+        assert result.violation_count == 1
+        assert result.sample_ids == ("20260830LGLT0",)
+
+    def test_four_innings_is_still_too_short(self, conn) -> None:
+        """The boundary below the floor, so the number is a tested edge not a guess."""
+        _game(conn, "20260830FOUR", home=3, away=4)
+        _innings(conn, "20260830FOUR", away=[0, 0, 0, 0], home=[0, 0, 0, 0])
+
+        result = _result(conn, "game_final_with_too_few_innings")
+
+        assert result.status == "fail"
+        assert result.violation_count == 1
+
+    @pytest.mark.parametrize(
+        ("away_innings", "home_innings"),
+        [
+            (5, 5),
+            (6, 5),
+            (8, 7),
+            (9, 9),
+            (9, 8),
+        ],
+        ids=["floor", "home-one-behind", "called-short", "regulation", "no-bottom-ninth"],
+    )
+    def test_every_game_reaching_the_floor_is_a_whole_game(self, conn, away_innings, home_innings) -> None:
+        """23 stored games are called between five and eight innings.
+
+        A threshold of nine would report all of them as defects, and those are
+        real results. Weather can end a game from the fifth onward, so the floor
+        has to be the point below which no result exists, not the length of the
+        common case.
+        """
+        _game(conn, "20260830REAL", home=1, away=2)
+        _innings(conn, "20260830REAL", away=[0] * away_innings, home=[0] * home_innings)
+
+        result = _result(conn, "game_final_with_too_few_innings")
+
+        assert result.status == "pass", f"{away_innings}/{home_innings} innings were reported as impossible"
+
+    def test_a_home_side_further_than_one_behind_is_reported(self, conn) -> None:
+        """The floor alone misses a long line whose halves do not match.
+
+        The away side always bats at least as many innings as the home side and
+        the home side at most one fewer, so six away against three home cannot
+        be a real game however long it reads. No stored game has this shape, so
+        without this branch the difference clause would have no test at all.
+        """
+        _game(conn, "20260830MISMATCH", home=3, away=6)
+        _innings(conn, "20260830MISMATCH", away=[0, 0, 0, 0, 0, 0], home=[0, 0, 0])
+
+        result = _result(conn, "game_final_with_too_few_innings")
+
+        assert result.status == "fail"
+        assert result.violation_count == 1
+
+    def test_a_cancelled_game_with_a_short_line_is_not_a_result(self, conn) -> None:
+        """A void game has no result, so it cannot have too few innings for one.
+
+        This is the state ``repair_no_game_declared`` writes: the row keeps its
+        played innings and loses its status as a result. If the check counted it,
+        the repair itself would leave the gate red and the check would be
+        reporting its own fix.
+        """
+        _game(conn, "20260830LGLT0", home=None, away=None, status="CANCELLED")
+        _innings(conn, "20260830LGLT0", away=[0, 0, 0], home=[0, 0, 0])
+
+        result = _result(conn, "game_final_with_too_few_innings")
+
+        assert result.status == "pass", "a voided game was still counted as having a result"
+
+    def test_a_game_that_has_not_been_played_is_not_reported(self, conn) -> None:
+        _game(conn, "20260830FUTURE", home=None, away=None, status="SCHEDULED")
+
+        assert _result(conn, "game_final_with_too_few_innings").status == "pass"
+
+    def test_a_game_with_no_innings_belongs_to_a_different_check(self, conn) -> None:
+        """Counting it here too would report the same rows under two headings.
+
+        ``game_result_without_body`` already covers a stored result whose body
+        was never collected. The two are different facts: one is a result with
+        no evidence, the other is evidence that cannot hold a result.
+        """
+        _game(conn, "20260820HTHH0", home=6, away=10)
+
+        assert _result(conn, "game_final_with_too_few_innings").status == "pass"
+
+    def test_one_sided_innings_are_not_a_short_game(self, conn) -> None:
+        """Both sides must be present; one side's absence is a partial crawl."""
+        _game(conn, "20260830ONE", home=0, away=0)
+        _innings(conn, "20260830ONE", away=[0, 0, 0], home=[])
+
+        assert _result(conn, "game_final_with_too_few_innings").status == "pass"
+
+    def test_a_non_primary_row_is_someone_elses_version(self, conn) -> None:
+        """A duplicated or superseded row is not the game the gate describes.
+
+        Every check in this pack reads ``is_primary`` first, and dropping it
+        would count the same game once per copy rather than once. No stored
+        duplicate is short, so this branch has no production row to fall back on
+        and only a test can hold it.
+        """
+        _game(conn, "20260830DUP", home=0, away=2, primary=False)
+        _innings(conn, "20260830DUP", away=[0, 0, 0], home=[0, 0, 0])
+
+        assert _result(conn, "game_final_with_too_few_innings").status == "pass"

@@ -140,12 +140,37 @@ The operational scheduler writes all `logger` output to `logs/scheduler.launchd.
 scans the rotating error log tail for forbidden lock-error signatures (bounded to the last
 8 MB so the multi-MB log is never loaded whole).
 
-`crawl_p1p2_data_job` writes a run marker on every execution:
+`crawl_p1p2_data_job` writes a run marker on every execution. It carries two
+independent readings — whether the job ran, and what the crawlers collected:
 
 ```bash
 cat data/last_runs/p1p2_data.json
-# {"ts": "2026-07-18T06:30:04+09:00", "status": "ok"}
+# {"ts": "2026-07-18T06:30:04+09:00", "status": "ok",
+#  "collection": {"status": "partial", "written": 41, "failed": 3,
+#                 "children": [{"crawler": "seat", "status": "failed", "written": 0,
+#                               "failed": 2, "units": ["HT", "SSG"],
+#                               "error_code": "FETCH_HTTP_ERROR", "detail": null}, ...]}}
 ```
+
+- `status` is the **execution** verdict: `ok` | `skipped` | `error`, and it is
+  the only field `check_p1p2_lock_health.py` reads (it fails on `error`). A
+  collection failure deliberately does **not** set it: a lock check that answered
+  a data question would open a lock investigation on every quiet morning
+  (2026-10-19: `seat` lost both teams and the job still logged "Completed
+  Successfully" and sent a success alert).
+- `collection` is the **data** verdict, aggregated from the child runs:
+  `status` is `success` | `partial` | `failed` | `skipped`, `written`/`failed`
+  are row totals, and `children` names each crawler's own reading. `units` lists
+  the teams that failed, so a warning can name them without a database query.
+  A child that could not start at all is recorded as `launch_failure` (its
+  `detail` carries the exception) and the sweep continues rather than abandoning
+  the children that had not run yet.
+
+The tracker entry is a third reading, and it maps the sweep onto the job status:
+`success` → `SUCCESS`, `partial` → `WARNING`, `failed` → `FAILURE`, skip →
+`SKIPPED`. Only a fully successful sweep sends `alert_success`; `partial` and
+`failed` send `alert_warning` with the same `collection` payload, because neither
+is a failure of the job's execution.
 
 Automated verification — a `lock_health_check` job runs daily at **06:50 KST** (after the
 06:45 `crawl_p1p2_data` job). It invokes `scripts/check_p1p2_lock_health.py --require-run`

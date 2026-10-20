@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN
@@ -49,6 +50,7 @@ from src.services.relay_runs import (
     RelayOutcome,
     RelayRunLedger,
 )
+from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED
 from src.utils.team_codes import normalize_kbo_game_id
 from src.validators.game_data_validator import validate_game_data
 
@@ -64,6 +66,9 @@ logger = logging.getLogger(__name__)
 #: Everything a database write can raise, whatever the driver happens to use.
 GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, TimeoutError, OSError, RuntimeError, ValueError, TypeError)
 LAST_MONTH_OF_YEAR = 12
+#: 경기가 열리지 않아 상세(boxscore)가 존재할 수 없는 상태. 범위 조회의 크롤 대상에서
+#: 빼지 않으면 크롤이 FETCH_HTTP_ERROR 로 실패해 DLQ 에 pending 으로 쌓인다(2026-10-19).
+DETAIL_IMPOSSIBLE_STATUSES = (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED)
 ROW_FIELD_COUNT = 2
 
 DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
@@ -289,7 +294,14 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
     with SessionLocal() as session:
         rows = (
             session.query(Game.game_id, Game.game_date)
-            .filter(Game.game_id >= start_id, Game.game_id < end_id)
+            .filter(
+                Game.game_id >= start_id,
+                Game.game_id < end_id,
+                or_(
+                    Game.game_status.is_(None),
+                    Game.game_status.notin_(DETAIL_IMPOSSIBLE_STATUSES),
+                ),
+            )
             .order_by(Game.game_id.asc())
             .all()
         )

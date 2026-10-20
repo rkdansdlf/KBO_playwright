@@ -136,10 +136,10 @@ def _table_issue_counts(rows: list[dict[str, Any]]) -> tuple[int, int]:
 def _check_rag_chunks_health(session: Session) -> dict[str, Any]:
     """Check RAG chunks count and category breakdown."""
     total_chunks = session.query(RagChunk).count()
-    pr_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("press_release")).count()
-    ms_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("milestone")).count()
-    fut_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("futures_schedule")).count()
-    spl_chunks = session.query(RagChunk).filter(RagChunk.meta.contains("player_splits")).count()
+    pr_chunks = session.query(RagChunk).filter(RagChunk.meta.op("->>")("category") == "press_release").count()
+    ms_chunks = session.query(RagChunk).filter(RagChunk.meta.op("->>")("category") == "milestone").count()
+    fut_chunks = session.query(RagChunk).filter(RagChunk.meta.op("->>")("category") == "futures_schedule").count()
+    spl_chunks = session.query(RagChunk).filter(RagChunk.meta.op("->>")("category") == "player_splits").count()
 
     healthy = total_chunks > 0
     return {

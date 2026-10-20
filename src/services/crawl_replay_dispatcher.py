@@ -82,7 +82,7 @@ from src.crawlers.schedule_crawler import (
     SCHEDULE_TARGET_TYPE,
     ScheduleCrawler,
 )
-from src.crawlers.seat_crawler import SEAT_CRAWLER_NAME, SEAT_TARGET_TYPE, SeatCrawler
+from src.crawlers.seat_crawler import SEAT_CRAWLER_NAME, SEAT_TARGET_TYPE, TEAM_SEAT_SOURCES, SeatCrawler
 from src.crawlers.source_limited import SOURCE_LIMITED_OUTCOME, source_limited_reason
 from src.crawlers.team_history_crawler import (
     TEAM_HISTORY_CRAWLER_NAME,
@@ -686,13 +686,62 @@ def _replay_parking(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayO
 
 
 def _replay_seat(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOutcome:
-    """Replay the one team's seat page the letter names."""
-    return _replay_team_page(
-        SeatCrawler(),
+    """Replay the one team's seat page the letter names.
+
+    Seat deliberately does not go through :func:`_replay_team_page`. That helper
+    is typed for the two crawlers whose ``run()`` accepts
+    ``raise_on_persist_error`` -- ``FoodCrawler`` and ``ParkingCrawler`` -- and
+    ``SeatCrawler`` does not, so passing one there would raise ``TypeError``
+    before a page was ever fetched. It is not merely a missing type hint either:
+    ``_TEAM_SOURCES`` only holds food and parking, so a seat letter went into
+    ``_replay_team_page`` and died on ``_TEAM_SOURCES[crawler_name]`` with
+    ``KeyError('seat')``. That message reached the dead letter as its
+    ``error_message`` -- ``'seat'`` -- which is why four letters exhausted
+    without anyone reading why.
+    """
+    team_code = dead_letter.target_id
+    if not team_code:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="unaddressable",
+            error_code="VALIDATION_SCHEMA",
+            error_message="dead letter carries no team code",
+        )
+    if team_code not in TEAM_SEAT_SOURCES:
+        return ReplayOutcome(
+            success=False,
+            replay_run_id=replay_run_id,
+            status="unaddressable",
+            error_code="VALIDATION_SCHEMA",
+            error_message=f"dead letter carries an unknown team code: {team_code}",
+        )
+    spec = _spec_for(
         dead_letter,
         replay_run_id,
-        crawler_name=SEAT_CRAWLER_NAME,
-        target_type=SEAT_TARGET_TYPE,
+        crawler=SEAT_CRAWLER_NAME,
+        target_type=dead_letter.target_type or SEAT_TARGET_TYPE,
+        target_id=team_code,
+        season=dead_letter.season,
+    )
+    run_coro_blocking(_execute_seat_replay(SeatCrawler(), spec, team_code))
+    return _outcome_from_persisted_run(replay_run_id)
+
+
+async def _execute_seat_replay(crawler: SeatCrawler, spec: CrawlRunSpec, team_code: str) -> None:
+    """Re-crawl one team's seat page.
+
+    ``raise_on_persist_error`` is deliberately absent, matching
+    ``SeatCrawler.run()``. Unlike food and parking, the seat save swallows its
+    failures and returns a ``(saved, failed)`` pair, so there is no stored
+    exception to re-raise -- and the run ledger still carries the outcome,
+    which is what the replay is judged on.
+    """
+    await crawler.run(
+        save=True,
+        team_filter=team_code,
+        run_spec=spec,
+        record_dead_letters=False,
     )
 
 

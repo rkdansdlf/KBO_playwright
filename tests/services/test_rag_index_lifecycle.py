@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -45,3 +46,52 @@ def test_identity_backfill_apply_populates_shared_fields() -> None:
     assert row.index_version == "rag-v2"
     assert row.index_status == "ACTIVE"
     assert row.indexed_at is not None
+
+
+def test_a_preview_restores_the_value_held_not_none() -> None:
+    """Reverting to None is not a faithful preview.
+
+    ``index_status`` is NOT NULL, so a row that already read ``ACTIVE`` came
+    back from the preview as None, the session stayed dirty, and the run failed
+    at flush -- after having printed its counts, which is the one moment a reader
+    trusts them.
+    """
+    stamp = datetime(2026, 10, 12)
+    row = SimpleNamespace(
+        source_table="game",
+        source_row_id="g1",
+        title="Game",
+        content="Content",
+        content_hash="a" * 64,
+        index_version="rag-v1",
+        index_status="ACTIVE",
+        indexed_at=stamp,
+    )
+
+    report = backfill_identity_rows([row])
+
+    assert report.changed == 0
+    assert row.index_status == "ACTIVE"
+    assert row.content_hash == "a" * 64
+    assert row.indexed_at == stamp
+
+
+def test_a_preview_restores_each_field_to_its_own_original() -> None:
+    """Partial identity is the normal state after migration 051; restore per field."""
+    row = SimpleNamespace(
+        source_table="game",
+        source_row_id="g1",
+        title="Game",
+        content="Content",
+        content_hash="a" * 64,
+        index_version=None,
+        index_status="ACTIVE",
+        indexed_at=None,
+    )
+
+    backfill_identity_rows([row])
+
+    assert row.content_hash == "a" * 64
+    assert row.index_version is None
+    assert row.index_status == "ACTIVE"
+    assert row.indexed_at is None
