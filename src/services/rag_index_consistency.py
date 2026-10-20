@@ -231,7 +231,7 @@ _SINGLE_STORE_EMBEDDING_EXEMPT_STATUSES = frozenset({"DELETED", "TOMBSTONED", "P
 
 
 def audit_single_store_session(session: Session) -> IndexConsistencyReport:
-    """Audit Oracle's combined sparse/vector ``rag_chunks`` table via bounded aggregate queries."""
+    """Audit a store that keeps the sparse and vector indexes in one ``rag_chunks`` table."""
     from sqlalchemy import and_, func, or_, select
 
     from src.models.rag_chunk import RagChunk
