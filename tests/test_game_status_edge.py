@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.models.audit_trail import CorrectionAuditTrail
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -41,6 +42,8 @@ def _setup_game_tables():
     GameLineup.__table__.create(engine)
     GameBattingStat.__table__.create(engine)
     GamePitchingStat.__table__.create(engine)
+    # A status change now records an audit row in the caller's transaction.
+    CorrectionAuditTrail.__table__.create(engine)
     return engine, sessionmaker(bind=engine)()
 
 

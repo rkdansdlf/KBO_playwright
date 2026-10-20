@@ -21,10 +21,11 @@ from src.crawlers.failure_taxonomy import (
 )
 from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome
+from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
-from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR, CrawlRunSpec
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_food_repository import StadiumFoodMenuItemRepository, StadiumFoodVendorRepository
 from src.services.crawl_dead_letter_service import enqueue_failure
@@ -86,11 +87,19 @@ class FoodCrawler(BaseHttpCrawler):
         #: "소스는 답했는데 쓰기가 죽은 것"을 구분할 수 있다. 둘 다 결과적으로
         #: 빈 테이블을 남기므로, 이 구분이 없으면 동일하게 보인다.
         self._persist_failures: list[tuple[str, str, str]] = []
+        #: What the last completed ``run()`` did, for an in-process caller that
+        #: has no other way to tell a full sweep from a failed one.
+        self._last_outcome: CrawlSweepOutcome | None = None
         self._http = CrawlerHttpClient(
             name=type(self).__name__,
             policy=HttpPolicy(base_delay_seconds=request_delay, timeout_seconds=15.0),
             headers=HEADERS,
         )
+
+    @property
+    def last_run_outcome(self) -> CrawlSweepOutcome | None:
+        """Return what the last completed ``run()`` did, or ``None`` before one."""
+        return self._last_outcome
 
     async def run(
         self,
@@ -128,11 +137,15 @@ class FoodCrawler(BaseHttpCrawler):
 
         """
         selected = {code: info for code, info in TEAM_FOOD_SOURCES.items() if not team_filter or code == team_filter}
+        # Every page this run will request, not the first one that happens to be
+        # in the dict. The report that judges this crawler by what it actually
+        # fetched reads one URL per run, so naming a single team would hide the
+        # other team's host -- and with it a host that refuses the sweep.
         spec = run_spec or CrawlRunSpec(
             crawler=FOOD_CRAWLER_NAME,
             target_type=FOOD_TARGET_TYPE,
             target_id=team_filter or "all",
-            source_url=next(iter(selected.values()))["url"] if len(selected) == 1 else None,
+            source_url=MULTI_SOURCE_SEPARATOR.join(info["url"] for info in selected.values()) or None,
         )
 
         with track_crawl_run(spec) as run:
@@ -167,6 +180,13 @@ class FoodCrawler(BaseHttpCrawler):
                     logger.info(vendor)
 
             self._record_team_failures(run, selected, record_dead_letters=record_dead_letters)
+            # Captured before the optional re-raise so the sweep's result exists
+            # even for a caller that asked to be told the failure.
+            self._last_outcome = CrawlSweepOutcome.from_run(
+                run,
+                crawler=FOOD_CRAWLER_NAME,
+                failed_units=[team for team, _, _ in [*self._team_failures, *self._persist_failures]],
+            )
             self._raise_persist_error(raise_on_persist_error=raise_on_persist_error)
             return all_vendors
 

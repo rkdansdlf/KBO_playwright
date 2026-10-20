@@ -49,13 +49,13 @@
       "repository": "https://github.com/sickn33/agentic-awesome-skills.git",
       "revision": "12123b491916cbde2811e2a6b3855a3839298a1c",
       "license": "MIT",
-      "redistribution": "selected_asset_review_required"
+      "redistribution": "allowed"
     },
     "scientific": {
       "repository": "https://github.com/K-Dense-AI/scientific-agent-skills.git",
       "revision": "49c6e97775eaa18ba791bebe23162a70ae601c18",
       "license": "MIT",
-      "redistribution": "selected_asset_review_required"
+      "redistribution": "allowed"
     },
     "diagram-design": {
       "repository": "https://github.com/cathrynlavery/diagram-design.git",

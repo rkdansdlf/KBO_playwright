@@ -34,7 +34,6 @@ IMPORT_TO_DISTRIBUTION = {
     "opentelemetry": "opentelemetry-api",
     "PIL": "pillow",
     "playwright": "playwright",
-    "psycopg2": "psycopg2-binary",
     "pydantic": "pydantic",
     "sentry_sdk": "sentry-sdk",
     "sklearn": "scikit-learn",
@@ -169,3 +168,16 @@ def test_postgres_only_dependencies_are_not_in_the_runtime_set() -> None:
     runtime = {_normalize(re.split(r"[<>=!~\[; ]", spec, maxsplit=1)[0]) for spec in _project_table()["dependencies"]}
     assert "psycopg2-binary" not in runtime
     assert "pgvector" not in runtime
+
+
+def test_psycopg2_does_not_come_back() -> None:
+    """Psycopg 3 is the only PostgreSQL driver (`39b1081f`).
+
+    The removal took three parts: the `postgres` extra, the sync path's
+    `psycopg2.extras` calls, and the CI/Docker URLs that named
+    `postgresql+psycopg2://`. Re-adding the distribution to *any* table would
+    silently restore a driver whose empty-query behaviour differs from the one
+    the statement splitter was pinned against.
+    """
+    assert "psycopg2-binary" not in _declared_distributions()
+    assert "psycopg2-binary" not in {_normalize(name) for name in _locked_distributions()}

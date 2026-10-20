@@ -36,8 +36,10 @@ def audit_game_logic(year: int | None = None, game_id: str | None = None) -> lis
         base_filter = "WHERE g.game_status IN ('COMPLETED', 'DRAW')"
         params = {}
         if year:
-            base_filter += " AND g.game_date LIKE :year_pattern"
-            params["year_pattern"] = f"{year}%"
+            # ``game_date`` 는 date 타입이라 ``LIKE '2025%'`` 가 PostgreSQL 에서 죽는다.
+            base_filter += " AND g.game_date >= CAST(:year_start AS date) AND g.game_date < CAST(:year_end AS date)"
+            params["year_start"] = f"{year}-01-01"
+            params["year_end"] = f"{year + 1}-01-01"
         if game_id:
             base_filter += " AND g.game_id = :game_id"
             params["game_id"] = game_id

@@ -561,3 +561,31 @@ blocked but only 20 have rows, because 15 of the 51 crawlers declare nothing and
 `preview_crawler` reports `(no table declared)` while writing `game_summary` —
 its freshness is invisible here even though its ledger runs are the loudest
 signal in the system.
+
+### `KboCrawlerSourceNeverConsulted{preview}` is this block, observed 2026-10-19
+
+**Status: measured, decision pending** — the alert is working; the choice it is
+asking for is the one left open above.
+
+`preview_crawler` consults `koreabaseball.com` for pregame previews, so the
+site-wide `Disallow: /` is why it has not consulted its source. The compliance
+layer records the skip as `kbo_robots_blocked`
+(`kbo_crawl_source_limited_total{crawler="preview"}`, 8 occurrences measured
+2026-10-19), which is why the run is recorded as `success` and why
+`KboCrawlerNoRecentSuccess` stays quiet — the same shape as the rest of the
+block, and the reason `KboCrawlerSourceNeverConsulted` exists.
+
+The alert firing since **2026-10-19T01:59:05Z** (`crawler="preview"`) is therefore
+not a fault: it is the policy made visible. It will not clear while the source
+stays unreachable and no other path feeds `game_summary`.
+
+Two things this entry does not settle:
+
+- whether `preview` is acceptable as-is — the alert is the record that the choice
+  is still in force — or whether pregame previews need a permissioned route or a
+  different source;
+- whether `game_summary` has a non-KBO path. `preview_crawler` declares no table
+  and writes `game_summary`, so the inventory above cannot show its age.
+
+Until the decision above is recorded, treat the alert as unresolved rather than
+as noise.

@@ -468,8 +468,7 @@ def _wrap_pg_params(
     target_table: Table,
     pairs: list[tuple[str, str]],
 ) -> tuple[list[tuple[Any, ...]], list[str]]:
-    """Convert and wrap one batch into psycopg2 parameter tuples."""
-    from psycopg2.extras import Json
+    """Convert and wrap one batch into psycopg3 parameter tuples."""
     from sqlalchemy.dialects import postgresql
 
     dialect = postgresql.dialect()
@@ -484,7 +483,15 @@ def _wrap_pg_params(
             if isinstance(resolved, postgresql.ARRAY) and isinstance(value, (list, tuple)):
                 params.append(list(value))
             elif isinstance(column_type, JSON) and isinstance(value, (dict, list)):
-                params.append(Json(value))
+                compiled = str(column_type.compile(dialect=postgresql.dialect())).lower()
+                if "jsonb" in compiled:
+                    from psycopg.types.json import Jsonb
+
+                    params.append(Jsonb(value))
+                else:
+                    from psycopg.types.json import Json
+
+                    params.append(Json(value))
             else:
                 params.append(value)
         rows.append(tuple(params))
@@ -501,9 +508,8 @@ def _is_resume_safe(target_table: Table) -> bool:
 
 
 def _load_batches_pg(request: TableTransferRequest, pairs: list[tuple[str, str]], action: str) -> int:
-    """Bulk-load batches with psycopg2 execute_values and conflict skipping."""
-    from psycopg2 import Error as Psycopg2Error
-    from psycopg2.extras import execute_values
+    """Bulk-load batches with psycopg3 executemany and conflict skipping."""
+    from psycopg import Error as PsycopgError
 
     skipped = 0
     name = request.target_table.name
@@ -521,9 +527,9 @@ def _load_batches_pg(request: TableTransferRequest, pairs: list[tuple[str, str]]
             for batch_index, batch in enumerate(batches, start=1):
                 rows, _ = _wrap_pg_params(batch, request.target_table, pairs)
                 try:
-                    execute_values(cursor, stmt, rows, page_size=len(rows))
+                    cursor.executemany(stmt, rows)
                     raw_conn.commit()
-                except Psycopg2Error as exc:
+                except PsycopgError as exc:
                     raw_conn.rollback()
                     detail = str(exc).splitlines()[0][:200]
                     msg = f"batch {batch_index} failed for {name}: {type(exc).__name__}: {detail}"

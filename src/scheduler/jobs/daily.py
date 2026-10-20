@@ -21,7 +21,13 @@ if TYPE_CHECKING:
 from src.cli.pipelines.daily_preview_batch import run_preview_batch
 from src.cli.pipelines.run_daily_update import format_stability_alert_summary
 from src.cli.pipelines.run_daily_update import main as run_daily_update_main
+from src.config.historical_backfill_policy import (
+    HistoricalBackfillPolicy,
+    load_historical_backfill_policy,
+)
+from src.crawlers.sweep_outcome import CrawlSweepOutcome, SweepSummary, summarize_sweep
 from src.db.engine import SessionLocal
+from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_SUCCESS
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.scheduler.alerting import alert_success, alert_warning
 from src.scheduler.config import (
@@ -474,8 +480,32 @@ def _from_compact_date(value: str) -> date:
     return datetime.strptime(_to_compact_date(value), "%Y%m%d").replace(tzinfo=KST).date()
 
 
+#: Oldest season the backfill loop may treat as a recoverable collection gap.
+#:
+#: Measured 2026-10-12 across all 8,237 answer-set games of 1982~2000: zero rows
+#: in ``game_inning_scores``, ``game_lineups``, ``game_batting_stats`` and
+#: ``game_pitching_stats``. Re-crawling cannot fill them, and treating them as a
+#: gap produced the non-converging sweep: each ``run_daily_update`` dropped the
+#: row out of the query by rewriting ``game_status``, so the loop reported
+#: progress while recovering nothing.
+SOURCE_LIMITED_SEASON_FLOOR = 2001
+
+
 def _find_detail_gaps(session: object, start_date: date) -> list[str]:
-    """Find dates with COMPLETED/DRAW games missing batting or pitching stats."""
+    """Find dates with COMPLETED/DRAW games missing batting or pitching stats.
+
+    Dates before ``SOURCE_LIMITED_SEASON_FLOOR`` are excluded: those seasons
+    published no boxscore bodies, so the query cannot converge on them and each
+    pass "resolved" them by rewriting ``game_status`` rather than by collecting.
+
+    Args:
+        session: DB Session.
+        start_date: Earliest date to consider.
+
+    Returns:
+        Compact dates with recoverable detail gaps.
+
+    """
     from sqlalchemy import text as sa_text
 
     rows = (
@@ -486,11 +516,12 @@ def _find_detail_gaps(session: object, start_date: date) -> list[str]:
             LEFT JOIN game_batting_stats b ON g.game_id = b.game_id
             LEFT JOIN game_pitching_stats p ON g.game_id = p.game_id
             WHERE g.game_date >= :start
+              AND g.game_date >= :season_floor
               AND g.game_status IN ('COMPLETED', 'DRAW')
               AND (b.game_id IS NULL OR p.game_id IS NULL)
             ORDER BY g.game_date
         """),
-            {"start": start_date},
+            {"start": start_date, "season_floor": date(SOURCE_LIMITED_SEASON_FLOOR, 1, 1)},
         )
         .scalars()
         .all()
@@ -509,11 +540,12 @@ def _find_pbp_gaps(session: object, start_date: date) -> list[str]:
             FROM game g
             LEFT JOIN game_play_by_play p ON g.game_id = p.game_id
             WHERE g.game_date >= :start
+              AND g.game_date >= :season_floor
               AND g.game_status IN ('COMPLETED', 'DRAW')
               AND p.game_id IS NULL
             ORDER BY g.game_date
         """),
-            {"start": start_date},
+            {"start": start_date, "season_floor": date(SOURCE_LIMITED_SEASON_FLOOR, 1, 1)},
         )
         .scalars()
         .all()
@@ -610,10 +642,38 @@ def _dispatch_find_player_profile_gaps(session: object) -> list[int]:
     return _find_player_profile_gaps(session)
 
 
-def _backfill_phase_detail(start: date, backfilled: list[str]) -> list[str]:
+def _merge_window_and_approved(
+    scanned: list[str],
+    extra_dates: list[date],
+) -> list[str]:
+    """Merge scanned dates with the approved historical ones.
+
+    Args:
+        scanned: Dates the gap query returned inside the window.
+        extra_dates: Approved dates outside the window.
+
+    Returns:
+        Compact dates to process, oldest first and without duplicates.
+
+    """
+    merged = set(scanned)
+    merged.update(value.strftime("%Y%m%d") for value in extra_dates)
+    return sorted(merged)
+
+
+def _backfill_phase_detail(
+    start: date,
+    backfilled: list[str],
+    *,
+    extra_dates: list[date] | None = None,
+) -> list[str]:
+    """Run ``run_daily_update`` for every date with a recoverable detail gap."""
     session_factory = _get_session_local()
     with session_factory() as session:
-        detail_dates = _dispatch_find_detail_gaps(session, start)
+        detail_dates = _merge_window_and_approved(
+            _dispatch_find_detail_gaps(session, start),
+            extra_dates or [],
+        )
     run_update = _get_run_daily_update()
     for date_compact in detail_dates:
         logger.warning("Phase 1 — Detail backfill needed for %s", date_compact)
@@ -628,10 +688,21 @@ def _backfill_phase_detail(start: date, backfilled: list[str]) -> list[str]:
     return detail_dates
 
 
-def _backfill_phase_pbp(start: date, detail_dates: list[str], backfilled: list[str]) -> None:
+def _backfill_phase_pbp(
+    start: date,
+    detail_dates: list[str],
+    backfilled: list[str],
+    *,
+    extra_dates: list[date] | None = None,
+) -> None:
+    """Re-run relay/PBP collection for dates still missing either dataset."""
     session_factory = _get_session_local()
     with session_factory() as session:
-        all_dates = sorted(set(detail_dates + _dispatch_find_pbp_gaps(session, start)))
+        scanned = _dispatch_find_pbp_gaps(session, start)
+    all_dates = _merge_window_and_approved(
+        sorted(set(detail_dates) | set(scanned)),
+        extra_dates or [],
+    )
     run_update = _get_run_daily_update()
     for date_compact in all_dates:
         with session_factory() as verify_session:
@@ -691,8 +762,37 @@ def _backfill_phase_profiles(backfilled: list[str]) -> None:
         logger.exception("Phase 4 — Profile backfill failed")
 
 
+def _approved_historical_dates(policy: HistoricalBackfillPolicy) -> tuple[list[date], str | None]:
+    """Return the approved historical dates one run may consume.
+
+    Args:
+        policy: Committed historical backfill policy.
+
+    Returns:
+        The dates and, when the per-run cap bit, why.
+
+    """
+    approved = sorted(policy.approved_dates)
+    allowed, cap_reason = policy.approve_for_run(approved)
+    return [_from_compact_date(value) for value in allowed], cap_reason
+
+
 def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
-    """Execute multi-phase backfill for missed details, PBP, preview, and player profiles."""
+    """Execute multi-phase backfill for missed details, PBP, preview, and player profiles.
+
+    The lookback window covers the current season only. Dates older than the
+    policy's grace window are processed when, and only when, they appear in the
+    committed approval list, and never more than the list's per-run cap. The
+    default therefore reaches today's games and nothing before the last two
+    seasons.
+
+    Args:
+        lookback_days: Window ending today that is scanned automatically.
+
+    Returns:
+        The backfill markers produced by each phase.
+
+    """
     _register_job("backfill_missed_daily_crawls", dependencies=["crawl_daily_games"])
 
     can_run, reason = _can_run_job("backfill_missed_daily_crawls")
@@ -701,17 +801,25 @@ def backfill_missed_daily_crawls(lookback_days: int = 14) -> list[str]:
         logger.warning("Skipping backfill_missed_daily_crawls: %s", reason)
         return []
 
-    start = datetime.now(KST).date() - timedelta(days=lookback_days)
+    policy = load_historical_backfill_policy()
+    today = datetime.now(KST).date()
+    window_start = today - timedelta(days=lookback_days)
+    window_start = max(window_start, date(policy.season_floor(today), 1, 1))
+    approved_dates, cap_reason = _approved_historical_dates(policy)
+    if cap_reason:
+        logger.warning("Historical backfill capped: %s", cap_reason)
+    if approved_dates:
+        logger.info("Historical backfill approved for %d date(s)", len(approved_dates))
     backfilled: list[str] = []
 
     _register_job("backfill_phase_detail", dependencies=["crawl_daily_games"])
-    detail_dates = _backfill_phase_detail(start, backfilled)
+    detail_dates = _backfill_phase_detail(window_start, backfilled, extra_dates=approved_dates)
 
     _register_job("backfill_phase_pbp", dependencies=["backfill_phase_detail"])
-    _backfill_phase_pbp(start, detail_dates, backfilled)
+    _backfill_phase_pbp(window_start, detail_dates, backfilled, extra_dates=approved_dates)
 
     _register_job("backfill_phase_preview", dependencies=["backfill_phase_pbp"])
-    _backfill_phase_preview(start, backfilled)
+    _backfill_phase_preview(window_start, backfilled)
 
     _register_job("backfill_phase_profiles", dependencies=["backfill_phase_preview"])
     _backfill_phase_profiles(backfilled)
@@ -745,22 +853,110 @@ def crawl_phase1_extra_job() -> None:
             _update_job_status("crawl_phase1_extra_job", JobStatus.FAILURE, "Exception")
 
 
-def _write_p1p2_run_marker(status: str) -> None:
-    """Record the last P1/P2 job run so the lock-health check can verify it ran today."""
+def _write_p1p2_run_marker(status: str, collection: dict[str, Any] | None = None) -> None:
+    """Record the last P1/P2 job run so the lock-health check can verify it ran today.
+
+    ``status`` is the execution state (``ok``/``skipped``/``error``) that
+    ``scripts/check_p1p2_lock_health.py`` reads, and it keeps meaning only that:
+    a fatal error in the job itself. ``collection`` is the separate data state.
+    One job can execute cleanly and collect nothing, and a marker that collapsed
+    the two would have to either hide the clean execution or invent a lock
+    problem out of a data one.
+
+    Args:
+        status: Execution state for the lock-health check.
+        collection: Optional sweep report from :func:`SweepSummary.as_dict`.
+
+    """
     try:
         P1P2_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
-        P1P2_RUN_MARKER.write_text(
-            json.dumps({"ts": datetime.now(KST).isoformat(), "status": status}, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        payload: dict[str, Any] = {"ts": datetime.now(KST).isoformat(), "status": status}
+        if collection is not None:
+            payload["collection"] = collection
+        P1P2_RUN_MARKER.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     except OSError:
         logger.exception("Failed to write P1/P2 run marker")
+
+
+def _run_p1p2_child(name: str, runner: Callable[[list[str] | None], CrawlSweepOutcome | None]) -> CrawlSweepOutcome:
+    """Run one P1/P2 child in-process and describe what it did.
+
+    A child that raises is recorded rather than propagated. Every child writes
+    its own ledger row and dead letter before it raises, so letting the
+    exception out would abandon the children that had not run yet -- losing
+    their collection for the day -- while the failure it carries is already
+    written down. The sweep reports it through its own status instead, which is
+    also what keeps a second attempt from re-crawling every team and adding a
+    duplicate dead letter for a failure this run already recorded.
+
+    Args:
+        name: The child's short name, as the sweep reports it.
+        runner: The child's CLI entrypoint.
+
+    Returns:
+        The child's outcome; a raising or silent child becomes a failed one.
+
+    """
+    logger.info("Running %s crawler...", name)
+    try:
+        outcome = runner(["--save"])
+    except SCHEDULER_JOB_EXCEPTIONS as exc:
+        logger.exception("P1/P2 child crawler %s raised", name)
+        return CrawlSweepOutcome.launch_failure(crawler=name, error=exc)
+    if outcome is None:
+        logger.warning("P1/P2 child %s returned no outcome", name)
+        return CrawlSweepOutcome.unreported(crawler=name)
+    return outcome
+
+
+def _report_p1p2_sweep(summary: SweepSummary) -> None:
+    """Project a finished sweep onto the tracker, the marker and the incident ledger.
+
+    The three channels answer different questions, and none can stand in for
+    another: the tracker says whether the job executed, the marker records that
+    next to what was collected, and the incident is what an operator is actually
+    told about.
+
+    Args:
+        summary: The sweep's aggregated child outcomes.
+
+    """
+    detail = summary.describe()
+    collection = summary.as_dict()
+    if summary.status == RUN_STATUS_SUCCESS:
+        logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
+        alert_success("crawl_p1p2_data_job", detail)
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status("crawl_p1p2_data_job", JobStatus.SUCCESS, "Completed", details=collection)
+    elif summary.status == RUN_STATUS_FAILED:
+        logger.error("=== P1/P2 Data Crawlers Collected Nothing: %s ===", detail)
+        alert_warning("crawl_p1p2_data_job", f"every crawler failed: {detail}")
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status(
+            "crawl_p1p2_data_job",
+            JobStatus.FAILURE,
+            f"Every crawler failed: {detail}",
+            details=collection,
+        )
+    else:
+        logger.warning("=== P1/P2 Data Crawlers Finished Partially: %s ===", detail)
+        alert_warning("crawl_p1p2_data_job", f"partial sweep: {detail}")
+        _write_p1p2_run_marker("ok", collection)
+        _update_job_status("crawl_p1p2_data_job", JobStatus.WARNING, f"Partial sweep: {detail}", details=collection)
 
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def crawl_p1p2_data_job() -> None:
-    """P1/P2 Crawlers: seat sections, parking, stadium food."""
+    """P1/P2 Crawlers: seat sections, parking, stadium food.
+
+    Each child is aggregated rather than judged by whether it raised. The three
+    entrypoints returned ``None`` until 2026-10-19, so a sweep in which every
+    team failed and one in which everything was stored were the same event, and
+    the job alerted success for both while ``seat`` lost all teams to
+    ``FETCH_HTTP_ERROR``. The children now return their outcome, and this job
+    reports what the sweep collected separately from the fact that it ran.
+    """
     _register_job("crawl_p1p2_data_job", dependencies=["crawl_daily_games"])
 
     can_run, reason = _can_run_job("crawl_p1p2_data_job")
@@ -776,21 +972,17 @@ def crawl_p1p2_data_job() -> None:
             from src.cli.collection.crawl_parking import main as parking_main
             from src.cli.collection.crawl_seat_sections import main as seat_main
             from src.cli.collection.crawl_stadium_food import main as food_main
-
-            logger.info("Running seat sections crawler...")
-            seat_main(["--save"])
-            logger.info("Running parking crawler...")
-            parking_main(["--save"])
-            logger.info("Running stadium food crawler...")
-            food_main(["--save"])
-            logger.info("=== P1/P2 Data Crawlers Completed Successfully ===")
-            alert_success("crawl_p1p2_data_job")
-            _write_p1p2_run_marker("ok")
-            _update_job_status("crawl_p1p2_data_job", JobStatus.SUCCESS, "Completed")
         except SCHEDULER_JOB_EXCEPTIONS:
-            logger.exception("P1/P2 data crawlers failed")
+            logger.exception("P1/P2 data crawlers could not be loaded")
             _write_p1p2_run_marker("error")
-            _update_job_status("crawl_p1p2_data_job", JobStatus.FAILURE, "Exception")
+            _update_job_status("crawl_p1p2_data_job", JobStatus.FAILURE, "Import failure")
+            return
+
+        outcomes = [
+            _run_p1p2_child(name, runner)
+            for name, runner in (("seat", seat_main), ("parking", parking_main), ("food", food_main))
+        ]
+        _report_p1p2_sweep(summarize_sweep(outcomes))
 
 
 def db_reachability_check_job() -> None:

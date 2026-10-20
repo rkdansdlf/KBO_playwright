@@ -30,6 +30,25 @@ def test_create_vector_engine_with_invalid_url(monkeypatch: pytest.MonkeyPatch) 
         assert _create_vector_engine() is None
 
 
+def test_create_vector_engine_survives_a_missing_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A driver that is not installed disables the store instead of killing the import.
+
+    The URL outlives the dependency it names: this repository dropped psycopg2,
+    but ``PGVECTOR_URL`` may still say ``postgresql+psycopg2://``. That makes
+    ``create_engine`` raise ``ModuleNotFoundError`` out of ``import_dbapi``
+    before any connection is attempted -- not a ``SQLAlchemyError``, so it used
+    to escape the handler and take the whole module down. Every caller that
+    guards with ``is_pgvector_available()`` never got the chance to ask, and the
+    failure surfaced as an ``ImportError`` from an unrelated import line.
+    """
+    monkeypatch.setattr(vector_engine, "PGVECTOR_URL", "postgresql+psycopg2://u:p@h/db")
+    with patch(
+        "src.db.vector_engine.create_engine",
+        side_effect=ModuleNotFoundError("No module named 'psycopg2'"),
+    ):
+        assert _create_vector_engine() is None
+
+
 def test_is_pgvector_available_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
     """Return False when VectorEngine is None."""
     monkeypatch.setattr(vector_engine, "VectorEngine", None)

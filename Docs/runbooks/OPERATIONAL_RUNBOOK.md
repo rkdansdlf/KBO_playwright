@@ -261,5 +261,5 @@ venv/bin/python scripts/verification/verify_oci_live_sync.py --json
   id를 바꿔(`id=uv-cache-v2` → 새 id) 우회하고, `docker builder prune`으로
   뒤처리한다.
 - `Dockerfile` builder는 `postgres` extra를 반드시 포함한다(`--extra
-  postgres`). extra 없이 빌드하면 `No module named 'psycopg2'`로
+  postgres`). extra 없이 빌드하면 `No module named 'psycopg'`로
   스케줄러/API가 기동 실패한다.

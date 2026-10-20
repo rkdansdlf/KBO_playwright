@@ -205,7 +205,7 @@ def test_wrap_pg_params_array_passthrough():
     assert rows[0][0] == 1
     assert rows[0][1] == ["OB", "DB"]
     assert type(rows[0][1]) is list
-    from psycopg2.extras import Json
+    from psycopg.types.json import Json
 
     assert isinstance(rows[0][2], Json)
 

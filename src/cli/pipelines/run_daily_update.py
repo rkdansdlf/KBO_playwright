@@ -52,6 +52,7 @@ from src.repositories.game_repository import (
     refresh_game_status_for_date,
     update_game_status,
 )
+from src.repositories.game_status import StatusRefreshOptions
 from src.repositories.player_repository import PlayerRepository
 from src.repositories.team_repository import TeamRepository
 from src.services.game_collection_service import (
@@ -71,6 +72,8 @@ from src.services.recovery_manager import RecoveryManager
 from src.utils.date_helpers import parse_date_str, parse_datetime_str
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DRAW,
     GAME_STATUS_POSTPONED,
     GAME_STATUS_SCHEDULED,
     GAME_STATUS_UNRESOLVED,
@@ -84,6 +87,30 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
     from src.pipeline.dag import PipelineDAG
+
+
+#: Statuses a failed detail fetch must not overwrite.
+#:
+#: A detail fetch failing says the boxscore could not be read. It says nothing
+#: about a game that already reached a result, so the stored status stands and
+#: the missing body is reported as missing rather than by rewriting the outcome.
+#:
+#: COMPLETED and DRAW were missing here, which is why a date-ordered sweep over
+#: 1995~2000 on 2026-09-23 turned 2,848 rows the answer-set apply had written as
+#: COMPLETED into UNRESOLVED_MISSING with no audit record. Those games were never
+#: un-completed; only their per-player bodies were never published.
+STATUS_PRESERVED_ON_DETAIL_FAILURE = frozenset(
+    {
+        GAME_STATUS_CANCELLED,
+        GAME_STATUS_COMPLETED,
+        GAME_STATUS_DRAW,
+        GAME_STATUS_POSTPONED,
+    },
+)
+
+#: Recorded on every status change this pipeline writes, so a row in the audit
+#: table names the entry point that made it rather than only the reason string.
+CALLER_DAILY_UPDATE = "run_daily_update"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +162,7 @@ class _RunContext:
     p0_non_game_counts: dict[str, int] = field(default_factory=dict)
     p0_non_game_errors: dict[str, str] = field(default_factory=dict)
     status_refresh_game_ids: list[str] = field(default_factory=list)
+    status_transitions: dict[str, Any] = field(default_factory=dict)
     detail_recovery_passes: int = 0
     detail_recovered_after_retry: int = 0
     detail_retry_escalation_game_ids: list[str] = field(default_factory=list)
@@ -626,9 +654,16 @@ def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str |
         )
         if (
             current_game
-            and current_game.game_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED}
+            and current_game.game_status in STATUS_PRESERVED_ON_DETAIL_FAILURE
             and fallback != GAME_STATUS_CANCELLED
         ):
+            # A failed detail fetch says nothing about a game that already
+            # reached a terminal state, so the stored status stands. COMPLETED
+            # belongs in this set: it was missing, and on 2026-09-23 that gap
+            # turned every 1995~2000 row the answer-set apply had written as
+            # COMPLETED into UNRESOLVED_MISSING during a date-ordered sweep.
+            # Nothing had been un-completed; only the body was missing, and
+            # UNRESOLVED_MISSING already says that without discarding the result.
             logger.info(
                 "   [info] Preservation: Keeping terminal status '%s' for %s",
                 current_game.game_status,
@@ -782,16 +817,49 @@ async def _step_2_detail_crawl(ctx: _RunContext) -> None:
 
 async def _step_3_refresh_status(ctx: _RunContext) -> None:
     logger.info("\n\U0001f9ed Step 3: Refreshing game status for target date...")
-    status_result = refresh_game_status_for_date(ctx.target_date, today=ctx.today_kst)
+    status_result = refresh_game_status_for_date(
+        ctx.target_date,
+        today=ctx.today_kst,
+        options=StatusRefreshOptions(caller=CALLER_DAILY_UPDATE),
+    )
     ctx.status_refresh_game_ids = [
         normalized for game_id in status_result.get("game_ids", []) if (normalized := normalize_kbo_game_id(game_id))
     ]
+    ctx.status_transitions = _status_transition_summary(status_result)
     logger.info(
-        "   ✅ total=%s updated=%s counts=%s",
+        "   ✅ total=%s updated=%s counts=%s transitions=%s",
         status_result.get("total", 0),
         status_result.get("updated", 0),
         status_result.get("status_counts", {}),
+        ctx.status_transitions.get("transition_counts", {}),
     )
+    if status_result.get("skipped"):
+        logger.warning(
+            "   [warn] Status write refused for %s (%s); transitions reported only",
+            ctx.target_date,
+            status_result.get("skip_reason"),
+        )
+
+
+def _status_transition_summary(status_result: dict[str, Any]) -> dict[str, Any]:
+    """Reduce a refresh result to the aggregate a manifest should carry.
+
+    Args:
+        status_result: Result returned by ``refresh_game_status_for_date``.
+
+    Returns:
+        The counts a reader needs to judge whether a run rewrote anything.
+
+    """
+    return {
+        "transition_counts": status_result.get("transition_counts", {}),
+        "transition_total": len(status_result.get("transitions", [])),
+        "written": status_result.get("updated", 0),
+        "audited": status_result.get("audited", 0),
+        "write_allowed": status_result.get("write_allowed", False),
+        "skip_reason": status_result.get("skip_reason"),
+        "dry_run": status_result.get("dry_run", False),
+    }
 
 
 async def _step_4_relay_recovery(ctx: _RunContext) -> None:
@@ -1321,6 +1389,7 @@ def _write_finalize_outputs(
         ],
         derived_refresh=ctx.derived_refresh,
         stability=stability_summary,
+        status_transitions=ctx.status_transitions,
     )
     _write_daily_update_summary(
         target_date=ctx.target_date,

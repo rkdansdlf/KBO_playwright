@@ -989,6 +989,69 @@ class TestObservationBeatsInference:
 
         assert status is inv.PolicyStatus.BLOCKED
 
+    def test_a_sweep_that_names_two_sources_is_judged_by_both(
+        self,
+        tmp_path: Path,
+        scratch_db: sessionmaker,
+    ) -> None:
+        """A run has one `source_url` column, so a sweep records every source in it.
+
+        Reading the joined value as a single URL keeps only its first host -- the
+        permitted one here -- and the host that refuses the sweep goes on looking
+        permitted for as long as nobody reads it.
+        """
+        directory = self._crawler(tmp_path)
+        with scratch_db() as session:
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "source_url, started_at) VALUES ('food', 'success', 5, 5, :u, :t)"
+                ),
+                {
+                    "u": "https://permitted.test/x|https://blocked.test/Player/Trade.aspx",
+                    "t": datetime.now(UTC).replace(tzinfo=None),
+                },
+            )
+            session.commit()
+
+        with scratch_db() as session:
+            observed = inv.run_summaries(session)["food"].observed_urls
+
+        assert observed == ("https://permitted.test/x", "https://blocked.test/Player/Trade.aspx")
+        status, basis = inv.policy_status_of(
+            "food_crawler",
+            {},
+            observed_urls=observed,
+            crawler_dir=directory,
+            policy_dir=directory,
+        )
+        assert status is inv.PolicyStatus.BLOCKED
+        assert basis is inv.PolicyBasis.OBSERVED
+
+    def test_an_empty_piece_of_a_joined_source_is_not_a_url(self, scratch_db: sessionmaker) -> None:
+        """A trailing separator is a formatting slip, not an unread host.
+
+        An empty string reads back as an unreachable host and drags the crawler's
+        verdict to UNKNOWN, turning a typo into a permission question.
+        """
+        with scratch_db() as session:
+            session.execute(
+                text(
+                    "INSERT INTO crawl_execution_runs (crawler, status, records_read, records_written, "
+                    "source_url, started_at) VALUES ('food', 'success', 5, 5, :u, :t)"
+                ),
+                {
+                    "u": "https://open.test/a|",
+                    "t": datetime.now(UTC).replace(tzinfo=None),
+                },
+            )
+            session.commit()
+
+        with scratch_db() as session:
+            observed = inv.run_summaries(session)["food"].observed_urls
+
+        assert observed == ("https://open.test/a",)
+
     def test_the_verdict_follows_the_path_not_just_the_host(self, tmp_path: Path) -> None:
         """The host scan judges `/`; a crawler reads a specific page.
 

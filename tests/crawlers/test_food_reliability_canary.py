@@ -38,6 +38,7 @@ from src.models.source_registry import DataSource, RawSourceSnapshot
 from src.models.stadium_food_menu_item import StadiumFoodMenuItem
 from src.models.stadium_food_vendor import StadiumFoodVendor
 from src.monitoring import crawler_metrics as cm
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR
 from src.repositories.stadium_food_repository import StadiumFoodVendorRepository
 
 LT_URL = TEAM_FOOD_SOURCES["LT"]["url"]
@@ -162,6 +163,20 @@ class TestHealthyAndFilteredRuns:
         run = _only_run(session_factory)
         assert run.target_id == "NC"
         assert run.source_url == TEAM_FOOD_SOURCES["NC"]["url"]
+
+    @pytest.mark.asyncio
+    async def test_an_unfiltered_sweep_records_every_source_it_reads(self, session_factory: sessionmaker) -> None:
+        """One row per run and one URL column, so the sweep names all of its sources.
+
+        The reader that judges this crawler by what it actually fetched sees a
+        single value per run. Recording only the first team would leave the other
+        team's host unexamined, and a refusal looks exactly like that.
+        """
+        await _crawler().run()
+
+        run = _only_run(session_factory)
+        assert run.source_url is not None
+        assert run.source_url.split(MULTI_SOURCE_SEPARATOR) == [info["url"] for info in TEAM_FOOD_SOURCES.values()]
 
 
 class TestAPageThatAnswersWithNothing:

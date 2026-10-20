@@ -132,3 +132,61 @@ def test_compare_index_rows_allows_deleted_rows_without_embeddings() -> None:
     assert report.is_consistent
     assert report.to_dict()["embedding_missing"] == 0
     assert report.to_dict()["deleted"] == 1
+
+
+def test_an_unmeasured_identity_is_not_reported_as_a_mismatch() -> None:
+    """NULL means nobody wrote the column, not that the corpus disagrees with itself.
+
+    Migration 051 added ``index_version`` and ``indexed_at`` with no backfill, so
+    a 583,265-row corpus carried NULL in both. Counting that as a mismatch
+    reported 583k corruptions for one unbackfilled migration, which is the
+    reading that gets the column dropped instead of backfilled.
+
+    """
+    rows = [
+        {
+            "source_table": "game",
+            "source_row_id": str(index),
+            "content_hash": None,
+            "index_version": None,
+            "index_status": "ACTIVE",
+        }
+        for index in range(3)
+    ]
+
+    payload = compare_index_rows(rows, rows).to_dict()
+
+    assert payload["hash_mismatch"] == 0
+    assert payload["version_mismatch"] == 0
+    assert payload["hash_unmeasured"] == 3
+    assert payload["version_unmeasured"] == 3
+    assert payload["identity_unmeasured"] == 3
+
+
+def test_a_measured_disagreement_is_still_a_mismatch() -> None:
+    """The unmeasured split must not absorb a real conflict."""
+    primary = {"source_table": "game", "source_row_id": "g1", "content_hash": "h1", "index_version": "v1"}
+    vector = {"source_table": "game", "source_row_id": "g1", "content_hash": "h2", "index_version": "v2"}
+
+    payload = compare_index_rows([primary], [vector]).to_dict()
+
+    assert payload["hash_mismatch"] == 1
+    assert payload["version_mismatch"] == 1
+    assert payload["hash_unmeasured"] == 0
+    assert payload["version_unmeasured"] == 0
+
+
+def test_measured_and_unmeasured_are_reported_separately() -> None:
+    """A measured row and an unmeasured row must not share one counter.
+
+    Both sides carry the same two rows, so the comparison reaches the identity
+    check for each. Only the second lacks the columns.
+    """
+    measured = {"source_table": "game", "source_row_id": "g1", "content_hash": "h1", "index_version": "v1"}
+    unmeasured = {"source_table": "game", "source_row_id": "g2", "content_hash": None, "index_version": None}
+
+    payload = compare_index_rows([measured, unmeasured], [measured, unmeasured]).to_dict()
+
+    assert payload["hash_mismatch"] == 0
+    assert payload["hash_unmeasured"] == 1
+    assert payload["identity_unmeasured"] == 1

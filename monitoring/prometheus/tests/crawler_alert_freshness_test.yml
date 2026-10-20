@@ -9,6 +9,12 @@
 # Note: promtool does not accept a per-test `evaluation_interval`, so each rule
 # has its own fixture. The evaluation interval has to match the sample interval:
 # a 1m rule interval over hourly samples never reaches the firing state here.
+#
+# The window is the crawler's own period, published as
+# `kbo_crawl_expected_interval_seconds`, so every case states one. The previous
+# version of this file encoded a flat 6h window, which is the defect the cases
+# below are written to catch: a daily crawler was reported for six hours after
+# its run and silent for the other eighteen.
 
 rule_files:
   - ../alert_rules_crawler.yml
@@ -16,84 +22,183 @@ rule_files:
 evaluation_interval: 1h
 
 tests:
-  # promtool has no absolute eval_time, so `time()` is the offset from the start of
-  # the test. The 6h freshness window is expressed by evaluating at 7d and giving
-  # a stale crawler a last_success of 0.
+  # ── Fires, twenty hours after the last run ─────────────────────────────
+  # The case the 6h window could not express. A daily crawler's last run failed
+  # 20h ago and its last clean completion was three days back: the collection is
+  # not succeeding, and it will not run again for another four hours. The old
+  # `increase(...[6h])` guard had nothing to read here, so the alert resolved
+  # after six hours and reopened after the next run -- once a day, forever.
   - interval: 1h
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="awards", status="failed"}'
-        values: '0x166 1x2'
-      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
-        values: '0x168'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="food"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="food"}'
+        values: '273600x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="food"}'
+        values: '86400x200'
     alert_rule_test:
-      # Ran recently and never succeeded: must fire from the first failure,
-      # because record_crawl_run initialises last_success to 0.
-      - eval_time: 7d
+      # eval at 4d (345600s): last run 20h ago, last clean success 3d ago.
+      - eval_time: 4d
         alertname: KboCrawlerNoRecentSuccess
         exp_alerts:
           - exp_labels:
               severity: critical
-              crawler: awards
+              crawler: food
             exp_annotations:
-              summary: "크롤러 성공 없음: awards"
-              description: "awards 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+              summary: "크롤러 완전 성공 없음: food"
+              description: >-
+                food 은(는) 자기 주기의 두 배 동안 완전 성공 없이 실행만 반복했습니다.
+                부분 성공이 이어지는 경우에는 24시간 경고(KboCrawlerSustainedPartial)가 먼저 울립니다.
+                `kbo_crawl_last_partial_success_timestamp` 와 원장의 최근 결과를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
+  # ── Stays quiet: a crawler that stopped running ────────────────────────
+  # Nothing has finished for three days, so this is the scheduler's staleness
+  # rule's question. Reporting it here as well is how a retired crawler ends up
+  # paging forever on a rule nobody can resolve without deleting the series.
   - interval: 1h
     input_series:
-      # Never ran, so there is no increase in the window: a weekly or monthly
-      # job must stay quiet even though its last_success is also 0.
-      - series: 'kbo_crawl_runs_total{crawler="retired_players", status="success"}'
-        values: '0x168'
-      - series: 'kbo_crawl_last_success_timestamp{crawler="retired_players"}'
-        values: '0x168'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="seat"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="seat"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="seat"}'
+        values: '0x200'
     alert_rule_test:
-      - eval_time: 7d
+      - eval_time: 4d
         alertname: KboCrawlerNoRecentSuccess
         exp_alerts: []
 
+  # ── Stays quiet: a daily crawler that succeeded today ──────────────────
+  # 20h old is inside two daily cycles. One missed collection must not page --
+  # the DLQ retries it, and yesterday's clean run is still inside the window.
   - interval: 1h
     input_series:
-      - series: 'kbo_crawl_runs_total{crawler="brand_new", status="failed"}'
-        values: '0x166 1x2'
-      - series: 'kbo_crawl_last_success_timestamp{crawler="brand_new"}'
-        values: '0x168'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="parking"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="parking"}'
+        values: '273600x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="parking"}'
+        values: '273600x200'
     alert_rule_test:
-      - eval_time: 7d
+      - eval_time: 4d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts: []
+
+  # ── Fires: running, but never succeeded ────────────────────────────────
+  # record_crawl_run initialises the full-success gauge to 0, which reads as
+  # "infinitely stale". That is deliberate: a crawler that has failed since it
+  # was added must be visible from its first recorded run rather than silent
+  # until it succeeds once.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="brand_new"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="brand_new"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="brand_new"}'
+        values: '0x200'
+    alert_rule_test:
+      - eval_time: 4d
         alertname: KboCrawlerNoRecentSuccess
         exp_alerts:
           - exp_labels:
               severity: critical
               crawler: brand_new
             exp_annotations:
-              summary: "크롤러 성공 없음: brand_new"
-              description: "brand_new 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+              summary: "크롤러 완전 성공 없음: brand_new"
+              description: >-
+                brand_new 은(는) 자기 주기의 두 배 동안 완전 성공 없이 실행만 반복했습니다.
+                부분 성공이 이어지는 경우에는 24시간 경고(KboCrawlerSustainedPartial)가 먼저 울립니다.
+                `kbo_crawl_last_partial_success_timestamp` 와 원장의 최근 결과를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
 
+  # ── Stays quiet: a weekly crawler inside its own window ────────────────
+  # `team_history` runs on Sunday at 06:00. Ten days without a clean run is
+  # late, but not late relative to a weekly period -- this is exactly the case a
+  # fixed daily window got wrong in the other direction.
   - interval: 1h
     input_series:
-      # Ran and succeeded about 48 minutes before eval time: healthy.
-      - series: 'kbo_crawl_runs_total{crawler="awards", status="success"}'
-        values: '0x166 1x2'
-      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
-        values: '0x166 601920x2'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="team_history"}'
+        values: '604800x400'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="team_history"}'
+        values: '1202400x400'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="team_history"}'
+        values: '345600x400'
     alert_rule_test:
-      - eval_time: 7d
+      - eval_time: 14d
         alertname: KboCrawlerNoRecentSuccess
         exp_alerts: []
 
+  # ── Fires: a weekly crawler past two of its cycles ─────────────────────
   - interval: 1h
     input_series:
-      # A success exists but falls just outside the 6h window: must fire.
-      - series: 'kbo_crawl_runs_total{crawler="awards", status="success"}'
-        values: '0x166 1x2'
-      - series: 'kbo_crawl_last_success_timestamp{crawler="awards"}'
-        values: '0x160 552960x8'
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="team_history"}'
+        values: '604800x600'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="team_history"}'
+        values: '1720800x600'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="team_history"}'
+        values: '432000x600'
     alert_rule_test:
-      - eval_time: 7d
+      # eval at 20d (1728000s): last clean success 15d ago, weekly period.
+      - eval_time: 20d
         alertname: KboCrawlerNoRecentSuccess
         exp_alerts:
           - exp_labels:
               severity: critical
-              crawler: awards
+              crawler: team_history
             exp_annotations:
-              summary: "크롤러 성공 없음: awards"
-              description: "awards 은(는) 최근 6시간 내 실행은 있었으나 성공 기록이 없습니다."
+              summary: "크롤러 완전 성공 없음: team_history"
+              description: >-
+                team_history 은(는) 자기 주기의 두 배 동안 완전 성공 없이 실행만 반복했습니다.
+                부분 성공이 이어지는 경우에는 24시간 경고(KboCrawlerSustainedPartial)가 먼저 울립니다.
+                `kbo_crawl_last_partial_success_timestamp` 와 원장의 최근 결과를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── Stays quiet: a crawler with no published interval ──────────────────
+  # An exempt crawler (`NOT_SCHEDULED` in src/monitoring/crawler_cadence.py) has
+  # no `kbo_crawl_expected_interval_seconds` series at all. The rule must skip
+  # it: reading a missing interval as zero would make the comparison
+  # `time() - last_full_success > 0` and page on every historical series.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_last_run_timestamp{crawler="awards"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="awards"}'
+        values: '86400x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts: []
+
+  # ── Fires: partial-only, which is what "full success" is for ───────────
+  # A crawler that records `partial` every day keeps
+  # kbo_crawl_last_success_timestamp current; it does not keep the full-success
+  # gauge current. Two cycles of that is the case this rule escalates, after
+  # the 24h warning rung has already reported the same degradation.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="parking"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="parking"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_success_timestamp{crawler="parking"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_partial_success_timestamp{crawler="parking"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="parking"}'
+        values: '86400x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerNoRecentSuccess
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              crawler: parking
+            exp_annotations:
+              summary: "크롤러 완전 성공 없음: parking"
+              description: >-
+                parking 은(는) 자기 주기의 두 배 동안 완전 성공 없이 실행만 반복했습니다.
+                부분 성공이 이어지는 경우에는 24시간 경고(KboCrawlerSustainedPartial)가 먼저 울립니다.
+                `kbo_crawl_last_partial_success_timestamp` 와 원장의 최근 결과를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"

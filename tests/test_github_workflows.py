@@ -570,9 +570,18 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "integration-test" in jobs
     assert "integration-test-postgres" in jobs
     assert "OCI_DB_URL" not in jobs["migration-apply"]
-    assert "needs: test" in jobs["integration-test"]
-    assert "needs: test" in jobs["integration-test-postgres"]
     assert workflow.index("  lint:\n") < workflow.index("  test:\n")
+
+    # `needs: test` orders the gates after the suite; it must not decide whether
+    # they run. Gating them on `needs.test.result == 'success'` turned a red
+    # `test` into four silent skips, so the contracts these gates check went
+    # unverified exactly when the branch was already known broken — and a skip
+    # reads as "no news", not as "not checked".
+    for gate in ("integration-test", "integration-test-postgres", "slow-no-network", "rag-acceptance"):
+        assert gate in jobs, gate
+        assert "needs: test" in jobs[gate], gate
+        assert "if: always() && !cancelled()" in jobs[gate], gate
+        assert "needs.test.result" not in jobs[gate], gate
 
     migration_job = jobs["migration-apply"]
     assert "Initialize PostgreSQL ORM baseline schema" in migration_job

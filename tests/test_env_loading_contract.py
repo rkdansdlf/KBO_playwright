@@ -86,8 +86,27 @@ class TestGuardIsHonoured:
         assert not changed, f"importing src.db.engine changed env values: {sorted(changed)}"
 
     def test_no_secret_from_a_real_env_file_is_visible(self):
+        # A secret may legitimately live in the shell environment (e.g. the
+        # Jev/OpenRouter key exported from ~/.zshrc). What must NOT happen is
+        # the real `.env` value reaching the process via load_dotenv(). Compare
+        # against the on-disk value rather than mere presence.
+        env_file = ROOT / ".env"
+        file_values: dict[str, str] = {}
+        if env_file.is_file():
+            for raw in env_file.read_text().splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                file_values[key.strip()] = value.strip().strip('"').strip("'")
         for key in SECRET_ENV_KEYS:
-            assert os.environ.get(key) is None, f"{key} leaked into the test process"
+            present = os.environ.get(key)
+            if present is None:
+                continue
+            leaked_value = file_values.get(key)
+            assert leaked_value is None or present != leaked_value, (
+                f"{key} leaked its real .env value into the test process"
+            )
 
     def test_disabled_flag_is_read_at_call_time(self, monkeypatch):
         from src.config.env_loader import env_file_loading_enabled, load_project_env

@@ -7,6 +7,7 @@ Source: https://www.koreabaseball.com/Player/Register.aspx.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -99,7 +100,7 @@ class DailyRosterCrawler(BasePlaywrightCrawler):
                     if save_callback:
                         # Call callback (synchronously if it's not async)
                         try:
-                            if asyncio.iscoroutinefunction(save_callback):
+                            if inspect.iscoroutinefunction(save_callback):
                                 await save_callback(roster)
                             else:
                                 save_callback(roster)

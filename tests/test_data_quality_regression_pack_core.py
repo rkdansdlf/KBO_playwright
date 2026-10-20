@@ -13,7 +13,9 @@ from src.validators.data_quality_regression_pack import (
     QualityRegressionResult,
     _adapt_limit_clause,
     _adapt_schema_aliases,
+    _BASELINE_CHECK_IDS,
     _CHECKS,
+    _violated_rows,
     BaselineUnreadableError,
     compare_against_baseline,
     compare_unrecoverable,
@@ -23,11 +25,24 @@ from src.validators.data_quality_regression_pack import (
     write_unrecoverable,
 )
 
-#: The three checks that between them account for every season PA violation.
+#: The four checks that between them account for every season PA violation.
+#:
+#: ``unaccounted_pa`` is split at 2001 because that is where
+#: ``game_batting_stats`` starts, which is why the pair is listed as two: the
+#: partition is only real if every row the formula fails lands in exactly one of
+#: these, and the season is one of the boundaries it can land on.
 _PA_CHECK_IDS = (
     "player_season_batting_unaccounted_pa",
+    "player_season_batting_unaccounted_pa_pre2001",
     "player_season_batting_unreconciled_pa",
     "player_season_batting_missing_pa",
+)
+
+#: The two halves ``unaccounted_pa`` is split into, named once so a test about
+#: the boundary cannot accidentally assert against only one side of it.
+_UNACCOUNTED_IDS = (
+    "player_season_batting_unaccounted_pa",
+    "player_season_batting_unaccounted_pa_pre2001",
 )
 
 
@@ -45,6 +60,23 @@ def _rows_matching(conn, check_id: str) -> set[str]:
     """
     sql = _count_sql_for(check_id).replace("SELECT COUNT(*)", "SELECT player_id")
     return {str(row[0]) for row in conn.execute(text(sql))}
+
+
+def _overlap_of(reported: dict[str, set[str]]) -> set[str]:
+    """Return the rows that more than one check claimed.
+
+    Written as a loop over the checks rather than as a fixed set of pairwise
+    intersections: the previous expression named ``_PA_CHECK_IDS[0]`` through
+    ``[2]`` explicitly, so adding a fourth check would have left the new one
+    outside the partition assertion without failing anything -- the same shape of
+    silent gap this test exists to catch.
+    """
+    seen: set[str] = set()
+    claimed_twice: set[str] = set()
+    for rows in reported.values():
+        claimed_twice |= rows & seen
+        seen |= rows
+    return claimed_twice
 
 
 def _season_rows(conn) -> set[str]:
@@ -126,11 +158,16 @@ def _create_quality_tables(conn) -> None:
             """,
         ),
     )
+    # ``season`` defaults to a modern year because the season PA checks are split
+    # at 2001 and these fixtures are about the arithmetic, not about a year. A
+    # test that cares which half a row lands in names the season explicitly
+    # instead of relying on this.
     conn.execute(
         text(
             """
             CREATE TABLE player_season_batting (
                 player_id INTEGER,
+                season INTEGER NOT NULL DEFAULT 2025,
                 plate_appearances INTEGER,
                 at_bats INTEGER,
                 walks INTEGER,
@@ -460,9 +497,6 @@ def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None
     with engine.begin() as conn:
         _create_quality_tables(conn)
         conn.execute(
-            text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"),
-        )
-        conn.execute(
             text(
                 """
                 INSERT INTO player_season_batting
@@ -470,7 +504,7 @@ def test_regression_pack_scopes_the_unaccounted_pa_check_to_the_season() -> None
                      sacrifice_hits, sacrifice_flies, league, source)
                 VALUES
                     (7001, 2026, 15, 13, 1, 0, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER'),
-                    (7002, 2000, 43, 30, 9, 2, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER')
+                    (7002, 2025, 43, 30, 9, 2, NULL, NULL, 'REGULAR', 'LEGACY_CRAWLER')
                 """,
             ),
         )
@@ -522,7 +556,7 @@ class TestComparingAgainstABaseline:
                 ),
             )
             baseline = self._baseline_file(
-                Path(self._tmpdir.name),
+                self._tmpdir,
                 {"version": 1, "checks": {"player_season_batting_unaccounted_pa": {"player_ids": []}}},
             )
             verdict = compare_against_baseline(conn, baseline)
@@ -548,7 +582,7 @@ class TestComparingAgainstABaseline:
                     {"pid": pid},
                 )
             baseline = self._baseline_file(
-                Path(self._tmpdir.name),
+                self._tmpdir,
                 {
                     "version": 1,
                     "checks": {
@@ -585,7 +619,7 @@ class TestComparingAgainstABaseline:
                     {"pid": pid},
                 )
             baseline = self._baseline_file(
-                Path(self._tmpdir.name),
+                self._tmpdir,
                 {
                     "version": 1,
                     "checks": {
@@ -620,7 +654,7 @@ class TestComparingAgainstABaseline:
                 ),
             )
             baseline = self._baseline_file(
-                Path(self._tmpdir.name),
+                self._tmpdir,
                 {
                     "version": 1,
                     "checks": {
@@ -645,7 +679,7 @@ class TestComparingAgainstABaseline:
         with engine.begin() as conn:
             _create_quality_tables(conn)
             baseline = self._baseline_file(
-                Path(self._tmpdir.name),
+                self._tmpdir,
                 {"version": 1, "checks": {"player_season_batting_retired_check": {"player_ids": ["7001"]}}},
             )
             verdict = compare_against_baseline(conn, baseline)
@@ -663,8 +697,8 @@ class TestComparingAgainstABaseline:
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as conn:
             _create_quality_tables(conn)
-            missing = Path(self._tmpdir.name) / "does_not_exist.json"
-            corrupt = self._baseline_file(Path(self._tmpdir.name) / "bad", {"version": 1})
+            missing = self._tmpdir / "does_not_exist.json"
+            corrupt = self._baseline_file(self._tmpdir / "bad", {"version": 1})
             corrupt.parent.mkdir(parents=True, exist_ok=True)
             corrupt.write_text("{not json")
 
@@ -689,7 +723,7 @@ class TestComparingAgainstABaseline:
                     ),
                     {"pid": pid},
                 )
-            path = Path(self._tmpdir.name) / "written.json"
+            path = self._tmpdir / "written.json"
             written = write_baseline(conn, path)
 
         assert written["version"] == 1
@@ -709,7 +743,6 @@ class TestComparingAgainstABaseline:
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as conn:
             _create_quality_tables(conn)
-            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
             for pid, season in ((5001, 2026), (5002, 2025), (5003, 2024)):
                 conn.execute(
                     text(
@@ -723,14 +756,14 @@ class TestComparingAgainstABaseline:
                     {"pid": pid, "season": season},
                 )
             whole = self._baseline_file(
-                Path(self._tmpdir.name) / "whole",
+                self._tmpdir / "whole",
                 {
                     "version": 1,
                     "checks": {"player_season_batting_unaccounted_pa": {"player_ids": ["5001", "5002", "5003"]}},
                 },
             )
             scoped = self._baseline_file(
-                Path(self._tmpdir.name) / "scoped",
+                self._tmpdir / "scoped",
                 {
                     "version": 1,
                     "scope": {"season": 2026},
@@ -777,7 +810,6 @@ class TestRecordingRowsThatCannotBeRepaired:
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as conn:
             _create_quality_tables(conn)
-            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
         return engine
 
     def test_a_row_missing_a_walk_count_is_recorded_with_its_reason(self) -> None:
@@ -793,7 +825,7 @@ class TestRecordingRowsThatCannotBeRepaired:
                     """,
                 ),
             )
-            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "unrecoverable.json")
+            body = write_unrecoverable(conn, self._tmpdir / "unrecoverable.json")
 
         entries = body["rows"]
         assert len(entries) == 1
@@ -823,7 +855,7 @@ class TestRecordingRowsThatCannotBeRepaired:
                     """,
                 ),
             )
-            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+            body = write_unrecoverable(conn, self._tmpdir / "u.json")
 
         assert [entry["player_id"] for entry in body["rows"]] == ["2"]
 
@@ -840,7 +872,7 @@ class TestRecordingRowsThatCannotBeRepaired:
                     """,
                 ),
             )
-            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+            body = write_unrecoverable(conn, self._tmpdir / "u.json")
 
         assert body["rows"] == []
 
@@ -872,7 +904,7 @@ class TestRecordingRowsThatCannotBeRepaired:
                     """,
                 ),
             )
-            body = write_unrecoverable(conn, Path(self._tmpdir.name) / "u.json")
+            body = write_unrecoverable(conn, self._tmpdir / "u.json")
 
         assert [entry["player_id"] for entry in body["rows"]] == ["2"], (
             "a zero that reconciles was recorded as a lost count"
@@ -893,7 +925,7 @@ class TestRecordingRowsThatCannotBeRepaired:
                     ),
                     {"pid": pid},
                 )
-            path = Path(self._tmpdir.name) / "u.json"
+            path = self._tmpdir / "u.json"
             first = write_unrecoverable(conn, path)
             steady = compare_unrecoverable(conn, path)
 
@@ -931,16 +963,21 @@ class TestRecordingRowsThatCannotBeRepaired:
 class TestTheSeasonPaChecksPartitionTheViolations:
     """Adding up to the right number is not the same as dividing correctly.
 
-    Reporting 2,549 + 23 + 31 = 2,603 against a measured 2,603 is consistent with
-    a partition and also with one check reporting a row twice while another
+    Reporting 2,122 + 427 + 23 + 31 = 2,603 against a measured 2,603 is consistent
+    with a partition and also with one check reporting a row twice while another
     misses a different one. Only the rows themselves settle it, and these
     assertions exist because the sum matched while nothing held the partition in
     place -- a future edit that tightened one condition could have moved rows
     between the buckets and kept the total intact.
 
+    The season is one of the boundaries a row can land on, not just a filter:
+    splitting ``unaccounted_pa`` at 2001 turns one bucket into two, and a row that
+    fell on neither side would leave the backlog understated without changing any
+    other count.
+
     The rows below are the shapes that matter rather than the rows that happen to
-    be in the database: the three buckets, a healthy row in each, and the empty
-    row that must not be reported at all.
+    be in the database: the four buckets, a healthy row on each side of the split,
+    and the empty row that must not be reported at all.
     """
 
     def _load(self, rows: list[tuple]) -> object:
@@ -951,41 +988,41 @@ class TestTheSeasonPaChecksPartitionTheViolations:
                 text(
                     """
                     INSERT INTO player_season_batting
-                        (player_id, plate_appearances, at_bats, walks, hbp,
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
                          sacrifice_hits, sacrifice_flies, league, source)
                     VALUES
-                        -- unaccounted: PA exceeds the columns, no sacrifice recorded
-                        (1, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
+                        -- unaccounted from 2001 on: PA exceeds the columns, no sacrifice recorded
+                        (1, 2025, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
+                        -- unaccounted before 2001: the same shape, on the side of the
+                        -- split where no game-level row exists to fill the sacrifices
+                        (8, 1995, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
                         -- unreconciled: a sacrifice was recorded and PA still misses
-                        (2, 581, 487, NULL, NULL, 24, 2, 'REGULAR', 'CRAWLER'),
+                        (2, 2025, 581, 487, NULL, NULL, 24, 2, 'REGULAR', 'CRAWLER'),
                         -- unreconciled: columns outrun PA with no sacrifice at all
-                        (3, 490, 400, 125, 400, 0, 0, 'REGULAR', 'CRAWLER'),
+                        (3, 2025, 490, 400, 125, 400, 0, 0, 'REGULAR', 'CRAWLER'),
                         -- missing_pa: a batting count with no PA to place it in
-                        (4, NULL, 47, 0, 0, 0, 0, 'REGULAR', 'ROLLUP'),
-                        -- healthy in each direction
-                        (5, 16, 13, 1, 1, 1, 0, 'REGULAR', 'CRAWLER'),
-                        (6, 10, 10, 0, 0, 0, 0, 'REGULAR', 'CRAWLER'),
+                        (4, 2025, NULL, 47, 0, 0, 0, 0, 'REGULAR', 'ROLLUP'),
+                        -- healthy in each direction, one on each side of the split
+                        (5, 2025, 16, 13, 1, 1, 1, 0, 'REGULAR', 'CRAWLER'),
+                        (6, 1995, 10, 10, 0, 0, 0, 0, 'REGULAR', 'CRAWLER'),
                         -- nothing recorded: not a defect
-                        (7, NULL, 0, 0, 0, 0, 0, 'REGULAR', 'ROLLUP')
+                        (7, 2025, NULL, 0, 0, 0, 0, 0, 'REGULAR', 'ROLLUP')
                     """,
                 ),
             )
         return engine
 
-    def test_the_three_checks_cover_every_violation_and_nothing_else(self) -> None:
+    def test_the_four_checks_cover_every_violation_and_nothing_else(self) -> None:
         engine = self._load([])
         with engine.connect() as conn:
             reported = {check_id: _rows_matching(conn, check_id) for check_id in _PA_CHECK_IDS}
             violations = _season_rows(conn)
 
         union = set().union(*reported.values())
-        overlap = (
-            (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[1]])
-            | (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[2]])
-            | (reported[_PA_CHECK_IDS[1]] & reported[_PA_CHECK_IDS[2]])
-        )
+        overlap = _overlap_of(reported)
 
         assert reported["player_season_batting_unaccounted_pa"] == {"1"}
+        assert reported["player_season_batting_unaccounted_pa_pre2001"] == {"8"}
         assert reported["player_season_batting_unreconciled_pa"] == {"2", "3"}
         assert reported["player_season_batting_missing_pa"] == {"4"}
         assert overlap == set(), f"two checks claimed the same row: {sorted(overlap)}"
@@ -1118,14 +1155,17 @@ class TestTheSeasonPaChecksPartitionTheViolations:
         otherwise empty. Building that mix and asserting the partition over it
         exercises the conditions against combinations the hand-picked rows above
         do not reach.
+
+        The seasons run across the 2001 boundary on purpose: the split is a
+        boundary a row can fall on, so the partition has to be asserted with rows
+        on both sides rather than only with seasons the split admits.
         """
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as conn:
             _create_quality_tables(conn)
-            conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
             sources = ("CRAWLER", "LEGACY_CRAWLER", "ROLLUP", "PROFILE", "AGGREGATED", "OFFICIAL_ARCHIVE")
             row = 0
-            for season in range(2002, 2026):
+            for season in range(1995, 2026):
                 for source in sources:
                     for shape in range(4):
                         row += 1
@@ -1161,17 +1201,167 @@ class TestTheSeasonPaChecksPartitionTheViolations:
             violations = _season_rows(conn)
 
         union = set().union(*reported.values())
-        overlap = (
-            (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[1]])
-            | (reported[_PA_CHECK_IDS[0]] & reported[_PA_CHECK_IDS[2]])
-            | (reported[_PA_CHECK_IDS[1]] & reported[_PA_CHECK_IDS[2]])
-        )
+        overlap = _overlap_of(reported)
 
         assert overlap == set(), f"two checks claimed {len(overlap)} row(s): {sorted(overlap)[:5]}"
         assert union == violations, (
             f"unreported {len(violations - union)}, unexpected {len(union - violations)} "
             f"out of {len(violations)} violations"
         )
+
+
+class TestThePre2001HalfIsReportedWithoutRaisingTheIncident:
+    """A gap nothing can repair has to be graded apart from one that can.
+
+    The pre-2001 seasons carry PA with both sacrifice columns empty and no source
+    to fill them -- ``game_batting_stats`` holds no pre-2001 row, so a value
+    written there would be invented rather than recovered. Counting that absence
+    as a failure left the pack red from the day the check was added, and a gate
+    that is always red is a gate nobody reads: the 481 rows a backfill or a
+    correction can actually reach were reported at the same volume as the 2,122
+    that cannot. These tests hold the two grades apart.
+    """
+
+    @staticmethod
+    def _pack(values: str) -> QualityRegressionReport:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                    """
+                    + values,
+                ),
+            )
+        with engine.connect() as conn:
+            return run_regression_pack(conn)
+
+    @staticmethod
+    def _by_id(report: QualityRegressionReport) -> dict[str, QualityRegressionResult]:
+        return {result.check_id: result for result in report.results}
+
+    def test_a_pre2001_row_warns_and_leaves_the_pack_ok(self) -> None:
+        report = self._pack("(1, 1995, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')")
+        results = self._by_id(report)
+
+        limited = results["player_season_batting_unaccounted_pa_pre2001"]
+        assert limited.status == "warn"
+        assert limited.violation_count == 1, "the structural backlog is still counted"
+        assert results["player_season_batting_unaccounted_pa"].status == "pass"
+        assert report.ok is True, "a source limit must not raise the daily incident"
+        assert report.failure_count == 0
+
+    def test_a_modern_row_fails_while_the_pre2001_check_stays_quiet(self) -> None:
+        report = self._pack("(1, 2025, 15, 13, 1, 0, 0, 0, 'REGULAR', 'CRAWLER')")
+        results = self._by_id(report)
+
+        assert results["player_season_batting_unaccounted_pa"].status == "fail"
+        assert results["player_season_batting_unaccounted_pa"].violation_count == 1
+        assert results["player_season_batting_unaccounted_pa_pre2001"].status == "pass"
+        assert report.ok is False, "a repairable backlog still has to be visible"
+        assert report.failure_count == 1
+
+    @pytest.mark.parametrize(
+        ("season", "claimant"),
+        [
+            (1982, "player_season_batting_unaccounted_pa_pre2001"),
+            (2000, "player_season_batting_unaccounted_pa_pre2001"),
+            (2001, "player_season_batting_unaccounted_pa"),
+            (2026, "player_season_batting_unaccounted_pa"),
+        ],
+    )
+    def test_the_split_sits_at_2001_where_the_game_rows_start(self, season: int, claimant: str) -> None:
+        """2001 is the first season ``game_batting_stats`` covers, so it is the line.
+
+        The two rows beside the boundary are the ones that matter: 2000 is
+        unrecoverable and 2001 is not, so a split drawn anywhere else would grade
+        one of them wrongly and the count alone would not show it.
+        """
+        report = self._pack(f"(1, {season}, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER')")
+        results = self._by_id(report)
+
+        assert results[claimant].violation_count == 1, f"season {season} was not claimed by {claimant}"
+        for other in _UNACCOUNTED_IDS:
+            if other != claimant:
+                assert results[other].violation_count == 0, f"season {season} was claimed by {claimant} and {other}"
+
+    def test_a_schema_without_the_season_column_reports_both_halves_as_unmeasurable(self) -> None:
+        """A database that cannot answer the check must say so, not guess a side.
+
+        Without ``season`` in ``required_columns`` the split would silently count
+        every row on one side of the boundary, and a count reads as a measurement.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE player_season_batting (
+                        player_id INTEGER,
+                        plate_appearances INTEGER,
+                        at_bats INTEGER,
+                        walks INTEGER,
+                        hbp INTEGER,
+                        sacrifice_hits INTEGER,
+                        sacrifice_flies INTEGER,
+                        league TEXT,
+                        source TEXT
+                    )
+                    """,
+                ),
+            )
+        with engine.connect() as conn:
+            report = run_regression_pack(conn)
+        results = self._by_id(report)
+
+        for check_id in _UNACCOUNTED_IDS:
+            assert results[check_id].status == "skipped"
+            assert "season" in results[check_id].message
+
+    def test_the_baseline_records_both_halves_with_their_own_seasons(self) -> None:
+        """Both sides are watched, so an approved historical write stays visible.
+
+        Recording only the modern half would leave the pre-2001 rows unwatched at
+        exactly the moment a reviewed backfill is allowed to change them.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            _create_quality_tables(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO player_season_batting
+                        (player_id, season, plate_appearances, at_bats, walks, hbp,
+                         sacrifice_hits, sacrifice_flies, league, source)
+                    VALUES
+                        (1, 1995, 15, 13, 1, 0, 0, 0, 'REGULAR', 'LEGACY_CRAWLER'),
+                        (2, 2025, 15, 13, 1, 0, 0, 0, 'REGULAR', 'CRAWLER')
+                    """,
+                ),
+            )
+
+            assert _violated_rows(conn, "player_season_batting_unaccounted_pa_pre2001") == ((1995, "1"),)
+            assert _violated_rows(conn, "player_season_batting_unaccounted_pa") == ((2025, "2"),)
+
+        assert set(_UNACCOUNTED_IDS) <= _BASELINE_CHECK_IDS
+
+    def test_the_baseline_recorder_does_not_raise_on_a_lean_schema(self) -> None:
+        """The recorder has to agree with the pack about an unanswerable check.
+
+        The baseline path runs on the same database the pack just called
+        unmeasurable, so without a guard a missing migration would surface as a
+        traceback from the recorder instead of a note on the report.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE player_season_batting (player_id INTEGER, plate_appearances INTEGER)"))
+            for check_id in _UNACCOUNTED_IDS:
+                assert _violated_rows(conn, check_id) == ()
 
 
 def test_regression_pack_skips_missing_optional_tables() -> None:
@@ -1422,7 +1612,6 @@ class TestTheBaselineLivesInTheDatabase:
         # A connection with no transaction already open, so the tests can take one.
         conn = engine.connect()
         _create_quality_tables(conn)
-        conn.execute(text("ALTER TABLE player_season_batting ADD COLUMN season INTEGER"))
         conn.rollback()
         return conn
 
@@ -1727,7 +1916,8 @@ class TestCancelledGamesCarryingScores:
                     game_status TEXT,
                     home_score INTEGER,
                     away_score INTEGER,
-                    is_primary BOOLEAN
+                    is_primary BOOLEAN,
+                    game_date TEXT
                 )
                 """,
             ),
@@ -1740,8 +1930,8 @@ class TestCancelledGamesCarryingScores:
             conn.execute(
                 text(
                     """
-                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
-                    VALUES ('G1', 'CANCELLED', 5, 4, 1)
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary, game_date)
+                    VALUES ('G1', 'CANCELLED', 5, 4, 1, '2024-05-01')
                     """,
                 ),
             )
@@ -1760,10 +1950,10 @@ class TestCancelledGamesCarryingScores:
             conn.execute(
                 text(
                     """
-                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
-                    VALUES ('G1', 'CANCELLED', NULL, NULL, 1),
-                           ('G2', 'COMPLETED', 5, 4, 1),
-                           ('G3', 'DRAW', 3, 3, 1)
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary, game_date)
+                    VALUES ('G1', 'CANCELLED', NULL, NULL, 1, '2024-05-01'),
+                           ('G2', 'COMPLETED', 5, 4, 1, '2024-05-02'),
+                           ('G3', 'DRAW', 3, 3, 1, '2024-05-03')
                     """,
                 ),
             )
@@ -1788,9 +1978,9 @@ class TestCancelledGamesCarryingScores:
             conn.execute(
                 text(
                     """
-                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary)
-                    VALUES ('DUP', 'CANCELLED', 5, 4, 0),
-                           ('PRIMARY', 'UNRESOLVED_MISSING', 5, 4, 1)
+                    INSERT INTO game (game_id, game_status, home_score, away_score, is_primary, game_date)
+                    VALUES ('DUP', 'CANCELLED', 5, 4, 0, '2024-05-01'),
+                           ('PRIMARY', 'UNRESOLVED_MISSING', 5, 4, 1, '2024-05-01')
                     """,
                 ),
             )
@@ -1822,3 +2012,505 @@ class TestCancelledGamesCarryingScores:
         assert result.status == "skipped"
         assert result.violation_count == 0
         assert next(c for c in _CHECKS if c.check_id == "game_cancelled_with_scores").table == "game"
+
+
+class TestCancelledWithScoresAppliesInEveryEra:
+    """The check has no era in its predicate, on purpose.
+
+    It was written for a failure that happened entirely before 2001: on
+    2026-09-23 a status sweep wrote CANCELLED over 7,995 rows that carried
+    scores. Scoping it to 2001+ after those rows were relabelled would have been
+    the opposite of a tripwire -- the same sweep, run again over 1983-2000,
+    would pass silently. The two test rows here are one historical and one
+    modern precisely so that dropping either half of the class fails.
+    """
+
+    @staticmethod
+    def _schema(conn) -> None:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    game_id TEXT, game_status TEXT, home_score INTEGER,
+                    away_score INTEGER, is_primary BOOLEAN, game_date TEXT
+                )
+                """,
+            ),
+        )
+
+    @staticmethod
+    def _reported(conn):
+        from src.validators.data_quality_regression_pack import run_regression_pack
+
+        return next(res for res in run_regression_pack(conn).results if res.check_id == "game_cancelled_with_scores")
+
+    def test_a_historical_row_carrying_scores_is_still_a_violation(self) -> None:
+        """Report the exact shape the 09-23 sweep produced, 7,995 times."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19880402LTOB0', 'CANCELLED', 0, 4, 1, '1988-04-02'),
+                        ('20260711WEEA0',  'CANCELLED', 5, 4, 1, '2026-07-11')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "fail"
+        assert result.violation_count == 2
+        assert set(result.sample_ids) == {"19880402LTOB0", "20260711WEEA0"}, "the era must not decide"
+
+    def test_a_retired_duplicate_is_not_reported(self) -> None:
+        """The 241 superseded 1982 rows carry a real score and stay excluded."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19820327SSMB0', 'CANCELLED', 11, 7, 0, '1982-03-27'),
+                        ('19820327MBSS0', 'UNRESOLVED_MISSING', 11, 7, 1, '1982-03-27')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+
+class TestDuplicateGameIdentifiersAreReported:
+    """One game under two identifiers is ours, not the source's.
+
+    1,000 groups in a season share a date and both team codes and every one of
+    them is a real doubleheader, so the key has to carry the suffix or the check
+    reports a thousand ordinary games as duplicates. What is left is the real
+    shape: the same game reached through the opposite team order, which is how
+    the whole 1982 corpus existed twice.
+    """
+
+    @staticmethod
+    def _schema(conn) -> None:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    game_id TEXT, game_status TEXT, home_score INTEGER,
+                    away_score INTEGER, is_primary BOOLEAN, game_date TEXT,
+                    home_team TEXT, away_team TEXT
+                )
+                """,
+            ),
+        )
+
+    @staticmethod
+    def _reported(conn):
+        from src.validators.data_quality_regression_pack import run_regression_pack
+
+        return next(res for res in run_regression_pack(conn).results if res.check_id == "game_duplicate_identifiers")
+
+    def test_two_ids_for_one_game_is_one_pair(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19820327MBSS0', 'UNRESOLVED_MISSING', 11, 7, 1, '1982-03-27', 'MB', 'SS'),
+                        ('19820327SSMB0', 'CANCELLED', 11, 7, 0, '1982-03-27', 'MB', 'SS')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "fail"
+        assert result.violation_count == 1, "the unit is the pair, not the row"
+        assert result.sample_ids == ("19820327MBSS0",)
+
+    def test_a_doubleheader_is_not_a_duplicate(self) -> None:
+        """Same date, same teams, different game -- the ordinary case, 1,000 times."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20100518LTHT0', 'COMPLETED', 3, 2, 1, '2010-05-18', 'HT', 'LT'),
+                        ('20100518LTHT1', 'COMPLETED', 9, 1, 1, '2010-05-18', 'HT', 'LT'),
+                        ('20100518OBHT0', 'COMPLETED', 3, 2, 1, '2010-05-18', 'OB', 'HT')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+    def test_two_games_differing_only_by_date_are_not_duplicates(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20100310HTHH0', 'CANCELLED', NULL, NULL, 1, '2010-03-10', 'HH', 'KIA'),
+                        ('20100311HTHH0', 'CANCELLED', NULL, NULL, 1, '2010-03-11', 'HH', 'KIA')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+    def test_three_ids_for_one_game_is_still_one_pair(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19820327MBSS0', 'UNRESOLVED_MISSING', 11, 7, 1, '1982-03-27', 'MB', 'SS'),
+                        ('19820327SSMB0', 'CANCELLED', 11, 7, 0, '1982-03-27', 'MB', 'SS'),
+                        ('19820327SSMB9', 'CANCELLED', 11, 7, 0, '1982-03-27', 'MB', 'SS')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.violation_count == 1
+
+    def test_the_suffix_expression_is_the_one_postgresql_agrees_with(self) -> None:
+        """Pin the expression, because a SQLite test cannot catch this.
+
+        ``SUBSTR(game_id, -1)`` is the last character on SQLite and the whole
+        string on PostgreSQL, so the shorter spelling passes every test in this
+        file and reports zero duplicates in production. The behaviour under test
+        is dialect agreement, and the only way to assert it without a PostgreSQL
+        fixture is to name the expression the two dialects share.
+        """
+        from src.validators.data_quality_regression_pack import _CHECKS
+
+        check = next(item for item in _CHECKS if item.check_id == "game_duplicate_identifiers")
+        for sql in (check.count_sql, check.sample_sql):
+            assert "SUBSTR(game_id, LENGTH(game_id), 1)" in sql
+            assert "SUBSTR(game_id, -1)" not in sql
+
+    def test_a_row_missing_teams_is_not_grouped(self) -> None:
+        """Grouping on a NULL would either skip it or fold unrelated games together."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20180801WOSK0', 'COMPLETED', 14, 8, 1, '2018-08-01', NULL, NULL),
+                        ('20180801LGOB0', 'COMPLETED', 3, 1, 1, '2018-08-01', 'LG', 'OB')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+
+class TestDuplicateDetectionFoldsEraTeamCodesIntoFranchises:
+    """A franchise changes its code; the matchup does not.
+
+    2011-2018 belongs to NX (넥센), which is franchise 11, and franchise 11 is
+    also WO and KH. Every Heroes game in those eight seasons is stored twice:
+    once under the era code and once under the current one, carrying no score
+    and no body the second time. Grouping on the raw code keeps the two rows
+    apart, so the check reported 22 pairs against a database holding 1,161.
+
+    The behaviour under test is that the key is the matchup, not the spelling.
+    """
+
+    @staticmethod
+    def _schema(conn) -> None:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    game_id TEXT, game_status TEXT, home_score INTEGER,
+                    away_score INTEGER, is_primary BOOLEAN, game_date TEXT,
+                    home_team TEXT, away_team TEXT
+                )
+                """,
+            ),
+        )
+
+    @staticmethod
+    def _reported(conn):
+        from src.validators.data_quality_regression_pack import run_regression_pack
+
+        return next(res for res in run_regression_pack(conn).results if res.check_id == "game_duplicate_identifiers")
+
+    def test_one_game_under_two_era_codes_of_one_franchise_is_one_pair(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20110312HTWO0', 'COMPLETED', 4, 3, 1, '2011-03-12', 'KH', 'KIA'),
+                        ('20110312HTNX0', 'COMPLETED', NULL, NULL, 1, '2011-03-12', 'NX', 'KIA')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.status == "fail"
+        assert result.violation_count == 1, "NX and KH name one franchise, so this is one game twice"
+
+    def test_two_games_between_the_same_franchises_on_different_days_are_separate(self) -> None:
+        """Folding codes must not fold distinct games into one."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20110312HTWO0', 'COMPLETED', 4, 3, 1, '2011-03-12', 'KH', 'KIA'),
+                        ('20110313HTNX0', 'COMPLETED', 4, 3, 1, '2011-03-13', 'NX', 'KIA')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.violation_count == 0
+
+    def test_an_all_star_side_is_not_folded_onto_a_club(self) -> None:
+        """EA and WE name the two halves of one game, not two franchises.
+
+        Neither maps to a franchise, so each keeps its own key and the All-Star
+        fixture stays exactly one group. Folding them onto a shared key would
+        report 13 real All-Star games as duplicates once a club game shared the
+        date; folding them onto a club's franchise would merge an exhibition with
+        a league game. Both are wrong and neither is caught by a test that only
+        uses eras with a code mapping.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('20150718EAWE0', 'COMPLETED', 5, 4, 1, '2015-07-18', 'WE', 'EA'),
+                        ('20150718EAHH0', 'COMPLETED', 3, 1, 1, '2015-07-18', 'EA', 'HH')
+                    """,
+                ),
+            )
+
+            result = self._reported(conn)
+
+        assert result.violation_count == 0, "an All-Star side is not a club, so nothing folds"
+
+    def test_the_case_expression_covers_every_code_the_history_declares(self) -> None:
+        """Pin the SQL to the source of truth.
+
+        The mapping is generated from ``iter_team_history``. A code that is
+        added there and missing here would silently stop being folded, which is
+        the exact failure this change was made to fix, and a per-era sample test
+        would not notice.
+        """
+        from src.utils.team_history import iter_team_history
+        from src.validators.data_quality_regression_pack import _franchise_case
+
+        sql = _franchise_case("home_team")
+
+        for entry in iter_team_history():
+            assert f"WHEN '{entry.team_code.upper()}' THEN 'F{entry.franchise_id}'" in sql, entry.team_code
+
+    def test_every_generated_branch_maps_back_to_its_own_franchise(self) -> None:
+        """A shared spelling must not claim two franchises.
+
+        ``SK`` and ``SSG`` are one franchise and ``SS`` is a different club that
+        inherited the same two letters in 2025, so a fold that reached the wrong
+        entry would merge a Samsung Lions game with an SSG Landers game.
+        """
+        from src.utils.team_history import franchise_id_for_team_code
+        from src.validators.data_quality_regression_pack import _franchise_case
+
+        import re
+
+        sql = _franchise_case("home_team")
+        parsed = dict(re.findall(r"WHEN '([A-Z]+)' THEN 'F(\d+)'", sql))
+
+        assert parsed
+        for code, franchise_id in parsed.items():
+            assert franchise_id_for_team_code(code, None) == int(franchise_id), code
+
+
+class TestTheBodyGapIsReportedWithoutFailing:
+    """A structural limit is not a regression, in any decade.
+
+    namuwiki publishes the result for 1982-2000 but no boxscore bodies, so those
+    games carry scores and nothing else. The same shape exists in the modern era:
+    50 games between 2011 and 2026 -- all-star fixtures, Korean Series games and
+    the 2024 World Baseball Classic -- have a score and no body because no
+    boxscore was ever collected for them. Reporting either as a failure produces a
+    gate that is red on arrival, which is a gate nobody reads. The number still
+    has to be visible: it is the gap a 09-23 status sweep reached 2,848 rows into
+    without anything recording it.
+
+    The era is not in the predicate. An era-scoped check is how the 50 fell out of
+    the report the moment they were relabelled UNRESOLVED_MISSING, which is how a
+    gate loses the rows it exists to watch.
+    """
+
+    @staticmethod
+    def _schema(conn) -> None:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE game (
+                    game_id TEXT, game_status TEXT, home_score INTEGER,
+                    away_score INTEGER, is_primary BOOLEAN, game_date TEXT
+                )
+                """,
+            ),
+        )
+        # The four body tables carry the columns the other checks in the pack
+        # read. Creating them without those columns turns their checks from
+        # skipped into errors, which is a different test failing for an
+        # unrelated reason.
+        conn.execute(
+            text("CREATE TABLE player_game_batting (game_id TEXT, player_id TEXT, hits INTEGER, at_bats INTEGER)")
+        )
+        conn.execute(text("CREATE TABLE game_lineups (game_id TEXT, player_id TEXT)"))
+        conn.execute(
+            text("CREATE TABLE game_inning_scores (game_id TEXT, inning INTEGER, team_side TEXT, runs INTEGER)"),
+        )
+        conn.execute(
+            text("CREATE TABLE game_batting_stats (game_id TEXT, player_id TEXT, hits INTEGER, at_bats INTEGER)")
+        )
+
+    @staticmethod
+    def _reported(conn):
+        from src.validators.data_quality_regression_pack import run_regression_pack
+
+        report = run_regression_pack(conn)
+        return report, next(res for res in report.results if res.check_id == "game_result_without_body")
+
+    def test_the_gap_is_warned_about_and_leaves_the_pack_ok(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19880402LTOB0', 'UNRESOLVED_MISSING', 0, 4, 1, '1988-04-02'),
+                        ('20110723EAWE0', 'UNRESOLVED_MISSING', 5, 4, 1, '2011-07-23'),
+                        ('20260711WEEA0', 'COMPLETED', 5, 4, 1, '2026-07-11')
+                    """,
+                ),
+            )
+            # The modern COMPLETED row gets a body, so the two rows that remain
+            # are the gaps and this one is the ordinary case.
+            conn.execute(text("INSERT INTO player_game_batting (game_id, player_id) VALUES ('20260711WEEA0', 'p1')"))
+
+            report, result = self._reported(conn)
+
+        assert result.status == "warn"
+        assert result.violation_count == 2
+        assert set(result.sample_ids) == {"19880402LTOB0", "20110723EAWE0"}, "the modern gap is reported too"
+        assert report.ok is True, "a source limit must not raise the daily incident"
+        assert report.failure_count == 0
+
+    def test_a_game_that_does_have_a_body_is_not_counted(self) -> None:
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19880402LTOB0', 'COMPLETED', 0, 4, 1, '1988-04-02')
+                    """,
+                ),
+            )
+            conn.execute(text("INSERT INTO player_game_batting (game_id, player_id) VALUES ('19880402LTOB0', 'p1')"))
+
+            _, result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+    @pytest.mark.parametrize(
+        "table",
+        ["player_game_batting", "game_lineups", "game_inning_scores", "game_batting_stats"],
+    )
+    def test_a_body_in_any_one_of_the_four_tables_counts_as_a_body(self, table: str) -> None:
+        """Otherwise a game carrying only lineups is reported as a gap that is not there."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(text("INSERT INTO game VALUES ('20180801WOSK0', 'COMPLETED', 14, 8, 1, '2018-08-01')"))
+            conn.execute(text(f"INSERT INTO {table} (game_id) VALUES ('20180801WOSK0')"))
+
+            _, result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0
+
+    def test_a_retired_duplicate_is_not_counted(self) -> None:
+        """Otherwise retiring the 241 1982 duplicates moves a source-limit figure.
+
+        The figure is supposed to describe what the source does not publish.
+        Our own housekeeping changing it would make the two indistinguishable.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO game VALUES
+                        ('19820327MBSS0', 'UNRESOLVED_MISSING', 11, 7, 1, '1982-03-27'),
+                        ('19820327SSMB0', 'CANCELLED', 11, 7, 0, '1982-03-27')
+                    """,
+                ),
+            )
+
+            _, result = self._reported(conn)
+
+        assert result.status == "warn"
+        assert result.violation_count == 1, "only the surviving row counts"
+        assert result.sample_ids == ("19820327MBSS0",)
+
+    def test_a_game_without_scores_is_not_a_body_gap(self) -> None:
+        """No result means nothing was collected, which is the normal shape of a fixture list."""
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as conn:
+            self._schema(conn)
+            conn.execute(text("INSERT INTO game VALUES ('20260820HTHH0', 'COMPLETED', NULL, NULL, 1, '2026-08-20')"))
+
+            _, result = self._reported(conn)
+
+        assert result.status == "pass"
+        assert result.violation_count == 0

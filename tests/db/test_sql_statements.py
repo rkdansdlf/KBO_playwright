@@ -244,11 +244,11 @@ class TestEveryShippedMigrationSplitsIntoExecutableStatements:
 
         # Two statements, and the header comment rides along with the first one
         # rather than becoming a statement of its own -- which is the whole
-        # failure: a comment-only chunk reached psycopg2 as an empty query.
+        # failure: a comment-only chunk reached psycopg as an empty query.
         assert len(statements) == 2
         # The header rides along with the CREATE TABLE rather than becoming a
         # statement of its own -- which is the whole failure: a comment-only
-        # chunk reached psycopg2 as an empty query, and the comment's orphaned
+        # chunk reached psycopg as an empty query, and the comment's orphaned
         # tail was welded onto the CREATE as though it were code.
         assert statements[0].startswith("-- 060_parking_fee_kinds.sql")
         assert "CREATE TABLE IF NOT EXISTS parking_fee_kinds" in statements[0]

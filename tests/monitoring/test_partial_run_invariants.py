@@ -112,9 +112,16 @@ class TestLivenessSurvivesAPartialRun:
     """A partial produced a payload, so liveness freshness may advance.
 
     This is the *conservative* operating choice, and it is asserted on purpose:
-    the existing ``KboCrawlerNoRecentSuccess`` critical is expected to keep
-    treating a partially-successful crawler as alive. Changing that is a
-    separate, blast-radius-measured decision, not a side effect of this module.
+    ``partial`` stays in ``SUCCESS_STATUSES`` and keeps advancing
+    ``kbo_crawl_last_success_timestamp``, so nothing in the ledger or the metrics
+    reclassifies a working crawler as an outage.
+
+    That is now separate from what the alerts threshold. ``KboCrawlerNoRecentSuccess``
+    reads ``kbo_crawl_last_full_success_timestamp`` (runbook §3.2h), so a crawler
+    that only ever lands partial runs does reach the critical -- after two of its
+    own cycles, with ``KboCrawlerSustainedPartial`` reporting it at 24h in the
+    meantime. The distinction was made at the rule, not by changing the status,
+    which is why this metric invariant still holds and is still asserted.
     """
 
     def test_a_partial_run_advances_last_success(self) -> None:

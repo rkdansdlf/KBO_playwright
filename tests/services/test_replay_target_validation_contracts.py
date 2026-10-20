@@ -82,6 +82,7 @@ def _stored_run(factory: sessionmaker, run_id: str) -> CrawlExecutionRun | None:
     [
         ("food", "src.crawlers.food_crawler", "food"),
         ("parking", "src.crawlers.parking_crawler", "parking"),
+        ("seat", "src.crawlers.seat_crawler", "seat_section"),
     ],
 )
 def test_unknown_team_target_is_refused(
@@ -462,3 +463,81 @@ def test_invalid_target_does_not_reschedule(
         assert stored.status == DlqStatus.EXHAUSTED.value
         assert stored.error_code == "FETCH_TIMEOUT"
         assert stored.retry_count == 1
+
+
+class TestSeatReplay:
+    """A seat letter must reach the crawler rather than die on a registry miss.
+
+    Seat used to go through ``_replay_team_page``, which is typed for
+    ``FoodCrawler`` and ``ParkingCrawler``. Two things followed from that. The
+    helper's ``_TEAM_SOURCES`` holds only those two crawlers, so a seat letter
+    reached ``_TEAM_SOURCES[crawler_name]`` and raised ``KeyError('seat')`` --
+    before any page was fetched. And the exception was caught by
+    ``retry_dead_letter`` and stored as the letter's ``error_message``, so the
+    dead letter read ``'seat'``. Four letters exhausted on that message alone,
+    with no reader able to tell what had happened.
+    """
+
+    def test_a_known_team_reaches_the_crawler(
+        self,
+        ledger: tuple[sessionmaker, Callable[[str], None]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _factory, bind_tracker = ledger
+        bind_tracker("src.crawlers.seat_crawler")
+        from src.crawlers.seat_crawler import SeatCrawler
+
+        requested: list[str | None] = []
+
+        async def recording_run(
+            self: SeatCrawler,
+            *,
+            save: bool = False,
+            team_filter: str | None = None,
+            run_spec: object = None,
+            record_dead_letters: bool = True,
+        ) -> list[dict]:
+            requested.append(team_filter)
+            return []
+
+        monkeypatch.setattr(SeatCrawler, "run", recording_run)
+
+        outcome = dispatcher.build_default_dispatcher().replay(
+            _letter("seat", "OB", "seat_section"),
+            replay_run_id=RUN_ID,
+        )
+
+        assert requested == ["OB"], "the replay never reached the crawler -- a registry miss looks exactly like this"
+        assert outcome.replay_run_id == RUN_ID
+
+    def test_an_unknown_team_is_refused_without_touching_the_crawler(
+        self,
+        ledger: tuple[sessionmaker, Callable[[str], None]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _factory, bind_tracker = ledger
+        bind_tracker("src.crawlers.seat_crawler")
+        from src.crawlers.seat_crawler import SeatCrawler
+
+        async def must_not_run(*args: object, **kwargs: object) -> list[dict]:
+            raise AssertionError("an unknown team must be refused before the crawler runs")
+
+        monkeypatch.setattr(SeatCrawler, "run", must_not_run)
+
+        outcome = dispatcher.build_default_dispatcher().replay(
+            _letter("seat", "NOT_A_TEAM", "seat_section"),
+            replay_run_id=RUN_ID,
+        )
+
+        assert outcome.success is False
+        assert outcome.status == "unaddressable"
+        assert outcome.error_code == "VALIDATION_SCHEMA"
+
+    def test_seat_is_registered_in_the_default_dispatcher(self) -> None:
+        """The registration is the other half of the failure.
+
+        A handler can be correct and still never run if the dispatcher does not
+        know it. The seat handler was registered all along, which is why the
+        ``KeyError`` was the observable symptom rather than a missing handler.
+        """
+        assert "seat" in dispatcher.build_default_dispatcher().registered_crawlers()

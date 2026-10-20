@@ -1,0 +1,138 @@
+# Rule-level tests for KboCrawlerRecentFailure in monitoring/prometheus/alert_rules_crawler.yml.
+#
+# The rule answers the question the freshness rule deliberately waits two cycles
+# to ask: is the *latest* result a failure? A single failed run after a good one
+# is inside the grace window (a 06:45 failure is usually replayed from the dead
+# letter queue within minutes), and that grace is deliberate. What was missing was
+# the reading after it: `last_failure >= last_run` stays true until a later run
+# succeeds, so a missed collection cannot disappear behind a stale success.
+#
+#   promtool test rules monitoring/prometheus/tests/crawler_alert_recent_failure_test.yml
+
+rule_files:
+  - ../alert_rules_crawler.yml
+
+evaluation_interval: 1h
+
+tests:
+  # ── Fires: the latest terminal run is a failure ────────────────────────
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="game_detail"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="game_detail"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="game_detail"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="game_detail"}'
+        values: '273600x200'
+    alert_rule_test:
+      # eval at 4d (345600s): the only run in the last hour failed.
+      - eval_time: 4d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: game_detail
+            exp_annotations:
+              summary: "크롤러 최근 실행 실패: game_detail"
+              description: >-
+                game_detail 의 가장 최근 실행이 실패로 끝났습니다.
+                DLQ 재시도가 성공하면 다음 실행에서 자동으로 해제됩니다.
+                원장의 error_code 와 `python3 -m src.cli.kbo dlq list --crawler game_detail` 를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"
+
+  # ── Stays quiet: a later run succeeded ─────────────────────────────────
+  # The failure is two hours old and a success landed an hour later. The failure
+  # is already recovered, and keeping the alert up would page on history.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="schedule"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="schedule"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="schedule"}'
+        values: '340200x200'
+      - series: 'kbo_crawl_last_full_success_timestamp{crawler="schedule"}'
+        values: '342000x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts: []
+
+  # ── Stays quiet: the last run is old ───────────────────────────────────
+  # Nothing has finished for three days, so the "latest result" cannot be called
+  # today's failure. A stopped crawler belongs to the scheduler staleness rule.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="relay"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="relay"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="relay"}'
+        values: '86400x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts: []
+
+  # ── Stays quiet: the last run was partial, not a failure ───────────────
+  # `partial` is a success for the ledger. It has its own rungs
+  # (KboCrawlerSustainedPartial, then KboCrawlerNoRecentSuccess) and must not be
+  # amplified into a failure report here.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="parking"}'
+        values: '86400x200'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="parking"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_partial_success_timestamp{crawler="parking"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="parking"}'
+        values: '340200x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts: []
+
+  # ── Stays quiet: no published interval ─────────────────────────────────
+  # An exempt crawler is not judged by a cadence rule at all. Reading the missing
+  # interval as 0 would turn the guard into `time() - last_run < 0`, which is
+  # never true, so the rule would go quiet for the wrong reason and the next
+  # change could make it fire on every crawler instead.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_last_run_timestamp{crawler="kbo_event"}'
+        values: '342000x200'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="kbo_event"}'
+        values: '342000x200'
+    alert_rule_test:
+      - eval_time: 4d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts: []
+
+  # ── Fires: a weekly crawler whose latest run failed ────────────────────
+  # The guard is the crawler's own period, not a day: a weekly job's most recent
+  # run is still "the latest result" a week later.
+  - interval: 1h
+    input_series:
+      - series: 'kbo_crawl_expected_interval_seconds{crawler="team_history"}'
+        values: '604800x400'
+      - series: 'kbo_crawl_last_run_timestamp{crawler="team_history"}'
+        values: '1202400x400'
+      - series: 'kbo_crawl_last_failure_timestamp{crawler="team_history"}'
+        values: '1202400x400'
+    alert_rule_test:
+      - eval_time: 14d
+        alertname: KboCrawlerRecentFailure
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              crawler: team_history
+            exp_annotations:
+              summary: "크롤러 최근 실행 실패: team_history"
+              description: >-
+                team_history 의 가장 최근 실행이 실패로 끝났습니다.
+                DLQ 재시도가 성공하면 다음 실행에서 자동으로 해제됩니다.
+                원장의 error_code 와 `python3 -m src.cli.kbo dlq list --crawler team_history` 를 확인하세요.
+              runbook: "Docs/runbooks/DATA_RELIABILITY.md"

@@ -43,11 +43,9 @@ dependencies = [
     # read from the URL itself. PostgreSQL is what this deployment runs, Oracle
     # stays supported for the legacy paths that still reach it (rag_chunk VECTOR
     # binding, oracle_vector_search_repository, migrations/oracle).
-    # 2.1 상한: SQLAlchemy 2.1이 bare `postgresql://` URL의 기본 드라이버를
-    # psycopg3으로 전환했는데, 이 프로젝트는 psycopg2-binary만 선언했고
-    # bare URL → psycopg2 해석이 테스트로 고정된 계약이다 (see
-    # tests/cli/test_apply_postgres_migrations.py::test_the_migration_runner_uses_psycopg2).
-    "SQLAlchemy>=2.0.41,<2.1",  # Oracle VECTOR type support
+    # PostgreSQL 드라이버: psycopg (psycopg 3)만 사용한다.
+    # bare `postgresql://` URL은 psycopg 3으로 해석된다 (SQLAlchemy 2.1+ 기본값).
+    "SQLAlchemy>=2.0.41",
     "oracledb>=4.0.0",  # Oracle ADB driver (Wallet/TNS/Vector)
     "python-dotenv>=1.0.0",
     # Scheduling
@@ -72,7 +70,7 @@ dependencies = [
 # extra is normally required rather than optional; it stays in this table because
 # a pure-SQLite local run does not need it.
 postgres = [
-    "psycopg2-binary>=2.9.9",
+    "psycopg[binary]>=3.1.0",
     "pgvector>=0.3.0",
 ]
 dev = [

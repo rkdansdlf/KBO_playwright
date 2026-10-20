@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from unittest.mock import MagicMock
 
+import argparse
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -148,17 +149,127 @@ def test_staging_candidate_iterator_uses_lightweight_projection() -> None:
 
 
 def test_staging_candidate_iterator_rolls_back_before_legacy_fallback() -> None:
-    """Reset a failed lightweight query before retrying the compatible projection."""
+    """Reset a failed lightweight query and re-raise (no SELECT * fallback, OOM risk)."""
     session = MagicMock()
-    fallback = MagicMock()
-    fallback.mappings.return_value = []
-    session.execute.side_effect = [SQLAlchemyError("missing optional column"), fallback]
+    session.execute.side_effect = SQLAlchemyError("missing optional column")
 
+    with pytest.raises(SQLAlchemyError):
+        list(build_rag_index._iter_staging_candidate_chunks(session, None, None))
+
+    session.rollback.assert_called_once_with()
+
+
+def test_staging_query_applies_keyset_cursor() -> None:
+    """Resume the staging scan past rows the previous run already consumed."""
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "postgresql"
+
+    without_cursor = str(build_rag_index._staging_query(session, skip_populated=True, lightweight=True))
+    with_cursor = str(build_rag_index._staging_query(session, skip_populated=True, lightweight=True, last_id=42))
+
+    assert "id > 42" not in without_cursor
+    assert "id > 42" in with_cursor
+    assert "embedding IS NULL" in with_cursor
+    assert "AND id > 42" in with_cursor
+
+
+def test_staging_cursor_round_trips_through_the_file(monkeypatch, tmp_path) -> None:
+    """Persist and read the keyset cursor so a crashed scan can resume."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    build_rag_index._save_staging_cursor(1234)
+
+    assert build_rag_index._read_staging_cursor() == 1234
+
+
+def test_staging_cursor_prefers_the_environment_override(monkeypatch, tmp_path) -> None:
+    """An explicit env cursor wins so an operator can replay or rewind."""
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 10}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+    monkeypatch.setenv("RAG_STAGING_LAST_ID", "77")
+
+    assert build_rag_index._read_staging_cursor() == 77
+
+
+@pytest.mark.parametrize("payload", ["{not json", '{"last_id": "nope"}'])
+def test_staging_cursor_treats_a_corrupt_file_as_unset(monkeypatch, tmp_path, payload) -> None:
+    """A damaged cursor must not stop a build -- restart from the beginning."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text(payload, encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    assert build_rag_index._read_staging_cursor() == 0
+
+
+def test_staging_cursor_reseeds_per_call(monkeypatch, tmp_path) -> None:
+    """A short run must not inherit an earlier call's high-water mark.
+
+    The holder is module-level, so without re-seeding, a second call in the same
+    process would keep the previous (larger) value and save it -- skipping rows
+    that were never processed. Silent data loss, so it is pinned here.
+    """
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = [
+        {"id": 150, "source_table": "player_basic", "source_row_id": "1", "content": "본문", "is_active": True}
+    ]
+
+    build_rag_index._STAGING_CURSOR_MAX_ID[0] = 999  # leakage from a previous call
     rows = list(build_rag_index._iter_staging_candidate_chunks(session, None, None))
 
-    assert rows == []
-    session.rollback.assert_called_once_with()
-    assert "SELECT *" in str(session.execute.call_args_list[1].args[0])
+    assert len(rows) == 1
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 150
+
+
+def test_staging_cursor_seeds_from_file_when_nothing_is_read(monkeypatch, tmp_path) -> None:
+    """A query that yields nothing must leave the cursor where it was found."""
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = []
+
+    build_rag_index._STAGING_CURSOR_MAX_ID[0] = 999
+    assert list(build_rag_index._iter_staging_candidate_chunks(session, None, None)) == []
+
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
+
+
+def test_staging_cursor_does_not_advance_for_an_abandoned_scan(monkeypatch, tmp_path) -> None:
+    """An interrupted scan must resume from where it started, never skip ahead.
+
+    The embedding call can fail mid-batch. The generator is then dropped without
+    running its final bookkeeping, so the cursor stays put and the next run
+    re-reads the same rows (the upserts are idempotent). Advancing here would
+    turn a transient API error into permanently unindexed rows.
+    """
+    monkeypatch.delenv("RAG_STAGING_LAST_ID", raising=False)
+    cursor_file = tmp_path / "staging_cursor.json"
+    cursor_file.write_text('{"last_id": 100}', encoding="utf-8")
+    monkeypatch.setenv("RAG_STAGING_CURSOR_FILE", str(cursor_file))
+
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value = [
+        {"id": 150, "source_table": "player_basic", "source_row_id": "1", "content": "본문", "is_active": True},
+        {"id": 160, "source_table": "player_basic", "source_row_id": "2", "content": "다음", "is_active": True},
+    ]
+
+    scan = build_rag_index._iter_staging_candidate_chunks(session, None, None)
+    assert next(scan)["source_row_id"] == "1"
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
+    scan.close()
+
+    assert build_rag_index._STAGING_CURSOR_MAX_ID[0] == 100
 
 
 def test_prepare_staging_chunks_uses_populated_vector_filter() -> None:
@@ -226,6 +337,21 @@ def test_process_source_persists_using_index_session(monkeypatch) -> None:
     assert count == 1
     assert persisted[0][1] is index_session
     assert persisted[0][0][0]["content_hash"] == chunk_content_hash(None, "player")
+
+
+def test_count_only_names_the_mode_so_a_count_is_never_read_as_a_write() -> None:
+    """The final line must say no embedding call and no write happened."""
+    args = argparse.Namespace(count_only=True, dry_run=True)
+
+    assert "count-only" in build_rag_index._completion_suffix(args)
+    assert "임베딩 호출 없음" in build_rag_index._completion_suffix(args)
+
+
+def test_real_run_has_no_completion_suffix() -> None:
+    """A real build keeps its original, unmarked completion line."""
+    args = argparse.Namespace(count_only=False, dry_run=False)
+
+    assert build_rag_index._completion_suffix(args) == ""
 
 
 def test_process_source_recomputes_hash_and_records_embedding_fingerprint(monkeypatch) -> None:
@@ -321,7 +447,7 @@ def test_full_rebuild_yields_healthy_rows_but_blocks_terminal_rows() -> None:
 
 
 def test_full_rebuild_reports_but_does_not_apply_metadata_only_gap() -> None:
-    """Keep legacy fingerprint repair behind a separate approval gate."""
+    """Leave a legacy fingerprint gap alone unless the repair gate is opened."""
     index_session = MagicMock()
     index_session.execute.return_value.all.return_value = [
         ("player_basic", "1", chunk_content_hash("", "same"), "rag-v1", "ACTIVE", True, {})
@@ -340,6 +466,110 @@ def test_full_rebuild_reports_but_does_not_apply_metadata_only_gap() -> None:
     )
 
     assert result == []
+
+
+def test_repair_gate_reembeds_a_legacy_fingerprint_row() -> None:
+    """Open the gate so a fingerprint-less row is re-embedded, even under --skip-existing."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        ("player_basic", "1", chunk_content_hash("", "same"), "rag-v1", "ACTIVE", True, {})
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "same"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == [{"source_table": "player_basic", "source_row_id": "1", "content": "same"}]
+
+
+def test_repair_gate_leaves_a_current_fingerprint_row_alone() -> None:
+    """Keep the gate narrow: a row already labelled for this model is not re-embedded."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        (
+            "player_basic",
+            "1",
+            chunk_content_hash("", "same"),
+            "rag-v1",
+            "ACTIVE",
+            True,
+            {"embedding_fingerprint": "model-a:1536:rag-v1"},
+        )
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "same"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == []
+
+
+def test_repair_gate_does_not_resurrect_a_terminal_identity() -> None:
+    """A blocked row stays blocked: the gate repairs metadata, not lifecycle state."""
+    index_session = MagicMock()
+    index_session.execute.return_value.all.return_value = [
+        ("player_basic", "1", chunk_content_hash("", "gone"), "rag-v1", "DELETED", False, {})
+    ]
+    chunks = iter([{"source_table": "player_basic", "source_row_id": "1", "content": "gone"}])
+
+    result = list(
+        build_rag_index._skip_existing_index_rows(
+            chunks,
+            index_session,
+            build_rag_index.IncrementalSelectionOptions(
+                include_healthy=False,
+                desired_embedding_fingerprint="model-a:1536:rag-v1",
+                repair_legacy_fingerprint=True,
+            ),
+        )
+    )
+
+    assert result == []
+
+
+def test_iter_candidate_chunks_passes_the_repair_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Carry the repair gate from BuildSourceOptions into the selector."""
+    captured: dict[str, object] = {}
+
+    def _capture(chunk_iter: object, index_session: object, options: object = None, **kwargs: object) -> object:
+        captured["options"] = options
+        return iter([])
+
+    monkeypatch.setattr(build_rag_index, "_prepare_source_chunks", lambda *args, **kwargs: iter([]))
+    monkeypatch.setattr(build_rag_index, "_skip_existing_index_rows", _capture)
+
+    source_name = next(iter(build_rag_index._SOURCE_MAP))
+    list(
+        build_rag_index._iter_candidate_chunks(
+            source_name,
+            MagicMock(),
+            MagicMock(),
+            None,
+            build_rag_index.BuildSourceOptions(skip_existing=True, repair_legacy_fingerprint=True),
+        )
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.repair_legacy_fingerprint is True
 
 
 def test_skip_existing_index_rows_reads_real_sqlalchemy_projection() -> None:
@@ -673,3 +903,97 @@ def test_deterministic_build_requires_staging_environment(monkeypatch) -> None:
             embedding_mode="deterministic",
             dry_run=True,
         )
+
+
+def test_vector_presence_is_refused_without_skip_existing() -> None:
+    """Without the skip filter every chunk is yielded, so key presence would be ignored silently."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--vector-presence"])
+
+    assert raised.value.code == 2
+
+
+def test_content_presence_is_refused_without_skip_existing() -> None:
+    """Content presence only means something on the skip filter path."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--content-presence"])
+
+    assert raised.value.code == 2
+
+
+def test_count_candidates_writes_one_json_line_per_chunk_without_embedding(tmp_path) -> None:
+    """Listing candidates is for sampling: it writes the rows and never calls a provider."""
+    import json
+
+    chunks = iter(
+        [
+            {
+                "source_table": "game_play_by_play",
+                "source_row_id": "20260816OBHT0_7",
+                "title": "t1",
+                "content": "본문1",
+            },
+            {"source_table": "game_play_by_play", "source_row_id": "1680134", "title": "t2", "content": "본문2"},
+        ]
+    )
+    target = tmp_path / "candidates.jsonl"
+
+    count = build_rag_index._count_candidates(chunks, target)
+
+    assert count == 2
+    lines = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+    assert [row["source_row_id"] for row in lines] == ["20260816OBHT0_7", "1680134"]
+    assert lines[0]["content"] == "본문1"
+
+
+def test_count_candidates_without_a_path_only_counts(tmp_path) -> None:
+    """The default path counts and writes nothing."""
+    count = build_rag_index._count_candidates(iter([{"content": "a"}, {"content": "b"}]), None)
+
+    assert count == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_list_candidates_is_refused_without_count_only() -> None:
+    """The listing belongs to the read-only path only."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--list-candidates", "x.jsonl"])
+
+    assert raised.value.code == 2
+
+
+def test_drop_excluded_removes_only_listed_identities() -> None:
+    """The exclusion is applied to candidates, so count, list, and apply all see the same set."""
+    chunks = [{"source_row_id": "A"}, {"source_row_id": "B"}, {"source_row_id": "C"}]
+
+    kept = list(build_rag_index._drop_excluded(iter(chunks), frozenset({"B"})))
+
+    assert [chunk["source_row_id"] for chunk in kept] == ["A", "C"]
+
+
+def test_read_exclude_ids_skips_blank_lines_and_comments(tmp_path) -> None:
+    """One identity per line; blank lines and comments are not identities."""
+    source = tmp_path / "exclude.txt"
+    source.write_text("# 322 matched plays\n20260816DBKIA0_7\n\n20260816DBKIA0_9\n", encoding="utf-8")
+
+    assert build_rag_index._read_exclude_ids(str(source)) == frozenset({"20260816DBKIA0_7", "20260816DBKIA0_9"})
+    assert build_rag_index._read_exclude_ids(None) == frozenset()
+
+
+def test_exclude_file_is_refused_for_other_sources() -> None:
+    """Only the PBP path is covered by the verified exclusion list."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--source", "lineups", "--count-only", "--skip-existing", "--exclude-file", "x.txt"])
+
+    assert raised.value.code == 2
+
+
+def test_play_presence_is_refused_without_skip_existing_or_for_other_sources() -> None:
+    """The play filter only means something on the PBP skip path."""
+    with pytest.raises(SystemExit) as no_skip:
+        build_rag_index.main(["--source", "pbp", "--play-presence"])
+    with pytest.raises(SystemExit) as other_source:
+        build_rag_index.main(["--source", "lineups", "--skip-existing", "--play-presence"])
+
+    assert no_skip.value.code == 2
+    assert other_source.value.code == 2

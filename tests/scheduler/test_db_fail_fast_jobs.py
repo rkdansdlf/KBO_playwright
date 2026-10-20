@@ -309,6 +309,11 @@ class TestTheGateNamesTheRightDatabases:
             lambda *, urls=None, **_kwargs: probed.append(tuple(urls or ())) or True,
         )
         monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+        # The probe is the subject; the build that runs afterwards fails against
+        # the fake URL and would otherwise write a real delivery-audit row through
+        # the alert bridge, which tests/scheduler/conftest.py refuses.
+        monkeypatch.setattr(maintenance, "alert_warning", lambda *_a, **_k: None)
+        monkeypatch.setattr(maintenance, "alert_success", lambda *_a, **_k: None)
 
         maintenance.sync_rag_incremental_job()
 

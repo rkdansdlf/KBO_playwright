@@ -593,3 +593,37 @@ class TestExistingGameData:
         d = ExistingGameData(has_detail=True, has_relay=True)
         assert d.has_detail is True
         assert d.has_relay is True
+
+
+class TestCancelledGamesAreNotCrawlTargets:
+    """취소·연기 경기는 boxscore를 가질 수 없으므로 범위 조회에서 빠져야 한다.
+
+    상태 필터가 없으면 대상 선정이 이들을 포함하고, 크롤은 ``FETCH_HTTP_ERROR``로
+    실패해 DLQ에 ``pending``으로 쌓인다 — 2026-10-19 실측에서 ``dlq:exhausted``
+    알림의 원인이었다.
+    """
+
+    def _compiled_filter_args(self, mock_session: MagicMock) -> str:
+        """``load_game_targets_from_db``가 ``filter()``에 넘긴 조건을 SQL 문자열로 만든다."""
+        chain = mock_session.query.return_value.filter
+        chain.return_value.order_by.return_value.all.return_value = []
+        load_game_targets_from_db(2026, 10)
+        args = chain.call_args[0]
+        return " ".join(str(arg.compile(compile_kwargs={"literal_binds": True})) for arg in args)
+
+    def test_cancelled_and_postponed_are_excluded(self):
+        with patch("src.services.game_collection_service.SessionLocal") as mock_sl:
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            compiled = self._compiled_filter_args(mock_session)
+        assert "CANCELLED" in compiled, compiled
+        assert "POSTPONED" in compiled, compiled
+
+    def test_resolvable_statuses_stay_targets(self):
+        """COMPLETED·DRAW·UNRESOLVED_MISSING은 복구 시도 대상이므로 제외하면 안 된다."""
+        with patch("src.services.game_collection_service.SessionLocal") as mock_sl:
+            mock_session = MagicMock()
+            mock_sl.return_value.__enter__.return_value = mock_session
+            compiled = self._compiled_filter_args(mock_session)
+        for status in ("COMPLETED", "DRAW", "UNRESOLVED_MISSING"):
+            assert status not in compiled, f"{status} 가 제외 목록에 들어갔다: {compiled}"

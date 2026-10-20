@@ -520,3 +520,59 @@ Oracle의 물리 `EMBEDDING`은 레거시 JSON이라 그대로 쓰면 벡터 인
 `pg_indexes`에 `ivfflat`·`hnsw`가 **없다**(pkey와 `content_tsv` GIN만). 583,265행에서
 dense 검색은 **전수 스캔**이 된다. 런북 §9.7의 "HNSW 인덱스: 보류"와 같은 상태이며,
 PostgreSQL dense 경로를 활성화할 때 함께 생성해야 한다.
+
+## 2026-10-19 실측 — 저장소 상태와 감사 게이트의 짝
+
+### 양 저장소
+
+| side | 저장소 | rows | max_id | 마지막 쓰기 (UTC) |
+| --- | --- | ---: | ---: | --- |
+| `primary` | `DATABASE_URL` / `bega_prod` | 606,640 | 1,325,772 | 2026-10-19 14:23 |
+| `staging` | `PGVECTOR_URL` / `5435 kbo_rag_retired_202610` | 228,681 | 236,807 | **2026-10-10 19:15** |
+
+staging은 10-10 이후 쓰기가 없다 — 폐기 개명(10-13) 뒤로 갱신되지 않는 스냅샷이고,
+`max(updated_at)`이 그 시각에 고정돼 있다. primary는 계속 자란다.
+
+`game_play_by_play`는 10-18에 "폐기 전용 125,218 / 새 인덱스 0"이었는데, 10-19
+primary에 **7,274행**이 있다(14:23 갱신). 새 인덱스가 PBP를 부분적으로 인덱싱하기
+시작했다는 뜻이며, 도메인 288만 행 대비로는 여전히 미미하다.
+
+### 드라이버 표기 결함 — `vector_engine` import 크래시 (수정됨)
+
+`39b1081f`가 psycopg2를 의존성에서 제거한 뒤에도 `.env`의 `PGVECTOR_URL`은
+`postgresql+psycopg2://`를 지정한다. `create_engine`은 이 URL에서 `import_dbapi`로
+`ModuleNotFoundError`를 던지는데, `_VECTOR_ENGINE_EXCEPTIONS`가
+`(SQLAlchemyError, RuntimeError, OSError)`뿐이라 **잡히지 않고 모듈 import가 죽었다**.
+`vector_engine`을 import하는 호출자 — `vector_search_repository`, `build_rag_index`,
+`audit_rag_index`, `reconcile_rag_stores` 등 — 는 `is_pgvector_available()`로 물어볼
+기회조차 얻지 못하고 **무관한 import 줄에서 `ImportError`**를 받았다.
+
+수정은 예외 튜플에 `ImportError`를 넣는 것이다. 드라이버 부재는 **설정 상태**이고,
+가용성 가드가 보고하도록 존재하는 바로 그 상태다. 실증: `.env`를 고치지 않고도
+`import src.db.vector_engine`이 성공하고 `is_pgvector_available()`이 `False`를
+반환한다. 드라이버 자체는 설치돼 있다(psycopg 3.3.6) — 남은 것은 URL 표기 한 줄이며,
+환경 파일이므로 저장소가 아니라 배포가 고칠 몫이다.
+
+**이 결함은 로컬 환경에서 확인한 것이다.** 아래 원격 incident는 `exit 1`(도달 가능 +
+내용 불일치)이므로 그 호스트에서는 dense 저장소가 열렸다. 같은 원인으로 묶으면 안 된다.
+
+### 감사 게이트는 서로 다른 신원 체계의 두 저장소를 짝지어 비교한다
+
+`RAG_INDEX_DB_URL`이 없으면 `primary`는 `DATABASE_URL`, `staging`은 `PGVECTOR_URL`로
+해석된다("백엔드 해석" 절). 현 구성에서 그 둘의 공통 신원은 **534건(0.236%, 10-18
+실측)**이므로 `audit_index_sessions`의 비교는 구조적으로 항상 불일치를 낸다.
+
+`scheduler:rag_audit_sentinel:warning`이 10-17·10-18에 열렸고 메시지는
+"retrievable chunks are missing embeddings or sparse postings"였는데, primary의 임베딩
+누락은 **실측 0건**이다(606,640 / 606,640, 최근 7일 생성분도 100%). 감사 도구는 저장소
+불가를 `EXIT_STORE_UNREACHABLE = 2`로 정확히 분리하므로, 이 메시지가 뜻하는 것은
+"인덱스 내용이 일관되지 않다"이며 "임베딩이 없다"가 아니다. 짝 자체가 성립하지 않는
+구성이 원인 후보다.
+
+`audit_index_sessions`는 양쪽 **전체 행**의 신원 5컬럼(`source_table`, `source_row_id`,
+`content_hash`, `index_version`, `index_status`)을 메모리로 올려 비교한다 — 835,321행
+기준이며, 이 짝에서는 매일 같은 대량 findings를 다시 만든다.
+
+**따라서 감사를 살리려면 짝을 맞추거나(단일 저장소 모드) 비교 대상을 바꿔야 한다.**
+현 상태로는 같은 경고가 매일 반복되고, 어떤 조치로도 닫히지 않는다 — `alert_success`는
+`exit_code == 0`에서만 나오고, 이 구성은 그 코드에 도달할 수 없다.

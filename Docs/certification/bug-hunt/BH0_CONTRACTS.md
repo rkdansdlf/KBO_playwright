@@ -1064,6 +1064,7 @@ WHERE crawler='preview' AND created_at > NOW() - INTERVAL '1 hour';
 | **BUG-013** | **P2** | **incident** | **`dlq retry`/`requeue`/`ignore` 후 `dlq:` 인시던트가 최대 30분 열린 채 남음** | **수정 완료(BH10); `_refresh_metrics`가 읽기에서 도출, 뮤테이션 3건 검출** |
 | **BUG-019** | **P1** | **reporting/metrics** | **`max(updated_at)`은 수집 시각이 아니라 *변화* 시각 — 매일 수집해도 내용이 같으면 표가 멈춰 보인다** | **미수정(계측기 결함)**. 근거: `parking` 4회 success·매번 3건(10-10까지)인데 `parking_lots.updated_at`은 2026-08-15 || **BUG-018** | **P1** | **ledger/metrics** | **0건을 수집한 런이 `success`로 기록됨 — 원장 어디에도 잘못이 없어 조용한 실패** | **계측 완료**(`adaa1230`); `source_inventory`가 런 산출과 테이블 나이를 교차 검증. **근본 수정(BUG-014/015)은 배포 확인**(2026-10-12) — 존재 증거: 운영 원장에 `checkpoint.outcome='source_limited'` **82건**(2026-10 월), 최근 72h의 0건 `success` 런이 `preview` 61/61·`roster_transactions` 7/7·`player_movement` 4/4·`team_history` 1/1로 **전부** 표시됨. 회귀 `tests/crawlers/test_kbo_source_compliance.py` + 크롤러별 canary 5종 |
 | **BUG-017** | **P1** | **reporting/metrics** | **테이블 신선도를 아무도 측정하지 않음 — 최대 152일 지난 테이블 unnoticed** | **수정 완료**(`db94db61`·`cdacef20`·`33655d90`). **숫자 정정**(BUG-019): 처음 적었던 "16개" 중 `parking_lots`·`parking_fee_rules`는 **오탐**(정상 수집 중). 수집이 실제로 멈춘 것이 확인된 건 4~5건 |
+| **BUG-020** | **P1** | **metrics/alerting** | **DLQ 스위프 정지 경보가 정상 상태에서 상시 발화 — 라벨 없는 게이지를 exporter별로 읽어 API 서버의 never-set 0이 영원히 "가장 오래된 스위프"가 된다** | **수정 완료(2026-10-19)**; 규칙 `max()` 집계 + promtool 이중 exporter 3케이스 + 계약 테스트, 뮤테이션 5건 검출. **운영 반영은 Prometheus 재시작 대기** |
 | BH2-c | P2 | drift gate | 기준선 없는 스냅샷은 의도적으로 판정 불가 (문서화 공백) | 회귀 테스트 6건 + **런북 §4.2a**(0472ac17) |
 
 ### BUG-017 — 신선도 측정 부재
@@ -1329,3 +1330,96 @@ AGENTS.md의 "배포 후 `id=37` 회수 여부로 배포 성공을 확인한다"
 - 변경 파일 Ruff/format 통과.
 
 **정직하게 남기는 것**: ① 운영 레터의 잘못된 target 발생 빈도는 여전히 미측정(프로덕션 DB 미접근). ② 거부 outcome 14곳 전부 `error_code="VALIDATION_SCHEMA"`를 달고, `NON_RETRYABLE_CODES` 분류로 `finalize_retry`가 재시도 예산 소진 없이 즉시 `EXHAUSTED`로 종결한다(DLQ 수준 계약 `test_invalid_target_does_not_reschedule`). ③ 커밋은 하지 않았다: dispatcher에 병행 작업자의 미커밋 변경이 함께 있어 커밋 경계는 파일 소유자와 조율이 필요하다.
+
+---
+
+## 8. food 크롤러 관측 공백 해소 (2026-10-18)
+
+### §"부수 발견"의 추론은 틀렸다 — 차단된 것은 KBO URL이 아니었다
+
+인벤토리가 food를 `source_scan`으로 판정하는 이유는 **원장에 관측할 URL이 없기
+때문**이다. 72시간 창에 런이 없고(마지막 런 10-10), 창 안에 있었더라도 전체 스윕은
+`source_url`을 기록하지 않았다. 그런데 위 "호스트 추출의 한계" 절은 원인을
+"`FETCH_BLOCKED`가 KBO 준법 계층에서만 나오므로 **food가 KBO URL을 쓴다**"고 추론했다.
+원장·DLQ 실측은 다르다.
+
+| 런 날짜 | DLQ `target_id` | 코드 | `source_url` | 메시지 |
+|---|---|---|---|---|
+| 10-07 | `ALL` | `FETCH_BLOCKED` | `https://www.gujangfood.com` | `DNS resolution failed for: www.gujangfood.com` |
+| 10-08 | `ALL` | `FETCH_BLOCKED` | (동일) | (동일) |
+| 10-09 | `ALL` | `FETCH_BLOCKED` | (동일) | (동일) |
+| 10-10 | `LT` | `PARSE_EMPTY` | `https://www.giantsclub.com/food` | `no menu items found` |
+| 10-10 | `NC` | `PARSE_EMPTY` | `https://www.ncdinos.com/dinos/stadium.do` | `no menu items found` |
+
+차단된 URL은 KBO 호스트가 아니라 `www.gujangfood.com`이고, 사유는 준법 정책이 아니라
+**DNS 해석 실패**다. 그 소스는 2026-10-10에 코드에서 제거됐고(도메인 만료) 남은 소스는
+`giantsclub.com`·`ncdinos.com` 둘이다. 인벤토리와 원장이 어긋난 진짜 이유는 **관측할
+URL이 원장에 없다는 것** 하나였다.
+
+### 수정
+
+- **계약**: 한 런이 여러 페이지를 읽으면 `source_url`에 `|`로 이어 붙인다
+  (`MULTI_SOURCE_SEPARATOR`, `src/repositories/crawl_execution_repository.py`).
+  `award_crawler`가 이미 이 표기를 쓰고 있었고 food만 빠져 있었다.
+- **food**: 스윕이 읽을 **모든** 팀 URL을 기록한다(기존 `len(selected) == 1` 조건 제거).
+- **인벤토리**: 기록된 값을 `|`로 나눠 호스트마다 판정한다. 이어 붙인 문자열을 URL 하나로
+  읽으면 첫 호스트만 보이고, 거부하는 두 번째 호스트가 영원히 보이지 않는다.
+  같은 이유로 `award_crawler`의 두 소스도 이제 둘 다 판정된다.
+
+검증: `tests/crawlers/test_food_reliability_canary.py`(스윕이 모든 URL을 기록) +
+`tests/reporting/test_source_inventory.py`(분할·빈 조각·관측 판정). 뮤테이션 3건(분할 제거,
+빈 조각 필터 제거, food 단일 URL 복귀)이 각각 실패를 생성했다.
+
+### 남은 것 (측정만, 미수정)
+
+| 크롤러 | 런 수 | 상태 |
+|---|---|---|
+| `relay` | 893 | `source_url` 미기록 |
+| `game_detail` | 618 | `source_url` 미기록 |
+| `parking` | 4 | food와 동일한 `len(selected) == 1` 조건(3팀 3호스트) |
+| `seat` | 0 | 동일 조건(2팀이 같은 호스트를 가리켜 중복 제거가 필요) |
+
+food 수정은 **새 런부터** 관측된다 — 기존 4건은 NULL로 남고 창(기본 72시간)을 벗어나 이미
+측정에서 빠져 있다. parking·seat·game_detail·relay는 아직 승인 범위 밖이다.
+
+### BUG-020 — DLQ 스위프 정지 경보가 정상 상태에서 상시 발화
+
+`KboDlqSweepStalled`(critical)가 2026-10-18 저녁부터 계속 발화하고 있었지만 스위프는
+살아 있었다. 원인은 규칙 식이 아니라 **읽는 방식**이었다.
+
+`kbo_crawl_dlq_last_successful_sweep_timestamp`는 **라벨 없는 게이지**이고
+`src/utils/metrics.py`의 공유 기본 레지스트리에 있다. 그 모듈을 import하는 모든
+프로세스가 자기 시계열을 노출한다 — 스케줄러는 `start_http_server`, API 서버는
+`src/api/routers/health.py`의 `/metrics` → `generate_latest()`. 갱신하는 쪽은
+스케줄러뿐이다.
+
+| 시계열(2026-10-19 실측) | 값 | 해석 |
+|---|---|---|
+| `{instance="scheduler:8000",job="kbo-scheduler"}` | 최근 스위프 시각 | 정상 |
+| `{instance="api-server:8000",job="kbo-api-server"}` | 0 | **한 번도 설정된 적 없음** |
+
+규칙이 시계열별로 평가되면 두 번째 값이 영원히 "가장 오래된 성공"이 되어
+`time() - 0 > 7200`이 상시 참이 된다. 실제로 발화 중이던 경보의 라벨도
+`{job="kbo-api-server"}` **하나뿐**이었다 — 즉 신호가 아니라 상수였다. 진짜 정지가
+나면 같은 경보가 그대로 있어 구분되지 않는다(경보 피로가 아니라 **탐지 불능**).
+
+수정: `time() - max(kbo_crawl_dlq_last_successful_sweep_timestamp) > 7200` —
+"누군가 마지막으로 큐를 읽은 시각"이라는 원래 의미로 되돌렸다. `{job="kbo-scheduler"}`
+필터를 쓰지 않은 이유는 **그 시계열이 사라지는 경우**(스케줄러가 죽은 상태 — 하트비트가
+가장 필요한 순간)에 조용해지기 때문이고, 이 동작을 픽스처가 고정한다.
+
+검증:
+- `monitoring/prometheus/tests/crawler_alert_dlq_sweep_test.yml` 3케이스 추가 —
+  ① 이중 exporter + 스케줄러 정상 → 무발화(회귀) ② 이중 exporter + 스케줄러 정지 →
+  발화 ③ 스케줄러 시계열 소멸 → 발화.
+- `tests/monitoring/test_crawler_alert_rules_contract.py::TestCrawlerRulesContent::test_sweep_stall_aggregates_across_exporters`
+  가 전제(두 프로세스가 같은 레지스트리를 노출)와 집계를 함께 고정한다.
+- 뮤테이션 5건 — 집계 제거(원래 결함)·`max`→`min`·`{job=...}` 필터·임계값 2h→24h·
+  `max`→`sum` — 이 **전부** 실패를 생성했다. `sum`은 promtool 픽스처로는 잡히지 않고
+  계약 테스트만 잡는다(두 계층이 서로 다른 것을 본다).
+
+수정 식으로 측정한 발화 조건값은 **201.8초** — 배포되면 무발화여야 한다.
+**남은 것: 배포.** 규칙 파일은 compose에 read-only 마운트이고
+`--web.enable-lifecycle`이 없으므로, 저장소 push 후 호스트에서 `kbo_prometheus`
+재시작(또는 reload)이 있어야 반영된다. 재시작 전까지 위 `{job="kbo-api-server"}`
+경보는 계속 발화한다.

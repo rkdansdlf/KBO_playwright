@@ -16,20 +16,26 @@ The delivery audit is append-only and outlives the incident it belongs to
 so it gets its own query surface instead of only the per-incident tail that
 ``show`` renders.
 
+``metrics`` reads the two failure counters out of a live process's Prometheus
+exposition. They are process-local by construction, so this command cannot import
+them — it would read its own zero — and one URL therefore names one process.
+
 Mutations live in :mod:`src.cli.incidents_operator`.
 
-Exit codes: 0 ok, 1 not found (``show``).
+Exit codes: 0 ok, 1 not found (``show``), 2 metrics endpoint unreachable.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import httpx
 from sqlalchemy import desc, func, select
 
 from src.cli.common import non_negative_int
@@ -45,6 +51,7 @@ from src.models.notification_incident import (
 from src.notifications.alert_dto import utcnow
 from src.notifications.dto import NotificationChannel
 from src.notifications.incident import classify_suppression
+from src.utils.metrics import DELIVERY_AUDIT_FAILURES_METRIC, INCIDENT_APPLY_FAILURES_METRIC
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -54,6 +61,22 @@ if TYPE_CHECKING:
 
 EXIT_OK = 0
 EXIT_NOT_FOUND = 1
+#: ``metrics`` asked a process whose exposition did not answer.
+EXIT_UNAVAILABLE = 2
+
+#: Explicit override for which process's exposition to read.
+METRICS_URL_ENV = "KBO_METRICS_URL"
+#: The scheduler publishes its exposition on this port
+#: (``src/scheduler/registry.py``); the API server serves ``/metrics`` instead, so
+#: a remote or containerised process needs ``KBO_METRICS_URL``.
+PROMETHEUS_PORT_ENV = "PROMETHEUS_PORT"
+DEFAULT_PROMETHEUS_PORT = 8000
+#: Short: an operator is waiting on this command, not on a hung socket.
+METRICS_TIMEOUT_SECONDS = 5.0
+
+#: The names read out of an exposition, imported rather than retyped so a renamed
+#: Counter cannot leave the CLI querying a name nothing publishes.
+METRIC_NAMES = (DELIVERY_AUDIT_FAILURES_METRIC, INCIDENT_APPLY_FAILURES_METRIC)
 
 #: ``--state`` values that are not stored states but are the common questions.
 STATE_ACTIVE = "active"
@@ -109,6 +132,58 @@ def _write(text: str) -> None:
 
 def _error(text: str) -> None:
     sys.stderr.write(text + "\n")
+
+
+def resolve_metrics_url(explicit: str | None) -> str:
+    """Resolve which process's exposition to read.
+
+    The counters are process-local, so there is no single "the" metrics value:
+    the scheduler and the API server each publish their own, and one URL names
+    one process.
+    """
+    if explicit:
+        return explicit
+    configured = os.environ.get(METRICS_URL_ENV)
+    if configured:
+        return configured
+    port = os.environ.get(PROMETHEUS_PORT_ENV, str(DEFAULT_PROMETHEUS_PORT))
+    return f"http://127.0.0.1:{port}/metrics"
+
+
+def fetch_exposition(url: str) -> str:
+    """Fetch one process's exposition document."""
+    response = httpx.get(url, timeout=METRICS_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    return response.text
+
+
+def parse_exposition_counters(text: str, names: Sequence[str]) -> dict[str, float]:
+    """Extract unlabelled counter samples by name from an exposition.
+
+    Only the exact ``name value`` form matches. The counters this command reads
+    carry no labels, so a labelled sample of the same name is a different series
+    and adding it in would overstate the count.
+    """
+    wanted = set(names)
+    values: dict[str, float] = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name, _, rest = line.partition(" ")
+        if name not in wanted:
+            continue
+        try:
+            values[name] = float(rest.split(" ", 1)[0])
+        except ValueError:
+            continue
+    return values
+
+
+def _format_counter(value: float | None) -> str:
+    """Render one sample; a series missing from the exposition is not a zero."""
+    if value is None:
+        return "(absent)"
+    return str(int(value)) if value.is_integer() else str(value)
 
 
 def _stamp(value: datetime | None) -> str:
@@ -512,6 +587,26 @@ def _cmd_deliveries_stats(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_metrics(args: argparse.Namespace) -> int:
+    """Read the process counters that no audit table can hold."""
+    url = resolve_metrics_url(args.url)
+    try:
+        text = fetch_exposition(url)
+    except httpx.HTTPError as exc:
+        _error(f"metrics endpoint unreachable: {url}: {exc}")
+        return EXIT_UNAVAILABLE
+
+    values = parse_exposition_counters(text, METRIC_NAMES)
+    if args.json:
+        payload = {"url": url, "counters": {name: values.get(name) for name in METRIC_NAMES}}
+        _write(json.dumps(payload, ensure_ascii=False, indent=2))
+        return EXIT_OK
+    _write(f"Process counters from {url}")
+    for name in METRIC_NAMES:
+        _write(f"  {name:<56} {_format_counter(values.get(name))}")
+    return EXIT_OK
+
+
 def _add_delivery_filters(parser: argparse.ArgumentParser) -> None:
     """Add the delivery audit filters shared by ``list`` and ``stats``."""
     parser.add_argument("--channel", choices=_CHANNEL_CHOICES, default=None, help="Filter by channel.")
@@ -553,6 +648,20 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("--deliveries", type=non_negative_int, default=DEFAULT_DELIVERY_LIMIT)
     show_parser.add_argument("--json", action="store_true", help="Emit JSON.")
 
+    metrics_parser = subparsers.add_parser(
+        "metrics",
+        help="Read the process counters that no audit table can hold.",
+    )
+    metrics_parser.add_argument(
+        "--url",
+        default=None,
+        help=(
+            "Prometheus exposition URL "
+            f"(default: ${METRICS_URL_ENV} or http://127.0.0.1:${PROMETHEUS_PORT_ENV}/metrics)."
+        ),
+    )
+    metrics_parser.add_argument("--json", action="store_true", help="Emit JSON.")
+
     deliveries_parser = subparsers.add_parser("deliveries", help="Inspect the append-only delivery audit.")
     delivery_subs = deliveries_parser.add_subparsers(dest="deliveries_command", required=True)
 
@@ -571,6 +680,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the read-only incident CLI."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.subcommand == "metrics":
+        return _cmd_metrics(args)
     if args.subcommand == "show":
         return _cmd_show(args)
     if args.subcommand == "deliveries":

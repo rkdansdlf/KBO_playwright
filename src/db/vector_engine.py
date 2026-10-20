@@ -30,7 +30,14 @@ load_project_env()
 
 PGVECTOR_URL = os.getenv("PGVECTOR_TEST_URL") or os.getenv("PGVECTOR_URL", "")
 
-_VECTOR_ENGINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, OSError)
+#: Failures that disable the vector store rather than propagate. ``ImportError``
+#: is here for the driver itself: a ``PGVECTOR_URL`` naming a dialect whose DBAPI
+#: is not installed (``postgresql+psycopg2://`` after psycopg2 was dropped) makes
+#: ``create_engine`` raise ``ModuleNotFoundError`` from ``import_dbapi`` before
+#: any connection is attempted. That is a configuration state the availability
+#: guards below exist to report -- not a reason to fail every import that reaches
+#: this module.
+_VECTOR_ENGINE_EXCEPTIONS = (SQLAlchemyError, RuntimeError, OSError, ImportError)
 
 
 class VectorBase(DeclarativeBase):
