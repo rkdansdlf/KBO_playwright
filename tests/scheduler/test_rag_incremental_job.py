@@ -92,6 +92,64 @@ def test_sync_rag_incremental_restores_env_after_failure() -> None:
     assert all(os.environ.get(key) is None for key in WRITE_ENV_KEYS)
 
 
+def _run_job_recording_alerts(
+    failing_sources: set[str],
+) -> tuple[list[str], list[tuple[str, str]], list[tuple[str, str]]]:
+    """Run the job with a fake builder that fails for the named sources; return calls and the alerts raised."""
+    calls: list[str] = []
+    warnings: list[tuple[str, str]] = []
+    successes: list[tuple[str, str]] = []
+
+    def fake_main(argv: list[str]) -> None:
+        source = argv[argv.index("--source") + 1]
+        calls.append(source)
+        if source in failing_sources:
+            message = f"{source} down"
+            raise RuntimeError(message)
+
+    with (
+        patch.dict(os.environ, {"PGVECTOR_TEST_URL": "postgresql://vector:secret@127.0.0.1:5432/rag_vector"}),
+        patch("src.scheduler.jobs.maintenance._scheduler_job_lock") as mock_lock,
+        patch("src.cli.build_rag_index.main", side_effect=fake_main),
+        patch("src.scheduler.jobs.maintenance.alert_warning", lambda *a, **_k: warnings.append((a[0], a[1]))),
+        patch("src.scheduler.jobs.maintenance.alert_success", lambda *a, **_k: successes.append((a[0], a[1]))),
+    ):
+        mock_lock.return_value.__enter__.return_value = None
+        sync_rag_incremental_job()
+    return calls, warnings, successes
+
+
+@pytest.mark.usefixtures("_clean_write_env")
+def test_a_failing_source_does_not_stop_the_sources_after_it() -> None:
+    """PBP is last; an earlier failure used to abort the run so PBP never ran and nothing alerted."""
+    from src.scheduler.jobs.maintenance import rag_incremental_invocations
+
+    expected = [argv[argv.index("--source") + 1] for argv in rag_incremental_invocations(datetime.now(KST).year)]
+    calls, _warnings, _successes = _run_job_recording_alerts({"batting"})
+
+    assert calls == expected
+    assert calls[-1] == "pbp"
+
+
+@pytest.mark.usefixtures("_clean_write_env")
+def test_failures_raise_a_warning_naming_the_sources_and_no_success_alert() -> None:
+    _calls, warnings, successes = _run_job_recording_alerts({"batting", "pbp"})
+
+    assert len(warnings) == 1
+    assert warnings[0][0] == "sync_rag_incremental"
+    assert "batting" in warnings[0][1]
+    assert "pbp" in warnings[0][1]
+    assert successes == []
+
+
+@pytest.mark.usefixtures("_clean_write_env")
+def test_all_sources_succeeding_raises_only_the_success_alert() -> None:
+    _calls, warnings, successes = _run_job_recording_alerts(set())
+
+    assert warnings == []
+    assert len(successes) == 1
+
+
 @pytest.fixture(autouse=True)
 def _silence_alert_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the job's build-outcome alerts out of the incident ledger.
