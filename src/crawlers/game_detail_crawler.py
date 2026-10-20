@@ -46,7 +46,13 @@ from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
-from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import (
+    VALID_TEAM_CODES,
+    normalize_kbo_game_id,
+    resolve_team_code,
+    season_team_code,
+    team_code_from_game_id_segment,
+)
 from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
 NAVER_RECORD_API_URL = "https://api-gw.sports.naver.com/schedule/games/{naver_id}/record"
@@ -189,6 +195,23 @@ TEAM_CODE_TO_NAME: dict[str, str] = {
 
 def _team_code_to_name(code: str) -> str:
     return TEAM_CODE_TO_NAME.get(code.upper(), code)
+
+
+def _season_detail_team_code(code: object, season_year: int | None) -> str | None:
+    """Return the season code for a team token from any detail-page source.
+
+    The scoreboard table path resolves team *names*, but the live-score and
+    ScoreBoard.aspx fallbacks hand back an image ``alt`` or the raw GameCenter id
+    segment (``HT``/``OB``/``SK``/``WO``). Those raw tokens were stored on
+    ``game.home_team``/``away_team`` and split franchises in standings (#39).
+    """
+    if code is None or not str(code).strip():
+        return None
+    raw = str(code).strip()
+    if raw.upper() in VALID_TEAM_CODES:
+        return season_team_code(raw, season_year)
+    # An image alt can be a display name ("두산") rather than a code.
+    return resolve_team_code(raw, season_year) or season_team_code(raw, season_year)
 
 
 class PlayerIdResolver(Protocol):
@@ -2089,6 +2112,10 @@ class GameDetailCrawler:
                 "errors": home_info.get("errors") if home_info else None,
                 "line_score": home_info.get("line_score") if home_info else [],
             }
+
+        # The fallbacks above can carry raw GameCenter tokens; store season codes.
+        for info in (away_info, home_info):
+            info["code"] = _season_detail_team_code(info.get("code"), season_year) or info.get("code")
 
         return {"away": away_info, "home": home_info}
 

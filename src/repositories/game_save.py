@@ -67,7 +67,7 @@ from src.utils.game_status import (
     is_terminal_status,
     normalize_game_status,
 )
-from src.utils.team_codes import resolve_team_code, team_code_from_game_id_segment
+from src.utils.team_codes import resolve_team_code, season_team_code, team_code_from_game_id_segment
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -383,7 +383,7 @@ def save_schedule_game(  # noqa: PLR0913
     changed |= _assign_field_if_changed(
         game,
         "home_team",
-        game_data.get("home_team_code"),
+        season_team_code(game_data.get("home_team_code"), game_date.year),
         game_id=game_id,
         source=source,
         write_contract=write_contract,
@@ -391,7 +391,7 @@ def save_schedule_game(  # noqa: PLR0913
     changed |= _assign_field_if_changed(
         game,
         "away_team",
-        game_data.get("away_team_code"),
+        season_team_code(game_data.get("away_team_code"), game_date.year),
         game_id=game_id,
         source=source,
         write_contract=write_contract,
@@ -489,8 +489,8 @@ def _update_detail_core_fields(
     for field_name, value, allow_empty in (
         ("game_date", ctx.game_date, False),
         ("stadium", metadata.get("stadium"), False),
-        ("home_team", home_info.get("code"), False),
-        ("away_team", away_info.get("code"), False),
+        ("home_team", season_team_code(home_info.get("code"), ctx.game_date.year), False),
+        ("away_team", season_team_code(away_info.get("code"), ctx.game_date.year), False),
         ("home_score", home_info.get("score"), True),
         ("away_score", away_info.get("score"), True),
     ):
@@ -656,7 +656,7 @@ def _update_detail_winner(
     changed = _assign_field_if_changed(
         game,
         "winning_team",
-        winning_team,
+        season_team_code(winning_team, ctx.game_date.year),
         game_id=ctx.game_id,
         source=ctx.source,
         write_contract=ctx.write_contract,
