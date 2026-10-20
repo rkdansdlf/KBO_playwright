@@ -263,3 +263,90 @@ venv/bin/python scripts/verification/verify_oci_live_sync.py --json
 - `Dockerfile` builder는 `postgres` extra를 반드시 포함한다(`--extra
   postgres`). extra 없이 빌드하면 `No module named 'psycopg'`로
   스케줄러/API가 기동 실패한다.
+
+---
+
+## 8. RAG 벡터 접속 설정 점검 (스케줄러 호스트)
+
+RAG 감사(`src.cli.rag.audit_rag_index`)와 야간 동기화는 **스케줄러가 도는
+호스트**의 환경변수를 읽는다. 저장소를 가진 머신과 스케줄러 호스트가 다르면
+한쪽만 고쳐도 다른 쪽은 폐기된 접속 정보를 계속 쓴다. 그때 벡터 경로는 예외
+없이 "저장소 도달 불가" 또는 빈 결과로 조용히 비활성되고, 파이프라인은 초록으로
+보인다. 저장소 `.env`를 고친 뒤에는 스케줄러 호스트에서도 아래를 확인한다.
+
+### 1) 접속 대상만 마스킹해서 확인
+
+비밀번호는 출력하지 않고 scheme·host·port·database만 본다. 스케줄러 호스트의
+프로세스 환경을 그대로 보려면 스케줄러 사용자로 실행한다.
+
+```bash
+python3 - <<'PY'
+import os
+from urllib.parse import urlsplit
+
+for key in ("DATABASE_URL", "PGVECTOR_URL", "PGVECTOR_URL_DOCKER", "LOCAL_PG_URL"):
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        print(f"{key}: (unset)")
+        continue
+    parts = urlsplit(raw)
+    print(
+        f"{key}: scheme={parts.scheme} host={parts.hostname} "
+        f"port={parts.port} db={(parts.path or '').lstrip('/')}"
+    )
+PY
+```
+
+기대값:
+
+| 항목 | 기대 |
+| --- | --- |
+| `DATABASE_URL` scheme | `postgresql` (psycopg3) |
+| `PGVECTOR_URL`·`PGVECTOR_URL_DOCKER` | `DATABASE_URL`과 **같은 host·port·database** |
+| `LOCAL_PG_URL` | 로컬 개발용이면 별도 대상, 드라이버는 `postgresql` |
+| `postgresql+psycopg2://` | **금지** — psycopg2는 제거됐다(`39b1081f`) |
+| 포트 `5435` | **금지** — `kbo_rag_retired_202610` 폐기 저장소다 |
+
+### 2) 엔진이 실제로 서는지 확인
+
+```bash
+python3 -c "
+from src.db.vector_engine import is_pgvector_available, VectorEngine, shares_operational_database
+from src.cli.rag.build_rag_index import planned_rag_target_urls
+print('available:', is_pgvector_available())
+print('engine:', VectorEngine is not None)
+print('colocated:', shares_operational_database())
+print('targets:', len(planned_rag_target_urls()))
+"
+```
+
+기대값은 `available: True`, `engine: True`, `colocated: True`, `targets: 1`이다.
+`targets`가 2 이상이면 같은 `rag_chunks`를 두 번 계획하고 있다는 뜻이므로,
+야간 동기화가 같은 행을 두 번 처리하게 된다.
+
+### 3) 감사 게이트가 green인지 확인
+
+```bash
+AUDIT_OUT="${TMPDIR:-/tmp}/rag_audit.json"
+python3 -m src.cli.rag.audit_rag_index --require-nonempty --json > "$AUDIT_OUT"
+echo "exit=$?"
+python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print('consistent=', d['consistent'], 'findings=', d['finding_count'])" "$AUDIT_OUT"
+```
+
+`consistent: true`와 exit 0을 확인한다. exit 2는 저장소 도달 불가(설정 문제),
+exit 1은 실제 불일치다. **`cmd | tail`의 exit code는 `tail`의 것이므로 판정에
+쓰지 않는다** — 위처럼 파일로 받아 따로 읽는다.
+
+### 4) 실패했을 때
+
+1. 로컬 저장소의 `.env`와 같은 세 줄(`DATABASE_URL`, `PGVECTOR_URL`,
+   `PGVECTOR_URL_DOCKER`)로 맞춘다. 비밀번호는 기존 값을 그대로 유지한다.
+2. 스케줄러를 재시작한다 — 환경변수는 프로세스 시작 시 읽힌다.
+3. `2)`와 `3)`을 다시 확인한다.
+
+`051_rag_index_consistency.sql`이 추가한 `content_hash`/`index_version`은
+2026-10-21에 백필됐다
+(`scripts.maintenance.backfill_rag_index_identity`). 그 이전 스냅샷을 복원한
+호스트에서는 감사가 `CONTENT_HASH_MISSING`/`INDEX_VERSION_MISSING`을 보고할 수
+있는데, 이는 불일치가 아니라 결측이다 — 같은 스크립트로 채운다
+(`--dry-run`이 기본, `--apply`가 쓰기).

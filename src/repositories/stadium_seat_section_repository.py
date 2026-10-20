@@ -6,11 +6,16 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.models.stadium_seat_section import StadiumSeatSection
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+#: Dialects that support ``INSERT ... ON CONFLICT`` on the (stadium_id, section_name) unique key.
+_UPSERT_INSERT_BY_DIALECT = {"postgresql": pg_insert, "sqlite": sqlite_insert}
+_CONFLICT_COLUMNS = ["stadium_id", "section_name"]
 
 
 class StadiumSeatSectionRepository:
@@ -28,8 +33,9 @@ class StadiumSeatSectionRepository:
     def save(self, data: dict) -> StadiumSeatSection:
         """Upsert a seat section.
 
-        Uses PostgreSQL ON CONFLICT for atomic upsert on the unique constraint
-        (stadium_id, section_name). Falls back to ORM logic for other dialects.
+        Uses ``INSERT ... ON CONFLICT`` (PostgreSQL and SQLite) for an atomic upsert on
+        the unique constraint (stadium_id, section_name). Other dialects get a plain insert.
+        The repository never commits or rolls back: the caller owns the transaction.
 
         Args:
             data: Section data dict.
@@ -60,18 +66,46 @@ class StadiumSeatSectionRepository:
             self._apply_updates(existing, data)
             return existing
 
-        # Use PostgreSQL ON CONFLICT for atomic upsert on (stadium_id, section_name)
-        # This handles concurrent inserts and unique constraint violations
-        if self.session.bind.dialect.name == "postgresql":
-            stmt = pg_insert(StadiumSeatSection).values(**data)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["stadium_id", "section_name"],
-                set_={k: v for k, v in data.items() if k not in ("stadium_id", "section_name")},
-            ).returning(StadiumSeatSection)
-            return self.session.execute(stmt).scalar_one()
+        # A concurrent insert or a unique-key hit resolves inside the statement, so this
+        # repository never rolls back a transaction the caller owns.
+        insert_fn = _UPSERT_INSERT_BY_DIALECT.get(self.session.bind.dialect.name)
+        if insert_fn is not None:
+            return self._upsert(insert_fn, data)
 
-        # Fallback for other dialects (SQLite, Oracle)
-        return self._insert_with_retry(data, stadium_id, name)
+        # Any other dialect: a plain insert. A unique violation propagates to the caller,
+        # who owns the transaction and decides whether to roll it back.
+        new_record = StadiumSeatSection(**data)
+        self.session.add(new_record)
+        self.session.flush()
+        return new_record
+
+    def _upsert(self, insert_fn: object, data: dict) -> StadiumSeatSection:
+        """Insert a section, or update the row that already holds its (stadium_id, section_name).
+
+        Args:
+            insert_fn: The dialect's ``insert`` construct that supports ``ON CONFLICT``.
+            data: Section data dict.
+
+        Returns:
+            The inserted or already-stored row.
+
+        """
+        updates = {k: v for k, v in data.items() if k not in ("stadium_id", "section_name")}
+        stmt = insert_fn(StadiumSeatSection).values(**data)  # type: ignore[operator]
+        if updates:
+            stmt = stmt.on_conflict_do_update(index_elements=_CONFLICT_COLUMNS, set_=updates)
+        else:
+            stmt = stmt.on_conflict_do_nothing(index_elements=_CONFLICT_COLUMNS)
+        row = self.session.execute(stmt.returning(StadiumSeatSection)).scalar_one_or_none()
+        if row is None:
+            # ``DO NOTHING`` returns no row when the section was already stored.
+            row = self.session.execute(
+                select(StadiumSeatSection).where(
+                    StadiumSeatSection.stadium_id == data["stadium_id"],
+                    StadiumSeatSection.section_name == data.get("section_name", ""),
+                ),
+            ).scalar_one()
+        return row
 
     @staticmethod
     def _apply_updates(existing: StadiumSeatSection, data: dict) -> None:
@@ -85,44 +119,6 @@ class StadiumSeatSectionRepository:
         for key, value in data.items():
             if key not in ("stadium_id", "section_code", "section_name") and value is not None:
                 setattr(existing, key, value)
-
-    def _insert_with_retry(self, data: dict, stadium_id: str, name: str) -> StadiumSeatSection:
-        """Insert a section, recovering from a concurrent insert.
-
-        A flush that trips the unique constraint means another writer got there
-        first. The rollback clears the poisoned transaction, so the row has to
-        be looked up again rather than reused.
-
-        Args:
-            data: Section data dict.
-            stadium_id: Stadium the section belongs to.
-            name: Section name, the fallback lookup key.
-
-        Returns:
-            The inserted row, or the row a concurrent writer inserted.
-
-        Raises:
-            Exception: Whatever the flush raised, when the row cannot be found.
-
-        """
-        new_record = StadiumSeatSection(**data)
-        self.session.add(new_record)
-        try:
-            self.session.flush()
-        except Exception:
-            self.session.rollback()
-            # Retry lookup after rollback
-            stmt = select(StadiumSeatSection).where(
-                StadiumSeatSection.stadium_id == stadium_id,
-                StadiumSeatSection.section_name == name,
-            )
-            existing = self.session.execute(stmt).scalar_one_or_none()
-            if existing:
-                self._apply_updates(existing, data)
-                return existing
-            raise
-        else:
-            return new_record
 
     def get_by_stadium(self, stadium_id: str) -> list[StadiumSeatSection]:
         """Get by stadium.

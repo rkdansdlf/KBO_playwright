@@ -104,3 +104,67 @@ def test_audit_require_postings_passes_when_fully_covered(capsys) -> None:
         with patch("src.cli.audit_rag_index._count_missing_postings", return_value=0):
             assert main(["--require-postings", "--json"]) == 0
     assert '"postings_missing": 0' in capsys.readouterr().out
+
+
+def _colocated_audit_context(report):
+    return (
+        patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
+        patch("src.cli.audit_rag_index.is_oracle_vector_backend", return_value=False),
+        patch("src.cli.audit_rag_index.shares_operational_database", return_value=True),
+        patch("src.cli.audit_rag_index.get_rag_index_session"),
+        patch("src.cli.audit_rag_index.get_vector_session"),
+        patch("src.cli.audit_rag_index.audit_single_store_session", return_value=report),
+        patch("src.cli.audit_rag_index.audit_index_sessions"),
+    )
+
+
+def test_audit_reads_a_colocated_store_once_instead_of_comparing_it_with_itself(capsys) -> None:
+    """One database must not be loaded twice to compare itself with itself.
+
+    Once ``PGVECTOR_URL`` resolves to the operational database, both ORM models
+    map the same ``rag_chunks`` table. The paired audit would then report every
+    finding twice and scan 606k rows twice, so the single-store path has to win.
+    """
+    report = IndexConsistencyReport(1, 1, (), total_keys=1)
+    patches = _colocated_audit_context(report)
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3] as primary,
+        patches[4] as vector,
+        patches[5] as single,
+        patches[6] as paired,
+    ):
+        primary.return_value.__enter__.return_value = MagicMock()
+        assert main(["--json"]) == 0
+    single.assert_called_once()
+    paired.assert_not_called()
+    vector.assert_not_called()
+    assert '"consistent": true' in capsys.readouterr().out
+
+
+def test_audit_skips_the_postings_scan_on_a_colocated_store(capsys) -> None:
+    """PostgreSQL retrieves through ``content_tsv``; its 27M-row terms table is not the gate.
+
+    ``rag_chunk_terms`` holds 27,761,000 rows / 13 GB and has no leading
+    ``rag_chunk_id`` index, so counting missing postings there exceeds the
+    scheduler's window. The Oracle gate stays unchanged.
+    """
+    report = IndexConsistencyReport(1, 1, (), total_keys=1)
+    patches = _colocated_audit_context(report)
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3] as primary,
+        patches[4],
+        patches[5],
+        patches[6],
+        patch("src.cli.audit_rag_index._count_missing_postings") as postings,
+    ):
+        primary.return_value.__enter__.return_value = MagicMock()
+        assert main(["--require-postings", "--json"]) == 0
+    postings.assert_not_called()
+    payload = capsys.readouterr().out
+    assert "postings_missing" not in payload

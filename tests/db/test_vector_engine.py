@@ -126,3 +126,51 @@ def test_init_vector_db_success(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_conn.execute.assert_called_once()
         mock_conn.commit.assert_called_once()
         mock_create_all.assert_called_once_with(bind=mock_engine)
+
+
+class _UrlOnlyEngine:
+    """Minimal engine double: only ``url`` is read by the identity comparison."""
+
+    def __init__(self, url: str) -> None:
+        from sqlalchemy.engine import make_url
+
+        self.url = make_url(url)
+
+
+def _colocated(vector_url: str, primary_url: str) -> bool:
+    import src.db.engine as engine_module
+
+    with (
+        patch.object(vector_engine, "VectorEngine", _UrlOnlyEngine(vector_url)),
+        patch.object(engine_module, "Engine", _UrlOnlyEngine(primary_url)),
+    ):
+        return vector_engine.shares_operational_database()
+
+
+def test_no_vector_engine_never_shares_the_operational_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An absent vector store cannot be colocated with anything."""
+    monkeypatch.setattr(vector_engine, "VectorEngine", None)
+    assert vector_engine.shares_operational_database() is False
+
+
+def test_the_same_host_port_and_database_is_one_store() -> None:
+    """Both indexes live in one ``rag_chunks`` table, so one scan must serve the audit."""
+    assert (
+        _colocated("postgresql://u:p@100.81.73.13:5432/bega_prod", "postgresql://other:pw@100.81.73.13:5432/bega_prod")
+        is True
+    )
+
+
+def test_driver_differences_do_not_split_one_store() -> None:
+    """psycopg2 vs psycopg is a client choice, not a different database."""
+    assert _colocated("postgresql+psycopg2://u:p@h:5432/bega_prod", "postgresql://u:p@h:5432/bega_prod") is True
+
+
+def test_a_different_database_is_not_the_same_store() -> None:
+    """``bega_prod`` and ``bega_dev`` on one host are still two stores."""
+    assert _colocated("postgresql://u:p@h:5432/bega_dev", "postgresql://u:p@h:5432/bega_prod") is False
+
+
+def test_a_different_port_is_not_the_same_store() -> None:
+    """The retired 5435 snapshot is a different store even with the same database name."""
+    assert _colocated("postgresql://u:p@h:5435/bega_prod", "postgresql://u:p@h:5432/bega_prod") is False

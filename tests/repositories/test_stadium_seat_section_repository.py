@@ -137,3 +137,57 @@ class TestStadiumSeatSectionRepository:
         )
         session.commit()
         assert count == 2
+
+
+class TestSaveNeverRollsBackTheCallersTransaction:
+    """The repository resolves key conflicts in the statement, never with its own rollback."""
+
+    @staticmethod
+    def _repo():
+        engine = create_engine("sqlite:///:memory:")
+        StadiumSeatSection.__table__.create(engine)
+        session = sessionmaker(bind=engine)()
+        return session, StadiumSeatSectionRepository(session)
+
+    def test_same_name_under_a_new_code_updates_the_one_row(self):
+        session, repo = self._repo()
+        first = repo.save({"stadium_id": "JAMSIL", "section_code": "A", "section_name": "1루 블루석"})
+        session.commit()
+
+        # The code lookup misses (new code), so the insert hits the (stadium_id, section_name) key.
+        second = repo.save(
+            {"stadium_id": "JAMSIL", "section_code": "B", "section_name": "1루 블루석", "seat_grade": "프리미엄"},
+        )
+        session.commit()
+
+        assert second.id == first.id
+        assert session.query(StadiumSeatSection).count() == 1
+        assert second.section_code == "B"
+        assert second.seat_grade == "프리미엄"
+
+    def test_a_conflict_leaves_earlier_pending_work_in_the_callers_transaction(self):
+        session, repo = self._repo()
+        repo.save({"stadium_id": "JAMSIL", "section_code": "A", "section_name": "1루 블루석"})
+        session.commit()
+        repo.save({"stadium_id": "MUNH", "section_code": "C", "section_name": "중앙"})  # pending, not committed
+
+        repo.save({"stadium_id": "JAMSIL", "section_code": "B", "section_name": "1루 블루석"})  # conflicts
+
+        pending = session.query(StadiumSeatSection).filter_by(stadium_id="MUNH").one_or_none()
+        assert pending is not None, "a conflict must not discard what the caller had not yet committed"
+
+    def test_the_callers_rollback_discards_the_inserted_row(self):
+        session, repo = self._repo()
+        repo.save({"stadium_id": "JAMSIL", "section_code": "A", "section_name": "1루 블루석"})
+        session.rollback()
+
+        assert session.query(StadiumSeatSection).count() == 0
+
+    def test_a_payload_with_only_the_key_fields_is_stored_once(self):
+        session, repo = self._repo()
+        first = repo.save({"stadium_id": "JAMSIL", "section_name": "1루 블루석"})
+        second = repo.save({"stadium_id": "JAMSIL", "section_name": "1루 블루석"})
+        session.commit()
+
+        assert second.id == first.id
+        assert session.query(StadiumSeatSection).count() == 1

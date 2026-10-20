@@ -101,6 +101,37 @@ def is_oracle_vector_backend() -> bool:
         return False
 
 
+def _store_identity(engine: Engine | None) -> tuple[str | None, str | None, int | None, str | None]:
+    """Return the URL parts that decide whether two engines reach one database.
+
+    The driver is deliberately excluded: ``postgresql+psycopg2`` and
+    ``postgresql`` name the same server, and the audit cares about the table,
+    not the client library. Only an exact host/port/database match counts, so a
+    missing explicit port is treated as a different address rather than assumed
+    to be the dialect default -- the conservative answer merely keeps the paired
+    audit, while a wrong match would skip a real comparison.
+    """
+    if engine is None:
+        return (None, None, None, None)
+    url = engine.url
+    return (url.get_backend_name(), url.host, url.port, url.database)
+
+
+def shares_operational_database() -> bool:
+    """Return whether the vector store *is* the operational database.
+
+    PostgreSQL keeps the dense and sparse indexes in one ``rag_chunks`` table,
+    and ``PGVECTOR_URL`` may legitimately point at the operational database
+    itself. Auditing that as a pair of stores loads the same 606k rows twice and
+    reports every finding twice, so the caller has to know the difference.
+    """
+    if VectorEngine is None:
+        return False
+    from src.db.engine import Engine as OperationalEngine
+
+    return _store_identity(VectorEngine) == _store_identity(OperationalEngine)
+
+
 def is_oracle_vector_schema_available() -> bool:
     """Return whether the Oracle RAG vector column has been migrated."""
     if not is_oracle_vector_backend():
