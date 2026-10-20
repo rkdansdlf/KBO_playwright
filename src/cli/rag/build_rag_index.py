@@ -200,6 +200,9 @@ class IncrementalSelectionOptions:
     desired_embedding_fingerprint: str | None = None
     include_healthy: bool = False
     repair_legacy_fingerprint: bool = False
+    vector_key_presence: bool = False
+    content_presence: bool = False
+    play_presence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +215,10 @@ class BuildSourceOptions:
     skip_existing: bool = False
     desired_embedding_fingerprint: str | None = None
     repair_legacy_fingerprint: bool = False
+    vector_key_presence: bool = False
+    content_presence: bool = False
+    play_presence: bool = False
+    exclude_ids: frozenset[str] = frozenset()
 
 
 def _redact_url(url: str | None) -> str:
@@ -1675,6 +1682,37 @@ def _load_index_states(index_session: Session, source_table: str | None) -> dict
     }
 
 
+def _load_vector_play_identities(vector_session: Session, source_table: str) -> frozenset:
+    """Load the play identities of ACTIVE vector rows, whatever key or team code they were stored under."""
+    from src.models.rag_chunk_vector import RagChunkVector
+    from src.services.rag_play_identity import play_identity
+
+    statement = (
+        select(RagChunkVector.content)
+        .where(RagChunkVector.source_table == source_table)
+        .where(RagChunkVector.index_status == "ACTIVE")
+    )
+    identities = (play_identity(text_value or "") for text_value in vector_session.execute(statement).scalars())
+    return frozenset(identity for identity in identities if identity is not None)
+
+
+def _load_vector_content_hashes(vector_session: Session, source_table: str) -> frozenset[str]:
+    """Load the content hashes the vector store holds as ACTIVE rows, across every identity key.
+
+    Keyed by content rather than identity, so a play embedded under a legacy key still counts.
+    """
+    from src.models.rag_chunk_vector import RagChunkVector
+
+    statement = (
+        select(RagChunkVector.content_hash)
+        .where(RagChunkVector.source_table == source_table)
+        .where(RagChunkVector.index_status == "ACTIVE")
+        .where(RagChunkVector.content_hash.is_not(None))
+        .distinct()
+    )
+    return frozenset(vector_session.execute(statement).scalars().all())
+
+
 def _load_vector_states(vector_session: Session, source_table: str | None) -> dict[tuple[str, str], RagIndexState]:
     """Load vector states used when sparse and vector stores are separated."""
     from src.models.rag_chunk_vector import RagChunkVector
@@ -1693,6 +1731,16 @@ def _load_vector_states(vector_session: Session, source_table: str | None) -> di
     return {
         state.key: state for state in (_state_from_index_row(row) for row in vector_session.execute(statement).all())
     }
+
+
+def rag_source_table_names() -> frozenset[str]:
+    """Return the sources that map to a source table, so the presence filters can key on it."""
+    return frozenset(_SOURCE_TABLE_BY_SOURCE)
+
+
+def rag_all_source_names() -> tuple[str, ...]:
+    """Return the sources ``--source all`` runs, in the order it runs them."""
+    return tuple(_SOURCE_MAP.keys())
 
 
 def rag_source_choices() -> tuple[str, ...]:
@@ -1740,6 +1788,24 @@ def _embedding_fingerprint_for_service(embedding_service: object) -> str | None:
     return embedding_fingerprint(model, dimension, chunking_version)
 
 
+def _load_presence_sets(selection: IncrementalSelectionOptions) -> tuple[frozenset[str] | None, frozenset | None]:
+    """Load the content hashes and play identities the vector store already holds, when requested."""
+    if selection.content_presence and (selection.vector_session is None or selection.source_table is None):
+        message = "content presence needs a vector session and a single source table"
+        raise ValueError(message)
+    present_content_hashes = (
+        _load_vector_content_hashes(selection.vector_session, selection.source_table)
+        if selection.content_presence
+        else None
+    )
+    present_play_identities = (
+        _load_vector_play_identities(selection.vector_session, selection.source_table)
+        if selection.play_presence
+        else None
+    )
+    return present_content_hashes, present_play_identities
+
+
 def _skip_existing_index_rows(
     chunk_iter: Iterator[dict[str, Any]],
     index_session: Session,
@@ -1758,6 +1824,7 @@ def _skip_existing_index_rows(
         if selection.vector_session is not None
         else {}
     )
+    present_content_hashes, present_play_identities = _load_presence_sets(selection)
     version = selection.desired_index_version or current_index_version()
     metadata_gap_count = 0
     repaired_count = 0
@@ -1773,6 +1840,9 @@ def _skip_existing_index_rows(
                 desired_embedding_fingerprint=selection.desired_embedding_fingerprint,
                 require_vector=selection.vector_session is not None,
                 require_primary_embedding=selection.vector_session is None,
+                vector_key_presence=selection.vector_key_presence,
+                present_content_hashes=present_content_hashes,
+                present_play_identities=present_play_identities,
             ),
         )
         if decision.blocked:
@@ -1957,7 +2027,7 @@ def _iter_candidate_chunks(
     )
     if options.offset:
         chunk_iter = islice(chunk_iter, options.offset, None)
-    return _skip_existing_index_rows(
+    selected = _skip_existing_index_rows(
         chunk_iter,
         index_session,
         IncrementalSelectionOptions(
@@ -1967,8 +2037,12 @@ def _iter_candidate_chunks(
             desired_embedding_fingerprint=options.desired_embedding_fingerprint,
             include_healthy=not options.skip_existing,
             repair_legacy_fingerprint=options.repair_legacy_fingerprint,
+            vector_key_presence=options.vector_key_presence,
+            content_presence=options.content_presence,
+            play_presence=options.play_presence,
         ),
     )
+    return _drop_excluded(selected, options.exclude_ids)
 
 
 def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager[Session | None]:
@@ -1981,6 +2055,85 @@ def _vector_session_context(*, sparse_is_oracle: bool) -> AbstractContextManager
 
 
 # ─── 메인 CLI ─────────────────────────────────────────────────────────────────
+
+
+def _read_exclude_ids(path: str | None) -> frozenset[str]:
+    """Read source_row_ids to leave out, one per line; ``-`` reads standard input.
+
+    Blank lines and ``#`` comments are ignored. ``None`` excludes nothing.
+    """
+    if path is None:
+        return frozenset()
+    text_source = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    return frozenset(
+        line.strip() for line in text_source.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _drop_excluded(chunk_iter: Iterator[dict[str, Any]], exclude_ids: frozenset[str]) -> Iterator[dict[str, Any]]:
+    """Yield chunks whose source_row_id is not in the exclusion list."""
+    for chunk in chunk_iter:
+        if str(chunk.get("source_row_id") or "") not in exclude_ids:
+            yield chunk
+
+
+def _count_candidates(chunk_iter: Iterator[dict[str, Any]], list_path: Path | None) -> int:
+    """Count candidate chunks; with ``list_path``, also write one JSON line per candidate.
+
+    Read-only: no embedding call and no database write. The file is for sampling the candidates
+    by hand before an apply run.
+    """
+    if list_path is None:
+        return sum(1 for _ in chunk_iter)
+    count = 0
+    with list_path.open("w", encoding="utf-8") as handle:
+        for chunk in chunk_iter:
+            record = {
+                "source_table": chunk.get("source_table"),
+                "source_row_id": chunk.get("source_row_id"),
+                "title": chunk.get("title"),
+                "content": str(chunk.get("content") or "")[:300],
+            }
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            count += 1
+    return count
+
+
+def _add_presence_flags(parser: argparse.ArgumentParser) -> None:
+    """Register the presence filters that skip identities the vector store already holds."""
+    parser.add_argument(
+        "--content-presence",
+        action="store_true",
+        help="정본에 없어도 벡터에 같은 본문 해시(ACTIVE)가 있으면 갭에서 뺀다 (--skip-existing과 단일 --source 필요)",
+    )
+    parser.add_argument(
+        "--play-presence",
+        action="store_true",
+        help="벡터에 같은 플레이(날짜·팀쌍·이닝·타자·내용)가 있으면 갭에서 뺀다 (--skip-existing, --source pbp)",
+    )
+
+
+def _prepare_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Apply count-only's dry-run implication and refuse flag combinations that are not meaningful."""
+    args.dry_run = args.dry_run or args.count_only
+    """Refuse presence filters that only mean something on the skip-existing path."""
+    if (args.vector_presence or args.content_presence) and not args.skip_existing:
+        parser.error("--vector-presence and --content-presence require --skip-existing")
+    if args.list_candidates is not None and not args.count_only:
+        parser.error("--list-candidates requires --count-only")
+    if args.exclude_file is not None and args.source != "pbp":
+        parser.error("--exclude-file is only supported with --source pbp")
+    if args.play_presence and (not args.skip_existing or args.source != "pbp"):
+        parser.error("--play-presence requires --skip-existing and --source pbp")
+
+
+def _completion_suffix(args: argparse.Namespace) -> str:
+    """Name the mode in the final log line so a count is never mistaken for a write."""
+    if args.count_only:
+        return " (count-only, 임베딩 호출 없음, 저장 없음)"
+    if args.dry_run:
+        return " (dry-run, 저장 없음)"
+    return ""
 
 
 def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
@@ -2036,7 +2189,30 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
         default="configured",
         help="임베딩 provider; deterministic는 staging 검증 전용",
     )
+    parser.add_argument(
+        "--count-only",
+        action="store_true",
+        help="임베딩 API를 호출하지 않고 처리 대상 청크 수만 센다 (dry-run을 포함한다)",
+    )
+    parser.add_argument(
+        "--vector-presence",
+        action="store_true",
+        help="정본에 없어도 벡터 저장소에 같은 키가 있으면 갭에서 뺀다 (--skip-existing 필요, 키 존재만 비교)",
+    )
+    parser.add_argument(
+        "--list-candidates",
+        type=Path,
+        default=None,
+        help="--count-only와 함께: 후보를 JSON Lines 파일로 내보낸다 (쓰기·임베딩 없음)",
+    )
+    parser.add_argument(
+        "--exclude-file",
+        default=None,
+        help="제외할 source_row_id 목록 파일 (한 줄에 하나, '-'는 표준 입력, --source pbp 전용)",
+    )
+    _add_presence_flags(parser)
     args = parser.parse_args(argv)
+    _prepare_args(parser, args)
 
     from src.db.engine import DATABASE_URL
     from src.db.vector_engine import init_vector_db, is_pgvector_available
@@ -2102,6 +2278,10 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
         skip_existing=args.skip_existing,
         desired_embedding_fingerprint=_embedding_fingerprint_for_service(embedding_service),
         repair_legacy_fingerprint=args.repair_legacy_fingerprint,
+        vector_key_presence=args.vector_presence,
+        content_presence=args.content_presence,
+        play_presence=args.play_presence,
+        exclude_ids=_read_exclude_ids(args.exclude_file),
     )
     with (
         get_rag_source_session() as source_session,
@@ -2121,12 +2301,17 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
                     vector_session,
                     build_source_options,
                 )
-                count = _process_source(
-                    source_name,
-                    chunk_iter,
-                    embedding_service,
-                    index_session,
-                    dry_run=args.dry_run,
+                # count-only는 임베딩 전 단계에서 세기만 한다. 제공자 호출과 저장이 모두 없다.
+                count = (
+                    _count_candidates(chunk_iter, args.list_candidates)
+                    if args.count_only
+                    else _process_source(
+                        source_name,
+                        chunk_iter,
+                        embedding_service,
+                        index_session,
+                        dry_run=args.dry_run,
+                    )
                 )
             except Exception:
                 failed_sources.append(source_name)
@@ -2149,11 +2334,7 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901, PLR0915
             exit_code=1,
         )
 
-    logger.info(
-        "🎉 RAG 인덱스 빌드 완료 — 총 %d 청크 처리%s",
-        grand_total,
-        " (dry-run, 저장 없음)" if args.dry_run else "",
-    )
+    logger.info("🎉 RAG 인덱스 빌드 완료 — 총 %d 청크 처리%s", grand_total, _completion_suffix(args))
 
 
 def cli_main(argv: list[str] | None = None) -> int:

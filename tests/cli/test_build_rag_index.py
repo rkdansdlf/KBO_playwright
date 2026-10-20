@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from unittest.mock import MagicMock
 
+import argparse
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -336,6 +337,21 @@ def test_process_source_persists_using_index_session(monkeypatch) -> None:
     assert count == 1
     assert persisted[0][1] is index_session
     assert persisted[0][0][0]["content_hash"] == chunk_content_hash(None, "player")
+
+
+def test_count_only_names_the_mode_so_a_count_is_never_read_as_a_write() -> None:
+    """The final line must say no embedding call and no write happened."""
+    args = argparse.Namespace(count_only=True, dry_run=True)
+
+    assert "count-only" in build_rag_index._completion_suffix(args)
+    assert "임베딩 호출 없음" in build_rag_index._completion_suffix(args)
+
+
+def test_real_run_has_no_completion_suffix() -> None:
+    """A real build keeps its original, unmarked completion line."""
+    args = argparse.Namespace(count_only=False, dry_run=False)
+
+    assert build_rag_index._completion_suffix(args) == ""
 
 
 def test_process_source_recomputes_hash_and_records_embedding_fingerprint(monkeypatch) -> None:
@@ -887,3 +903,97 @@ def test_deterministic_build_requires_staging_environment(monkeypatch) -> None:
             embedding_mode="deterministic",
             dry_run=True,
         )
+
+
+def test_vector_presence_is_refused_without_skip_existing() -> None:
+    """Without the skip filter every chunk is yielded, so key presence would be ignored silently."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--vector-presence"])
+
+    assert raised.value.code == 2
+
+
+def test_content_presence_is_refused_without_skip_existing() -> None:
+    """Content presence only means something on the skip filter path."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--content-presence"])
+
+    assert raised.value.code == 2
+
+
+def test_count_candidates_writes_one_json_line_per_chunk_without_embedding(tmp_path) -> None:
+    """Listing candidates is for sampling: it writes the rows and never calls a provider."""
+    import json
+
+    chunks = iter(
+        [
+            {
+                "source_table": "game_play_by_play",
+                "source_row_id": "20260816OBHT0_7",
+                "title": "t1",
+                "content": "본문1",
+            },
+            {"source_table": "game_play_by_play", "source_row_id": "1680134", "title": "t2", "content": "본문2"},
+        ]
+    )
+    target = tmp_path / "candidates.jsonl"
+
+    count = build_rag_index._count_candidates(chunks, target)
+
+    assert count == 2
+    lines = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+    assert [row["source_row_id"] for row in lines] == ["20260816OBHT0_7", "1680134"]
+    assert lines[0]["content"] == "본문1"
+
+
+def test_count_candidates_without_a_path_only_counts(tmp_path) -> None:
+    """The default path counts and writes nothing."""
+    count = build_rag_index._count_candidates(iter([{"content": "a"}, {"content": "b"}]), None)
+
+    assert count == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_list_candidates_is_refused_without_count_only() -> None:
+    """The listing belongs to the read-only path only."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--list-candidates", "x.jsonl"])
+
+    assert raised.value.code == 2
+
+
+def test_drop_excluded_removes_only_listed_identities() -> None:
+    """The exclusion is applied to candidates, so count, list, and apply all see the same set."""
+    chunks = [{"source_row_id": "A"}, {"source_row_id": "B"}, {"source_row_id": "C"}]
+
+    kept = list(build_rag_index._drop_excluded(iter(chunks), frozenset({"B"})))
+
+    assert [chunk["source_row_id"] for chunk in kept] == ["A", "C"]
+
+
+def test_read_exclude_ids_skips_blank_lines_and_comments(tmp_path) -> None:
+    """One identity per line; blank lines and comments are not identities."""
+    source = tmp_path / "exclude.txt"
+    source.write_text("# 322 matched plays\n20260816DBKIA0_7\n\n20260816DBKIA0_9\n", encoding="utf-8")
+
+    assert build_rag_index._read_exclude_ids(str(source)) == frozenset({"20260816DBKIA0_7", "20260816DBKIA0_9"})
+    assert build_rag_index._read_exclude_ids(None) == frozenset()
+
+
+def test_exclude_file_is_refused_for_other_sources() -> None:
+    """Only the PBP path is covered by the verified exclusion list."""
+    with pytest.raises(SystemExit) as raised:
+        build_rag_index.main(["--source", "lineups", "--count-only", "--skip-existing", "--exclude-file", "x.txt"])
+
+    assert raised.value.code == 2
+
+
+def test_play_presence_is_refused_without_skip_existing_or_for_other_sources() -> None:
+    """The play filter only means something on the PBP skip path."""
+    with pytest.raises(SystemExit) as no_skip:
+        build_rag_index.main(["--source", "pbp", "--play-presence"])
+    with pytest.raises(SystemExit) as other_source:
+        build_rag_index.main(["--source", "lineups", "--skip-existing", "--play-presence"])
+
+    assert no_skip.value.code == 2
+    assert other_source.value.code == 2

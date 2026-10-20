@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from src.constants import RAG_EMBEDDING_DIMENSION
 from src.services.rag_index_identity import chunk_content_hash
+from src.services.rag_play_identity import play_identity
 
 TERMINAL_INDEX_STATUSES: Final[frozenset[str]] = frozenset({"DELETED", "TOMBSTONED", "PURGED", "DELETE_PENDING"})
 REPAIRABLE_INDEX_STATUSES: Final[frozenset[str]] = frozenset({"PENDING", "STALE", "REINDEX_REQUIRED"})
@@ -40,6 +41,16 @@ class IncrementalDecisionOptions:
     desired_embedding_fingerprint: str | None = None
     require_vector: bool = False
     require_primary_embedding: bool = True
+    #: When the canonical row is absent but the vector store already holds the same
+    #: identity, treat the identity as present. Gap-fill only: content, version and
+    #: fingerprint are not compared, so use this to find missing keys, not to sync.
+    vector_key_presence: bool = False
+    #: Content hashes the vector store already holds as ACTIVE rows, across every key.
+    #: ``None`` disables content presence. Matching a canonical miss means the same text
+    #: is already embedded under another key, so the chunk is not a new play.
+    present_content_hashes: frozenset[str] | None = None
+    #: Play identities the vector store already holds (see ``rag_play_identity``). ``None`` disables it.
+    present_play_identities: frozenset | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +220,26 @@ def _fingerprint_candidate(
     return reason, metadata_repair
 
 
+def _canonical_miss_decision(
+    source_key: str,
+    chunk: dict[str, Any],
+    vector: RagIndexState | None,
+    options: IncrementalDecisionOptions,
+) -> RagCandidateDecision:
+    """Decide a chunk whose canonical row is absent, optionally trusting existing vectors."""
+    if options.present_content_hashes is not None:
+        chunk_hash = chunk_content_hash(_optional_text(chunk.get("title")), _text(chunk.get("content")))
+        if chunk_hash in options.present_content_hashes:
+            return RagCandidateDecision(source_key, should_reembed=False, reason="content_present")
+    if options.present_play_identities is not None:
+        identity = play_identity(_text(chunk.get("content")))
+        if identity is not None and identity in options.present_play_identities:
+            return RagCandidateDecision(source_key, should_reembed=False, reason="play_present")
+    if vector is not None and options.vector_key_presence:
+        return RagCandidateDecision(source_key, should_reembed=False, reason="vector_key_present")
+    return _reembed(source_key, "primary_missing" if vector is not None else "new")
+
+
 def decide_incremental_candidate(
     chunk: Mapping[str, object],
     existing: RagIndexState | None,
@@ -227,7 +258,7 @@ def decide_incremental_candidate(
     if existing is not None and _is_terminal(existing):
         return _blocked(source_key, "terminal_status")
     if existing is None:
-        return _reembed(source_key, "primary_missing" if vector is not None else "new")
+        return _canonical_miss_decision(source_key, chunk, vector, options)
 
     desired_hash = chunk_content_hash(
         _optional_text(chunk.get("title")),
