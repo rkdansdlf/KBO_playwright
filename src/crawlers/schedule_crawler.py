@@ -42,6 +42,17 @@ from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import SEL_TIMEOUT, SHORT_TIMEOUT
 from src.utils.request_policy import RequestPolicy
 from src.utils.schedule_validation import validate_schedule_game_payload
+from src.utils.season_classification import (
+    EXHIBITION,
+    POSTSEASON,
+    POSTSEASON_STAGES,
+    REGULAR,
+    calendar_season_type,
+    has_season_calendar,
+    season_type_from_kbo_series,
+    season_type_from_naver_game_id,
+    season_type_from_naver_round_code,
+)
 from src.utils.stadium_codes import STADIUM_SHORT_NAME_MAP
 from src.utils.team_codes import normalize_kbo_game_id, resolve_team_code, team_code_from_game_id_segment
 
@@ -57,6 +68,11 @@ SCHEDULE_TARGET_TYPE = "schedule_month"
 SCHEDULE_CRAWLER_EXCEPTIONS = (PlaywrightError, TimeoutError, RuntimeError, ValueError, TypeError, KeyError, OSError)
 
 NAVER_SCHEDULE_API_URL = "https://api-gw.sports.naver.com/schedule/today-games"
+NAVER_GAME_DETAIL_API_URL = "https://api-gw.sports.naver.com/schedule/games/{game_id}"
+#: Months in which a date-prefixed Naver game may be an exhibition game. Outside
+#: them a date-prefixed id is always a regular-season game (postseason ids carry
+#: a series prefix), so no detail lookup is needed.
+NAVER_EXHIBITION_MONTHS = frozenset({2, 3, 4})
 NAVER_SPORTS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
@@ -242,6 +258,13 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 # A filtered row is not merely unsaved, it was rejected as invalid;
                 # counting it as failed keeps read/accounted-for reconcilable.
                 run.records_failed = save_result.failed + save_result.filtered
+                if save_result.season_unresolved:
+                    # Already inside records_failed; named here so the skip is visible.
+                    logger.warning(
+                        "[WARN] %s: %s game(s) not saved, season_id unresolved (failure_reason=season_unresolved)",
+                        target,
+                        save_result.season_unresolved,
+                    )
             return games
 
     async def _resolve_month(
@@ -521,8 +544,15 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 )
                 continue
             raw_games = (result.data.get("result") or {}).get("games") or []
+            day_season_type = await self._naver_day_round_type(year, month, raw_games)
             for raw in raw_games:
-                game = self._naver_game_to_payload(raw, year, month, dh_counts)
+                game = self._naver_game_to_payload(
+                    raw,
+                    year,
+                    month,
+                    dh_counts,
+                    day_season_type=day_season_type,
+                )
                 if game is not None:
                     games.append(game)
 
@@ -538,12 +568,84 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             return CrawlResult.empty()
         return CrawlResult.success(games)
 
+    async def _naver_day_round_type(
+        self,
+        year: int,
+        month: int,
+        raw_games: list[dict[str, Any]],
+    ) -> str | None:
+        """Ask Naver whether a pre-season day's date-prefixed games are exhibition games.
+
+        The schedule list does not say; the game detail's ``roundCode`` does.
+        Only needed for early-season months of a year without a season calendar,
+        and one lookup covers the whole day (exhibition and regular games never
+        share a date).
+
+        Returns:
+            ``exhibition`` / ``regular`` from the detail, or None when the lookup
+            is unnecessary or failed (the caller then falls back to the calendar).
+
+        """
+        if month not in NAVER_EXHIBITION_MONTHS or has_season_calendar(year):
+            return None
+        probe = next(
+            (
+                str(raw.get("gameId"))
+                for raw in raw_games
+                if raw.get("gameId") and season_type_from_naver_game_id(raw.get("gameId")) is None
+            ),
+            None,
+        )
+        if probe is None:
+            return None
+        result = await self._http.fetch_json(NAVER_GAME_DETAIL_API_URL.format(game_id=probe))
+        if not result.ok or not isinstance(result.data, dict):
+            logger.warning("Naver game detail %s unavailable for season-type lookup: %s", probe, result.error)
+            return None
+        detail = (result.data.get("result") or {}).get("game") or {}
+        season_type = season_type_from_naver_round_code(detail.get("roundCode"))
+        if season_type not in (EXHIBITION, REGULAR):
+            return None
+        return season_type
+
+    @staticmethod
+    def _naver_season_type(raw: dict[str, Any], game_date: str, day_season_type: str | None) -> tuple[str, bool]:
+        """Classify one Naver schedule entry.
+
+        Postseason (and all-star) ids carry the KBO series id as a prefix, so a
+        date-prefixed id is never a postseason game; it is an exhibition game
+        when the detail lookup or the season calendar says so, otherwise regular.
+
+        Returns:
+            ``(season_type, confirmed)``. ``confirmed`` is True only when the type
+            was actually established from the game id prefix (a series prefix,
+            or a plain date id on a postseason/all-star calendar date, which the
+            id itself rules out) or from the detail ``roundCode``. A type taken
+            from the calendar or the regular default is not confirmed.
+
+        """
+        prefixed = season_type_from_naver_game_id(raw.get("gameId"))
+        if prefixed is not None:
+            return prefixed, True
+        if day_season_type is not None:
+            return day_season_type, True
+        calendar = calendar_season_type(game_date)
+        if calendar == EXHIBITION:
+            return EXHIBITION, False
+        if calendar is not None and raw.get("gameId"):
+            # The calendar says postseason/all-star but the id has no series
+            # prefix: the id proves it is not such a game.
+            return REGULAR, True
+        return REGULAR, False
+
     def _naver_game_to_payload(
         self,
         raw: dict[str, Any],
         year: int,
         month: int,
         dh_counts: dict[tuple[str, str, str], int],
+        *,
+        day_season_type: str | None = None,
     ) -> dict[str, Any] | None:
         """Map a Naver schedule entry to the KBO schedule payload schema.
 
@@ -552,6 +654,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             year: Season year.
             month: Month.
             dh_counts: Double-header counter keyed by (date, away, home).
+            day_season_type: Exhibition/regular answer for the day, if looked up.
 
         Returns:
             Schedule payload or None when the entry is not a valid KBO game.
@@ -581,11 +684,16 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         if len(date_time) >= NAVER_DATETIME_MIN_LEN:
             game_time = date_time[11:16]
 
+        season_type, season_type_confirmed = self._naver_season_type(raw, game_date, day_season_type)
         schedule_game = {
             "game_id": normalize_kbo_game_id(game_id),
             "game_date": f"{game_date[:4]}-{game_date[4:6]}-{game_date[6:]}",
             "season_year": year,
-            "season_type": "regular",
+            "season_type": season_type,
+            # Only a type established from the id prefix / roundCode is
+            # confirmed; the calendar must not override it, but may still
+            # decide a calendar-or-default guess (src.utils.season_classification).
+            "season_type_confirmed": season_type_confirmed,
             "away_team_code": away_code,
             "home_team_code": home_code,
             "doubleheader_no": dh_no,
@@ -651,16 +759,6 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         all_games = []
         seen_game_ids = set()
 
-        # Mapping from numeric series ID to canonical season_type
-        series_id_to_key = {
-            "0": "regular",
-            "1": "exhibition",
-            "3": "semi_playoff",
-            "4": "wildcard",
-            "5": "playoff",
-            "7": "korean_series",
-        }
-
         for sid in target_series:
             logger.info("[NAV] Selecting Series: %s for %s-%02d", sid, year, month)
             try:
@@ -674,7 +772,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                     self._last_failure_reason[crawl_key] = failure_reason
                     continue
 
-                season_type = series_id_to_key.get(sid, "regular")
+                season_type = self._kbo_series_season_type(sid)
                 month_games = await self._extract_games(page, year, month, season_type=season_type)
                 for g in month_games:
                     gid = g.get("game_id")
@@ -750,7 +848,13 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         text = str(status or "").strip()
         return labels.get(text, GAME_STATUS_SCHEDULED)
 
-    async def _extract_games(self, page: Page, year: int, month: int, season_type: str = "regular") -> list[dict]:
+    async def _extract_games(
+        self,
+        page: Page,
+        year: int,
+        month: int,
+        season_type: str | None = "regular",
+    ) -> list[dict]:
         """페이지에서 경기 관련 데이터를 추출합니다.
 
             (JS Fast Path).
@@ -980,11 +1084,16 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                         constructed_id = f"{g['game_date']}{kbo_away_code}{kbo_home_code}{dh}"
                         g["game_id"] = constructed_id
 
+                game_season_type, season_type_confirmed = self._kbo_page_season_type(
+                    g.get("season_type"),
+                    g["game_date"],
+                )
                 schedule_game = {
                     "game_id": normalize_kbo_game_id(g["game_id"]),
                     "game_date": g["game_date"],
                     "season_year": g["season_year"],
-                    "season_type": g["season_type"],
+                    "season_type": game_season_type,
+                    "season_type_confirmed": season_type_confirmed,
                     "away_team_code": away_code,
                     "home_team_code": home_code,
                     "doubleheader_no": g["doubleheader_no"],
@@ -1041,6 +1150,39 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                     logger.info("Debug evaluate failed")
 
         return games
+
+    @staticmethod
+    def _kbo_series_season_type(series_value: str) -> str | None:
+        """Map a ``#ddlSeries`` option to a season type.
+
+        The live page groups series ("0,9,6" regular, "3,4,5,7" postseason). An
+        unknown option is left to the calendar instead of silently becoming
+        regular, which is how every postseason game used to be saved as regular.
+        """
+        season_type = season_type_from_kbo_series(series_value)
+        if season_type is None:
+            logger.warning("[WARN] Unknown KBO series option %r; season type left to the calendar", series_value)
+        return season_type
+
+    @staticmethod
+    def _kbo_page_season_type(series_type: str | None, game_date: str) -> tuple[str | None, bool]:
+        """Classify a KBO-page row from the series option it was listed under.
+
+        Returns:
+            ``(season_type, confirmed)``. The grouped postseason option names no
+            stage, so the stage comes from the calendar and is not "confirmed";
+            when the calendar has no stage either, the type stays ``postseason``
+            and the repository keeps/derives the stage instead of guessing.
+
+        """
+        if series_type == POSTSEASON:
+            stage = calendar_season_type(game_date)
+            if stage in POSTSEASON_STAGES:
+                return stage, False
+            return POSTSEASON, False
+        if series_type is None:
+            return None, False
+        return series_type, True
 
     @staticmethod
     def _extract_game_id(href: str) -> str:

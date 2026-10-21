@@ -131,6 +131,9 @@ coverage_report.txt
 # Vendor (external skill adapters, gitignored)
 /vendor/
 
+# Season classification repair backups (issue #40)
+data/repair_backups/
+
 # pytest tmp_path spill: a run with a cwd-relative --basetemp writes dirs named
 # `test_<test_name><n>` at the repo root. Legit test code lives in tests/, so a
 # root-anchored guard cannot hide anything real and keeps them out of `git add -A`.

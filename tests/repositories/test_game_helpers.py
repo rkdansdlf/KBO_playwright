@@ -832,11 +832,19 @@ class TestResolveGameSeasonId:
         assert result == 5
 
     def test_resolve_game_season_id_without_existing(self, session):
-        result = _resolve_game_season_id(session, {}, date(2024, 10, 15), None)
+        result = _resolve_game_season_id(session, {}, date(2024, 6, 15), None)
         assert result == 202400
         season = session.query(KboSeason).filter_by(season_id=202400).one()
         assert season.season_year == 2024
         assert season.league_type_code == 0
+
+    def test_resolve_game_season_id_uses_calendar_for_postseason_dates(self, session):
+        # 2024-10-15 is a playoff date; a payload that states no type must not
+        # default to the regular season.
+        result = _resolve_game_season_id(session, {}, date(2024, 10, 15), None)
+        assert result == 202404
+        season = session.query(KboSeason).filter_by(season_id=202404).one()
+        assert season.league_type_name == "플레이오프"
 
     def test_resolve_fallback_creates_missing_season(self, session):
         result = _resolve_schedule_season_id(session, {"season_year": 2025, "season_type": "regular"}, None)

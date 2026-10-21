@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from src.repositories.game_repository import save_schedule_game
+from src.repositories.game_save import SCHEDULE_SEASON_UNRESOLVED
 from src.services.game_write_contract import GameWriteContract
 from src.utils.schedule_validation import validate_schedule_game_payload
 
@@ -27,6 +28,9 @@ class ScheduleSaveResult:
     saved: int = 0
     failed: int = 0
     filtered: int = 0
+    #: Games not saved because their season_id could not be resolved (also in
+    #: ``failed``, with ``failure_reason="season_unresolved"``).
+    season_unresolved: int = 0
 
     @property
     def discovered(self) -> int:
@@ -99,8 +103,13 @@ def save_schedule_games(
         else:
             result.failed += 1
             result.failed_games.append(game)
+            if game.get("failure_reason") == SCHEDULE_SEASON_UNRESOLVED:
+                result.season_unresolved += 1
             if log:
-                log(f"[WARN] Failed to save schedule game: {game.get('game_id')}")
+                log(
+                    f"[WARN] Failed to save schedule game: {game.get('game_id')}"
+                    + (f" reason={game['failure_reason']}" if game.get("failure_reason") else ""),
+                )
     if log and write_contract is None:
         log(contract.summary())
     return result
