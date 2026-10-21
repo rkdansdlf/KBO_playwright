@@ -46,7 +46,6 @@ services:
     environment:
       TZ: Asia/Seoul
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
-      TNS_ADMIN: /run/oracle-wallet
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -61,7 +60,6 @@ services:
       # are owned by UID 1000 or the running user to avoid 'Permission Denied' errors.
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
     healthcheck:
       test: ["CMD", "python", "-c", "from sqlalchemy import text; from src.db.engine import Engine; conn = Engine.connect(); conn.execute(text('SELECT 1')); conn.close()"]
       interval: 30s
@@ -84,7 +82,6 @@ services:
     environment:
       TZ: Asia/Seoul
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the Oracle Autonomous Database}
-      TNS_ADMIN: /run/oracle-wallet
       RUN_INIT_DB: "1"
       CHOWN_BIND_MOUNTS: "0"
       SQLITE_STARTUP_GUARD: "0"
@@ -93,7 +90,6 @@ services:
       - ./scripts:/app/scripts
       - ./data:/app/data
       - ./logs:/app/logs
-      - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
     ports:
       - "8000:8000"
     healthcheck:
