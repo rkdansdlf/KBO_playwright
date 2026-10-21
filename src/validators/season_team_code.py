@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
+from sqlalchemy import Integer, bindparam, text
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
@@ -159,8 +159,11 @@ def audit_season_team_codes(
     season: int | None = None,
 ) -> SeasonTeamCodeAudit:
     """Count unresolved season team codes and known source-limited rows."""
+    # ``audit_season`` is NULL for an unscoped audit. psycopg sends the parameter untyped, and
+    # ``:audit_season IS NULL`` gives PostgreSQL nothing to infer the type from, so type it.
+    statement = text(_query_for_session(session)).bindparams(bindparam("audit_season", type_=Integer))
     rows = session.execute(
-        text(_query_for_session(session)),
+        statement,
         {
             "archive_source": OFFICIAL_ARCHIVE_SOURCE,
             "archive_season": OFFICIAL_ARCHIVE_SEASON,
