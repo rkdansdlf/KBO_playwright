@@ -158,3 +158,16 @@ def test_playwright_browsers_come_from_the_image_not_a_volume(compose_path: Path
     ]
     assert mounts == []
     assert "playwright-browsers" not in (doc.get("volumes") or {})
+
+
+def test_dev_stack_does_not_require_an_oracle_wallet(dev: dict) -> None:
+    """The dev stack runs on PostgreSQL; a missing wallet path must not block ``up``.
+
+    ``${ORACLE_WALLET_HOST_PATH:?...}`` made ``docker compose up`` fail at interpolation for
+    every service that mounted it, so recreating a container needed a placeholder directory.
+    Production keeps the requirement (see ``test_wallet_path_is_required``).
+    """
+    for name, service in _services(dev).items():
+        for volume in service.get("volumes", []):
+            assert "ORACLE_WALLET_HOST_PATH" not in str(volume), name
+        assert "TNS_ADMIN" not in " ".join(_env_items(service)), name
