@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +57,11 @@ if TYPE_CHECKING:
     from src.models.quarantine import QuarantinedRecord
 
 logger = logging.getLogger(__name__)
+
+
+#: Stuck games this many days old or newer are retried even after the
+#: checkpoint recorded them as failed or completed (issue #55).
+HEALER_RECENT_RETRY_DAYS = 3
 
 
 def _find_stuck_games() -> list[Game]:
@@ -273,8 +279,38 @@ def _find_recovery_targets(
     return all_found, stuck_games, inconsistent_games, pa_formula_games
 
 
-def _pending_recovery_candidates(recovery_mgr: RecoveryManager, all_found: list[Game]) -> tuple[set[str], list[Game]]:
-    recovery_mgr.initialize_run("default_healer_run", [game.game_id for game in all_found])  # type: ignore[misc]
+def _recent_retry_ids(games: list[Game], *, today: date | None = None) -> list[str]:
+    """Return ids of recent games the checkpoint must not keep skipping.
+
+    A recent game that failed once (e.g. a postseason game whose source id was
+    not resolvable yet) is retried on later runs instead of staying in the
+    checkpoint's ``failed`` set forever (issue #55).
+    """
+    try:
+        retry_days = max(0, int(os.getenv("HEALER_RECENT_RETRY_DAYS", str(HEALER_RECENT_RETRY_DAYS))))
+    except ValueError:
+        retry_days = HEALER_RECENT_RETRY_DAYS
+    base = today or datetime.now(KST).date()
+    window_start = base - timedelta(days=retry_days)
+    retry_ids: list[str] = []
+    for game in games:
+        game_date = game.game_date.date() if isinstance(game.game_date, datetime) else game.game_date
+        if isinstance(game_date, date) and game_date >= window_start and game.game_id:
+            retry_ids.append(game.game_id)
+    return retry_ids
+
+
+def _pending_recovery_candidates(
+    recovery_mgr: RecoveryManager,
+    all_found: list[Game],
+    *,
+    retry_ids: list[str] | None = None,
+) -> tuple[set[str], list[Game]]:
+    recovery_mgr.initialize_run(  # type: ignore[misc]
+        "default_healer_run",
+        [game.game_id for game in all_found],
+        retry_ids=retry_ids,
+    )
     pending_ids = set(recovery_mgr.get_pending_targets())
     return pending_ids, [game for game in all_found if game.game_id in pending_ids]
 
@@ -576,7 +612,11 @@ async def run_healer_async(
         logger.info("✅ No games found for recovery.")
         return 0
 
-    pending_ids, recovery_candidates = _pending_recovery_candidates(recovery_mgr, all_found)
+    pending_ids, recovery_candidates = _pending_recovery_candidates(
+        recovery_mgr,
+        all_found,
+        retry_ids=_recent_retry_ids(stuck_games),
+    )
     if not recovery_candidates:
         logger.info("✅ All detected anomalies were already processed in current checkpoint.")
         return 0

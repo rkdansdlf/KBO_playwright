@@ -133,3 +133,41 @@ class TestDetailRecoveryQueue:
 
         mgr.purge_detail_recovery_queue(max_age_days=2)
         assert mgr.get_due_detail_recovery_targets("20260601", cooldown_minutes=0) == []
+
+
+class TestInitializeRunMergesNewTargets:
+    """Issue #55: a checkpoint that never clears must not hide new anomalies."""
+
+    def test_same_run_adds_new_targets_to_pending(self, tmp_path: Path):
+        mgr = RecoveryManager(str(tmp_path / "checkpoint.json"))
+        mgr.initialize_run("run1", ["g1", "g2"])
+        mgr.mark_completed("g1")
+        mgr.mark_failed("g2", "missing")
+
+        mgr.initialize_run("run1", ["g2", "g3"])
+
+        assert mgr.get_pending_targets() == ["g3"]
+        assert mgr.state["completed"] == ["g1"]
+        assert mgr.state["failed"] == {"g2": "missing"}
+
+    def test_retry_ids_reopen_failed_targets(self, tmp_path: Path):
+        path = tmp_path / "checkpoint.json"
+        mgr = RecoveryManager(str(path))
+        mgr.initialize_run("run1", ["g1"])
+        mgr.mark_failed("g1", "fetch_404")
+
+        reloaded = RecoveryManager(str(path))
+        reloaded.initialize_run("run1", ["g1"], retry_ids=["g1"])
+
+        assert reloaded.get_pending_targets() == ["g1"]
+        assert reloaded.state["failed"] == {}
+
+    def test_retry_ids_outside_targets_are_ignored(self, tmp_path: Path):
+        mgr = RecoveryManager(str(tmp_path / "checkpoint.json"))
+        mgr.initialize_run("run1", ["g1"])
+        mgr.mark_failed("g1", "fetch_404")
+
+        mgr.initialize_run("run1", ["g2"], retry_ids=["g1"])
+
+        assert mgr.get_pending_targets() == ["g2"]
+        assert mgr.state["failed"] == {"g1": "fetch_404"}

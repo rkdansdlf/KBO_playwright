@@ -6,9 +6,12 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from src.utils.team_codes import normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -222,17 +225,26 @@ class RecoveryManager:
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
-    def initialize_run(self, run_id: str, targets: list[str]) -> None:
-        # If it's a new run ID, reset everything
-        """Initialize initialize run.
+    def initialize_run(
+        self,
+        run_id: str,
+        targets: list[str],
+        *,
+        retry_ids: Iterable[str] | None = None,
+    ) -> None:
+        """Start a run, or fold newly detected targets into the current one.
+
+        A new ``run_id`` resets the checkpoint. The same ``run_id`` keeps what
+        was already completed or failed, but targets that appeared since the
+        checkpoint was written are added to ``pending``; otherwise a checkpoint
+        that never clears would hide every new anomaly for good (issue #55).
 
         Args:
             run_id: Run ID.
-            targets: Targets.
-            run_id: Run ID.
-            targets: Targets.
-            run_id: Run ID.
-            targets: Targets.
+            targets: Targets detected for this run.
+            retry_ids: Targets to retry even if an earlier pass already marked
+                them completed or failed (e.g. recent games whose source only
+                became readable later).
 
         """
         if self.state.get("run_id") != run_id:
@@ -242,9 +254,33 @@ class RecoveryManager:
                 "total_count": len(targets),
                 "completed": [],
                 "failed": {},
-                "pending": targets,
+                "pending": list(targets),
                 "detail_recovery_queue": queue if isinstance(queue, dict) else {},
             }
+            self.save()
+            return
+
+        pending: list[str] = list(self.state.get("pending") or [])
+        completed: list[str] = list(self.state.get("completed") or [])
+        failed: dict[str, str] = dict(self.state.get("failed") or {})
+        retry = set(retry_ids or ()) & set(targets)
+        changed = False
+        for game_id in targets:
+            if game_id in retry:
+                if game_id in completed:
+                    completed.remove(game_id)
+                    changed = True
+                if failed.pop(game_id, None) is not None:
+                    changed = True
+            if game_id in pending or game_id in completed or game_id in failed:
+                continue
+            pending.append(game_id)
+            changed = True
+        if changed:
+            self.state["pending"] = pending
+            self.state["completed"] = completed
+            self.state["failed"] = failed
+            self.state["total_count"] = len(pending) + len(completed) + len(failed)
             self.save()
 
     def mark_completed(self, game_id: str) -> None:
