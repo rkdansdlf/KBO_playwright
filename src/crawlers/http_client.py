@@ -14,7 +14,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlparse
 
 import httpx
@@ -30,6 +30,7 @@ from src.utils.url_validator import is_dns_resolution_failure, validate_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from types import TracebackType
 
 logger = logging.getLogger(__name__)
 
@@ -170,16 +171,52 @@ class CrawlerHttpClient:
             failure_threshold=policy.circuit.failure_threshold,
             recovery_timeout_seconds=policy.circuit.recovery_timeout_seconds,
         )
+        self._shared_client: httpx.AsyncClient | None = None
+        self._client_lock = asyncio.Lock()
+
+    async def _get_or_create_client(self) -> httpx.AsyncClient:
+        """Return the shared AsyncClient, initializing it lazily if needed."""
+        if self._shared_client is None or self._shared_client.is_closed:
+            async with self._client_lock:
+                if self._shared_client is None or self._shared_client.is_closed:
+                    self._shared_client = httpx.AsyncClient(
+                        headers=self.default_headers,
+                        timeout=self.timeout,
+                        follow_redirects=True,
+                        event_hooks={"request": [self._validate_request_url]},
+                        limits=httpx.Limits(
+                            max_connections=20,
+                            max_keepalive_connections=10,
+                            keepalive_expiry=30.0,
+                        ),
+                    )
+        return self._shared_client
 
     @asynccontextmanager
     async def _client(self) -> AsyncIterator[httpx.AsyncClient]:
-        async with httpx.AsyncClient(
-            headers=self.default_headers,
-            timeout=self.timeout,
-            follow_redirects=True,
-            event_hooks={"request": [self._validate_request_url]},
-        ) as client:
-            yield client
+        """Yield the underlying persistent client, preserving test mocking hooks."""
+        client = await self._get_or_create_client()
+        yield client
+
+    async def aclose(self) -> None:
+        """Close the underlying persistent AsyncClient."""
+        if self._shared_client is not None and not self._shared_client.is_closed:
+            await self._shared_client.aclose()
+            self._shared_client = None
+
+    async def __aenter__(self) -> Self:
+        """Enter the async context manager and initialize the client."""
+        await self._get_or_create_client()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Exit the async context manager and close the client."""
+        await self.aclose()
 
     async def _validate_request_url(self, request: httpx.Request) -> None:
         """Reject blocked targets, including redirect destinations."""
@@ -351,7 +388,7 @@ class CrawlerHttpClient:
             # Split from TransportError: a timeout is a distinct operational
             # signal from a connection-level fault, and collapsing them would
             # hide timeouts in the failure breakdown.
-            self._record_failure(exc)
+            self._record_failure(exc, trip_circuit=True)
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
@@ -359,7 +396,7 @@ class CrawlerHttpClient:
                 url=url,
             )
         except httpx.TransportError as exc:
-            self._record_failure(exc)
+            self._record_failure(exc, trip_circuit=True)
             return CrawlResult.failure(
                 CrawlOutcome.RETRYABLE_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
@@ -367,7 +404,7 @@ class CrawlerHttpClient:
                 url=url,
             )
         except httpx.HTTPError as exc:
-            self._record_failure(exc)
+            self._record_failure(exc, trip_circuit=True)
             return CrawlResult.failure(
                 CrawlOutcome.PERMANENT_ERROR,
                 error=f"{type(exc).__name__}: {exc}",
@@ -379,16 +416,32 @@ class CrawlerHttpClient:
         if result.ok or result.outcome is CrawlOutcome.EMPTY:
             self.breaker.record_success()
         else:
+            status = result.http_status
+            is_throttle = bool(status and status in THROTTLE_STATUS_CODES)
+            is_server_error = bool(
+                status and (status >= int(HTTPStatus.INTERNAL_SERVER_ERROR) or status in RETRYABLE_STATUS_CODES)
+            )
             self._record_failure(
                 RuntimeError(result.error or str(result.outcome)),
                 retry_after=result.retry_after,
+                is_throttle=is_throttle,
+                trip_circuit=is_server_error or is_throttle,
             )
         return result
 
-    def _record_failure(self, exc: Exception, *, retry_after: float | None = None) -> None:
+    def _record_failure(
+        self,
+        exc: Exception,
+        *,
+        retry_after: float | None = None,
+        is_throttle: bool = False,
+        trip_circuit: bool = True,
+    ) -> None:
         """Record a failed attempt against the circuit and the adaptive limiter."""
-        self.breaker.record_failure(exc)
-        self.rate_limiter.record_rate_limit(retry_after)
+        if trip_circuit:
+            self.breaker.record_failure(exc)
+        if is_throttle or retry_after is not None:
+            self.rate_limiter.record_rate_limit(retry_after)
 
     def _open_circuit_result(self, url: str) -> CrawlResult[Any] | None:
         """Return a fast-fail result while the circuit is open.

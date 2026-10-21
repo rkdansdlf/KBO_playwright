@@ -46,11 +46,19 @@ Docs/robots/robots_*.txt
 
 *.log
 
-# Local crawler investigation artifacts
-scratch/
-inspect_*.py
-!scripts/investigations/inspect_tool.py
-find_boxscore.py
+# One-off probe/diag/bench scripts at repo root (temporary, not tracked)
+probe_*.py
+diag_*.py
+bench_*.py
+verify_dim*.py
+test_db_conn.py
+test_nemotron.py
+# Secret backups
+.env.bak_*
+# Test runtime databases
+data/test_runtime_*.db
+data/test_runtime_*.db-wal
+data/test_runtime_*.db-shm
 # One-off bulk-rewrite helpers. They are ad-hoc, they rewrite tracked
 # sources in place, and they have no place in the repository.
 fix_all.py

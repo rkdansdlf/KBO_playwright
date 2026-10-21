@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN, GAME_ID_YEAR_LEN, KST
+from src.repositories.crawl_execution_repository import MAX_SOURCE_URLS
 from src.services.wpa_calculator import WPACalculator
 from src.services.wpa_transitions import apply_wpa_transitions, format_base_string
 from src.utils.date_helpers import parse_date_str
@@ -218,6 +219,11 @@ class RelayCrawler(BaseHttpCrawler):
         self.last_failure_reason: str | None = None
         self._last_fetch_failure_reason: str | None = None
         self._last_fetch: _InningFetch | None = None
+        # What each game's attempt actually asked for. The first fetch uses the
+        # id derived from the KBO game id; the schedule lookup and the second
+        # fetch only happen when that one came back empty, so the set is learned
+        # while the run works and cannot be declared when it opens.
+        self._requested_urls: dict[str, list[str]] = {}
         self._http = http or CrawlerHttpClient(
             # Named for the transport, not the crawler: the circuit registry is
             # keyed by name, so a shared "relay" breaker would refuse this Naver
@@ -240,6 +246,62 @@ class RelayCrawler(BaseHttpCrawler):
 
         """
         return self._last_failure_reason.get(normalize_kbo_game_id(game_id))
+
+    def get_requested_urls(self, game_id: str) -> tuple[str, ...]:
+        """Return the sources this crawler has asked for on a game's behalf.
+
+        The game-collection service reads this when it closes the run, so the
+        ledger names the endpoints the attempt reached. Two of them only exist
+        on the retry path -- the schedule lookup and the relay endpoint of the
+        resolved id -- and a run that never needed them must not look as if it
+        had: an endpoint that was planned but never requested is invisible here,
+        which is the same rule the REST ledger keeps.
+
+        Reading does not clear the record; a retried game is closed more than
+        once within one process.
+
+        Args:
+            game_id: KBO game ID.
+
+        Returns:
+            The requested URLs, in request order, without duplicates.
+
+        """
+        return tuple(self._requested_urls.get(normalize_kbo_game_id(game_id), ()))
+
+    def _note_requested_url(self, game_id: str, url: str) -> None:
+        """Record that one game's attempt is asking for a URL.
+
+        Called where the request is about to be made, so a request that comes
+        back refused is still recorded: the reader needs the name of what
+        refused, and that fact only exists after the attempt.
+
+        Args:
+            game_id: KBO game ID.
+            url: The URL being requested.
+
+        """
+        normalized = normalize_kbo_game_id(game_id)
+        recorded = self._requested_urls.setdefault(normalized, [])
+        if not url or url in recorded:
+            return
+        if len(recorded) >= MAX_SOURCE_URLS:
+            logger.debug("Request record for %s is full; %s not recorded", normalized, url)
+            return
+        recorded.append(url)
+
+    def forget_requested_urls(self, game_id: str) -> None:
+        """Drop one game's request record before a fresh attempt starts.
+
+        A retry in the same process must not inherit the previous attempt's
+        sources, or the ledger would keep crediting a resolution path the new
+        attempt never took.
+
+        Args:
+            game_id: KBO game ID.
+
+        """
+        self._requested_urls.pop(normalize_kbo_game_id(game_id), None)
 
     def _set_failure_reason(self, game_id: str, reason: str) -> None:
         normalized_id = normalize_kbo_game_id(game_id)
@@ -688,6 +750,12 @@ class RelayCrawler(BaseHttpCrawler):
         saw_schedule_games = False
         for index, query_date in enumerate(query_dates):
             query = self._schedule_query_context(kbo_game_id, query_date=query_date)
+            # The lookup endpoint, recorded once per attempt however many dates
+            # the window covers. The query parameters select within the endpoint
+            # and are not what a policy verdict is made of, so they are not
+            # carried: naming each date would pack the ledger's column with
+            # fifteen spellings of one source.
+            self._note_requested_url(kbo_game_id, self.schedule_api_base_url)
             payload, failure_reason = await self._request_json(
                 self.schedule_api_base_url,
                 params=query,
@@ -804,6 +872,9 @@ class RelayCrawler(BaseHttpCrawler):
         self._last_failure_reason.pop(kbo_game_id, None)
         self.last_failure_reason = None
         self.last_resolved_naver_game_id = None
+        # A fresh attempt learns fresh sources; carrying the previous attempt's
+        # record forward would credit this run with a lookup it never made.
+        self.forget_requested_urls(kbo_game_id)
         direct_naver_id = self._map_to_naver_id(kbo_game_id)
 
         stadium, game_time = self._resolve_game_metadata(kbo_game_id, stadium, game_time)
@@ -978,6 +1049,11 @@ class RelayCrawler(BaseHttpCrawler):
         empty result.
         """
         naver_id = direct_naver_id or ""
+        if naver_id:
+            # Recorded before the fetch, not after: an endpoint that refused the
+            # request is the one a reader most needs named, and a successful
+            # fetch is not the only kind of request worth recording.
+            self._note_requested_url(kbo_game_id, self.api_base_url.format(game_id=naver_id))
         fetched = await self._fetch_text_relays(naver_id)
         fetched = dataclasses.replace(fetched, naver_game_id=naver_id or None)
         self._last_fetch = fetched
@@ -992,6 +1068,10 @@ class RelayCrawler(BaseHttpCrawler):
         )
         if resolved_naver_id and resolved_naver_id != direct_naver_id:
             self.last_resolved_naver_game_id = resolved_naver_id
+            # The endpoint of the id the lookup answered with, which differs from
+            # the one above whenever the direct mapping was wrong. Both were
+            # requested, so both are recorded.
+            self._note_requested_url(kbo_game_id, self.api_base_url.format(game_id=resolved_naver_id))
             second = await self._fetch_text_relays(resolved_naver_id)
             fetched = dataclasses.replace(
                 second,

@@ -551,6 +551,29 @@ class TestTheOperatorGetsTheSecondHalf:
         assert replay_run.replay_of_run_id == original.run_id
         assert replay_run.parent_run_id == original.run_id
 
+    def test_the_run_and_the_letter_name_the_same_source(self, factory: sessionmaker, wired: None) -> None:
+        """Two readers, one fact.
+
+        `source_inventory` judges a run by its ``source_url``, and an operator
+        reads the queue. If the two disagree, a source report can clear a host
+        the incident is about -- or blame one the attempt never asked.
+        """
+        _collect({1: httpx.ReadTimeout("timed out")})
+
+        letter = _letters(factory)[0]
+        run = _runs(factory)[0]
+
+        # The endpoint the innings were asked of, without the per-inning query:
+        # the query selects within one source and is not what a policy verdict is
+        # made of, so naming each inning would pack the column with fifteen
+        # spellings of the same host. This canary keeps the identity id mapping,
+        # so the id in the endpoint is the KBO game id.
+        from src.crawlers.relay_crawler import RelayCrawler
+
+        expected = RelayCrawler().api_base_url.format(game_id=GAME)
+        assert run.source_url == expected
+        assert letter.source_url == run.source_url
+
 
 class TestTheCodeIsTheSameAtEveryLayer:
     """A run, a queue entry and a Prometheus sample that disagree are unusable.

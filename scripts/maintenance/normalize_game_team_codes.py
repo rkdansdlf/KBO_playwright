@@ -152,8 +152,22 @@ def _set_columns(session: Session, changes: Sequence[TeamCodeChange], *, use_old
             logger.warning("game %s no longer exists; skipped", game_id)
             continue
         for change in game_changes:
-            setattr(game, change.column, change.old if use_old else change.new)
-            updated += 1
+            current = getattr(game, change.column)
+            if use_old:
+                if current != change.new:
+                    logger.warning(
+                        "Conflict during rollback for %s.%s: current '%s' != expected '%s'; skipped",
+                        game_id,
+                        change.column,
+                        current,
+                        change.new,
+                    )
+                    continue
+                setattr(game, change.column, change.old)
+                updated += 1
+            else:
+                setattr(game, change.column, change.new)
+                updated += 1
     return updated
 
 

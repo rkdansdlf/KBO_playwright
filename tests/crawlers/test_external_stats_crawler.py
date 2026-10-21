@@ -234,3 +234,73 @@ def test_default_transport_clients_are_isolated_by_provider_host(monkeypatch: py
         "external_stats:statiz.co.kr",
     ]
     assert [call.kwargs["policy"].max_attempts for call in factory.call_args_list] == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_statiz_is_blocked_by_default_without_permission(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KBO_ALLOW_STATIZ_CRAWL", raising=False)
+    monkeypatch.delenv("STATIZ_LICENSE_AGREEMENT_REF", raising=False)
+    client = AsyncMock()
+    crawler = ExternalStatsCrawler(client=client)
+
+    result = await crawler.crawl(2025, providers=["statiz"])
+
+    assert len(result.failures) == 1
+    assert "statiz: automated crawling prohibited" in result.failures[0]
+    client.fetch_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_statiz_is_blocked_when_env_enabled_without_license_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KBO_ALLOW_STATIZ_CRAWL", "1")
+    monkeypatch.delenv("STATIZ_LICENSE_AGREEMENT_REF", raising=False)
+    client = AsyncMock()
+    crawler = ExternalStatsCrawler(client=client)
+
+    result = await crawler.crawl(2025, providers=["statiz"])
+
+    assert len(result.failures) == 1
+    assert "STATIZ_LICENSE_AGREEMENT_REF" in result.failures[0]
+    client.fetch_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_statiz_is_allowed_with_explicit_permission(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KBO_ALLOW_STATIZ_CRAWL", "1")
+    monkeypatch.setenv("STATIZ_LICENSE_AGREEMENT_REF", "LIC-STATIZ-2026-TEST")
+    adapter = StatizKboAdapter()
+    url = adapter.build_url(2025, "batting")
+    client = AsyncMock()
+    client.fetch_text.return_value = CrawlResult.success(
+        STATIZ_BATTING_HTML,
+        http_status=200,
+        url=url,
+        content_type="text/html; charset=euc-kr",
+    )
+    crawler = ExternalStatsCrawler(adapters={"statiz": adapter}, client=client)
+
+    result = await crawler.crawl(2025, providers=["statiz"], stat_types=["batting"])
+
+    assert len(result.records) > 0
+    assert result.failures == []
+
+
+@pytest.mark.asyncio
+async def test_statiz_is_allowed_with_programmatic_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KBO_ALLOW_STATIZ_CRAWL", raising=False)
+    monkeypatch.delenv("STATIZ_LICENSE_AGREEMENT_REF", raising=False)
+    adapter = StatizKboAdapter()
+    url = adapter.build_url(2025, "batting")
+    client = AsyncMock()
+    client.fetch_text.return_value = CrawlResult.success(
+        STATIZ_BATTING_HTML,
+        http_status=200,
+        url=url,
+        content_type="text/html; charset=euc-kr",
+    )
+    crawler = ExternalStatsCrawler(adapters={"statiz": adapter}, client=client)
+
+    result = await crawler.crawl(2025, providers=["statiz"], stat_types=["batting"], allow_statiz=True)
+
+    assert len(result.records) > 0
+    assert result.failures == []

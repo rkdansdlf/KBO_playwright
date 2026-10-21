@@ -332,21 +332,25 @@ class _FakeRelayLedger:
 
     def __init__(self) -> None:
         self.transitions: list[tuple[str, object]] = []
+        self.sources: dict[object, object] = {}
 
     def open_runs(self, game_ids):
         from src.services.crawl_run_ledger import RunOpenResult
 
         return RunOpenResult(started={gid: f"run-{gid}" for gid in game_ids}, failures={})
 
-    def record_success(self, run_id, *, counts):
+    def record_success(self, run_id, *, counts, source_url=None):
+        self.sources[run_id] = source_url
         self.transitions.append(("success", run_id))
         return True
 
-    def record_partial(self, run_id, *, error_code, error_message, counts):
+    def record_partial(self, run_id, *, error_code, error_message, counts, source_url=None):
+        self.sources[run_id] = source_url
         self.transitions.append(("partial", run_id))
         return True
 
-    def record_failed(self, run_id, *, error_code, error_message, counts):
+    def record_failed(self, run_id, *, error_code, error_message, counts, source_url=None):
+        self.sources[run_id] = source_url
         self.transitions.append(("failed", run_id))
         return True
 

@@ -40,6 +40,7 @@ from src.models.parking_fee_rule import ParkingFeeRule
 from src.models.parking_lot import ParkingLot
 from src.models.source_registry import DataSource, RawSourceSnapshot
 from src.monitoring import crawler_metrics as cm
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR
 from src.repositories.parking_lot_repository import ParkingLotRepository
 
 SK_URL = TEAM_PARKING_SOURCES["SK"]["url"]
@@ -166,6 +167,20 @@ class TestHealthyAndFilteredRuns:
         run = _only_run(session_factory)
         assert run.target_id == "LG"
         assert run.source_url == TEAM_PARKING_SOURCES["LG"]["url"]
+
+    @pytest.mark.asyncio
+    async def test_a_full_sweep_names_every_page_it_requests(self, session_factory: sessionmaker) -> None:
+        """One row, one URL column, three pages.
+
+        Naming only the first would judge the whole sweep by one host, so a
+        second host that refuses every request would stay invisible in the
+        source report.
+        """
+        await _crawler().run()
+
+        run = _only_run(session_factory)
+        assert run.source_url is not None
+        assert run.source_url.split(MULTI_SOURCE_SEPARATOR) == [info["url"] for info in TEAM_PARKING_SOURCES.values()]
 
 
 class TestAPageThatAnswersWithoutAReadableFee:

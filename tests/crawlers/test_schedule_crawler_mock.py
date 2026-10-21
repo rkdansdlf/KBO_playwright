@@ -277,6 +277,14 @@ class TestCrawlerOrchestration:
         page.wait_for_selector = AsyncMock(side_effect=TimeoutError())
         assert await crawler._wait_for_schedule_table(page) == (False, "schedule_empty")
 
+        # Test expected_month timeout waiting for DOM postback update
+        page.wait_for_selector = AsyncMock(return_value=None)
+        page.wait_for_function = AsyncMock(side_effect=TimeoutError())
+        assert await crawler._wait_for_schedule_table(page, expected_month=5) == (False, "schedule_empty")
+
+        page.wait_for_function = AsyncMock(return_value=None)
+        assert await crawler._wait_for_schedule_table(page, expected_month=5) == (True, "ok")
+
         assert await crawler._select_option_with_retry(page, "#ddlYear", "2025", label="year") == (
             False,
             "schedule_navigation_failed",
@@ -372,10 +380,22 @@ class TestNaverSchedulePath:
         assert game["game_time"] == "19:00"
         assert game["stadium"] == "잠실"
 
-    def test_naver_game_to_payload_skips_cancelled(self, crawler):
+    def test_naver_game_to_payload_preserves_cancelled(self, crawler):
         raw = NAVER_SCHEDULE_SAMPLE["result"]["games"][2]
+        game = crawler._naver_game_to_payload(raw, 2026, 8, {})
 
-        assert crawler._naver_game_to_payload(raw, 2026, 8, {}) is None
+        assert game is not None
+        assert game["game_status"] == "CANCELLED"
+        assert game["away_team_code"] == "OB"
+        assert game["home_team_code"] == "NC"
+        assert game["stadium"] == "창원"
+
+    def test_naver_game_to_payload_preserves_suspended(self, crawler):
+        raw = dict(NAVER_SCHEDULE_SAMPLE["result"]["games"][0], suspended=True, statusCode="LIVE")
+        game = crawler._naver_game_to_payload(raw, 2026, 8, {})
+
+        assert game is not None
+        assert game["game_status"] == "SUSPENDED"
 
     def test_naver_game_to_payload_skips_missing_team_codes(self, crawler):
         raw = dict(NAVER_SCHEDULE_SAMPLE["result"]["games"][0], awayTeamCode="", homeTeamCode="")
@@ -461,6 +481,46 @@ class TestNaverSchedulePath:
         assert games == [{"game_id": "march"}, {"game_id": "april"}]
         assert crawler._crawl_naver_month.await_count == 2
         crawler._crawl_month.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resolve_month_fails_when_kbo_fallback_has_unresolved_failure(self):
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
+
+        async def _fake_crawl_month(page, year, month, series_id=None):
+            crawler._last_failure_reason[crawler._schedule_key(year, month, series_id)] = "schedule_navigation_failed"
+            return []
+
+        crawler._crawl_month = _fake_crawl_month
+        crawler._kbo_fallback_allowed = AsyncMock(return_value=True)
+        ctx = AsyncMock()
+        crawler.page_context = MagicMock(return_value=ctx)
+        ctx.__aenter__.return_value = MagicMock()
+
+        result = await crawler._resolve_month(2026, 7)
+
+        assert not result.ok
+        assert result.outcome != CrawlOutcome.EMPTY
+        assert "schedule_navigation_failed" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_resolve_month_returns_empty_when_kbo_fallback_is_schedule_empty(self):
+        crawler = ScheduleCrawler()
+        crawler._crawl_naver_month = AsyncMock(return_value=_naver_failure())
+
+        async def _fake_crawl_month(page, year, month, series_id=None):
+            crawler._last_failure_reason[crawler._schedule_key(year, month, series_id)] = "schedule_empty"
+            return []
+
+        crawler._crawl_month = _fake_crawl_month
+        crawler._kbo_fallback_allowed = AsyncMock(return_value=True)
+        ctx = AsyncMock()
+        crawler.page_context = MagicMock(return_value=ctx)
+        ctx.__aenter__.return_value = MagicMock()
+
+        result = await crawler._resolve_month(2026, 12)
+
+        assert result.outcome == CrawlOutcome.EMPTY
 
 
 class TestTheLedgerRecordsWhatLanded:

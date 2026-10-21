@@ -25,7 +25,7 @@ from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
-from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec, join_source_urls
 from src.repositories.parking_lot_repository import ParkingFeeKindRepository, ParkingLotRepository
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.services.crawl_dead_letter_service import enqueue_failure
@@ -142,11 +142,17 @@ class ParkingCrawler(BaseHttpCrawler):
 
         """
         selected = {code: info for code, info in TEAM_PARKING_SOURCES.items() if not team_filter or code == team_filter}
+        # Every page this run will request, not just the one a single-team
+        # filter leaves. A sweep that names one of them is judged by that one
+        # source's host: the others may be refused while the run reads as
+        # permitted (food has recorded the whole set for this reason). The
+        # filter is what makes a replay's value exact, so it is still the
+        # selection -- not the team that happened to fail -- that is named.
         spec = run_spec or CrawlRunSpec(
             crawler=PARKING_CRAWLER_NAME,
             target_type=PARKING_TARGET_TYPE,
             target_id=team_filter or "all",
-            source_url=next(iter(selected.values()))["url"] if len(selected) == 1 else None,
+            source_url=join_source_urls(info["url"] for info in selected.values()),
         )
 
         with track_crawl_run(spec) as run:

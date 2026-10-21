@@ -320,6 +320,20 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 error_code=FailureCode.FETCH_HTTP_ERROR.value,
             )
             return self._merge_failures(naver, failure) if naver is not None else failure
+        last_reason = self.get_last_failure_reason(schedule_key)
+        if not games and last_reason and last_reason != "schedule_empty":
+            failure_code = (
+                FailureCode.FETCH_BLOCKED.value
+                if "block" in last_reason.lower()
+                else FailureCode.FETCH_HTTP_ERROR.value
+            )
+            failure = CrawlResult.failure(
+                CrawlOutcome.PERMANENT_ERROR,
+                error=f"kbo schedule page failed: {last_reason}",
+                error_code=failure_code,
+            )
+            return self._merge_failures(naver, failure) if naver is not None else failure
+
         logger.info("✅ Found %s games", len(games))
         # A page that renders with no rows is an off-season month, not a failure.
         return CrawlResult.success(games) if games else CrawlResult.empty()
@@ -443,7 +457,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         async def _navigate() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
             if page.url != self.base_url:
-                await page.goto(self.base_url, wait_until="networkidle", timeout=timeout)
+                await page.goto(self.base_url, wait_until="domcontentloaded", timeout=timeout)
             await page.wait_for_selector(required_selector, timeout=selector_timeout)
 
         try:
@@ -454,16 +468,39 @@ class ScheduleCrawler(BasePlaywrightCrawler):
 
         return True, "ok"
 
-    async def _wait_for_schedule_table(self, page: Page, *, timeout: int = 10000) -> tuple[bool, str]:  # noqa: ASYNC109
+    async def _wait_for_schedule_table(
+        self,
+        page: Page,
+        *,
+        expected_month: int | None = None,
+        timeout: int = 10000,  # noqa: ASYNC109
+    ) -> tuple[bool, str]:
         try:
             await page.wait_for_selector(".tbl tbody tr", timeout=timeout)
+            if expected_month is not None:
+                month_str = f"{expected_month:02d}"
+                await page.wait_for_function(
+                    """(targetMonth) => {
+                        const table = document.querySelector('.tbl');
+                        if (!table) return false;
+                        if (table.innerText.includes('데이터가 없습니다')) return true;
+                        const rows = table.querySelectorAll('tbody tr');
+                        for (const row of rows) {
+                            const m = row.innerText.match(/(\\d{2})\\.(\\d{2})/);
+                            if (m) {
+                                return m[1] === targetMonth;
+                            }
+                        }
+                        return false;
+                    }""",
+                    month_str,
+                    timeout=timeout,
+                )
         except SCHEDULE_CRAWLER_EXCEPTIONS:
             logger.exception("[WARN] Schedule table wait failed")
             return False, "schedule_empty"
         else:
             return True, "ok"
-            logger.error("[WARN] Schedule table wait failed")
-            return False, "schedule_empty"
 
     async def _select_option_with_retry(
         self,
@@ -476,8 +513,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         async def _select() -> None:
             await self.policy.delay_async(host="www.koreabaseball.com")
             await page.select_option(selector, value)
-            await page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-            await page.wait_for_timeout(500)
+            await page.wait_for_load_state("domcontentloaded", timeout=SEL_TIMEOUT)
             await page.wait_for_selector(".tbl", timeout=SHORT_TIMEOUT)
 
         try:
@@ -660,8 +696,6 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             Schedule payload or None when the entry is not a valid KBO game.
 
         """
-        if raw.get("cancel") or raw.get("suspended"):
-            return None
         away_code = str(raw.get("awayTeamCode") or "").strip()
         home_code = str(raw.get("homeTeamCode") or "").strip()
         if not away_code or not home_code:
@@ -675,10 +709,16 @@ class ScheduleCrawler(BasePlaywrightCrawler):
         dh_counts[dh_key] = dh_no + 1
 
         game_id = f"{game_date}{away_code}{home_code}{dh_no}"
-        status = NAVER_STATUS_TO_GAME_STATUS.get(
-            str(raw.get("statusCode") or "").upper(),
-            GAME_STATUS_SCHEDULED,
-        )
+        status_code = str(raw.get("statusCode") or "").upper()
+        if bool(raw.get("suspended")):
+            status = GAME_STATUS_SUSPENDED
+        elif bool(raw.get("cancel")) or status_code == "CANCEL":
+            status = GAME_STATUS_CANCELLED
+        else:
+            status = NAVER_STATUS_TO_GAME_STATUS.get(
+                status_code,
+                GAME_STATUS_SCHEDULED,
+            )
         game_time = None
         date_time = str(raw.get("gameDateTime") or "")
         if len(date_time) >= NAVER_DATETIME_MIN_LEN:
@@ -743,7 +783,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
             self._last_failure_reason[crawl_key] = failure_reason
             return []
 
-        ok, failure_reason = await self._wait_for_schedule_table(page)
+        ok, failure_reason = await self._wait_for_schedule_table(page, expected_month=month)
         if not ok:
             self._last_failure_reason[crawl_key] = failure_reason
             return []
@@ -771,6 +811,8 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                 if not ok:
                     self._last_failure_reason[crawl_key] = failure_reason
                     continue
+
+                await self._wait_for_schedule_table(page, expected_month=month)
 
                 season_type = self._kbo_series_season_type(sid)
                 month_games = await self._extract_games(page, year, month, season_type=season_type)

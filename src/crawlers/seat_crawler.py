@@ -18,7 +18,7 @@ from src.crawlers.sweep_outcome import CrawlSweepOutcome
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import RUN_STATUS_FAILED, RUN_STATUS_PARTIAL
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
-from src.repositories.crawl_execution_repository import CrawlRunSpec
+from src.repositories.crawl_execution_repository import CrawlRunSpec, join_source_urls
 from src.repositories.source_registry_repository import save_raw_snapshots
 from src.repositories.stadium_seat_section_repository import StadiumSeatSectionRepository
 from src.services.crawl_dead_letter_service import enqueue_failure
@@ -122,11 +122,16 @@ class SeatCrawler(BaseHttpCrawler):
 
         """
         selected = {code: info for code, info in TEAM_SEAT_SOURCES.items() if not team_filter or code == team_filter}
+        # The whole selection, joined, for the reason parking records: a sweep
+        # that names one team's page is judged by that host alone, and a host
+        # that refuses the other eleven stays invisible. A replay is still
+        # per-team through `team_filter`, so naming the set a scheduled sweep
+        # actually requests loses nothing.
         spec = run_spec or CrawlRunSpec(
             crawler=SEAT_CRAWLER_NAME,
             target_type=SEAT_TARGET_TYPE,
             target_id=team_filter or "all",
-            source_url=next(iter(selected.values()))["url"] if len(selected) == 1 else None,
+            source_url=join_source_urls(info["url"] for info in selected.values()),
         )
 
         # Every team failing used to leave no trace at all: the exception was

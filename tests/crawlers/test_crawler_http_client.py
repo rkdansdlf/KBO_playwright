@@ -352,3 +352,84 @@ class TestParseRetryAfter:
     @pytest.mark.parametrize("raw", [None, "", "   ", "soon", "-5", "0"])
     def test_unusable_values_return_none(self, raw):
         assert parse_retry_after(raw) is None
+
+
+class TestHttpClientPersistence:
+    @pytest.mark.asyncio
+    async def test_reuses_underlying_async_client(self):
+        client = CrawlerHttpClient(name="test-reuse")
+        try:
+            async with client._client() as first:
+                pass
+            async with client._client() as second:
+                pass
+            assert first is second
+            assert not first.is_closed
+        finally:
+            await client.aclose()
+        assert client._shared_client is None
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_lifecycle(self):
+        async with CrawlerHttpClient(name="test-context") as client:
+            raw = client._shared_client
+            assert raw is not None
+            assert not raw.is_closed
+        assert raw.is_closed
+        assert client._shared_client is None
+
+
+class TestFailureClassificationSemantics:
+    def test_404_does_not_inflate_adaptive_rate_limiter_or_trip_breaker(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="not found")
+
+        client = _client(
+            handler,
+            name="404-safe",
+            max_attempts=1,
+            circuit=CircuitPolicy(failure_threshold=1, recovery_timeout_seconds=60.0),
+        )
+        initial_delay = client.rate_limiter.current_delay
+
+        result = asyncio.run(client.fetch_json("https://stat.koreabaseball.com/api/x"))
+
+        assert result.outcome is CrawlOutcome.PERMANENT_ERROR
+        assert client.rate_limiter.current_delay == initial_delay
+        assert client.breaker.get_state() is CircuitState.CLOSED
+
+    def test_schema_drift_does_not_inflate_adaptive_rate_limiter_or_trip_breaker(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="not json", headers={"Content-Type": "application/json"})
+
+        client = _client(
+            handler,
+            name="schema-safe",
+            max_attempts=1,
+            circuit=CircuitPolicy(failure_threshold=1, recovery_timeout_seconds=60.0),
+        )
+        initial_delay = client.rate_limiter.current_delay
+
+        result = asyncio.run(client.fetch_json("https://stat.koreabaseball.com/api/x"))
+
+        assert result.outcome is CrawlOutcome.SCHEMA_CHANGED
+        assert client.rate_limiter.current_delay == initial_delay
+        assert client.breaker.get_state() is CircuitState.CLOSED
+
+    def test_500_trips_breaker_without_inflating_adaptive_rate_limiter(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500, text="server error")
+
+        client = _client(
+            handler,
+            name="500-breaker-only",
+            max_attempts=1,
+            circuit=CircuitPolicy(failure_threshold=1, recovery_timeout_seconds=60.0),
+        )
+        initial_delay = client.rate_limiter.current_delay
+
+        result = asyncio.run(client.fetch_json("https://stat.koreabaseball.com/api/x"))
+
+        assert result.outcome is CrawlOutcome.RETRYABLE_ERROR
+        assert client.rate_limiter.current_delay == initial_delay
+        assert client.breaker.get_state() is CircuitState.OPEN

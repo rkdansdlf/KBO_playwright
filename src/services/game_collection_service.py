@@ -31,6 +31,7 @@ from src.monitoring.crawler_metrics import (
     record_ledger_failure,
 )
 from src.repositories.crawl_dead_letter_repository import DeadLetterSpec
+from src.repositories.crawl_execution_repository import join_source_urls
 from src.repositories.game_repository import save_game_detail, save_relay_data
 from src.services.crawl_dead_letter_service import enqueue_failure
 from src.services.game_detail_runs import (
@@ -662,6 +663,10 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
         _abandon_without_run(target, ctx, run_open_failure)
         return
     payload = attempt.payload if attempt is not None else None
+    # Asked once, before either branch: the crawler's record of what it requested
+    # is the same fact whether the attempt stored a payload or died, and reading
+    # it here keeps the two close paths from disagreeing about the source.
+    source_url = _requested_source_url(ctx.detail_crawler, target.game_id)
     failure_reason = _detail_payload_failure_reason(target, payload, ctx.detail_crawler, ctx.cfg.should_save_detail)
     if failure_reason is not None:
         _mark_detail_failed(target, failure_reason, ctx.result, ctx.cfg.log)
@@ -670,9 +675,10 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
             attempt,
             failure_reason=failure_reason[2],
             extra_reason=failure_reason[1] or None,
+            source_url=source_url,
         )
         _count_unfinalized(ctx, terminal)
-        _enqueue_for_replay(target, terminal)
+        _enqueue_for_replay(target, terminal, source_url=source_url)
         return
 
     saved, persist_cause = _save_detail_payload(target, payload or {}, ctx)
@@ -680,9 +686,16 @@ def _process_detail_target(  # noqa: PLR0913 - public batch-processing signature
         ctx.cfg.log("   [DB] Detail saved")
     else:
         ctx.cfg.log("   [ERROR] Detail save failed")
-    terminal = _close_saved_run(run_id, attempt, saved=saved, persist_cause=persist_cause, payload=payload or {})
+    terminal = _close_saved_run(
+        run_id,
+        attempt,
+        saved=saved,
+        persist_cause=persist_cause,
+        payload=payload or {},
+        source_url=source_url,
+    )
     _count_unfinalized(ctx, terminal)
-    _enqueue_for_replay(target, terminal)
+    _enqueue_for_replay(target, terminal, source_url=source_url)
 
 
 async def replay_single_relay(
@@ -756,7 +769,11 @@ async def _collect_single_relay(
 
     outcome = await _collect_one_relay(target, ctx, relay_source, opened.run_id_for(game_id))
     if record_dead_letters:
-        _enqueue_relay_outcome(target, outcome)
+        _enqueue_relay_outcome(
+            target,
+            outcome,
+            source_url=_requested_source_url(ctx.relay_crawler, target.game_id),
+        )
     return outcome
 
 
@@ -838,7 +855,13 @@ async def _collect_single_game_detail(
     attempts = await _crawl_detail_batch(ctx, [target], lightweight=False)
     terminal = _process_single_detail_target(target, attempts.get(game_id), ctx, run_id=run_id)
     if record_dead_letters:
-        _enqueue_for_replay(target, terminal)
+        # Read here rather than threaded through the terminal: the replay keeps
+        # the same attempt in the same crawler, and the record is still intact.
+        _enqueue_for_replay(
+            target,
+            terminal,
+            source_url=_requested_source_url(ctx.detail_crawler, target.game_id),
+        )
     return terminal
 
 
@@ -851,6 +874,7 @@ def _process_single_detail_target(
 ) -> TerminalOutcome | None:
     """Close one game's run, deciding and writing before recording it."""
     payload = attempt.payload if attempt is not None else None
+    source_url = _requested_source_url(ctx.detail_crawler, target.game_id)
     failure_reason = _detail_payload_failure_reason(
         target,
         payload,
@@ -864,6 +888,7 @@ def _process_single_detail_target(
             attempt,
             failure_reason=failure_reason[2],
             extra_reason=failure_reason[1] or None,
+            source_url=source_url,
         )
         _count_unfinalized(ctx, terminal)
         return terminal
@@ -874,18 +899,20 @@ def _process_single_detail_target(
         saved=saved,
         persist_cause=persist_cause,
         payload=payload or {},
+        source_url=source_url,
     )
     _count_unfinalized(ctx, terminal)
     return terminal
 
 
-def _close_saved_run(
+def _close_saved_run(  # noqa: PLR0913 - the terminal transition needs every fact it records
     run_id: str | None,
     attempt: GameDetailAttempt | None,
     *,
     saved: bool,
     persist_cause: tuple[str, str] | None,
     payload: dict[str, Any],
+    source_url: str | None = None,
 ) -> TerminalOutcome | None:
     """Close a run for a game that reached the write step, then report it.
 
@@ -895,6 +922,11 @@ def _close_saved_run(
     `pending` in the queue says the completeness contract is still unmet. A
     degraded result that already wrote a row does not need fetching again for the
     data's sake -- it needs fetching again to become complete.
+
+    `source_url` is what this attempt asked for. It is written on every terminal
+    transition, success included: a run that fetched successfully still has to
+    name the source it fetched from, and the ledger's URL is what the policy
+    report judges.
 
     Returns:
         The recorded outcome, or None when the ledger did not accept the
@@ -911,9 +943,10 @@ def _close_saved_run(
             run_id,
             *_save_failure_cause(persist_cause),
             counts=RunCounts(read=1, written=0, failed=1),
+            source_url=source_url,
         )
     if _is_full_success(attempt, payload):
-        if _run_ledger().record_success(run_id, counts=RunCounts(read=1, written=1)):
+        if _run_ledger().record_success(run_id, counts=RunCounts(read=1, written=1), source_url=source_url):
             return TerminalOutcome(status="success", counts=RunCounts(read=1, written=1), run_id=run_id)
         return None
     code = attempt.error_code if attempt is not None and attempt.error_code else FailureCode.VALIDATION_QUALITY.value
@@ -923,6 +956,7 @@ def _close_saved_run(
         PARTIAL_DETAIL_REASON,
         counts=RunCounts(read=1, written=1),
         status="partial",
+        source_url=source_url,
     )
 
 
@@ -942,19 +976,24 @@ def _is_full_success(attempt: GameDetailAttempt | None, payload: dict[str, Any])
     return has_full_detail_rows(payload)
 
 
-def _record_error_outcome(
+def _record_error_outcome(  # noqa: PLR0913 - one terminal transition, every argument keyword-only
     run_id: str,
     code: str,
     message: str,
     *,
     counts: RunCounts,
     status: str = "failed",
+    source_url: str | None = None,
 ) -> TerminalOutcome | None:
     """Record a terminal, error-carrying outcome if the ledger accepts it.
 
     `status` decides the transition, never the presence of an error code: a
     partial result carries a code because it still needs replay, and reading that
     code as a failure is the mistake this function exists to prevent.
+
+    `source_url` travels with the outcome because a failure is exactly when the
+    source matters most: a run refused by a host names that host, and a run that
+    died before asking for anything leaves the field as it was.
 
     Returns:
         The recorded outcome, or None when the transition did not commit.
@@ -967,6 +1006,7 @@ def _record_error_outcome(
             error_code=code,
             error_message=message,
             counts=counts,
+            source_url=source_url,
         )
     else:
         recorded = ledger.record_failed(
@@ -974,6 +1014,7 @@ def _record_error_outcome(
             error_code=code,
             error_message=message,
             counts=counts,
+            source_url=source_url,
         )
     if not recorded:
         return None
@@ -1032,6 +1073,8 @@ def _abandon_without_run(
 def _enqueue_for_replay(
     target: GameCollectionTarget,
     terminal: TerminalOutcome | None,
+    *,
+    source_url: str | None = None,
 ) -> None:
     """Queue a game whose outcome still needs work.
 
@@ -1041,6 +1084,12 @@ def _enqueue_for_replay(
     `failure_stage` is always derived from the code. Inferring the stage from the
     status instead would let a record say one thing in its code and another in
     its stage.
+
+    `source_url` is the source the failed attempt actually reached. It travels
+    with the letter because that is where an operator reads it -- a queued game
+    with no source names a problem without naming where it happened -- and
+    because a replay opens under the letter's spec, so this value is also what a
+    retry inherits when it learns nothing new of its own.
     """
     # A terminal of None means the ledger never accepted the transition, so there
     # is no run whose status could be reported truthfully. Queueing would point a
@@ -1065,6 +1114,7 @@ def _enqueue_for_replay(
                 failure_stage=stage_for_code(code).value,
                 error_code=code,
                 error_message=terminal.error_message,
+                source_url=source_url,
             ),
         )
     except Exception:
@@ -1093,14 +1143,27 @@ def _close_failed_run(
     *,
     failure_reason: str,
     extra_reason: str | None,
+    source_url: str | None = None,
 ) -> TerminalOutcome | None:
-    """Close a run for a game that never reached the write step."""
+    """Close a run for a game that never reached the write step.
+
+    `source_url` is what the attempt asked for before it died. A run that
+    failed while asking still records the source, because the incident is only
+    actionable when the refused URL is named.
+
+    """
     if not run_id:
         return None
     code = attempt.error_code if attempt is not None and attempt.error_code else None
     if code is None:
         code = error_code_for_reason(failure_reason)
-    return _record_error_outcome(run_id, code, extra_reason or failure_reason, counts=RunCounts())
+    return _record_error_outcome(
+        run_id,
+        code,
+        extra_reason or failure_reason,
+        counts=RunCounts(),
+        source_url=source_url,
+    )
 
 
 def _detail_payload_failure_reason(
@@ -1250,7 +1313,11 @@ async def _collect_relay_phase(
         outcome = await _collect_one_relay(target, ctx, relay_source, run_id)
         if outcome is None:
             ctx.result.relay_runs_unfinalized += 1
-        _enqueue_relay_outcome(target, outcome)
+        _enqueue_relay_outcome(
+            target,
+            outcome,
+            source_url=_requested_source_url(ctx.relay_crawler, target.game_id),
+        )
         await _maybe_pause(index, ctx.cfg.pause_every, ctx.cfg.pause_seconds, ctx.cfg.log)
 
 
@@ -1307,6 +1374,10 @@ async def _collect_one_relay(
     item = ctx.result.items[target.game_id]
     attempt = await ctx.relay_crawler.crawl_relay_attempt(target.game_id)
     payload = attempt.result or {}
+    # What this attempt asked for. Relays resolve their Naver game id while they
+    # work, so the endpoint that was finally used is only knowable here; reading
+    # it once keeps every terminal branch below recording the same source.
+    source_url = _requested_source_url(ctx.relay_crawler, target.game_id)
 
     has_rows = bool(payload.get("events") or payload.get("raw_pbp_rows"))
     if attempt.status in (RelayStatus.SUCCESS, RelayStatus.PARTIAL) and has_rows:
@@ -1322,6 +1393,7 @@ async def _collect_one_relay(
                 error_code=save_outcome.error_code,
                 error_message=save_outcome.error_message or "relay save failed",
                 counts=RunCounts(read=1, written=0, failed=1),
+                source_url=source_url,
             )
             item.relay_status = "save_failed"
             item.failure_reason = save_outcome.error_code
@@ -1334,15 +1406,15 @@ async def _collect_one_relay(
                 recorded=recorded,
             )
         if attempt.status is RelayStatus.PARTIAL:
-            recorded = _relay_partial_outcome(run_id, attempt, counts)
+            recorded = _relay_partial_outcome(run_id, attempt, counts, source_url=source_url)
             item.relay_status = "partial"
             item.relay_rows_saved = saved_rows
             item.failure_reason = attempt.error_message or attempt.reason
             ctx.result.relay_rows_saved += saved_rows
             ctx.cfg.log(f"   [DB] Relay saved ({saved_rows} rows), fetch stopped mid-game")
-            return _relay_partial_outcome(run_id, attempt, counts)
+            return _relay_partial_outcome(run_id, attempt, counts, source_url=source_url)
         if saved_rows:
-            recorded = _relay_run_ledger().record_success(run_id, counts=counts)
+            recorded = _relay_run_ledger().record_success(run_id, counts=counts, source_url=source_url)
             ctx.result.relay_rows_saved += saved_rows
             ctx.result.relay_saved_games += 1
             item.relay_rows_saved = saved_rows
@@ -1358,6 +1430,7 @@ async def _collect_one_relay(
             error_code=FailureCode.VALIDATION_QUALITY.value,
             error_message="relay payload produced no persistable rows",
             counts=RunCounts(read=1, written=0, failed=1),
+            source_url=source_url,
         )
         ctx.result.relay_missing += 1
         item.relay_status = "save_failed"
@@ -1377,7 +1450,11 @@ async def _collect_one_relay(
         # carry. Both are finished work, so the run succeeds with nothing written
         # and there is nothing to retry. Recording an absence as a failure is how
         # a game the source never had ends up in a retry queue.
-        recorded = _relay_run_ledger().record_success(run_id, counts=RunCounts(read=1, written=0))
+        recorded = _relay_run_ledger().record_success(
+            run_id,
+            counts=RunCounts(read=1, written=0),
+            source_url=source_url,
+        )
         if attempt.status is RelayStatus.NOT_MODIFIED:
             item.relay_status = "not_modified"
         else:
@@ -1399,6 +1476,7 @@ async def _collect_one_relay(
         error_code=code,
         error_message=attempt.error_message or attempt.reason or "relay crawl failed",
         counts=RunCounts(read=1, written=0, failed=1),
+        source_url=source_url,
     )
     ctx.result.relay_missing += 1
     item.relay_status = "failed"
@@ -1494,7 +1572,12 @@ def _relay_outcome(  # noqa: PLR0913 - the outcome's own named fields
     )
 
 
-def _enqueue_relay_outcome(target: GameCollectionTarget, outcome: RelayOutcome | None) -> None:
+def _enqueue_relay_outcome(
+    target: GameCollectionTarget,
+    outcome: RelayOutcome | None,
+    *,
+    source_url: str | None = None,
+) -> None:
     """Queue a relay outcome the retry policy says is worth another attempt.
 
     A success is never queued, including a game the source does not carry: there
@@ -1505,6 +1588,11 @@ def _enqueue_relay_outcome(target: GameCollectionTarget, outcome: RelayOutcome |
 
     The stage is read off the code rather than inferred, so the run ledger and
     the queue can never classify the same failure differently.
+
+    `source_url` names the endpoint the attempt actually asked. Relays resolve
+    their Naver game id while they work, so the endpoint that served -- or
+    refused -- this game is only knowable at the close, and the letter is where
+    an operator reads it.
     """
     if outcome is None or outcome.status == "success" or not outcome.run_id:
         return
@@ -1521,6 +1609,7 @@ def _enqueue_relay_outcome(target: GameCollectionTarget, outcome: RelayOutcome |
                 failure_stage=stage_for_code(code).value,
                 error_code=code,
                 error_message=outcome.error_message,
+                source_url=source_url,
             ),
         )
     except Exception:
@@ -1531,6 +1620,8 @@ def _relay_partial_outcome(
     run_id: str,
     attempt: RelayAttempt,
     counts: RunCounts,
+    *,
+    source_url: str | None = None,
 ) -> RelayOutcome | None:
     """Close a run whose relay was stored but whose fetch stopped mid-game."""
     if not _relay_run_ledger().record_partial(
@@ -1538,6 +1629,7 @@ def _relay_partial_outcome(
         error_code=attempt.error_code or FailureCode.FETCH_HTTP_ERROR.value,
         error_message=attempt.error_message or "relay fetch stopped mid-game",
         counts=counts,
+        source_url=source_url,
     ):
         return None
     return RelayOutcome(
@@ -1595,6 +1687,37 @@ def _get_failure_reason(crawler: object, game_id: str) -> str | None:
         return cast("str | None", result)
     except (RuntimeError, TypeError, ValueError) as exc:
         logger.warning("Failed to get last failure reason from crawler: %s", exc)
+        return None
+
+
+def _requested_source_url(crawler: object, game_id: str) -> str | None:
+    """Return what one game's attempt asked for, as the ledger stores it.
+
+    The ledger's ``source_url`` is read by ``source_inventory`` as an observation
+    -- it is what a run's policy verdict is based on -- so it must name the
+    sources the attempt reached, not the ones it might have. Only the crawler
+    knows that, and it knows it per game: a detail run asks Naver first and
+    reaches the KBO page only when the record is missing and robots policy
+    allows it, and a relay run asks the schedule lookup only when the id it
+    derived came back empty. A crawler that keeps no such record (a test double,
+    an older caller) yields ``None``, which leaves the run's value as it was
+    rather than inventing one.
+
+    Args:
+        crawler: The crawler that performed the attempt.
+        game_id: The game whose run is being closed.
+
+    Returns:
+        The joined URLs the attempt requested, or None when unknown.
+
+    """
+    getter = getattr(crawler, "get_requested_urls", None)
+    if not callable(getter):
+        return None
+    try:
+        return join_source_urls(getter(game_id))
+    except (RuntimeError, TypeError, ValueError) as exc:
+        logger.warning("Failed to get requested URLs from crawler: %s", exc)
         return None
 
 

@@ -401,6 +401,12 @@ def _replay_relay(dead_letter: CrawlDeadLetter, replay_run_id: str) -> ReplayOut
         target_id=game_id,
         season=dead_letter.season or season_of(game_id),
         game_id=game_id,
+        # The URL the letter carries is what the failed attempt actually asked,
+        # so RUN-B opens knowing it. The replay's own close overwrites it with
+        # what this attempt asked; keeping it here means a replay that learns
+        # nothing new still reports where the game came from, instead of losing
+        # the only fact the letter had.
+        source_url=dead_letter.source_url,
         parent_run_id=dead_letter.original_run_id,
         replay_of_run_id=dead_letter.original_run_id,
         run_id=replay_run_id,

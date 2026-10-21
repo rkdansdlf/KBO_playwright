@@ -68,6 +68,9 @@ class _RecordingLedger:
 
     def __init__(self, *, open_fails: bool = False) -> None:
         self.transitions: list[tuple[str, str, str | None]] = []
+        # The source URL each run recorded, keyed by run id. Captured separately
+        # from `transitions` so existing assertions on that tuple keep their shape.
+        self.sources: dict[str, str | None] = {}
         self.open_fails = open_fails
 
     def open_runs(self, game_ids: Any) -> Any:
@@ -90,13 +93,32 @@ class _RecordingLedger:
         self.transitions.append((status, run_id, error_code))
         return True
 
-    def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
+    def record_success(self, run_id: str, *, counts: RunCounts, source_url: str | None = None) -> bool:
+        self.sources[run_id] = source_url
         return self._record("success", run_id)
 
-    def record_partial(self, run_id: str, *, error_code: str, error_message: str, counts: RunCounts) -> bool:
+    def record_partial(
+        self,
+        run_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        counts: RunCounts,
+        source_url: str | None = None,
+    ) -> bool:
+        self.sources[run_id] = source_url
         return self._record("partial", run_id, error_code)
 
-    def record_failed(self, run_id: str, *, error_code: str, error_message: str, counts: RunCounts) -> bool:
+    def record_failed(
+        self,
+        run_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+        counts: RunCounts,
+        source_url: str | None = None,
+    ) -> bool:
+        self.sources[run_id] = source_url
         return self._record("failed", run_id, error_code)
 
 
@@ -279,6 +301,56 @@ class TestTerminalMapping:
         status, _run_id, code = ledger.transitions[0]
         assert status == "failed"
         assert code == FailureCode.FETCH_BLOCKED.value
+
+
+class TestTheSourceTheAttemptRequested:
+    """Relay resolves its Naver id while it works, so the URL is read at close.
+
+    The run opens before the fetch, when the id the first request will use is
+    still a guess -- and the guess is sometimes wrong, which is the whole reason
+    the schedule lookup exists. Recording the source at open would therefore
+    record the endpoint the attempt *tried first* even when the answer came from
+    somewhere else.
+    """
+
+    async def test_a_stored_relay_records_the_endpoint_it_asked(self) -> None:
+        ctx, ledger = _context(_attempt(ROWS))
+        ctx.relay_crawler.get_requested_urls = MagicMock(return_value=("https://api.test/relay",))
+
+        with patch("src.services.game_collection_service.save_relay_data", return_value=2):
+            await _run(ctx)
+
+        assert ledger.sources["run-20250501LGOB0"] == "https://api.test/relay"
+
+    async def test_a_crawler_that_keeps_no_record_leaves_the_value_alone(self) -> None:
+        ctx, ledger = _context(_attempt(ROWS))
+        ctx.relay_crawler.get_requested_urls = MagicMock(return_value=())
+
+        with patch("src.services.game_collection_service.save_relay_data", return_value=2):
+            await _run(ctx)
+
+        assert ledger.sources["run-20250501LGOB0"] is None
+
+    async def test_a_failed_fetch_records_the_source_that_refused_it(self) -> None:
+        ctx, ledger = _context(_attempt(None, status=RelayStatus.FAILED, reason="relay_api_error"))
+        ctx.relay_crawler.get_requested_urls = MagicMock(
+            return_value=("https://api.test/relay", "https://api.test/today-games"),
+        )
+
+        await _run(ctx)
+
+        assert ledger.sources["run-20250501LGOB0"] == "https://api.test/relay|https://api.test/today-games"
+
+    async def test_a_failed_fetch_queues_a_letter_that_names_it(self) -> None:
+        """The queue is where an operator reads the failure, so it names the host."""
+        ctx, _ = _context(_attempt(None, status=RelayStatus.FAILED, reason="relay_api_error"))
+        ctx.relay_crawler.get_requested_urls = MagicMock(return_value=("https://api.test/relay",))
+        sent: list[object] = []
+
+        with patch("src.services.game_collection_service.enqueue_failure", sent.append):
+            await _run(ctx)
+
+        assert [spec.source_url for spec in sent] == ["https://api.test/relay"]
 
 
 @pytest.mark.asyncio

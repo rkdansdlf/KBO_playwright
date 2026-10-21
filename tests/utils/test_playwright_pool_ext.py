@@ -180,6 +180,30 @@ class TestStartIdempotent:
             await pool.start()
             mock_prep.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_start_concurrent_is_single_flight(self):
+        pool = AsyncPlaywrightPool(block_resources=False)
+        start_count = 0
+
+        async def _mock_start_context():
+            nonlocal start_count
+            start_count += 1
+            await asyncio.sleep(0.01)
+
+        with (
+            patch.object(pool, "_prepare_auth_state", new=AsyncMock()),
+            patch.object(pool, "_start_browser_context", side_effect=_mock_start_context),
+            patch.object(pool, "_create_pages", new=AsyncMock()),
+        ):
+            await asyncio.gather(
+                pool.start(),
+                pool.start(),
+                pool.start(),
+            )
+
+        assert start_count == 1
+        assert pool._started is True
+
 
 class TestContextManager:
     @pytest.mark.asyncio

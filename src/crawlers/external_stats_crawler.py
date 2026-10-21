@@ -96,15 +96,18 @@ class ExternalStatsCrawler:
         return self._clients[host]
 
     async def close(self) -> None:
-        """Retain the old lifecycle API; the shared client closes per request."""
-        return
+        """Close any owned clients."""
+        for client in self._clients.values():
+            await client.aclose()
+        self._clients.clear()
 
     async def crawl(
         self,
         season: int,
         *,
-        providers: Iterable[str] = ("fangraphs", "statiz"),
+        providers: Iterable[str] = ("fangraphs",),
         stat_types: Iterable[str] = EXTERNAL_STAT_TYPES,
+        allow_statiz: bool = False,
     ) -> ExternalCrawlResult:
         """Fetch and parse selected provider/season/stat-type endpoints."""
         records: list[ExternalStatRecord] = []
@@ -112,6 +115,25 @@ class ExternalStatsCrawler:
         failures: list[str] = []
         selected_types = tuple(stat_types)
         for provider in providers:
+            if provider == "statiz" and not allow_statiz:
+                crawl_enabled = os.getenv("KBO_ALLOW_STATIZ_CRAWL") == "1"
+                license_ref = os.getenv("STATIZ_LICENSE_AGREEMENT_REF", "").strip()
+                if not crawl_enabled:
+                    message = (
+                        "statiz: automated crawling prohibited by site terms without written license "
+                        "(STATIZ 2026-04-02; see Docs/runbooks/STATIZ_COMPLIANCE_POLICY.md)"
+                    )
+                    failures.append(message)
+                    logger.warning(message)
+                    continue
+                if not license_ref:
+                    message = (
+                        "statiz: KBO_ALLOW_STATIZ_CRAWL=1 set without STATIZ_LICENSE_AGREEMENT_REF; "
+                        "explicit written license reference required per Docs/runbooks/STATIZ_COMPLIANCE_POLICY.md"
+                    )
+                    failures.append(message)
+                    logger.warning(message)
+                    continue
             adapter = self.adapters.get(provider)
             if adapter is None:
                 failures.append(f"{provider}: unsupported provider")

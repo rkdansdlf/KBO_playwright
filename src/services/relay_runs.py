@@ -155,18 +155,25 @@ class RelayRunLedger:
             return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
         return RunOpenResult(started={game_id: run.run_id})
 
-    def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
+    def record_success(self, run_id: str, *, counts: RunCounts, source_url: str | None = None) -> bool:
         """Close a run whose relay was obtained and stored.
 
         An unchanged payload and a game the source does not carry both land here.
         Neither wrote a row, and both are finished work rather than unfinished
         work, so `counts.written` carries the distinction and the status does not.
 
+        Args:
+            run_id: The run to close.
+            counts: Rows moved.
+            source_url: The URL(s) this attempt actually requested. A relay run
+                resolves its Naver game id while it works, so the endpoint it
+                finally asked is only known here, not when the run opened.
+
         Returns:
             True when the transition was committed.
 
         """
-        return self._finalize(run_id, "success", counts=counts)
+        return self._finalize(run_id, "success", counts=counts, source_url=source_url)
 
     def record_partial(
         self,
@@ -175,6 +182,7 @@ class RelayRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts,
+        source_url: str | None = None,
     ) -> bool:
         """Close a run that stored some innings and then stopped.
 
@@ -183,6 +191,7 @@ class RelayRunLedger:
             error_code: The taxonomy code that stopped the fetch.
             error_message: Human-readable detail.
             counts: Rows moved.
+            source_url: The URL(s) this attempt actually requested.
 
         Returns:
             True when the transition was committed.
@@ -194,6 +203,7 @@ class RelayRunLedger:
             counts=counts,
             error_code=error_code,
             error_message=error_message,
+            source_url=source_url,
         )
 
     def record_failed(
@@ -203,8 +213,17 @@ class RelayRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts,
+        source_url: str | None = None,
     ) -> bool:
         """Close a run whose relay could not be obtained or stored.
+
+        Args:
+            run_id: The run to close.
+            error_code: Failure taxonomy code.
+            error_message: Human-readable explanation.
+            counts: Rows moved.
+            source_url: The URL(s) this attempt actually requested, so a
+                refusal names the source that refused.
 
         Returns:
             True when the transition was committed.
@@ -216,9 +235,10 @@ class RelayRunLedger:
             counts=counts,
             error_code=error_code,
             error_message=error_message,
+            source_url=source_url,
         )
 
-    def _finalize(
+    def _finalize(  # noqa: PLR0913 - the terminal transition records every fact the caller holds
         self,
         run_id: str,
         status: str,
@@ -226,6 +246,7 @@ class RelayRunLedger:
         counts: RunCounts,
         error_code: str | None = None,
         error_message: str | None = None,
+        source_url: str | None = None,
     ) -> bool:
         """Apply a terminal transition on its own session.
 
@@ -233,6 +254,18 @@ class RelayRunLedger:
         written or already lost, and raising here would turn a recoverable
         bookkeeping problem into a lost crawl. The return value says whether the
         transition landed, so a caller never treats an unrecorded run as final.
+
+        `source_url` is written only when the caller supplies one; `None` leaves
+        an inherited value alone, so a replay that learns nothing new keeps the
+        URL it opened with instead of erasing a known fact.
+
+        Args:
+            run_id: The run to close.
+            status: Terminal status to apply.
+            counts: Rows moved.
+            error_code: Failure taxonomy code, when the status carries one.
+            error_message: Human-readable explanation.
+            source_url: The URL(s) this attempt requested, when known.
 
         Returns:
             True when the transition was committed.
@@ -269,6 +302,11 @@ class RelayRunLedger:
                         records_written=counts.written,
                         records_failed=counts.failed,
                     )
+                if source_url is not None:
+                    # The endpoint this attempt finally asked. Resolution can
+                    # change the Naver game id after the run opened, so the
+                    # close is the first moment the truth is available.
+                    run.source_url = source_url
                 session.commit()
                 return True
         except Exception as exc:

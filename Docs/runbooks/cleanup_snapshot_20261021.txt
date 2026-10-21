@@ -1,0 +1,20 @@
+ M src/crawlers/food_crawler.py
+ M src/crawlers/game_detail_crawler.py
+ M src/crawlers/parking_crawler.py
+ M src/crawlers/relay_crawler.py
+ M src/crawlers/seat_crawler.py
+ M src/repositories/crawl_execution_repository.py
+ M src/services/crawl_replay_dispatcher.py
+ M src/services/game_collection_service.py
+ M src/services/game_detail_runs.py
+ M src/services/relay_runs.py
+ M tests/crawlers/test_game_detail_naver_transport.py
+ M tests/crawlers/test_parking_reliability_canary.py
+ M tests/crawlers/test_seat_reliability_canary.py
+ M tests/services/test_game_collection_ext.py
+ M tests/services/test_relay_reliability_canary.py
+ M tests/services/test_relay_runs.py
+?? Docs/runbooks/TEMP_FILE_CLEANUP_PLAN.md
+?? Docs/runbooks/cleanup_snapshot_20261021.txt
+?? tests/crawlers/test_requested_source_url.py
+?? tests/services/test_source_url_at_close.py

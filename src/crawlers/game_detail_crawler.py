@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from src.constants import GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST, MAX_INNINGS
+from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN, GAME_ID_YEAR_LEN, KST, MAX_INNINGS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ PARK_JUNYOUNG_ERA_THRESHOLD = 3.0
 PARK_JUNYOUNG_SPECIAL_SEASON = 2026
 
 import contextlib
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
@@ -41,6 +41,7 @@ from src.crawlers.http_client import CrawlerHttpClient, HttpPolicy
 from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.selectors import GAME_DETAIL
 from src.db.engine import SessionLocal
+from src.repositories.crawl_execution_repository import MAX_SOURCE_URLS
 from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
 from src.utils.playwright_pool import AsyncPlaywrightPool
@@ -65,6 +66,10 @@ NAVER_SPORTS_HEADERS = {
     "Referer": "https://m.sports.naver.com/",
 }
 NAVER_BATTER_STARTER_MAX_ORDER = 9
+NAVER_SCHEDULE_API_URL = "https://api-gw.sports.naver.com/schedule/today-games"
+#: How many days around the game date to scan when the direct Naver ID fails.
+#: Postseason games are occasionally rescheduled ±2 days; 3 covers that safely.
+SCHEDULE_RESOLUTION_WINDOW_DAYS = 3
 
 
 def _as_int(value: object) -> int | None:
@@ -377,6 +382,68 @@ class GameDetailCrawler:
         # Per-game primary outcomes, kept as values rather than reason strings so
         # a fallback failure cannot overwrite the cause that started it.
         self._naver_outcomes: dict[str, CrawlResult[dict[str, Any]]] = {}
+        # Per-game record of what the attempt actually asked for. A detail run
+        # touches Naver first and reaches the KBO page only when Naver has no
+        # record *and* robots policy allows it, so the set cannot be declared
+        # when the run opens -- only observed while it works.
+        self._requested_urls: dict[str, list[str]] = {}
+
+    def get_requested_urls(self, game_id: str) -> tuple[str, ...]:
+        """Return the URLs this crawler has asked for on a game's behalf.
+
+        The game-collection service reads this when it closes the run, so the
+        ledger names the sources the attempt reached instead of a guess made
+        before it started. A game whose fallback was refused by robots policy
+        reports the Naver endpoint only: the KBO page was considered and never
+        requested, and claiming otherwise would report a compliant run as a
+        blocked one.
+
+        Reading does not clear the record, because a run may be closed more than
+        once while a game is retried in the same process.
+
+        Args:
+            game_id: Game ID.
+
+        Returns:
+            The requested URLs, in request order, without duplicates.
+
+        """
+        return tuple(self._requested_urls.get(normalize_kbo_game_id(game_id), ()))
+
+    def _note_requested_url(self, game_id: str, url: str) -> None:
+        """Record that one game's attempt is asking for a URL.
+
+        Called at the point the request is about to be made, which is the same
+        moment the transport would count as an attempt: a request that comes
+        back refused (403, robots block, timeout) is still a request this run
+        made, and the reader needs it to name what refused.
+
+        Args:
+            game_id: Game ID.
+            url: The URL being requested.
+
+        """
+        normalized = normalize_kbo_game_id(game_id)
+        recorded = self._requested_urls.setdefault(normalized, [])
+        if not url or url in recorded:
+            return
+        if len(recorded) >= MAX_SOURCE_URLS:
+            logger.debug("Request record for %s is full; %s not recorded", normalized, url)
+            return
+        recorded.append(url)
+
+    def forget_requested_urls(self, game_id: str) -> None:
+        """Drop one game's request record before a fresh attempt starts.
+
+        A retry in the same process must not inherit the previous attempt's
+        sources, or a game that has since become policy-blocked would still
+        report the fallback it used to reach.
+
+        Args:
+            game_id: Game ID.
+
+        """
+        self._requested_urls.pop(normalize_kbo_game_id(game_id), None)
 
     def get_last_failure_reason(self, game_id: str) -> str | None:
         """Get last failure reason.
@@ -713,14 +780,21 @@ class GameDetailCrawler:
         """Fetch game details from the Naver sports record API.
 
         The transport reports an empty body, but Naver answers a missing record
-        with `{"result": {}}` -- a perfectly good response that simply carries no
-        `recordData`. So emptiness has to be decided twice: once by the transport
+        with ``{"result": {}}`` -- a perfectly good response that simply carries no
+        ``recordData``. So emptiness has to be decided twice: once by the transport
         for the body, and once here for the payload inside it. An envelope that
         is not shaped like a Naver response is a parse failure rather than an
         empty result, because treating it as empty would silently report a broken
         response as "no record".
 
-        This method deliberately does not touch `_last_failure_reason`. The
+        For postseason games, Naver uses a different ``gameId`` prefix (e.g.
+        ``3333`` for playoffs instead of the year ``2026``).  The direct mapping
+        ``{game_id}{year}`` therefore returns HTTP 404 for every postseason game.
+        When the direct ID fails with a permanent error (typically 404), this
+        method queries the Naver schedule API to discover the real ``gameId`` and
+        retries the record fetch.
+
+        This method deliberately does not touch ``_last_failure_reason``. The
         primary attempt is kept as a value and attributed once at the end, so a
         fallback failure cannot overwrite the cause that started the fallback.
 
@@ -737,7 +811,33 @@ class GameDetailCrawler:
 
         naver_id = RelayCrawler._map_to_naver_id(game_id)  # noqa: SLF001
         url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
+        # The primary attempt starts here, so this is where a fresh record
+        # begins. Recording before the fetch instead of after it is deliberate:
+        # a refused request is the one the reader most needs named.
+        self.forget_requested_urls(game_id)
+        self._note_requested_url(game_id, url)
         result = await self._naver_http.fetch_json(url)
+
+        # -- Schedule-based resolution fallback --
+        # When the direct ID produces a permanent error (HTTP 404 for postseason
+        # games whose Naver gameId prefix is not the calendar year), attempt to
+        # discover the real gameId via the schedule API before giving up.
+        if (
+            result.outcome is CrawlOutcome.PERMANENT_ERROR and result.http_status == 404  # noqa: PLR2004
+        ):
+            resolved_id = await self._resolve_naver_game_id(game_id, game_date)
+            if resolved_id and resolved_id != naver_id:
+                logger.info(
+                    "Naver ID resolved via schedule: %s → %s (was %s)",
+                    game_id,
+                    resolved_id,
+                    naver_id,
+                )
+                naver_id = resolved_id
+                url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
+                self._note_requested_url(game_id, url)
+                result = await self._naver_http.fetch_json(url)
+
         if result.outcome is CrawlOutcome.EMPTY:
             # An empty body is also a missing record; the KBO page may still have it.
             return result
@@ -756,6 +856,85 @@ class GameDetailCrawler:
             logger.debug("Naver has no record for %s", game_id)
             return CrawlResult.empty()
         return CrawlResult.success(self._naver_record_to_payload(record, game_id, game_date))
+
+    async def _resolve_naver_game_id(self, game_id: str, game_date: str) -> str | None:
+        """Resolve the Naver ``gameId`` for a KBO game via the schedule API.
+
+        The Naver schedule endpoint returns the actual ``gameId`` for each day's
+        games.  For regular-season games this matches the direct mapping
+        (``{kbo_id}{year}``), but for postseason games the prefix encodes the
+        series type (``3333``, ``4444``, ``7777``, …) instead of the calendar
+        year, so the direct mapping returns a 404.
+
+        The method scans the game date and a small window around it (postseason
+        games are occasionally rescheduled) and matches by team codes extracted
+        from the KBO game ID.
+
+        Args:
+            game_id: KBO game ID (e.g. ``20261017LGHT0``).
+            game_date: Game date (``YYYYMMDD`` or ISO).
+
+        Returns:
+            The Naver ``gameId`` (e.g. ``33331017LGHT02026``) or ``None`` when
+            no matching game is found.
+
+        """
+        date_str = game_date.replace("-", "")[:DATE_STR_LEN]
+        if len(date_str) < DATE_STR_LEN or not date_str.isdigit():
+            return None
+
+        base = date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+        year = date_str[:4]
+
+        # Extract away/home team codes from the KBO game ID.
+        away_code = game_id[8:10] if len(game_id) >= 12 else ""  # noqa: PLR2004
+        home_code = game_id[10:12] if len(game_id) >= 12 else ""  # noqa: PLR2004
+
+        # Scan the target date first, then neighbours.
+        scan_dates: list[date] = [base]
+        for offset in range(1, SCHEDULE_RESOLUTION_WINDOW_DAYS + 1):
+            scan_dates.append(base + timedelta(days=offset))
+            scan_dates.append(base - timedelta(days=offset))
+
+        for query_date in scan_dates:
+            result = await self._naver_http.fetch_json(
+                NAVER_SCHEDULE_API_URL,
+                params={
+                    "sectionId": "kbaseball",
+                    "categoryId": "kbo",
+                    "seasonYear": year,
+                    "date": query_date.isoformat(),
+                },
+            )
+            if not result.ok:
+                continue
+            games = (result.data.get("result") or {}).get("games") or []
+            for game in games:
+                g_away = str(game.get("awayTeamCode") or "").strip()
+                g_home = str(game.get("homeTeamCode") or "").strip()
+                g_id = str(game.get("gameId") or "").strip()
+                if not g_id:
+                    continue
+                # Match by team codes (either order, because reversedHomeAway
+                # swaps them in the response).
+                teams_match = (g_away == away_code and g_home == home_code) or (
+                    g_away == home_code and g_home == away_code
+                )
+                if teams_match:
+                    # Further narrow by MMDD to avoid matching a different
+                    # date's game between the same teams.
+                    g_date_str = str(game.get("gameDate") or "").replace("-", "")
+                    if g_date_str == date_str:
+                        logger.debug(
+                            "Schedule resolution: %s matched gameId=%s on %s",
+                            game_id,
+                            g_id,
+                            query_date,
+                        )
+                        return g_id
+
+        logger.debug("Schedule resolution found no match for %s", game_id)
+        return None
 
     def _naver_record_to_payload(self, record: dict[str, Any], game_id: str, game_date: str) -> dict[str, Any]:
         """Convert a Naver record API response into the game detail payload schema.
@@ -1132,6 +1311,11 @@ class GameDetailCrawler:
 
         """
         review_url = self._section_url(game_id, game_date, "REVIEW")
+        # The fallback page is being fetched from here on. `_kbo_fallback_allowed`
+        # already refused the run the URL when policy forbade it, and a refusal
+        # that never reached this line must not appear in the ledger as a
+        # request -- that difference is the whole point of recording here.
+        self._note_requested_url(game_id, review_url)
 
         logger.info("📡 Navigating to REVIEW: %s", review_url)
 
@@ -2757,6 +2941,7 @@ class GameDetailCrawler:
 
         for section in ("ENTRY", "LINEUP"):
             lineup_url = f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+            self._note_requested_url(game_id, lineup_url)
 
             async def _navigate_lineup(_url: str = lineup_url) -> None:
                 """Handle the navigate lineup operation.

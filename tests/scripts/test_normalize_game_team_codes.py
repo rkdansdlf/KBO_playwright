@@ -92,6 +92,21 @@ def test_rollback_restores_the_backup(session, tmp_path):
     assert _codes(session, "20260915HTSK0") == ("HT", "SK", None)
 
 
+def test_rollback_skips_when_current_value_conflicts(session, tmp_path):
+    report = normalize_game_team_codes(2026, apply=True, session=session, backup_dir=tmp_path)
+
+    # Simulate an external concurrent update on one of the normalized rows
+    game = session.query(Game).filter(Game.game_id == "20260926LGHT0").one()
+    game.home_team = "MODIFIED_AFTER_APPLY"
+    session.flush()
+
+    restored = rollback_from_backup(report.backup_path, session=session)
+
+    # 1 column skipped due to conflict (home_team on 20260926LGHT0), 6 columns restored
+    assert restored == 6
+    assert _codes(session, "20260926LGHT0")[1] == "MODIFIED_AFTER_APPLY"
+
+
 def test_cli_defaults_to_dry_run(monkeypatch, capsys):
     calls = {}
 

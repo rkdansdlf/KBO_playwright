@@ -66,6 +66,7 @@ class AsyncPlaywrightPool:
         self._queue: asyncio.Queue[Page] | None = None
         self._pages: list[Page] = []
         self._started = False
+        self._start_lock = asyncio.Lock()
 
     async def __aenter__(self) -> Self:
         """Enters the async runtime context."""
@@ -96,17 +97,21 @@ class AsyncPlaywrightPool:
         if self._started:
             return
 
-        await self._prepare_auth_state()
+        async with self._start_lock:
+            if self._started:
+                return
 
-        try:
-            await self._start_browser_context()
-            if self.block_resources and self._context:
-                await install_async_resource_blocking(self._context)
-            await self._create_pages()
-            self._started = True
-        except PlaywrightError, RuntimeError, OSError:
-            await self.close()
-            raise
+            await self._prepare_auth_state()
+
+            try:
+                await self._start_browser_context()
+                if self.block_resources and self._context:
+                    await install_async_resource_blocking(self._context)
+                await self._create_pages()
+                self._started = True
+            except PlaywrightError, RuntimeError, OSError:
+                await self.close()
+                raise
 
     async def _prepare_auth_state(self) -> None:
         """Prepare auth state."""

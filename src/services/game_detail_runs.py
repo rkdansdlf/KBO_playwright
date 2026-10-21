@@ -155,18 +155,24 @@ class GameDetailRunLedger:
             return RunOpenResult(failures={game_id: (code.value, f"{type(exc).__name__}: {exc}")})
         return RunOpenResult(started={game_id: run.run_id})
 
-    def record_success(self, run_id: str, *, counts: RunCounts) -> bool:
+    def record_success(self, run_id: str, *, counts: RunCounts, source_url: str | None = None) -> bool:
         """Close a run whose game was fetched completely and stored.
 
         Args:
             run_id: The run to close.
             counts: Rows moved.
+            source_url: The URL(s) this attempt actually requested, joined by
+                :data:`~src.repositories.crawl_execution_repository.MULTI_SOURCE_SEPARATOR`.
+                A detail run learns its sources while it works -- the Naver
+                record endpoint first, the KBO page only when the fallback is
+                reached -- so the ledger takes them at close rather than
+                guessing at open.
 
         Returns:
             True when the transition was committed.
 
         """
-        return self._finalize(run_id, "success", counts=counts)
+        return self._finalize(run_id, "success", counts=counts, source_url=source_url)
 
     def record_partial(
         self,
@@ -175,6 +181,7 @@ class GameDetailRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts,
+        source_url: str | None = None,
     ) -> bool:
         """Close a run whose game was stored but is not a complete box score.
 
@@ -183,6 +190,7 @@ class GameDetailRunLedger:
             error_code: Failure taxonomy code describing the shortfall.
             error_message: Human-readable explanation.
             counts: Rows moved, with `written` counting the stored payload.
+            source_url: The URL(s) this attempt actually requested.
 
         Returns:
             True when the transition was committed.
@@ -194,6 +202,7 @@ class GameDetailRunLedger:
             counts=counts,
             error_code=error_code,
             error_message=error_message,
+            source_url=source_url,
         )
 
     def record_failed(
@@ -203,6 +212,7 @@ class GameDetailRunLedger:
         error_code: str,
         error_message: str,
         counts: RunCounts = _NO_ROWS,
+        source_url: str | None = None,
     ) -> bool:
         """Close a run that produced nothing storable.
 
@@ -211,6 +221,9 @@ class GameDetailRunLedger:
             error_code: Failure taxonomy code.
             error_message: Human-readable explanation.
             counts: Rows moved, normally all zero when the fetch itself failed.
+            source_url: The URL(s) this attempt actually requested. A failed
+                attempt that still asked for a source records it, because a
+                refusal is only actionable when the refused URL is named.
 
         Returns:
             True when the transition was committed.
@@ -222,9 +235,10 @@ class GameDetailRunLedger:
             counts=counts,
             error_code=error_code,
             error_message=error_message,
+            source_url=source_url,
         )
 
-    def _finalize(
+    def _finalize(  # noqa: PLR0913 - the terminal transition records every fact the caller holds
         self,
         run_id: str,
         status: str,
@@ -232,6 +246,7 @@ class GameDetailRunLedger:
         counts: RunCounts,
         error_code: str | None = None,
         error_message: str | None = None,
+        source_url: str | None = None,
     ) -> bool:
         """Apply a terminal transition on its own session.
 
@@ -239,6 +254,19 @@ class GameDetailRunLedger:
         written or already lost, and raising here would turn a recoverable
         bookkeeping problem into a lost crawl. The return value says whether the
         transition landed, so a caller never treats an unrecorded run as final.
+
+        `source_url` is written only when the caller supplies one. `None` leaves
+        whatever the row already carries, which is what a replay needs: it opens
+        with the original run's URL and keeps it if the retry learns nothing
+        new, rather than blanking a fact it inherited.
+
+        Args:
+            run_id: The run to close.
+            status: Terminal status to apply.
+            counts: Rows moved.
+            error_code: Failure taxonomy code, when the status carries one.
+            error_message: Human-readable explanation.
+            source_url: The URL(s) this attempt requested, when known.
 
         Returns:
             True when the transition was committed.
@@ -280,6 +308,11 @@ class GameDetailRunLedger:
                         records_written=counts.written,
                         records_failed=counts.failed,
                     )
+                if source_url is not None:
+                    # What this attempt asked for, learned while it worked. The
+                    # row was opened before the URLs were known, so the close is
+                    # the first honest moment to name them.
+                    run.source_url = source_url
                 session.commit()
                 return True
         except Exception as exc:

@@ -18,7 +18,7 @@ from src.models.crawl_execution import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Iterable
 
     from sqlalchemy.orm import Session
 
@@ -31,6 +31,42 @@ if TYPE_CHECKING:
 #: never looks at the rest -- ``source_inventory`` splits on it for exactly that
 #: reason.
 MULTI_SOURCE_SEPARATOR = "|"
+
+#: How many URLs one run's record keeps.
+#:
+#: The ledger stores them joined in a single ``source_url`` column 1000 characters
+#: wide, and no current run reaches more than four endpoints. The cap is a guard
+#: against a sweep growing past the column, not a description of today's crawls:
+#: every crawler that records requests reads it, so the limit is one number
+#: rather than a private copy per crawler that could disagree with the column.
+MAX_SOURCE_URLS = 8
+
+
+def join_source_urls(urls: Iterable[str]) -> str | None:
+    """Join the URLs a run asked for into the one value the ledger can hold.
+
+    What belongs here is what the run **requested**, and a URL that was only
+    planned does not qualify. The distinction is load-bearing for
+    ``source_inventory``: it judges this value against the recorded robots
+    policy as an observation ("the ledger's URL is what happened"), so naming a
+    source the crawler decided *not* to fetch -- a fallback a compliance check
+    refused, say -- would report a permitted run as a blocked one. A request
+    that was attempted and refused still counts: the attempt is the fact the
+    reader needs, and a refusal the crawler never made is not a fact at all.
+
+    Duplicates are dropped in order, so a run that asks the same page twice
+    records it once, and an empty sequence is ``None`` rather than the empty
+    string.
+
+    Args:
+        urls: URLs the run requested, in the order it requested them.
+
+    Returns:
+        The joined URLs, or None when nothing was requested.
+
+    """
+    ordered = list(dict.fromkeys(url for url in urls if url))
+    return MULTI_SOURCE_SEPARATOR.join(ordered) or None
 
 
 def _utcnow() -> datetime:

@@ -26,6 +26,7 @@ from src.crawlers.result import CrawlOutcome, CrawlResult
 from src.crawlers.seat_crawler import TEAM_SEAT_SOURCES, SeatCrawler
 from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.crawl_execution import CrawlExecutionRun
+from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -130,6 +131,23 @@ class TestTheRunIsRecorded:
         await crawler.run()
 
         assert _runs(ledger)[0].status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_a_full_sweep_names_every_page_it_requests(self, ledger: sessionmaker) -> None:
+        """Both Jamsil teams read one page, so the record names it once.
+
+        The dedupe matters as much as the join: the report judges hosts, and two
+        spellings of one page would look like two sources to it.
+        """
+        crawler = _crawler()
+
+        await crawler.run()
+
+        run = _runs(ledger)[0]
+        assert run.source_url is not None
+        assert run.source_url.split(MULTI_SOURCE_SEPARATOR) == list(
+            dict.fromkeys(info["url"] for info in TEAM_SEAT_SOURCES.values()),
+        )
 
 
 class TestFailuresAreDistinguishableFromEmptyPages:

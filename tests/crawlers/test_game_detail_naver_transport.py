@@ -386,3 +386,60 @@ class TestEndToEndOutcomes:
         assert all(a.status is GameDetailStatus.SUCCESS for a in attempts)
         # A game answered by Naver must not be attributed to the browser.
         assert attempts[0].source == "naver_record_api"
+
+
+class TestPostseasonResolution:
+    """When direct ID mapping (regular-season assumption) 404s, the crawler resolves via schedule API."""
+
+    @pytest.mark.asyncio
+    async def test_postseason_game_id_resolved_via_schedule_on_404(self) -> None:
+        target_game = "20261017LGHT0"
+        resolved_naver_id = "33331017LGHT02026"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url_str = str(request.url)
+            if "schedule/today-games" in url_str:
+                return _json(
+                    {
+                        "result": {
+                            "games": [
+                                {
+                                    "gameId": resolved_naver_id,
+                                    "gameDate": "2026-10-17",
+                                    "awayTeamCode": "LG",
+                                    "homeTeamCode": "HT",
+                                }
+                            ]
+                        }
+                    }
+                )
+            if f"games/{target_game}2026/record" in url_str:
+                return httpx.Response(404, json={"message": "Not Found"})
+            if f"games/{resolved_naver_id}/record" in url_str:
+                return _json(RECORD_ENVELOPE)
+            return httpx.Response(404)
+
+        crawler = _crawler(handler)
+        result = await crawler._crawl_naver_single(target_game, "20261017")
+
+        assert result.ok
+        assert result.outcome is CrawlOutcome.SUCCESS
+        requested = crawler.get_requested_urls(target_game)
+        assert any(f"games/{target_game}2026/record" in u for u in requested)
+        assert any(f"games/{resolved_naver_id}/record" in u for u in requested)
+
+    @pytest.mark.asyncio
+    async def test_resolution_failure_leaves_original_404_when_schedule_empty(self) -> None:
+        target_game = "20261017LGHT0"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url_str = str(request.url)
+            if "schedule/today-games" in url_str:
+                return _json({"result": {"games": []}})
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        crawler = _crawler(handler)
+        result = await crawler._crawl_naver_single(target_game, "20261017")
+
+        assert not result.ok
+        assert result.http_status == 404

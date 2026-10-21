@@ -38,6 +38,8 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.crawlers.run_vocabulary import is_refusal
 from src.repositories.crawl_execution_repository import MULTI_SOURCE_SEPARATOR
 from src.utils.host_policy import HostVerdict, read_policy
@@ -1039,7 +1041,7 @@ def _table_columns(session: Session, table: str) -> set[str] | None:
 
     try:
         return {column["name"] for column in inspect(session.get_bind()).get_columns(table)}
-    except Exception:
+    except SQLAlchemyError:
         # Any reflection failure means the same thing here: this table cannot be
         # measured. The driver's exception types differ by dialect, and a report
         # that raised would lose every row after the one it could not read.
@@ -1141,7 +1143,7 @@ def run_summaries(session: Session, *, window_hours: int = RUN_WINDOW_HOURS) -> 
             ),
             {"since": since},
         ).all()
-    except Exception:
+    except SQLAlchemyError:
         # A deployment without the reliability tables still deserves an inventory.
         logger.info("crawl_execution_runs is not readable; skipping the run measurement", exc_info=True)
         return {}
@@ -1201,7 +1203,7 @@ def rag_chunk_counts(session: Session) -> dict[str, int]:
         rows = session.execute(
             text("SELECT source_table, count(*) FROM rag_chunks GROUP BY source_table"),
         ).all()
-    except Exception:
+    except SQLAlchemyError:
         # A deployment without the RAG tables is still a valid inventory; the
         # AI-exposure section is then empty rather than the report failing.
         logger.info("rag_chunks is not readable; skipping the AI-exposure measurement", exc_info=True)

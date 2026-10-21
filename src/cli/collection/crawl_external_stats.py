@@ -7,24 +7,32 @@ import asyncio
 import logging
 import sys
 from dataclasses import dataclass
+from typing import Any
 
 from src.crawlers.external_stats_crawler import (
-    EXTERNAL_PROVIDER_ADAPTERS,
     ExternalCrawlResult,
     ExternalStatsCrawler,
 )
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROVIDERS = tuple(EXTERNAL_PROVIDER_ADAPTERS)
+DEFAULT_PROVIDERS = ("fangraphs",)
 
 
-async def _crawl(season: int, providers: list[str]) -> ExternalCrawlResult:
+async def _crawl(
+    season: int,
+    providers: list[str],
+    *,
+    statiz_license: str | None = None,
+) -> ExternalCrawlResult:
     """Crawl the requested providers and close the owned HTTP client."""
     crawler = ExternalStatsCrawler()
     try:
         selected_providers = tuple(providers) or DEFAULT_PROVIDERS
-        return await crawler.crawl(season, providers=selected_providers)
+        kwargs: dict[str, Any] = {"providers": selected_providers}
+        if statiz_license is not None:
+            kwargs["allow_statiz"] = bool(statiz_license and statiz_license.strip())
+        return await crawler.crawl(season, **kwargs)
     finally:
         await crawler.close()
 
@@ -103,6 +111,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--rebuild-rankings", action="store_true")
     parser.add_argument("--capture-raw", action="store_true", help="Archive successful provider responses")
+    parser.add_argument(
+        "--statiz-license",
+        type=str,
+        default=None,
+        help="Reference to verified written license agreement (required when crawling statiz)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -123,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         capture_raw=args.capture_raw and not args.dry_run,
     )
 
-    result = asyncio.run(_crawl(args.season, args.provider))
+    result = asyncio.run(_crawl(args.season, args.provider, statiz_license=args.statiz_license))
     _persist_result(result, options)
 
     for failure in result.failures:
