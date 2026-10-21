@@ -729,8 +729,11 @@ def _load_today_games_from_db(today_str: str) -> list[dict[str, Any]]:
             date_formatted = f"{today_str[:4]}-{today_str[4:6]}-{today_str[6:]}"
         else:
             date_formatted = today_str
+        # ``game_date`` is a DATE column. psycopg 3 sends a str as VARCHAR, and PostgreSQL has no
+        # ``date = varchar`` operator, so compare against a real date.
+        game_date = datetime.strptime(date_formatted, "%Y-%m-%d").date()  # noqa: DTZ007
         with SessionLocal() as session:
-            rows = session.query(Game).filter(Game.game_date == date_formatted).all()
+            rows = session.query(Game).filter(Game.game_date == game_date).all()
             return [
                 {
                     "game_id": r.game_id,
