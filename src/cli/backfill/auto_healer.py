@@ -305,11 +305,13 @@ def _pending_recovery_candidates(
     all_found: list[Game],
     *,
     retry_ids: list[str] | None = None,
+    prune_missing: bool = False,
 ) -> tuple[set[str], list[Game]]:
     recovery_mgr.initialize_run(  # type: ignore[misc]
         "default_healer_run",
         [game.game_id for game in all_found],
         retry_ids=retry_ids,
+        prune_missing=prune_missing,
     )
     pending_ids = set(recovery_mgr.get_pending_targets())
     return pending_ids, [game for game in all_found if game.game_id in pending_ids]
@@ -612,10 +614,20 @@ async def run_healer_async(
         logger.info("✅ No games found for recovery.")
         return 0
 
+    # An operator naming games with --game-id wants exactly those re-crawled,
+    # so they are retried whatever the checkpoint recorded for them. Automatic
+    # runs only retry recent stuck games and drop checkpoint entries for games
+    # that are no longer anomalies; a targeted run must not prune, or it would
+    # wipe the automatic run's history and re-queue every old failure.
+    if target_game_ids:
+        retry_ids = [game.game_id for game in all_found if game.game_id]
+    else:
+        retry_ids = _recent_retry_ids(stuck_games)
     pending_ids, recovery_candidates = _pending_recovery_candidates(
         recovery_mgr,
         all_found,
-        retry_ids=_recent_retry_ids(stuck_games),
+        retry_ids=retry_ids,
+        prune_missing=not target_game_ids,
     )
     if not recovery_candidates:
         logger.info("✅ All detected anomalies were already processed in current checkpoint.")

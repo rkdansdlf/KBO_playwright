@@ -171,3 +171,58 @@ class TestInitializeRunMergesNewTargets:
 
         assert mgr.get_pending_targets() == ["g2"]
         assert mgr.state["failed"] == {"g1": "fetch_404"}
+
+
+class TestInitializeRunPrunesMissingTargets:
+    """PR #56 review: stale checkpoint entries are dropped on automatic runs."""
+
+    def test_prune_missing_drops_ids_outside_targets(self, tmp_path: Path):
+        mgr = RecoveryManager(str(tmp_path / "checkpoint.json"))
+        mgr.initialize_run("run1", ["g1", "g2", "g3", "g4"])
+        mgr.mark_completed("g1")
+        mgr.mark_failed("g2", "missing")
+        mgr.mark_failed("g4", "still stuck")
+
+        mgr.initialize_run("run1", ["g4", "g5"], prune_missing=True)
+
+        assert mgr.get_pending_targets() == ["g5"]
+        assert mgr.state["completed"] == []
+        assert mgr.state["failed"] == {"g4": "still stuck"}
+        assert mgr.state["total_count"] == 2
+
+    def test_prune_missing_keeps_retry_ids_retryable(self, tmp_path: Path):
+        mgr = RecoveryManager(str(tmp_path / "checkpoint.json"))
+        mgr.initialize_run("run1", ["old", "recent"])
+        mgr.mark_failed("old", "x")
+        mgr.mark_failed("recent", "fetch_404")
+
+        mgr.initialize_run("run1", ["old", "recent"], retry_ids=["recent"], prune_missing=True)
+
+        assert mgr.get_pending_targets() == ["recent"]
+        assert mgr.state["failed"] == {"old": "x"}
+
+    def test_without_prune_missing_entries_are_kept(self, tmp_path: Path):
+        mgr = RecoveryManager(str(tmp_path / "checkpoint.json"))
+        mgr.initialize_run("run1", ["g1", "g2"])
+        mgr.mark_failed("g1", "missing")
+
+        mgr.initialize_run("run1", ["g3"])
+
+        assert mgr.get_pending_targets() == ["g2", "g3"]
+        assert mgr.state["failed"] == {"g1": "missing"}
+
+
+class TestMarkCompletedClearsFailure:
+    def test_mark_completed_removes_failed_entry(self, tmp_path: Path):
+        path = tmp_path / "checkpoint.json"
+        mgr = RecoveryManager(str(path))
+        mgr.initialize_run("run1", ["g1"])
+        mgr.mark_failed("g1", "fetch_404")
+        mgr.state["pending"].append("g1")
+
+        mgr.mark_completed("g1")
+
+        reloaded = RecoveryManager(str(path))
+        assert reloaded.state["completed"] == ["g1"]
+        assert reloaded.state["failed"] == {}
+        assert reloaded.get_pending_targets() == []

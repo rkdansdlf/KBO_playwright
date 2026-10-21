@@ -231,6 +231,7 @@ class RecoveryManager:
         targets: list[str],
         *,
         retry_ids: Iterable[str] | None = None,
+        prune_missing: bool = False,
     ) -> None:
         """Start a run, or fold newly detected targets into the current one.
 
@@ -245,6 +246,11 @@ class RecoveryManager:
             retry_ids: Targets to retry even if an earlier pass already marked
                 them completed or failed (e.g. recent games whose source only
                 became readable later).
+            prune_missing: On the same ``run_id``, drop ``pending``,
+                ``completed`` and ``failed`` entries that are not in
+                ``targets`` (games that are no longer anomalies). Off by
+                default: a targeted run passes only a few ids and must not
+                erase the rest of the checkpoint.
 
         """
         if self.state.get("run_id") != run_id:
@@ -263,8 +269,20 @@ class RecoveryManager:
         pending: list[str] = list(self.state.get("pending") or [])
         completed: list[str] = list(self.state.get("completed") or [])
         failed: dict[str, str] = dict(self.state.get("failed") or {})
-        retry = set(retry_ids or ()) & set(targets)
+        target_set = set(targets)
+        retry = set(retry_ids or ()) & target_set
         changed = False
+        if prune_missing:
+            kept_pending = [game_id for game_id in pending if game_id in target_set]
+            kept_completed = [game_id for game_id in completed if game_id in target_set]
+            kept_failed = {game_id: reason for game_id, reason in failed.items() if game_id in target_set}
+            if (len(kept_pending), len(kept_completed), len(kept_failed)) != (
+                len(pending),
+                len(completed),
+                len(failed),
+            ):
+                changed = True
+            pending, completed, failed = kept_pending, kept_completed, kept_failed
         for game_id in targets:
             if game_id in retry:
                 if game_id in completed:
@@ -294,6 +312,8 @@ class RecoveryManager:
         """
         if game_id not in self.state["completed"]:
             self.state["completed"].append(game_id)
+        # A retried game that succeeds must not also stay recorded as failed.
+        self.state["failed"].pop(game_id, None)
         if game_id in self.state["pending"]:
             self.state["pending"].remove(game_id)
         self.save()
