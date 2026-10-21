@@ -136,3 +136,25 @@ class TestDevStackKeepsItsConveniences:
         for name in DEV_ONLY_SERVICES:
             assert name in services, name
             assert "profiles" in services[name], f"{name} must stay opt-in via a profile"
+
+
+@pytest.mark.parametrize("compose_path", [DEV_COMPOSE, PROD_COMPOSE], ids=["dev", "prod"])
+def test_playwright_browsers_come_from_the_image_not_a_volume(compose_path: Path) -> None:
+    """No service may mount over ``/ms-playwright``.
+
+    ``python -m playwright install chromium`` runs at image build, so the browser
+    revision always matches the installed ``playwright`` package. A named volume
+    on that path shadows the image: Docker fills only an *empty* volume from the
+    image, so after a ``playwright`` upgrade an existing volume keeps the old
+    revision and every launch fails with "Executable doesn't exist".
+    """
+    doc = _load(compose_path)
+
+    mounts = [
+        (name, volume)
+        for name, service in _services(doc).items()
+        for volume in service.get("volumes", [])
+        if "/ms-playwright" in (volume if isinstance(volume, str) else str(volume.get("target", "")))
+    ]
+    assert mounts == []
+    assert "playwright-browsers" not in (doc.get("volumes") or {})

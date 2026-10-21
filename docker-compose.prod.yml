@@ -52,7 +52,6 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
-      - playwright-browsers:/ms-playwright
     networks:
       - kbo-internal
     healthcheck:
@@ -166,7 +165,6 @@ networks:
     driver: bridge
 
 volumes:
-  playwright-browsers:
   prometheus-data:
   alertmanager-data:
   grafana-data:

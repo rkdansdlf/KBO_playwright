@@ -62,7 +62,6 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ${ORACLE_WALLET_HOST_PATH:?ORACLE_WALLET_HOST_PATH must point to the Oracle Wallet}:/run/oracle-wallet:ro
-      - playwright-browsers:/ms-playwright
     healthcheck:
       test: ["CMD", "python", "-c", "from sqlalchemy import text; from src.db.engine import Engine; conn = Engine.connect(); conn.execute(text('SELECT 1')); conn.close()"]
       interval: 30s
@@ -195,7 +194,6 @@ secrets:
 
 volumes:
   postgres-data:
-  playwright-browsers:
   prometheus-data:
   alertmanager-data:
   grafana-data:
