@@ -239,13 +239,29 @@ def _rows_by_code(session: Session, year: int) -> dict[int, list[KboSeason]]:
     return by_code
 
 
+def _pick_season_row(rows: list[KboSeason], season_type: str) -> KboSeason:
+    """Pick the best matching row for a season type, preferring exact name match over arbitrary id."""
+    expected_name = SEASON_TYPE_TO_LEAGUE_NAME.get(season_type)
+    if expected_name:
+        for row in rows:
+            if row.league_type_name == expected_name:
+                return row
+    for row in rows:
+        if _row_season_type(row) == season_type:
+            return row
+    return rows[0]
+
+
 def _season_ids(session: Session, year: int) -> dict[str, int]:
     """Return ``season_type -> season_id`` (existing row, or the id a create would use)."""
     by_code = _rows_by_code(session, year)
-    return {
-        season_type: int(by_code[code][0].season_id) if by_code.get(code) else year * 100 + code
-        for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items()
-    }
+    res: dict[str, int] = {}
+    for season_type, code in SEASON_TYPE_TO_LEAGUE_CODE.items():
+        if by_code.get(code):
+            res[season_type] = int(_pick_season_row(by_code[code], season_type).season_id)
+        else:
+            res[season_type] = year * 100 + code
+    return res
 
 
 def _plan_season_rows(

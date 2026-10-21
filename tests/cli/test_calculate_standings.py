@@ -635,6 +635,6 @@ class TestMain:
             mock_sf.return_value = mock_session
             mock_session.query.side_effect = RuntimeError("DB error")
             result = main()
-            assert result == 0
+            assert result == 1
             mock_session.rollback.assert_called_once()
             mock_session.close.assert_called_once()

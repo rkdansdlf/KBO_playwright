@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from scripts.maintenance.audit_schedule_and_game_integrity import (
     AuditReport,
     MonthSummary,
-    audit_monthly_counts_and_status,
-    audit_team_code_mappings,
     audit_game_and_alias_duplicates,
+    audit_monthly_counts_and_status,
+    audit_regular_season_ground_truth,
+    audit_team_code_mappings,
     format_markdown_report,
 )
 from src.models.game import Game, GameIdAlias
@@ -127,3 +128,50 @@ def test_format_markdown_report():
     assert "2025" in md
     assert "Total Games Inspected**: `144`" in md
     assert "PASSED" in md
+
+
+def test_audit_regular_season_ground_truth_detects_discrepancies():
+    mock_session = MagicMock()
+    # Mock games: only 10 games instead of 720
+    mock_games = [
+        Game(
+            game_id=f"20260401G{i}0",
+            game_date=date(2026, 4, 1),
+            home_team="LG",
+            away_team="SS",
+            home_score=5,
+            away_score=3,
+            game_status="COMPLETED",
+            is_primary=True,
+        )
+        for i in range(10)
+    ]
+    mock_session.query.return_value.join.return_value.filter.return_value.all.return_value = mock_games
+    mock_session.execute.return_value.scalar.return_value = None  # No standings
+
+    discrepancies = audit_regular_season_ground_truth(mock_session, 2026)
+    assert len(discrepancies) > 0
+    assert any("completed games mismatch: found 10, expected 720" in d for d in discrepancies)
+    assert any("team LG regular games count mismatch: found 10, expected 144" in d for d in discrepancies)
+
+
+def test_audit_report_ok_false_on_violations():
+    # Verify that any integrity violation falsifies report.ok
+    r1 = AuditReport(team_code_mismatches=[{"game_id": "g1"}])
+    assert r1.team_code_mismatches
+    # In run_full_audit, having team_code_mismatches or self_referencing_aliases sets ok = False
+    from scripts.maintenance.audit_schedule_and_game_integrity import run_full_audit
+
+    with patch("scripts.maintenance.audit_schedule_and_game_integrity.SessionLocal") as mock_sf:
+        mock_session = MagicMock()
+        mock_sf.return_value.__enter__.return_value = mock_session
+        mock_session.scalars.return_value.all.return_value = []
+        mock_session.query.return_value.all.return_value = []
+        mock_session.query.return_value.join.return_value.filter.return_value.all.return_value = []
+        mock_session.execute.return_value.scalar.return_value = None
+
+        with patch("scripts.maintenance.audit_schedule_and_game_integrity.audit_team_code_mappings") as mock_team:
+            mock_team.return_value = [{"game_id": "g1", "stored": "OB", "expected": "DB"}]
+            report = run_full_audit(2026)
+            assert report.ok is False
+            assert "Found 1 team code brand mismatches" in report.anomalies

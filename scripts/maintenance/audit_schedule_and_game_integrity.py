@@ -22,7 +22,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from sqlalchemy import extract, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +32,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.db.engine import SessionLocal
 from src.models.crawl_execution import CrawlExecutionRun
 from src.models.game import Game, GameIdAlias
+from src.models.season import KboSeason
+from src.models.standings import TeamStandingsDaily
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
     GAME_STATUS_COMPLETED,
@@ -74,6 +76,7 @@ class AuditReport:
     dangling_aliases: list[str] = field(default_factory=list)
     self_referencing_aliases: list[str] = field(default_factory=list)
     team_code_mismatches: list[dict[str, Any]] = field(default_factory=list)
+    ground_truth_discrepancies: list[str] = field(default_factory=list)
     crawl_execution_summary: dict[str, Any] = field(default_factory=dict)
     anomalies: list[str] = field(default_factory=list)
     ok: bool = True
@@ -231,6 +234,88 @@ def audit_game_and_alias_duplicates(
     return duplicates, dangling_aliases, self_referencing_aliases
 
 
+def _check_season_game_counts(games: list[Game], year: int) -> list[str]:
+    """Verify 720 game count, 144 per team, and parity of wins/losses."""
+    discrepancies: list[str] = []
+    if year >= 2015 and len(games) != 720:
+        discrepancies.append(f"{year} regular season completed games mismatch: found {len(games)}, expected 720")
+
+    team_counts: Counter[str] = Counter()
+    total_wins = 0
+    total_losses = 0
+    for g in games:
+        home = season_team_code(g.home_team, year) or str(g.home_team or "")
+        away = season_team_code(g.away_team, year) or str(g.away_team or "")
+        team_counts[home] += 1
+        team_counts[away] += 1
+        if g.home_score is not None and g.away_score is not None:
+            if g.home_score > g.away_score or g.away_score > g.home_score:
+                total_wins += 1
+                total_losses += 1
+
+    if year >= 2015:
+        for team, count in sorted(team_counts.items()):
+            if count != 144:
+                discrepancies.append(f"{year} team {team} regular games count mismatch: found {count}, expected 144")
+
+    if total_wins != total_losses:
+        discrepancies.append(f"{year} regular season total wins ({total_wins}) != total losses ({total_losses})")
+    return discrepancies
+
+
+def _check_season_standings(session: Session, year: int) -> list[str]:
+    """Cross-validate against TeamStandingsDaily final snapshot."""
+    discrepancies: list[str] = []
+    latest_date = session.execute(
+        select(func.max(TeamStandingsDaily.standings_date)).where(
+            extract("year", TeamStandingsDaily.standings_date) == year
+        )
+    ).scalar()
+    if not latest_date:
+        return discrepancies
+
+    standings_rows = (
+        session.execute(select(TeamStandingsDaily).where(TeamStandingsDaily.standings_date == latest_date))
+        .scalars()
+        .all()
+    )
+    total_st_games = sum(r.games_played for r in standings_rows)
+    if year >= 2015 and total_st_games != 1440:
+        discrepancies.append(
+            f"{year} TeamStandingsDaily ({latest_date}) team-games mismatch: found {total_st_games}, expected 1440"
+        )
+    s_wins = sum(r.wins for r in standings_rows)
+    s_losses = sum(r.losses for r in standings_rows)
+    if s_wins != s_losses:
+        discrepancies.append(f"{year} TeamStandingsDaily ({latest_date}) wins ({s_wins}) != losses ({s_losses})")
+    return discrepancies
+
+
+def audit_regular_season_ground_truth(session: Session, year: int | None) -> list[str]:
+    """Verify regular-season game counts and standings against official KBO ground truth."""
+    discrepancies: list[str] = []
+    years_to_check = [year] if year else [2026]
+
+    for y in years_to_check:
+        games = (
+            session.query(Game)
+            .join(KboSeason, Game.season_id == KboSeason.season_id)
+            .filter(
+                KboSeason.season_year == y,
+                KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
+                Game.game_status.in_(("COMPLETED", "DRAW")),
+                Game.is_primary.is_(True),
+            )
+            .all()
+        )
+        if not games:
+            continue
+        discrepancies.extend(_check_season_game_counts(games, y))
+        discrepancies.extend(_check_season_standings(session, y))
+
+    return discrepancies
+
+
 def audit_crawl_executions(session: Session, year: int | None) -> dict[str, Any]:
     """Audit crawl execution history and error classification from crawl_execution_runs."""
     query = select(CrawlExecutionRun)
@@ -296,10 +381,23 @@ def run_full_audit(year: int | None = None) -> AuditReport:
             report.anomalies.append(f"Found {len(duplicates)} duplicate game groups")
         if dangling:
             report.anomalies.append(f"Found {len(dangling)} dangling aliases")
+        if self_ref:
+            report.anomalies.append(f"Found {len(self_ref)} self-referencing aliases")
+
+        report.ground_truth_discrepancies = audit_regular_season_ground_truth(session, year)
+        if report.ground_truth_discrepancies:
+            report.anomalies.extend(report.ground_truth_discrepancies)
 
         report.crawl_execution_summary = audit_crawl_executions(session, year)
 
-    if report.cancelled_with_invalid_scores or report.dangling_aliases or report.duplicate_games:
+    if (
+        report.cancelled_with_invalid_scores
+        or report.dangling_aliases
+        or report.duplicate_games
+        or report.team_code_mismatches
+        or report.self_referencing_aliases
+        or report.ground_truth_discrepancies
+    ):
         report.ok = False
 
     return report
@@ -350,7 +448,21 @@ def format_markdown_report(report: AuditReport) -> str:
             f"- **Self-Referencing Aliases**: `{len(report.self_referencing_aliases)}`",
             f"- **Team Code Brand Mismatches**: `{len(report.team_code_mismatches)}`",
             "",
-            "## 4. Crawl Execution Ledger Summary",
+            "## 4. Ground Truth & Standings Reconciliation",
+            "",
+            f"- **Ground Truth Discrepancies**: `{len(report.ground_truth_discrepancies)}`",
+        ]
+    )
+    if report.ground_truth_discrepancies:
+        for d in report.ground_truth_discrepancies:
+            lines.append(f"  - ❌ {d}")
+    else:
+        lines.append("  - ✅ Official KBO 720-game and 144-game per team parity verified.")
+
+    lines.extend(
+        [
+            "",
+            "## 5. Crawl Execution Ledger Summary",
             "",
             f"- **Total Crawl Runs Recorded**: `{report.crawl_execution_summary.get('total_runs', 0)}`",
             f"- **Runs by Status**: `{json.dumps(report.crawl_execution_summary.get('by_status', {}))}`",
@@ -364,7 +476,7 @@ def format_markdown_report(report: AuditReport) -> str:
         lines.extend(
             [
                 "",
-                "## 5. Detected Anomalies",
+                "## 6. Detected Anomalies",
                 "",
             ]
         )
@@ -374,7 +486,7 @@ def format_markdown_report(report: AuditReport) -> str:
         lines.extend(
             [
                 "",
-                "## 5. Detected Anomalies",
+                "## 6. Detected Anomalies",
                 "",
                 "No data integrity anomalies detected.",
             ]

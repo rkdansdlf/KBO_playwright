@@ -397,6 +397,7 @@ class StandingsCalculator:
                 KboSeason.season_year == year,
                 KboSeason.league_type_name.in_(["정규시즌", "Regular Season"]),
                 Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
+                Game.is_primary.is_(True),
             )
             .order_by(Game.game_date, Game.game_id)
             .all()
@@ -611,6 +612,7 @@ def main(argv: list[str] | None = None) -> int:
     except STANDINGS_CALC_EXCEPTIONS:
         logger.exception("오류 발생")
         session.rollback()
+        return 1
     finally:
         session.close()
 
