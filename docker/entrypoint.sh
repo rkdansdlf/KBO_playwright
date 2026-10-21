@@ -69,6 +69,20 @@ if [ "$(id -u)" = '0' ]; then
         fi
     fi
 
+    # /app/Docs/robots is baked into the image owned by the UID appuser had at build time
+    # (999). The usermod above remaps appuser to the bind-mount owner (default 1000), which
+    # leaves that directory unwritable, so the robots.txt compliance snapshot raised
+    # PermissionError on every run. It is tiny; only fix it when the owner is actually wrong.
+    if [ -d "/app/Docs/robots" ]; then
+        current_owner=$(stat -c '%u' /app/Docs/robots)
+        if [ "$current_owner" != "$TARGET_UID" ]; then
+            echo "🐳 Chowning /app/Docs/robots to appuser:appuser (owner $current_owner -> $TARGET_UID)"
+            chown -R "$TARGET_UID:$TARGET_GID" /app/Docs/robots
+        else
+            echo "🐳 Skipping /app/Docs/robots chown (already owned by $TARGET_UID)"
+        fi
+    fi
+
     # gosu로 appuser 권한으로 재실행
     # UID/GID를 직접 지정해 usermod가 실패(예: UID 충돌)하더라도
     # 호스트 볼륨 소유자 권한으로 실행되도록 보장한다.
