@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -34,17 +35,25 @@ BACKUP_DIR = Path("D:/kbo_backup")
 logger = logging.getLogger("pg_backup")
 
 
-def _load_env() -> dict[str, str]:
-    """Load database URLs from the repository .env file."""
+#: Backup label -> the ``.env`` key holding its container-perspective URL.
+URL_ENV_KEYS = {
+    "bega_prod": "DATABASE_URL",
+    "bega_dev": "LOCAL_PG_URL_DOCKER",
+    "kbo_rag": "PGVECTOR_URL_DOCKER",
+}
+
+
+def _load_env() -> dict[str, str | None]:
+    """Load database URLs from the repository .env file.
+
+    A missing key yields ``None`` for that label instead of raising. One absent URL used to abort
+    the whole run before any dump was taken, which silently stopped every backup for days.
+    """
     from dotenv import load_dotenv
 
     load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
     # Container-perspective URLs: the dump runner is itself a container.
-    return {
-        "bega_prod": os.environ["DATABASE_URL"],
-        "bega_dev": os.environ["LOCAL_PG_URL_DOCKER"],
-        "kbo_rag": os.environ["PGVECTOR_URL_DOCKER"],
-    }
+    return {label: os.environ.get(key) or None for label, key in URL_ENV_KEYS.items()}
 
 
 def _split(url: str) -> tuple[str, str, str, str]:
@@ -94,13 +103,28 @@ def _dump(label: str, url: str, stamp: str, *, dry_run: bool) -> Path | None:
     subprocess.run(dump_cmd, check=True, capture_output=True)
     subprocess.run(cp_cmd, check=True, capture_output=True)
     subprocess.run(rm_cmd, check=True, capture_output=True)
+    if artifact.stat().st_size == 0:
+        artifact.unlink()
+        msg = f"{label} dump is empty"
+        raise RuntimeError(msg)
     logger.info("%s -> %s (%.1f MB)", label, artifact, artifact.stat().st_size / 1048576)
     return artifact
 
 
+def _dated_dumps(label: str) -> list[Path]:
+    """Return the non-empty ``<label>_YYYYMMDD.dump`` files, oldest first.
+
+    Only files this script produces count. Hand-made dumps such as ``bega_prod_after_recovery_*`` or
+    ``kbo_rag_bega_dev_*`` share the prefix but are never retention candidates, and empty files do not
+    count as backups so they cannot displace a real one.
+    """
+    pattern = re.compile(rf"^{re.escape(label)}_\d{{8}}\.dump$")
+    return sorted(p for p in BACKUP_DIR.iterdir() if pattern.match(p.name) and p.stat().st_size > 0)
+
+
 def _enforce_retention(label: str, keep: int, *, dry_run: bool) -> None:
-    """Delete dumps beyond the newest ``keep`` artifacts for a label."""
-    artifacts = sorted(BACKUP_DIR.glob(f"{label}_*.dump"))
+    """Delete dated dumps beyond the newest ``keep`` for a label."""
+    artifacts = _dated_dumps(label)
     for stale in artifacts[:-keep] if len(artifacts) > keep else []:
         if dry_run:
             logger.info("DRY-RUN rm %s", stale)
@@ -123,21 +147,22 @@ def main(argv: list[str] | None = None) -> int:
         logger.exception("Cannot create %s", BACKUP_DIR)
         return 2
 
-    try:
-        urls = _load_env()
-    except KeyError:
-        logger.exception("Missing URL in .env")
-        return 2
+    urls = _load_env()
 
     stamp = datetime.now().strftime("%Y%m%d")
     failed = 0
-    for label, url in (("bega_prod", urls["bega_prod"]), ("bega_dev", urls["bega_dev"]), ("kbo_rag", urls["kbo_rag"])):
+    for label, url in urls.items():
+        if not url:
+            logger.error("%s skipped: %s is not set in .env", label, URL_ENV_KEYS[label])
+            failed += 1
+            continue
         try:
             _dump(label, url, stamp, dry_run=args.dry_run)
             _enforce_retention(label, args.keep, dry_run=args.dry_run)
-        except subprocess.CalledProcessError as exc:
-            # NOTE: log status only — the exception text contains the db command line.
-            logger.error("%s backup failed (rc=%s)", label, exc.returncode)  # noqa: TRY400
+        except (subprocess.CalledProcessError, RuntimeError, OSError) as exc:
+            # NOTE: log the type/status only -- a CalledProcessError message contains the dump command line.
+            status = getattr(exc, "returncode", type(exc).__name__)
+            logger.error("%s backup failed (%s)", label, status)  # noqa: TRY400
             failed += 1
     return 1 if failed else 0
 
