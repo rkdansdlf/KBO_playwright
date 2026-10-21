@@ -1203,7 +1203,7 @@ class ContextAggregator:
             select(PlayerMilestone)
             .where(
                 PlayerMilestone.season == season,
-                PlayerMilestone.is_achieved == false(),
+                PlayerMilestone.is_achieved == 0,
                 PlayerMilestone.team_code.in_([away_team, home_team]),
             )
             .order_by(PlayerMilestone.remaining_val.asc())
