@@ -1170,6 +1170,35 @@ def crawl_futures_schedule_job() -> None:
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
+def crawl_milestones_job() -> None:
+    """Crawl KBO player milestone snapshots.
+
+    Runs daily at 06:40 KST, before recalc_milestones_and_rag (07:15 KST), because the crawler is now
+    the only writer of current_val.
+    """
+    _register_job("crawl_milestones_job", dependencies=["crawl_daily_games"])
+
+    can_run, reason = _can_run_job("crawl_milestones_job")
+    if not can_run:
+        _update_job_status("crawl_milestones_job", JobStatus.SKIPPED, f"Skipped: {reason}")
+        logger.warning("Skipping crawl_milestones_job: %s", reason)
+        return
+
+    with _scheduler_job_lock(DAILY_LOCK):
+        logger.info("=== Starting KBO Player Milestone Crawl ===")
+        try:
+            from src.cli.collection.crawl_milestones import main as milestones_main
+
+            milestones_main(["--save"])
+            logger.info("=== KBO Player Milestone Crawl Completed ===")
+            _update_job_status("crawl_milestones_job", JobStatus.SUCCESS, "Completed")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("KBO player milestone crawl failed")
+            _update_job_status("crawl_milestones_job", JobStatus.FAILURE, "Exception")
+
+
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
 def daily_gap_report_job() -> None:
     """Daily Gap Report Summary: run gap report and send summary notification at 07:00 KST."""
     _register_job("daily_gap_report_job", dependencies=["crawl_daily_games", "crawl_p0_non_game_job"])

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from src.models.player_milestone import PlayerMilestone
+from src.services.milestone_targets import initial_milestone_target
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -46,11 +47,23 @@ class MilestoneRepository:
         existing = self.session.execute(stmt).scalar_one_or_none()
 
         if existing:
-            existing.current_val = data.get("current_val", existing.current_val)
-            existing.target_val = data.get("target_val", existing.target_val)
-            existing.remaining_val = data.get("remaining_val", existing.remaining_val)
-            existing.is_achieved = data.get("is_achieved", existing.is_achieved)
+            if "current_val" in data and data["current_val"] is not None:
+                existing.current_val = data["current_val"]
+            if data.get("player_name"):
+                existing.player_name = data["player_name"]
+            if "team_code" in data and data["team_code"] is not None:
+                existing.team_code = data["team_code"]
+            existing.remaining_val = max(0, existing.target_val - existing.current_val)
             return existing
+
+        current_val = data.get("current_val", 0)
+        raw_target = data.get("target_val")
+        if isinstance(raw_target, int) and raw_target > 0 and not isinstance(raw_target, bool):
+            target_val = raw_target
+        else:
+            target_val = initial_milestone_target(category, current_val)
+
+        remaining_val = max(0, target_val - current_val)
 
         record = PlayerMilestone(
             season=season,
@@ -58,10 +71,10 @@ class MilestoneRepository:
             player_name=data["player_name"],
             team_code=data.get("team_code"),
             milestone_category=category,
-            current_val=data.get("current_val", 0),
-            target_val=data.get("target_val", 0),
-            remaining_val=data.get("remaining_val", 0),
-            is_achieved=data.get("is_achieved", False),
+            current_val=current_val,
+            target_val=target_val,
+            remaining_val=remaining_val,
+            is_achieved=0,
             achieved_date=data.get("achieved_date"),
         )
         self.session.add(record)
