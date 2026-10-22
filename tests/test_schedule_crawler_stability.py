@@ -37,6 +37,7 @@ class _FakeSchedulePage:
         self.selector_calls = []
         self.selected = {"#ddlYear": "2025", "#ddlMonth": "04", "#ddlSeries": "0"}
         self.select_calls = []
+        self.function_calls = []
 
     async def goto(self, url: str, **kwargs):
         self.url = url
@@ -44,6 +45,13 @@ class _FakeSchedulePage:
 
     async def wait_for_selector(self, selector: str, **kwargs):
         self.selector_calls.append((selector, kwargs))
+
+    async def wait_for_function(self, expression: str, arg=None, **kwargs):
+        # 실제 Playwright 처럼 조건 함수와 인자(대상 월 "MM")를 기록한다.
+        # KBO 일정표는 빈 월에도 '데이터가 없습니다' 행을 렌더링하므로
+        # 조건 함수는 즉시 참이 되고, 빈 일정 판정은 이후 추출 단계에 맡긴다.
+        self.function_calls.append((expression, arg, kwargs))
+        return True
 
     async def eval_on_selector_all(self, selector: str, _script: str):
         assert selector == "#ddlSeries option"
@@ -144,3 +152,7 @@ def test_crawl_month_records_schedule_empty_reason(monkeypatch):
 
     assert games == []
     assert crawler.get_last_failure_reason("2025-04:all") == "schedule_empty"
+    # 대상 월 대기는 4월("04")로 호출되고, 시리즈 선택까지 진행한 뒤 빈 결과로 판정되어야 한다.
+    assert page.function_calls
+    assert all(arg == "04" for _expr, arg, _kw in page.function_calls)
+    assert ("#ddlSeries", "0") in page.select_calls
