@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.config.milestone_flags import milestone_crawl_enabled
 from src.constants import KST
 from src.crawlers.milestone_crawler import MilestoneCrawler
 from src.db.engine import get_db_session
@@ -26,6 +27,10 @@ async def run(args: argparse.Namespace) -> None:
         args: Command line arguments.
 
     """
+    if args.save and not milestone_crawl_enabled():
+        logger.warning("milestone crawl --save refused: MILESTONE_CRAWL_ENABLED is off")
+        return
+
     season = args.season or datetime.now(tz=KST).year
     crawler = MilestoneCrawler()
     items = await crawler.crawl_upcoming_milestones(season=season)

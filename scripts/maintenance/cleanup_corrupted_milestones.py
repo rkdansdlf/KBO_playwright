@@ -29,26 +29,32 @@ Vector and Sparse Deactivation:
     stay searchable. Therefore, already-DELETED rows from an earlier run must also get
     is_active=false on rerun.
 
+New Seasons After Cleanup:
+    Once ANY backup row exists, a season that is not in the backup table is NOT selected by default.
+    Instead, it is reported as skipped (`mode=skipped-new-season`). Rows created after the cleanup
+    are not treated as corrupted baseline data; cleaning a new season requires explicitly passing
+    both `--season <YEAR>` and `--allow-new-season`.
+    Why: This is the safest approach because it avoids any time-zone-sensitive `created_at` cutoff
+    heuristics across different database servers and environments. An operator must explicitly name
+    the season to target it for cleanup.
+
 Rollback:
     If a rollback is required, execute the following steps:
     1. Restore rows per season from the backup table with RESTORE_ROWS_SQL (bind :season). It is an
        INSERT ... SELECT ... WHERE NOT EXISTS, so a backed-up row whose id or natural key
        (season, player_id, milestone_category) was re-created by a re-crawl is skipped instead of failing
        on uq_player_milestone.
-    2. Reactivate chunks on sparse and vector stores using REACTIVATE_CHUNKS_SQL and
-       REACTIVATE_VECTOR_CHUNKS_SQL with `restore_row_ids(source_session, season)`:
+    2. Reactivate chunks on sparse and vector stores using `reactivate_chunks`:
        ```python
-       row_ids = restore_row_ids(source_session, season)
-       if row_ids:
-           index_session.execute(REACTIVATE_CHUNKS_SQL, {"row_ids": row_ids})
-           vector_session.execute(REACTIVATE_VECTOR_CHUNKS_SQL, {"row_ids": row_ids})
+       reactivate_chunks(source_session, index_session, season, "sparse")
+       reactivate_chunks(source_session, vector_session, season, "vector")
        ```
     3. Re-index knowledge per season:
        ```bash
        python -m src.cli.rag.index_rag_knowledge --season 2025
        python -m src.cli.rag.index_rag_knowledge --season 2026
        ```
-       (Since the scheduled indexer only processes the current season).
+       (Since the scheduled indexer only processes the current season, 2025 included).
 
 Run Order:
     This cleanup script MUST be executed BEFORE deploying the crawler/recalc fix.
@@ -65,14 +71,14 @@ Usage:
     python3 -m scripts.maintenance.cleanup_corrupted_milestones --season 2026
 
     # Execute cleanup. --expect-count must equal the dry-run's would_back_up whenever there are new rows
-    # to back up (353 in production on the first run); --confirm-target must name every host printed
-    # for the source / sparse / vector targets (repeat the flag for several hosts):
+    # to back up (353 in production on the first run); --confirm-target must name every target identity
+    # printed for the source / sparse / vector targets (repeat the flag for several targets):
     python3 -m scripts.maintenance.cleanup_corrupted_milestones --apply --expect-count 353 \
-        --confirm-target <source-db-host> --confirm-target <pgvector-host>
+        --confirm-target <source-db-host>:5432/<db> --confirm-target <pgvector-host>:5432/<db>
 
     # With RAG_TARGET_ENV=production the existing RAG write guard also applies:
     RAG_INDEX_ALLOW_PRODUCTION_WRITE=1 python3 -m scripts.maintenance.cleanup_corrupted_milestones \
-        --apply --expect-count 353 --confirm-target <source-db-host> --confirm-target <pgvector-host>
+        --apply --expect-count 353 --confirm-target <source-db-host>:5432/<db> --confirm-target <pgvector-host>:5432/<db>
 
     Production guard: RAG_TARGET_ENV defaults to "local" when unset (env.example sets "staging"), and only
     RAG_TARGET_ENV=production enforces RAG_INDEX_ALLOW_PRODUCTION_WRITE=1. Do not rely on it; the guards that
@@ -83,11 +89,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import contextlib
+import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, TextIO
 
 from sqlalchemy import (
@@ -117,7 +123,6 @@ from src.services.rag_vector_tombstone import split_source_key
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import date
 
     from sqlalchemy.engine import RowMapping
     from sqlalchemy.orm import Session
@@ -126,6 +131,7 @@ if TYPE_CHECKING:
 _STORE_ERRORS = (SQLAlchemyError, ValueError)
 
 BACKUP_TABLE_NAME = "player_milestones_cleanup_backup"
+CHUNK_STATE_TABLE_NAME = "player_milestones_cleanup_chunk_state"
 SELECTION_REASON = "corrupted_pre_deploy_batch"
 GUARD_ENV = "RAG_INDEX_ALLOW_PRODUCTION_WRITE"
 
@@ -174,6 +180,18 @@ backup_table = Table(
     Column("rag_source_key", String(255), nullable=False),
     Column("selection_reason", String(100), nullable=False),
     Column("backed_up_at", DateTime, nullable=False),
+)
+
+chunk_state_table = Table(
+    CHUNK_STATE_TABLE_NAME,
+    backup_metadata,
+    Column("store", String(10), primary_key=True),
+    Column("chunk_ref", String(255), primary_key=True),
+    Column("source_row_id", String(255), nullable=True),
+    Column("prior_index_status", String(24), nullable=True),
+    Column("prior_is_active", Integer, nullable=True),
+    Column("prior_valid_to", DateTime, nullable=True),
+    Column("recorded_at", DateTime, nullable=False),
 )
 
 
@@ -231,6 +249,7 @@ class CleanupReport:
     delete_skipped_mismatch: int = 0
     legacy_sparse_tombstoned: int = 0
     legacy_vector_tombstoned: int = 0
+    legacy_vector_deactivated_only: int = 0
 
     @property
     def exit_code(self) -> int:
@@ -243,24 +262,8 @@ class CleanupReport:
         return self.selected
 
 
-def restore_row_ids(source_session: Session, season: int) -> list[str]:
-    """Return source_row_ids of restored rows for a season.
-
-    Identifies backup rows of that season whose natural key exists exactly once in
-    player_milestones with the same id as in the backup table.
-
-    Args:
-        source_session: Operational database session.
-        season: Target season.
-
-    Returns:
-        List of row ID strings (the portion of rag_source_key after 'milestone:').
-
-    """
-    bind = source_session.connection()
-    if not inspect(bind).has_table(BACKUP_TABLE_NAME):
-        return []
-
+def _find_restored_row_ids(source_session: Session, season: int) -> list[str]:
+    """Identify restored milestone row IDs for a given season."""
     backup_rows = source_session.execute(
         select(
             backup_table.c.id,
@@ -286,7 +289,7 @@ def restore_row_ids(source_session: Session, season: int) -> list[str]:
         k = (r.season, pid, r.milestone_category.strip())
         live_by_key.setdefault(k, []).append(r.id)
 
-    restored_keys: list[str] = []
+    restored_row_ids: list[str] = []
     for b in backup_rows:
         pid = str(b.player_id).strip() if b.player_id is not None else "UNKNOWN"
         k = (b.season, pid, b.milestone_category.strip())
@@ -295,40 +298,220 @@ def restore_row_ids(source_session: Session, season: int) -> list[str]:
             key_part = b.rag_source_key.partition(":")[2]
             if not key_part:
                 key_part = stable_milestone_source_row_id(b.season, b.player_id, b.milestone_category)
-            restored_keys.append(key_part)
+            restored_row_ids.append(key_part)
 
-    return restored_keys
+    return restored_row_ids
+
+
+def restore_chunk_targets(
+    source_session: Session,
+    season: int,
+    store: str,
+    out: TextIO | None = None,
+) -> list[tuple[str, str | None, int | None, datetime | None]]:
+    """Return target tuples for chunk reactivation for restored rows of a season.
+
+    Identifies backup rows of that season whose natural key exists exactly once in
+    player_milestones with the same id as in the backup table. For each restored row,
+    looks up the recorded prior state in `player_milestones_cleanup_chunk_state` for
+    the given store. Chunks whose prior status was already DELETED or TOMBSTONED are
+    skipped, and chunks with no recorded prior state are skipped and listed.
+
+    Args:
+        source_session: Operational database session.
+        season: Target season.
+        store: Store identifier ('sparse' or 'vector').
+        out: Optional output stream to list skipped chunks.
+
+    Returns:
+        List of tuples: (source_row_id, prior_index_status, prior_is_active, prior_valid_to).
+
+    """
+    bind = source_session.connection()
+    insp = inspect(bind)
+    if not insp.has_table(BACKUP_TABLE_NAME) or not insp.has_table(CHUNK_STATE_TABLE_NAME):
+        return []
+
+    restored_row_ids = _find_restored_row_ids(source_session, season)
+    if not restored_row_ids:
+        return []
+
+    state_rows = (
+        source_session.execute(
+            select(
+                chunk_state_table.c.chunk_ref,
+                chunk_state_table.c.source_row_id,
+                chunk_state_table.c.prior_index_status,
+                chunk_state_table.c.prior_is_active,
+                chunk_state_table.c.prior_valid_to,
+            ).where(
+                chunk_state_table.c.store == store,
+                chunk_state_table.c.chunk_ref.in_(restored_row_ids),
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    state_by_ref = {r["chunk_ref"]: r for r in state_rows}
+
+    targets: list[tuple[str, str | None, int | None, datetime | None]] = []
+    for row_id in restored_row_ids:
+        state = state_by_ref.get(row_id)
+        if state is None:
+            if out is not None:
+                out.write(f"restore_chunk_targets: skipping {row_id} (no recorded state in {store})\n")
+            continue
+
+        prior_status = state["prior_index_status"]
+        if prior_status in ("DELETED", "TOMBSTONED"):
+            if out is not None:
+                out.write(
+                    f"restore_chunk_targets: skipping {row_id} (prior status was already {prior_status} in {store})\n"
+                )
+            continue
+
+        targets.append(
+            (
+                row_id,
+                prior_status,
+                state["prior_is_active"],
+                state["prior_valid_to"],
+            )
+        )
+
+    return targets
+
+
+def reactivate_chunks(
+    source_session: Session,
+    store_session: Session,
+    season: int,
+    store: str,
+    out: TextIO = sys.stdout,
+) -> int:
+    """Reactivate chunks for restored rows of a season in the specified store.
+
+    Restores index_status to the prior status and, when the columns exist in that store,
+    is_active and valid_to to the recorded prior values (NULL if prior value was NULL).
+    Commits per row.
+
+    Args:
+        source_session: Operational database session holding the backup and chunk state tables.
+        store_session: Database session for the store to reactivate (sparse or vector).
+        season: Target season.
+        store: Target store ('sparse' or 'vector').
+        out: Output stream for logging progress.
+
+    Returns:
+        Number of reactivated chunks.
+
+    """
+    targets = restore_chunk_targets(source_session, season, store, out=out)
+    if not targets:
+        return 0
+
+    bind = store_session.connection()
+    cols = {col["name"] for col in inspect(bind).get_columns("rag_chunks")}
+    has_is_active = "is_active" in cols
+    has_valid_to = "valid_to" in cols
+
+    count = 0
+    for source_row_id, prior_index_status, prior_is_active, prior_valid_to in targets:
+        set_clauses = ["index_status = :index_status"]
+        params: dict[str, Any] = {
+            "table": "milestone",
+            "row_id": source_row_id,
+            "index_status": prior_index_status or "ACTIVE",
+        }
+        if has_is_active:
+            set_clauses.append("is_active = :is_active")
+            # Bind a real boolean: PostgreSQL has no implicit integer -> boolean assignment cast.
+            params["is_active"] = None if prior_is_active is None else bool(prior_is_active)
+        if has_valid_to:
+            set_clauses.append("valid_to = :valid_to")
+            params["valid_to"] = prior_valid_to
+
+        stmt = text(
+            f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE source_table = :table AND source_row_id = :row_id"
+        )
+        try:
+            res = store_session.execute(stmt, params)
+            store_session.commit()
+            if res.rowcount and res.rowcount > 0:
+                count += 1
+            else:
+                out.write(f"reactivate_chunks: chunk {source_row_id} not found in {store} store\n")
+        except _STORE_ERRORS as err:
+            store_session.rollback()
+            out.write(f"Error reactivating chunk {source_row_id} in {store}: {err}\n")
+
+    return count
+
+
+def url_identity(url: str) -> str | None:
+    """Derive the target identity string for a connection URL.
+
+    Identity string is `host:port/database` (with default port 5432 for postgresql*
+    when port is omitted; otherwise ':port' is omitted if no port is specified),
+    or `<drivername>:<database>` for host-less URLs such as SQLite.
+
+    Args:
+        url: Connection URL string.
+
+    Returns:
+        Identity string, or None if URL cannot be parsed.
+
+    """
+    if not url:
+        return None
+    try:
+        parsed = make_url(url)
+    except ArgumentError, ValueError:
+        return None
+
+    if parsed.host:
+        if parsed.port is not None:
+            port_part = f":{parsed.port}"
+        elif parsed.drivername.startswith("postgresql"):
+            port_part = ":5432"
+        else:
+            port_part = ""
+        database_part = parsed.database or ""
+        return f"{parsed.host}{port_part}/{database_part}"
+
+    database_part = parsed.database or ""
+    return f"{parsed.drivername}:{database_part}"
 
 
 def check_confirm_target(urls: dict[str, str], confirmed: list[str] | None) -> str | None:
-    """Validate that all target hostnames among configured write-target URLs are confirmed.
+    """Validate that all target identities among configured write-target URLs are confirmed.
 
     Args:
         urls: Mapping of target names to connection URL strings.
-        confirmed: List of confirmed hostnames provided via --confirm-target.
+        confirmed: List of confirmed target identities provided via --confirm-target.
 
     Returns:
-        Error message string listing expected hosts if confirmation fails, None if valid.
+        Error message string listing expected identities if confirmation fails, None if valid.
 
     """
-    expected_hosts: set[str] = set()
+    expected_identities: set[str] = set()
     for url in urls.values():
         if not url:
             continue
-        with contextlib.suppress(ArgumentError, ValueError):
-            parsed = make_url(url)
-            if parsed.host:
-                expected_hosts.add(parsed.host)
+        ident = url_identity(url)
+        if ident:
+            expected_identities.add(ident)
 
-    if not expected_hosts:
+    if not expected_identities:
         return None
 
     confirmed_set = set(confirmed or [])
-    missing = expected_hosts - confirmed_set
+    missing = expected_identities - confirmed_set
     if missing:
-        expected_str = ", ".join(sorted(expected_hosts))
+        expected_str = ", ".join(sorted(expected_identities))
         missing_str = ", ".join(sorted(missing))
-        return f"--apply requires target confirmation; unconfirmed host(s): {missing_str}; expected: {expected_str}"
+        return f"--apply requires target confirmation; unconfirmed target(s): {missing_str}; expected: {expected_str}"
     return None
 
 
@@ -395,7 +578,7 @@ def check_production_guard(*, apply: bool) -> str | None:
 
 
 def _check_backup_schema(session: Session) -> str | None:
-    """Check that player_milestones_cleanup_backup has expected columns if it exists.
+    """Check that backup and chunk state tables have expected columns if they exist.
 
     Args:
         session: Active database session.
@@ -405,23 +588,93 @@ def _check_backup_schema(session: Session) -> str | None:
 
     """
     bind = session.connection()
-    if not inspect(bind).has_table(BACKUP_TABLE_NAME):
-        return None
-    existing_cols = {col["name"] for col in inspect(bind).get_columns(BACKUP_TABLE_NAME)}
-    expected_cols = [col.name for col in backup_table.c]
-    missing_cols = [col for col in expected_cols if col not in existing_cols]
-    if missing_cols:
-        return (
-            f"existing {BACKUP_TABLE_NAME} has an incompatible schema; "
-            f"missing columns: {', '.join(missing_cols)}; rename or drop it after checking its contents"
-        )
+    insp = inspect(bind)
+    if insp.has_table(BACKUP_TABLE_NAME):
+        existing_cols = {col["name"] for col in insp.get_columns(BACKUP_TABLE_NAME)}
+        expected_cols = [col.name for col in backup_table.c]
+        missing_cols = [col for col in expected_cols if col not in existing_cols]
+        if missing_cols:
+            return (
+                f"existing {BACKUP_TABLE_NAME} has an incompatible schema; "
+                f"missing columns: {', '.join(missing_cols)}; rename or drop it after checking its contents"
+            )
+    if insp.has_table(CHUNK_STATE_TABLE_NAME):
+        existing_cols = {col["name"] for col in insp.get_columns(CHUNK_STATE_TABLE_NAME)}
+        expected_cols = [col.name for col in chunk_state_table.c]
+        missing_cols = [col for col in expected_cols if col not in existing_cols]
+        if missing_cols:
+            return (
+                f"existing {CHUNK_STATE_TABLE_NAME} has an incompatible schema; "
+                f"missing columns: {', '.join(missing_cols)}; rename or drop it after checking its contents"
+            )
     return None
+
+
+def _record_chunk_prior_state(
+    source_session: Session,
+    *,
+    store: str,
+    chunk_ref: str,
+    source_row_id: str | None,
+    prior_index_status: str | None,
+    prior_is_active: int | None,
+    prior_valid_to: datetime | str | None,
+) -> None:
+    """Insert current state of a chunk into player_milestones_cleanup_chunk_state if not present.
+
+    Never overwrites an existing row to preserve the pre-cleanup state across reruns.
+    Commits the state row immediately before any chunk write.
+
+    Args:
+        source_session: Operational database session.
+        store: Store identifier ('sparse' or 'vector').
+        chunk_ref: Chunk reference string (source_row_id or legacy:id=<id>).
+        source_row_id: Source row ID string, or None for legacy empty-key chunks.
+        prior_index_status: Pre-cleanup index_status value.
+        prior_is_active: Pre-cleanup is_active value (as integer 1/0, or None).
+        prior_valid_to: Pre-cleanup valid_to datetime, string, or None.
+
+    """
+    existing = source_session.scalar(
+        select(chunk_state_table.c.store).where(
+            chunk_state_table.c.store == store,
+            chunk_state_table.c.chunk_ref == chunk_ref,
+        )
+    )
+    if existing is not None:
+        return
+
+    parsed_valid_to: datetime | None = None
+    if isinstance(prior_valid_to, datetime):
+        parsed_valid_to = prior_valid_to
+    elif isinstance(prior_valid_to, date):
+        parsed_valid_to = datetime.combine(prior_valid_to, datetime.min.time(), tzinfo=UTC)
+    elif isinstance(prior_valid_to, str):
+        try:
+            parsed_valid_to = datetime.fromisoformat(prior_valid_to.replace(" ", "T"))
+        except ValueError:
+            parsed_valid_to = None
+
+    source_session.execute(
+        insert(chunk_state_table).values(
+            store=store,
+            chunk_ref=chunk_ref,
+            source_row_id=source_row_id,
+            prior_index_status=prior_index_status,
+            prior_is_active=prior_is_active,
+            prior_valid_to=parsed_valid_to,
+            recorded_at=datetime.now(UTC),
+        )
+    )
+    source_session.commit()
 
 
 def _resolve_target_set(
     source_session: Session,
     season: int | None,
     out: TextIO,
+    *,
+    allow_new_season: bool = False,
 ) -> tuple[list[CorruptedMilestoneItem], set[int], int, int, set[int]]:
     """Resolve the per-season target set of corrupted milestones to process.
 
@@ -429,6 +682,7 @@ def _resolve_target_set(
         source_session: Operational database session.
         season: Optional season filter.
         out: Output stream for logging progress.
+        allow_new_season: True to permit cleaning a season not present in the backup.
 
     Returns:
         Tuple of (target_items, existing_backup_ids, already_backed_up, would_back_up, processed_seasons).
@@ -440,6 +694,8 @@ def _resolve_target_set(
     processed_seasons: set[int] = set()
     if has_backup:
         processed_seasons = set(source_session.scalars(select(backup_table.c.season).distinct()).all())
+
+    has_any_backup = len(processed_seasons) > 0
 
     if season is not None:
         seasons_in_scope = [season]
@@ -483,6 +739,14 @@ def _resolve_target_set(
             target_items.extend(season_items)
         else:
             raw_rows = select_corrupted_rows(source_session, s)
+            if has_any_backup and not (allow_new_season and season == s):
+                out.write(
+                    f"season={s} mode=skipped-new-season rows={len(raw_rows)} "
+                    f"(rows created after the cleanup are not treated as corrupted; "
+                    f"pass --allow-new-season with --season {s} to clean it explicitly)\n"
+                )
+                continue
+
             out.write(f"season={s} mode=new rows={len(raw_rows)}\n")
             season_items = [
                 CorruptedMilestoneItem(
@@ -689,7 +953,93 @@ def _deactivate_sparse_key(
         return 0, True
 
 
+def _record_sparse_chunk_states(
+    source_session: Session,
+    index_session: Session,
+    keys: tuple[str, ...],
+    *,
+    has_is_active: bool,
+    has_valid_to: bool,
+    out: TextIO,
+) -> bool:
+    """Record pre-cleanup state for sparse chunks before modifying them."""
+    has_error = False
+    for key in keys:
+        try:
+            src_table, src_row_id = split_source_key(key)
+        except ValueError:
+            continue
+
+        select_cols = ["index_status"]
+        if has_is_active:
+            select_cols.append("is_active")
+        if has_valid_to:
+            select_cols.append("valid_to")
+        stmt = text(
+            f"SELECT {', '.join(select_cols)} FROM rag_chunks WHERE source_table = :table AND source_row_id = :row_id"
+        )
+        try:
+            row = index_session.execute(stmt, {"table": src_table, "row_id": src_row_id}).mappings().first()
+            if row is not None:
+                prior_st = str(row["index_status"]) if row["index_status"] is not None else None
+                prior_act = int(row["is_active"]) if (has_is_active and row["is_active"] is not None) else None
+                prior_val = row["valid_to"] if has_valid_to else None
+                _record_chunk_prior_state(
+                    source_session,
+                    store="sparse",
+                    chunk_ref=src_row_id,
+                    source_row_id=src_row_id,
+                    prior_index_status=prior_st,
+                    prior_is_active=prior_act,
+                    prior_valid_to=prior_val,
+                )
+        except _STORE_ERRORS as err:
+            index_session.rollback()
+            source_session.rollback()
+            has_error = True
+            out.write(f"Sparse store error reading prior state for {key}: {err}\n")
+    return has_error
+
+
+def _execute_sparse_tombstones(
+    index_session: Session,
+    keys: tuple[str, ...],
+    *,
+    has_is_active: bool,
+    has_valid_to: bool,
+    out: TextIO,
+) -> tuple[int, int, int, int, bool]:
+    """Execute tombstone and deactivation operations on sparse chunks."""
+    results = tombstone_primary_rows(index_session, keys)
+    tombstoned = sum(
+        1
+        for r in results
+        if r.found and r.final_status == "DELETED" and r.previous_status not in ("DELETED", "TOMBSTONED")
+    )
+    already = sum(1 for r in results if r.found and r.previous_status in ("DELETED", "TOMBSTONED"))
+    missing = sum(1 for r in results if not r.found)
+
+    has_error = False
+    for r in results:
+        if r.error:
+            has_error = True
+            out.write(f"Sparse store error on {r.source_key}: {r.error}\n")
+
+    deactivated_only = 0
+    if has_is_active or has_valid_to:
+        for key in keys:
+            deact_count, err = _deactivate_sparse_key(
+                index_session, key, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
+            )
+            deactivated_only += deact_count
+            if err:
+                has_error = True
+
+    return tombstoned, already, missing, deactivated_only, has_error
+
+
 def _process_sparse_store(
+    source_session: Session,
     index_session: Session,
     keys: tuple[str, ...],
     *,
@@ -699,6 +1049,7 @@ def _process_sparse_store(
     """Inspect or tombstone sparse RAG index chunks.
 
     Args:
+        source_session: Operational database session for chunk state ledger.
         index_session: Sparse RAG index database session.
         keys: RAG keys to inspect or tombstone.
         apply: Whether write operations are enabled.
@@ -718,37 +1069,36 @@ def _process_sparse_store(
 
     has_error = False
     deactivated_only = 0
+    tombstoned = 0
+    already = 0
+    missing = 0
+    active = 0
 
     if apply:
-        results = tombstone_primary_rows(index_session, keys)
-        tombstoned = sum(
-            1
-            for r in results
-            if r.found and r.final_status == "DELETED" and r.previous_status not in ("DELETED", "TOMBSTONED")
-        )
-        already = sum(1 for r in results if r.found and r.previous_status in ("DELETED", "TOMBSTONED"))
-        missing = sum(1 for r in results if not r.found)
-        active = 0
+        if _record_sparse_chunk_states(
+            source_session, index_session, keys, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
+        ):
+            has_error = True
 
-        if has_is_active or has_valid_to:
-            for key in keys:
-                deact_count, err = _deactivate_sparse_key(
-                    index_session, key, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
-                )
-                deactivated_only += deact_count
-                if err:
-                    has_error = True
+        try:
+            tombstoned, already, missing, deactivated_only, tombstone_err = _execute_sparse_tombstones(
+                index_session, keys, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
+            )
+            if tombstone_err:
+                has_error = True
+        except _STORE_ERRORS as err:
+            index_session.rollback()
+            out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
+            has_error = True
     else:
         results = inspect_primary_tombstones(index_session, keys)
         active = sum(1 for r in results if r.found and r.final_status not in ("DELETED", "TOMBSTONED"))
         already = sum(1 for r in results if r.found and r.final_status in ("DELETED", "TOMBSTONED"))
         missing = sum(1 for r in results if not r.found)
-        tombstoned = 0
-
-    for r in results:
-        if r.error:
-            has_error = True
-            out.write(f"Sparse store error on {r.source_key}: {r.error}\n")
+        for r in results:
+            if r.error:
+                has_error = True
+                out.write(f"Sparse store error on {r.source_key}: {r.error}\n")
 
     return active, tombstoned, already, missing, deactivated_only, has_error
 
@@ -774,7 +1124,36 @@ def _build_vector_update_sql(
     return f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE {' AND '.join(where_clauses)}"
 
 
+def _fetch_vector_chunk_row(
+    session: Session,
+    source_table: str,
+    source_row_id: str,
+    *,
+    has_is_active: bool,
+    has_valid_to: bool,
+    out: TextIO,
+) -> tuple[RowMapping | None, bool]:
+    """Fetch a single vector chunk row mapping."""
+    select_cols = ["index_status"]
+    if has_is_active:
+        select_cols.append("is_active")
+    if has_valid_to:
+        select_cols.append("valid_to")
+
+    stmt = text(
+        f"SELECT {', '.join(select_cols)} FROM rag_chunks WHERE source_table = :table AND source_row_id = :row_id"
+    )
+    try:
+        row = session.execute(stmt, {"table": source_table, "row_id": source_row_id}).mappings().first()
+        return row, False
+    except _STORE_ERRORS as err:
+        session.rollback()
+        out.write(f"Vector store error on {source_table}:{source_row_id}: {err}\n")
+        return None, True
+
+
 def _tombstone_one_vector_key(
+    source_session: Session,
     session: Session,
     key: str,
     *,
@@ -789,28 +1168,34 @@ def _tombstone_one_vector_key(
         out.write(f"Vector store error on {key}: {err}\n")
         return 0, 0, 0, 0, True
 
-    select_cols = ["index_status"]
-    if has_is_active:
-        select_cols.append("is_active")
-    if has_valid_to:
-        select_cols.append("valid_to")
-
-    stmt = text(
-        f"SELECT {', '.join(select_cols)} FROM rag_chunks WHERE source_table = :table AND source_row_id = :row_id"
+    row, fetch_err = _fetch_vector_chunk_row(
+        session, source_table, source_row_id, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
     )
-    try:
-        row = session.execute(stmt, {"table": source_table, "row_id": source_row_id}).mappings().first()
-    except _STORE_ERRORS as err:
-        session.rollback()
-        out.write(f"Vector store error on {key}: {err}\n")
+    if fetch_err:
         return 0, 0, 0, 0, True
-
     if row is None:
         return 0, 0, 0, 1, False
 
     curr_status = str(row["index_status"] or "")
     is_act = row.get("is_active") if has_is_active else None
     is_active_true = is_act is None or bool(is_act) is True
+    prior_is_act = int(is_act) if is_act is not None else None
+    prior_val_to = row.get("valid_to") if has_valid_to else None
+
+    try:
+        _record_chunk_prior_state(
+            source_session,
+            store="vector",
+            chunk_ref=source_row_id,
+            source_row_id=source_row_id,
+            prior_index_status=curr_status,
+            prior_is_active=prior_is_act,
+            prior_valid_to=prior_val_to,
+        )
+    except _STORE_ERRORS as err:
+        source_session.rollback()
+        out.write(f"Error recording vector chunk prior state on {key}: {err}\n")
+        return 0, 0, 0, 0, True
 
     if curr_status == "DELETED" and (not has_is_active or not is_active_true):
         return 0, 0, 1, 0, False
@@ -833,6 +1218,7 @@ def _tombstone_one_vector_key(
 
 
 def _tombstone_vector_keys(
+    source_session: Session,
     session: Session,
     keys: Sequence[str],
     *,
@@ -847,6 +1233,7 @@ def _tombstone_vector_keys(
         is_active=false on rerun.
 
     Args:
+        source_session: Operational database session for chunk state ledger.
         session: Active vector database session.
         keys: RAG source keys to tombstone.
         out: Output stream for logging progress and errors.
@@ -868,7 +1255,7 @@ def _tombstone_vector_keys(
 
     for key in keys:
         t_delta, d_delta, a_delta, m_delta, err = _tombstone_one_vector_key(
-            session, key, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
+            source_session, session, key, has_is_active=has_is_active, has_valid_to=has_valid_to, out=out
         )
         tombstoned += t_delta
         deactivated_only += d_delta
@@ -954,6 +1341,7 @@ def _inspect_vector_keys(
 
 
 def _process_vector_store(
+    source_session: Session,
     vector_session: Session | None,
     keys: tuple[str, ...],
     *,
@@ -963,6 +1351,7 @@ def _process_vector_store(
     """Inspect or tombstone dense vector store chunks.
 
     Args:
+        source_session: Operational database session for chunk state ledger.
         vector_session: Dense vector database session or None.
         keys: RAG keys to inspect or tombstone.
         apply: Whether write operations are enabled.
@@ -978,7 +1367,7 @@ def _process_vector_store(
 
     if apply:
         tombstoned, deactivated_only, already, missing, has_error = _tombstone_vector_keys(
-            vector_session, keys, out=out
+            source_session, vector_session, keys, out=out
         )
         return 0, tombstoned, already, missing, deactivated_only, False, has_error
 
@@ -986,14 +1375,59 @@ def _process_vector_store(
     return active, 0, already, missing, deleted_still_active, False, has_error
 
 
+def _legacy_pair_decision(
+    meta: object,
+    target_pairs: set[tuple[str, str]],
+    surviving_pairs: set[tuple[str, str]],
+) -> tuple[bool, str]:
+    """Evaluate whether a chunk's meta matches corrupted targets without surviving rows.
+
+    Args:
+        meta: Metadata dict, JSON string, or None/other.
+        target_pairs: Set of (player_name, milestone_category) pairs from target candidates.
+        surviving_pairs: Set of (player_name, milestone_category) pairs from surviving live rows.
+
+    Returns:
+        Tuple of (matched, reason).
+
+    """
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except json.JSONDecodeError, ValueError:
+            return False, "no usable meta"
+    if not isinstance(meta, dict):
+        return False, "no usable meta"
+
+    pname = str(meta.get("player_name", "")).strip()
+    mcat = str(meta.get("milestone_category", "")).strip()
+    pair = (pname, mcat)
+
+    if pair not in target_pairs:
+        return False, f"player_name={pname!r}, milestone_category={mcat!r} not in target set"
+    if pair in surviving_pairs:
+        return False, f"live player_milestones row exists for player_name={pname!r}, milestone_category={mcat!r}"
+    return True, "matched"
+
+
 def _find_and_filter_legacy_chunks(
-    source_session: Session,
     index_session: Session,
-    target_items: Sequence[CorruptedMilestoneItem],
-    deleted_live_ids: set[int],
+    target_pairs: set[tuple[str, str]],
+    surviving_pairs: set[tuple[str, str]],
     out: TextIO,
 ) -> tuple[list[RagChunk], int, int]:
-    """Find and evaluate legacy empty-key chunks in sparse store."""
+    """Find and evaluate legacy empty-key chunks in sparse store.
+
+    Args:
+        index_session: Sparse RAG index database session.
+        target_pairs: Set of (player_name, milestone_category) target pairs.
+        surviving_pairs: Set of (player_name, milestone_category) surviving live pairs.
+        out: Output stream for logging progress.
+
+    Returns:
+        Tuple of (matched_chunks, sparse_found, active_matched).
+
+    """
     sparse_chunks = list(
         index_session.scalars(
             select(RagChunk).where(
@@ -1002,32 +1436,13 @@ def _find_and_filter_legacy_chunks(
             )
         ).all()
     )
-    surviving_query = select(PlayerMilestone.player_name, PlayerMilestone.milestone_category)
-    if deleted_live_ids:
-        surviving_query = surviving_query.where(~PlayerMilestone.id.in_(deleted_live_ids))
-    surviving_tuples = source_session.execute(surviving_query).all()
-    surviving_pairs = {(str(pname).strip(), str(mcat).strip()) for pname, mcat in surviving_tuples}
-    target_pairs = {(str(item.player_name).strip(), str(item.milestone_category).strip()) for item in target_items}
 
     matched_chunks: list[RagChunk] = []
     active_matched = 0
     for chunk in sparse_chunks:
-        meta = chunk.meta or {}
-        pname = str(meta.get("player_name", "")).strip()
-        mcat = str(meta.get("milestone_category", "")).strip()
-        pair = (pname, mcat)
-
-        if pair not in target_pairs:
-            out.write(
-                f"legacy empty-key chunk unmatched: player_name={pname!r}, "
-                f"milestone_category={mcat!r} not in target set\n"
-            )
-            continue
-        if pair in surviving_pairs:
-            out.write(
-                f"legacy empty-key chunk unmatched: live player_milestones row exists for "
-                f"player_name={pname!r}, milestone_category={mcat!r}\n"
-            )
+        matched, reason = _legacy_pair_decision(chunk.meta, target_pairs, surviving_pairs)
+        if not matched:
+            out.write(f"legacy empty-key chunk unmatched: {reason}\n")
             continue
         matched_chunks.append(chunk)
         if chunk.index_status != "DELETED":
@@ -1036,14 +1451,63 @@ def _find_and_filter_legacy_chunks(
     return matched_chunks, len(sparse_chunks), active_matched
 
 
+def _record_legacy_sparse_prior_state(
+    source_session: Session,
+    index_session: Session,
+    matched_chunks: Sequence[RagChunk],
+    scols: set[str],
+    out: TextIO,
+) -> bool:
+    """Record pre-cleanup state for matched legacy sparse chunks."""
+    has_is_act = "is_active" in scols
+    has_val_to = "valid_to" in scols
+    has_error = False
+
+    for chunk in matched_chunks:
+        try:
+            select_cols = ["index_status"]
+            if has_is_act:
+                select_cols.append("is_active")
+            if has_val_to:
+                select_cols.append("valid_to")
+            stmt = text(f"SELECT {', '.join(select_cols)} FROM rag_chunks WHERE id = :id")
+            row = index_session.execute(stmt, {"id": chunk.id}).mappings().first()
+            if row is not None:
+                p_status = str(row["index_status"] or "")
+                p_act = int(row["is_active"]) if (has_is_act and row["is_active"] is not None) else None
+                p_val = row["valid_to"] if has_val_to else None
+                _record_chunk_prior_state(
+                    source_session,
+                    store="sparse",
+                    chunk_ref=f"legacy:id={chunk.id}",
+                    source_row_id=None,
+                    prior_index_status=p_status,
+                    prior_is_active=p_act,
+                    prior_valid_to=p_val,
+                )
+        except _STORE_ERRORS as err:
+            index_session.rollback()
+            source_session.rollback()
+            has_error = True
+            out.write(f"Error recording legacy sparse chunk prior state: {err}\n")
+    return has_error
+
+
 def _retire_legacy_sparse_chunks(
+    source_session: Session,
     index_session: Session,
     matched_chunks: Sequence[RagChunk],
     out: TextIO,
 ) -> tuple[int, bool]:
     """Retire matched legacy chunks in sparse store."""
+    sbind = index_session.connection()
+    scols = {col["name"] for col in inspect(sbind).get_columns("rag_chunks")}
+    has_is_act = "is_active" in scols
+    has_val_to = "valid_to" in scols
+
+    has_error = _record_legacy_sparse_prior_state(source_session, index_session, matched_chunks, scols, out)
     legacy_sparse_tombstoned = 0
-    has_error = False
+
     for chunk in matched_chunks:
         if chunk.index_status != "DELETED":
             try:
@@ -1055,18 +1519,16 @@ def _retire_legacy_sparse_chunks(
             except _STORE_ERRORS as err:
                 index_session.rollback()
                 has_error = True
-                out.write(f"Error transitioning legacy sparse chunk: {err}\n")
+                out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
 
     if not matched_chunks:
         return legacy_sparse_tombstoned, has_error
     matched_ids = [chunk.id for chunk in matched_chunks]
-    sbind = index_session.connection()
-    scols = {col["name"] for col in inspect(sbind).get_columns("rag_chunks")}
-    if "is_active" in scols or "valid_to" in scols:
+    if has_is_act or has_val_to:
         set_c = []
-        if "is_active" in scols:
+        if has_is_act:
             set_c.append("is_active = false")
-        if "valid_to" in scols:
+        if has_val_to:
             set_c.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
         try:
             index_session.execute(
@@ -1079,19 +1541,90 @@ def _retire_legacy_sparse_chunks(
         except _STORE_ERRORS as err:
             index_session.rollback()
             has_error = True
-            out.write(f"Error deactivating legacy sparse chunk: {err}\n")
+            out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
 
     return legacy_sparse_tombstoned, has_error
 
 
-def _retire_legacy_vector_chunks(
+def _inspect_legacy_vector_chunks(
     vector_session: Session,
-    vector_rows: Sequence[RowMapping],
+    vcols: set[str],
+    target_pairs: set[tuple[str, str]],
+    surviving_pairs: set[tuple[str, str]],
     out: TextIO,
-) -> tuple[int, bool]:
-    """Retire legacy empty-key chunks in vector store."""
-    vbind = vector_session.connection()
-    vcols = {col["name"] for col in inspect(vbind).get_columns("rag_chunks")}
+) -> tuple[int, int, list[RowMapping], bool]:
+    """Inspect and match legacy empty-key vector chunks.
+
+    Args:
+        vector_session: Dense vector database session.
+        vcols: Set of existing rag_chunks column names.
+        target_pairs: Set of (player_name, milestone_category) target pairs.
+        surviving_pairs: Set of (player_name, milestone_category) surviving live pairs.
+        out: Output stream for logging progress.
+
+    Returns:
+        Tuple of (vector_found, vector_matched, rows_needing_work, has_error).
+
+    """
+    has_is_act = "is_active" in vcols
+    vselect = ["id", "index_status", "meta"]
+    if has_is_act:
+        vselect.append("is_active")
+    if "valid_to" in vcols:
+        vselect.append("valid_to")
+
+    vstmt = text(
+        f"SELECT {', '.join(vselect)} FROM rag_chunks "
+        f"WHERE source_table = 'milestone' AND (source_row_id = '' OR source_row_id IS NULL)"
+    )
+    try:
+        vector_rows = list(vector_session.execute(vstmt).mappings().all())
+    except _STORE_ERRORS as err:
+        vector_session.rollback()
+        out.write(f"Vector store error inspecting legacy chunks: {err}\n")
+        return 0, 0, [], True
+
+    vector_found = len(vector_rows)
+    matched_rows: list[RowMapping] = []
+    for row in vector_rows:
+        row_id = row["id"]
+        meta_val = row["meta"]
+        matched, reason = _legacy_pair_decision(meta_val, target_pairs, surviving_pairs)
+        if not matched:
+            out.write(f"legacy empty-key vector chunk id={row_id} unmatched: {reason}\n")
+            continue
+        matched_rows.append(row)
+
+    rows_needing_work: list[RowMapping] = []
+    for r in matched_rows:
+        curr_status = str(r["index_status"] or "")
+        is_act = r.get("is_active") if has_is_act else None
+        if curr_status != "DELETED" or (has_is_act and (is_act is None or bool(is_act) is True)):
+            rows_needing_work.append(r)
+
+    return vector_found, len(matched_rows), rows_needing_work, False
+
+
+def _retire_legacy_vector_chunks(
+    source_session: Session,
+    vector_session: Session,
+    rows: Sequence[RowMapping],
+    vcols: set[str],
+    out: TextIO,
+) -> tuple[int, int, bool]:
+    """Retire matched legacy empty-key vector rows that need work.
+
+    Args:
+        source_session: Operational database session for chunk state ledger.
+        vector_session: Dense vector database session.
+        rows: Sequence of matched vector rows needing work.
+        vcols: Set of existing rag_chunks column names.
+        out: Output stream for logging progress.
+
+    Returns:
+        Tuple of (legacy_vector_tombstoned, legacy_vector_deactivated_only, has_error).
+
+    """
     has_is_act = "is_active" in vcols
     has_val_to = "valid_to" in vcols
 
@@ -1100,38 +1633,110 @@ def _retire_legacy_vector_chunks(
         set_clauses.append("is_active = false")
     if has_val_to:
         set_clauses.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
+    update_sql = text(f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE id = :id")
 
-    where_clauses = [
-        "source_table = 'milestone'",
-        "(source_row_id = '' OR source_row_id IS NULL)",
-    ]
-    if has_is_act:
-        where_clauses.append("(index_status <> 'DELETED' OR is_active IS NULL OR is_active = :true_val)")
-    else:
-        where_clauses.append("index_status <> 'DELETED'")
+    legacy_vector_tombstoned = 0
+    legacy_vector_deactivated_only = 0
+    has_error = False
 
-    vec_update = f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE {' AND '.join(where_clauses)}"
-    params: dict[str, Any] = {}
-    if has_is_act:
-        params["true_val"] = True
+    for row in rows:
+        row_id = row["id"]
+        curr_status = str(row["index_status"] or "")
+        p_act = int(row["is_active"]) if (has_is_act and row.get("is_active") is not None) else None
+        p_val = row.get("valid_to") if has_val_to else None
 
-    def _needs_update(vrow: RowMapping) -> bool:
-        is_active_val = vrow.get("is_active") if has_is_act else None
-        return str(vrow["index_status"] or "") != "DELETED" or (
-            has_is_act and (is_active_val is None or bool(is_active_val) is True)
+        try:
+            _record_chunk_prior_state(
+                source_session,
+                store="vector",
+                chunk_ref=f"legacy:id={row_id}",
+                source_row_id=None,
+                prior_index_status=curr_status,
+                prior_is_active=p_act,
+                prior_valid_to=p_val,
+            )
+        except _STORE_ERRORS as err:
+            source_session.rollback()
+            has_error = True
+            out.write(f"Error recording legacy vector chunk prior state for id={row_id}: {err}\n")
+            continue
+
+        try:
+            vector_session.execute(update_sql, {"id": row_id})
+            vector_session.commit()
+            if curr_status != "DELETED":
+                legacy_vector_tombstoned += 1
+            else:
+                legacy_vector_deactivated_only += 1
+        except _STORE_ERRORS as err:
+            vector_session.rollback()
+            has_error = True
+            out.write(f"Vector store error tombstoning legacy chunk id={row_id}: {err}\n")
+
+    return legacy_vector_tombstoned, legacy_vector_deactivated_only, has_error
+
+
+def _process_legacy_vector_chunks(
+    source_session: Session,
+    vector_session: Session | None,
+    target_pairs: set[tuple[str, str]],
+    surviving_pairs: set[tuple[str, str]],
+    *,
+    apply: bool,
+    out: TextIO,
+) -> tuple[int, int, int, int, int, bool]:
+    """Inspect and tombstone legacy empty-key chunks in dense vector store.
+
+    Args:
+        source_session: Operational database session for chunk state ledger.
+        vector_session: Dense vector database session or None.
+        target_pairs: Set of (player_name, milestone_category) target pairs.
+        surviving_pairs: Set of (player_name, milestone_category) surviving live pairs.
+        apply: Whether write operations are enabled.
+        out: Output stream for logging progress.
+
+    Returns:
+        Tuple of (vector_found, vector_matched, vector_active, legacy_vector_tombstoned,
+        legacy_vector_deactivated_only, has_error).
+
+    """
+    if vector_session is None:
+        return 0, 0, 0, 0, 0, False
+
+    vbind = vector_session.connection()
+    vcols = {col["name"] for col in inspect(vbind).get_columns("rag_chunks")}
+
+    if "id" not in vcols or "meta" not in vcols:
+        count_stmt = text(
+            "SELECT COUNT(*) FROM rag_chunks "
+            "WHERE source_table = 'milestone' AND (source_row_id = '' OR source_row_id IS NULL)"
         )
+        try:
+            count_val = int(vector_session.scalar(count_stmt) or 0)
+        except _STORE_ERRORS as err:
+            vector_session.rollback()
+            out.write(f"Vector store error counting legacy chunks: {err}\n")
+            return 0, 0, 0, 0, 0, True
+        out.write(
+            f"legacy vector chunks: found={count_val}, skipped "
+            f"(vector rag_chunks has no meta/id column; cannot identify precisely)\n"
+        )
+        return count_val, 0, 0, 0, 0, False
 
-    if not any(_needs_update(vrow) for vrow in vector_rows):
-        return 0, False
-    # One statement, one commit: count only after the commit succeeded.
-    try:
-        vector_session.execute(text(vec_update), params)
-        vector_session.commit()
-    except _STORE_ERRORS as err:
-        vector_session.rollback()
-        out.write(f"Error tombstoning legacy vector chunk: {err}\n")
-        return 0, True
-    return sum(1 for vrow in vector_rows if str(vrow["index_status"] or "") != "DELETED"), False
+    found, matched, rows_needing_work, inspect_err = _inspect_legacy_vector_chunks(
+        vector_session, vcols, target_pairs, surviving_pairs, out
+    )
+    if inspect_err:
+        return 0, 0, 0, 0, 0, True
+
+    active = len(rows_needing_work)
+    if not apply:
+        return found, matched, active, 0, 0, False
+
+    tombstoned, deact_only, tombstone_err = _retire_legacy_vector_chunks(
+        source_session, vector_session, rows_needing_work, vcols, out
+    )
+    return found, matched, active, tombstoned, deact_only, tombstone_err
 
 
 def _process_legacy_empty_chunks(
@@ -1143,7 +1748,7 @@ def _process_legacy_empty_chunks(
     *,
     apply: bool,
     out: TextIO,
-) -> tuple[int, int, bool]:
+) -> tuple[int, int, int, bool]:
     """Inspect or tombstone legacy empty-key milestone chunks (source_row_id='').
 
     Args:
@@ -1156,50 +1761,84 @@ def _process_legacy_empty_chunks(
         out: Output stream for logging progress.
 
     Returns:
-        Tuple of (legacy_sparse_tombstoned, legacy_vector_tombstoned, has_error).
+        Tuple of (legacy_sparse_tombstoned, legacy_vector_tombstoned,
+        legacy_vector_deactivated_only, has_error).
 
     """
-    matched_chunks, sparse_found, active_matched = _find_and_filter_legacy_chunks(
-        source_session, index_session, target_items, deleted_live_ids, out
-    )
-    vector_rows: list[RowMapping] = []
-    has_error = False
+    surviving_query = select(PlayerMilestone.player_name, PlayerMilestone.milestone_category)
+    if deleted_live_ids:
+        surviving_query = surviving_query.where(~PlayerMilestone.id.in_(deleted_live_ids))
+    surviving_tuples = source_session.execute(surviving_query).all()
+    surviving_pairs = {(str(pname).strip(), str(mcat).strip()) for pname, mcat in surviving_tuples}
+    target_pairs = {(str(item.player_name).strip(), str(item.milestone_category).strip()) for item in target_items}
 
-    if vector_session is not None:
-        vbind = vector_session.connection()
-        vcols = {col["name"] for col in inspect(vbind).get_columns("rag_chunks")}
-        vselect = ["index_status"]
-        if "is_active" in vcols:
-            vselect.append("is_active")
-        if "valid_to" in vcols:
-            vselect.append("valid_to")
-        vstmt = text(
-            f"SELECT {', '.join(vselect)} FROM rag_chunks "
-            f"WHERE source_table = 'milestone' AND (source_row_id = '' OR source_row_id IS NULL)"
+    legacy_sparse_tombstoned = 0
+    sparse_error = False
+    try:
+        matched_chunks, sparse_found, sparse_active = _find_and_filter_legacy_chunks(
+            index_session, target_pairs, surviving_pairs, out
         )
-        try:
-            vector_rows = list(vector_session.execute(vstmt).mappings().all())
-        except _STORE_ERRORS as err:
-            has_error = True
-            out.write(f"Vector store error inspecting legacy chunks: {err}\n")
-
-    vector_found = len(vector_rows)
-    matched = len(matched_chunks)
+    except _STORE_ERRORS as err:
+        index_session.rollback()
+        out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
+        matched_chunks, sparse_found, sparse_active = [], 0, 0
+        sparse_error = True
+    sparse_matched = len(matched_chunks)
 
     if not apply:
-        out.write(
-            f"legacy_empty_key_chunks: sparse_found={sparse_found} matched={matched} "
-            f"active={active_matched} vector_found={vector_found}\n"
+        (
+            vector_found,
+            vector_matched,
+            vector_active,
+            _,
+            _,
+            vector_error,
+        ) = _process_legacy_vector_chunks(
+            source_session,
+            vector_session,
+            target_pairs,
+            surviving_pairs,
+            apply=False,
+            out=out,
         )
-        return 0, 0, has_error
+        out.write(
+            f"legacy_empty_key_chunks: sparse_found={sparse_found} sparse_matched={sparse_matched} "
+            f"sparse_active={sparse_active} vector_found={vector_found} vector_matched={vector_matched} "
+            f"vector_active={vector_active}\n"
+        )
+        return 0, 0, 0, (sparse_error or vector_error)
 
-    legacy_sparse_tombstoned, s_err = _retire_legacy_sparse_chunks(index_session, matched_chunks, out)
-    legacy_vector_tombstoned = 0
-    v_err = False
-    if vector_session is not None and matched > 0:
-        legacy_vector_tombstoned, v_err = _retire_legacy_vector_chunks(vector_session, vector_rows, out)
+    try:
+        legacy_sparse_tombstoned, sparse_error = _retire_legacy_sparse_chunks(
+            source_session, index_session, matched_chunks, out
+        )
+    except _STORE_ERRORS as err:
+        index_session.rollback()
+        out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
+        sparse_error = True
 
-    return legacy_sparse_tombstoned, legacy_vector_tombstoned, (has_error or s_err or v_err)
+    (
+        vector_found,
+        vector_matched,
+        vector_active,
+        legacy_vector_tombstoned,
+        legacy_vector_deact,
+        vector_error,
+    ) = _process_legacy_vector_chunks(
+        source_session,
+        vector_session,
+        target_pairs,
+        surviving_pairs,
+        apply=True,
+        out=out,
+    )
+
+    return (
+        legacy_sparse_tombstoned,
+        legacy_vector_tombstoned,
+        legacy_vector_deact,
+        (sparse_error or vector_error),
+    )
 
 
 def _validate_expect_count(
@@ -1270,6 +1909,7 @@ def run_cleanup(
     apply: bool = False,
     season: int | None = None,
     expect_count: int | None = None,
+    allow_new_season: bool = False,
     out: TextIO = sys.stdout,
 ) -> CleanupReport:
     """Run corrupted milestone cleanup across primary database and RAG indexes.
@@ -1281,12 +1921,37 @@ def run_cleanup(
         apply: True to execute writes (backup, delete, tombstone); False for dry-run.
         season: Optional season filter.
         expect_count: Optional expected row count to guard against drift.
+        allow_new_season: True to permit cleaning a season not in existing backup (requires season).
         out: Output stream for logging progress.
 
     Returns:
         CleanupReport summarizing counts and operation status.
 
     """
+    if allow_new_season and season is None:
+        err = "--allow-new-season requires --season"
+        out.write(f"{err}\n")
+        return CleanupReport(
+            mode="apply" if apply else "dry-run",
+            selected=0,
+            already_backed_up=0,
+            would_back_up=0,
+            backed_up_new=0,
+            would_delete=0,
+            deleted=0,
+            sparse_active=0,
+            sparse_tombstoned=0,
+            sparse_already=0,
+            sparse_missing=0,
+            vector_active=0,
+            vector_tombstoned=0,
+            vector_already=0,
+            vector_missing=0,
+            vector_skipped=vector_session is None,
+            status_code=3,
+            error_message=err,
+        )
+
     schema_err = _check_backup_schema(source_session)
     if schema_err is not None:
         out.write(f"Refusing write: {schema_err}\n")
@@ -1317,7 +1982,7 @@ def run_cleanup(
         already_backed_up,
         would_back_up,
         processed_seasons,
-    ) = _resolve_target_set(source_session, season, out=out)
+    ) = _resolve_target_set(source_session, season, out=out, allow_new_season=allow_new_season)
 
     breakdown = compute_breakdown(target_items)
     out.write(
@@ -1404,19 +2069,28 @@ def run_cleanup(
         apply=apply,
     )
 
-    (
-        sparse_active,
-        sparse_tombstoned,
-        sparse_already,
-        sparse_missing,
-        sparse_deactivated_only,
-        sparse_error,
-    ) = _process_sparse_store(
-        index_session,
-        keys_tuple,
-        apply=apply,
-        out=out,
-    )
+    try:
+        (
+            sparse_active,
+            sparse_tombstoned,
+            sparse_already,
+            sparse_missing,
+            sparse_deactivated_only,
+            sparse_error,
+        ) = _process_sparse_store(
+            source_session,
+            index_session,
+            keys_tuple,
+            apply=apply,
+            out=out,
+        )
+    except _STORE_ERRORS as err:
+        # Any sparse failure (connection, column inspection, ledger) must not skip the vector step.
+        index_session.rollback()
+        source_session.rollback()
+        out.write(f"ERROR: sparse store step failed: {err}; vector step still attempted; rerun to finish\n")
+        sparse_active = sparse_tombstoned = sparse_already = sparse_missing = sparse_deactivated_only = 0
+        sparse_error = True
 
     (
         vector_active,
@@ -1427,6 +2101,7 @@ def run_cleanup(
         vector_skipped,
         vector_error,
     ) = _process_vector_store(
+        source_session,
         vector_session,
         keys_tuple,
         apply=apply,
@@ -1436,6 +2111,7 @@ def run_cleanup(
     (
         legacy_sparse_tombstoned,
         legacy_vector_tombstoned,
+        legacy_vector_deact,
         legacy_error,
     ) = _process_legacy_empty_chunks(
         source_session,
@@ -1462,11 +2138,14 @@ def run_cleanup(
     summary_line = (
         f"mode={mode_str} selected={len(target_items)} backed_up_new={backed_up_new} "
         f"deleted={deleted} sparse_tombstoned={sparse_tombstoned} "
+        f"sparse_deactivated_only={sparse_deactivated_only} "
         f"sparse_already={sparse_already} sparse_missing={sparse_missing} "
-        f"vector_tombstoned={vector_tombstoned} vector_already={vector_already} "
-        f"vector_missing={vector_missing} "
+        f"vector_tombstoned={vector_tombstoned} "
+        f"vector_deactivated_only={vector_deactivated_only} "
+        f"vector_already={vector_already} vector_missing={vector_missing} "
         f"legacy_sparse_tombstoned={legacy_sparse_tombstoned} "
-        f"legacy_vector_tombstoned={legacy_vector_tombstoned}\n"
+        f"legacy_vector_tombstoned={legacy_vector_tombstoned} "
+        f"legacy_vector_deactivated_only={legacy_vector_deact}\n"
     )
     out.write(summary_line)
 
@@ -1495,7 +2174,29 @@ def run_cleanup(
         delete_skipped_mismatch=delete_skipped_mismatch,
         legacy_sparse_tombstoned=legacy_sparse_tombstoned,
         legacy_vector_tombstoned=legacy_vector_tombstoned,
+        legacy_vector_deactivated_only=legacy_vector_deact,
     )
+
+
+def _safe_render_url(url: str, *, fallback_empty: str) -> tuple[str, bool]:
+    """Safely redact a connection URL without exposing secrets or raising on invalid input.
+
+    Args:
+        url: Connection URL string.
+        fallback_empty: String to return when url is empty.
+
+    Returns:
+        Tuple of (rendered_string, is_parseable). If unparseable, rendered_string is
+        "(unparseable URL hidden)" and is_parseable is False.
+
+    """
+    if not url:
+        return fallback_empty, True
+    try:
+        parsed = make_url(url)
+        return parsed.render_as_string(hide_password=True), True
+    except ArgumentError, ValueError:
+        return "(unparseable URL hidden)", False
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1522,11 +2223,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Expected number of corrupted rows to back up. Required on --apply when new rows exist.",
     )
     parser.add_argument(
+        "--allow-new-season",
+        action="store_true",
+        default=False,
+        help="Permit cleaning a season not present in existing backup (requires --season).",
+    )
+    parser.add_argument(
         "--confirm-target",
         action="append",
         dest="confirm_target",
         default=None,
-        help="Confirmed target database hostname (repeatable, required on --apply).",
+        help="Confirmed target database identity (repeatable, required on --apply).",
     )
     return parser
 
@@ -1536,6 +2243,10 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.allow_new_season and args.season is None:
+        out.write("--allow-new-season requires --season\n")
+        return 3
+
     from src.db.engine import DATABASE_URL as SOURCE_DB_URL
 
     # The URL the session factory actually connects to, not a possibly different raw env value.
@@ -1544,17 +2255,21 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     pgvector_url = os.getenv("PGVECTOR_URL", "")
     pgvector_test_url = os.getenv("PGVECTOR_TEST_URL", "")
 
-    redacted_source = make_url(source_url).render_as_string(hide_password=True) if source_url else "(not configured)"
-    redacted_sparse = (
-        make_url(rag_index_url).render_as_string(hide_password=True) if rag_index_url else "(same as source)"
-    )
-    redacted_vector = (
-        make_url(pgvector_url).render_as_string(hide_password=True) if pgvector_url else "(not configured)"
-    )
+    redacted_source, source_parsed = _safe_render_url(source_url, fallback_empty="(not configured)")
+    redacted_sparse, sparse_parsed = _safe_render_url(rag_index_url, fallback_empty="(same as source)")
+    redacted_vector, vector_parsed = _safe_render_url(pgvector_url, fallback_empty="(not configured)")
 
-    out.write(f"source DB = {redacted_source}\n")
-    out.write(f"sparse index = {redacted_sparse}\n")
-    out.write(f"vector = {redacted_vector}\n")
+    source_ident = url_identity(source_url) if source_url and source_parsed else None
+    sparse_ident = url_identity(rag_index_url) if rag_index_url and sparse_parsed else None
+    vector_ident = url_identity(pgvector_url) if pgvector_url and vector_parsed else None
+
+    source_target_str = f" [target: {source_ident}]" if source_ident else ""
+    sparse_target_str = f" [target: {sparse_ident}]" if sparse_ident else ""
+    vector_target_str = f" [target: {vector_ident}]" if vector_ident else ""
+
+    out.write(f"source DB = {redacted_source}{source_target_str}\n")
+    out.write(f"sparse index = {redacted_sparse}{sparse_target_str}\n")
+    out.write(f"vector = {redacted_vector}{vector_target_str}\n")
 
     if pgvector_test_url and pgvector_test_url != (pgvector_url or ""):
         if args.apply:
@@ -1566,6 +2281,11 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
         out.write("WARNING: PGVECTOR_TEST_URL is set and would override PGVECTOR_URL in src.db.vector_engine\n")
 
     if args.apply:
+        for name, is_valid in (("source", source_parsed), ("sparse", sparse_parsed), ("vector", vector_parsed)):
+            if not is_valid:
+                out.write(f"Refusing write: cannot parse {name} URL; refusing to write\n")
+                return 3
+
         target_urls = {
             "source": source_url,
             "sparse": rag_index_url,
@@ -1592,6 +2312,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
                     apply=args.apply,
                     season=args.season,
                     expect_count=args.expect_count,
+                    allow_new_season=args.allow_new_season,
                     out=out,
                 )
         else:
@@ -1602,6 +2323,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
                 apply=args.apply,
                 season=args.season,
                 expect_count=args.expect_count,
+                allow_new_season=args.allow_new_season,
                 out=out,
             )
 
