@@ -49,6 +49,11 @@ Rollback:
        reactivate_chunks(source_session, index_session, season, "sparse")
        reactivate_chunks(source_session, vector_session, season, "vector")
        ```
+       `reactivate_chunks` restores each chunk to its exact recorded prior index_status, is_active,
+       and valid_to state from `player_milestones_cleanup_chunk_state` (including chunks whose prior
+       status was already DELETED/TOMBSTONED). In the vector store, it also strips the
+       `kbo_cleanup_tombstoned` marker from `meta`. Upon successful chunk restoration, its state record
+       is deleted from `player_milestones_cleanup_chunk_state` so subsequent cleanup/restore cycles record fresh state.
     3. Re-index knowledge per season:
        ```bash
        python -m src.cli.rag.index_rag_knowledge --season 2025
@@ -119,6 +124,7 @@ from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import stable_milestone_source_row_id
 from src.services.rag_index_lifecycle import IndexLifecycleStatus, transition_status
 from src.services.rag_primary_tombstone import inspect_primary_tombstones, tombstone_primary_rows
+from src.services.rag_vector_reactivation import CLEANUP_TOMBSTONE_META_KEY
 from src.services.rag_vector_tombstone import split_source_key
 
 if TYPE_CHECKING:
@@ -129,6 +135,21 @@ if TYPE_CHECKING:
 
 #: Per-key store failures that are reported and counted (exit 1) instead of aborting the run.
 _STORE_ERRORS = (SQLAlchemyError, ValueError)
+
+
+def _vector_meta_set_marker_sql(dialect_name: str) -> str:
+    """Return dialect-aware SQL fragment to set the cleanup tombstone marker in meta."""
+    if dialect_name == "postgresql":
+        return f"meta = COALESCE(meta, '{{}}'::jsonb) || jsonb_build_object('{CLEANUP_TOMBSTONE_META_KEY}', true)"
+    return f"meta = json_set(COALESCE(meta, '{{}}'), '$.{CLEANUP_TOMBSTONE_META_KEY}', json('true'))"
+
+
+def _vector_meta_remove_marker_sql(dialect_name: str) -> str:
+    """Return dialect-aware SQL fragment to remove the cleanup tombstone marker from meta."""
+    if dialect_name == "postgresql":
+        return f"meta = meta - '{CLEANUP_TOMBSTONE_META_KEY}'"
+    return f"meta = json_remove(meta, '$.{CLEANUP_TOMBSTONE_META_KEY}')"
+
 
 BACKUP_TABLE_NAME = "player_milestones_cleanup_backup"
 CHUNK_STATE_TABLE_NAME = "player_milestones_cleanup_chunk_state"
@@ -364,13 +385,6 @@ def restore_chunk_targets(
             continue
 
         prior_status = state["prior_index_status"]
-        if prior_status in ("DELETED", "TOMBSTONED"):
-            if out is not None:
-                out.write(
-                    f"restore_chunk_targets: skipping {row_id} (prior status was already {prior_status} in {store})\n"
-                )
-            continue
-
         targets.append(
             (
                 row_id,
@@ -394,7 +408,8 @@ def reactivate_chunks(
 
     Restores index_status to the prior status and, when the columns exist in that store,
     is_active and valid_to to the recorded prior values (NULL if prior value was NULL).
-    Commits per row.
+    In the vector store, also strips the cleanup tombstone marker from meta.
+    Commits per row, and upon success deletes the recorded chunk_state row.
 
     Args:
         source_session: Operational database session holding the backup and chunk state tables.
@@ -431,6 +446,9 @@ def reactivate_chunks(
         if has_valid_to:
             set_clauses.append("valid_to = :valid_to")
             params["valid_to"] = prior_valid_to
+        if store == "vector":
+            dialect_name = str(getattr(getattr(store_session.get_bind(), "dialect", None), "name", "postgresql"))
+            set_clauses.append(_vector_meta_remove_marker_sql(dialect_name))
 
         stmt = text(
             f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE source_table = :table AND source_row_id = :row_id"
@@ -440,6 +458,17 @@ def reactivate_chunks(
             store_session.commit()
             if res.rowcount and res.rowcount > 0:
                 count += 1
+                try:
+                    source_session.execute(
+                        delete(chunk_state_table).where(
+                            chunk_state_table.c.store == store,
+                            chunk_state_table.c.chunk_ref == source_row_id,
+                        )
+                    )
+                    source_session.commit()
+                except _STORE_ERRORS as err:
+                    source_session.rollback()
+                    out.write(f"Error removing chunk state for {source_row_id} in {store}: {err}\n")
             else:
                 out.write(f"reactivate_chunks: chunk {source_row_id} not found in {store} store\n")
         except _STORE_ERRORS as err:
@@ -792,7 +821,7 @@ def _backup_and_delete(
     processed_seasons: set[int],
     existing_ids: set[int],
     out: TextIO,
-) -> tuple[int, int, int, set[int]]:
+) -> tuple[int, int, int, set[int], str | None]:
     """Execute backup table creation, new row insertion, and true-match deletion.
 
     Args:
@@ -803,7 +832,7 @@ def _backup_and_delete(
         out: Output stream for logging progress.
 
     Returns:
-        Tuple of (backed_up_new, deleted, delete_skipped_mismatch, deleted_ids).
+        Tuple of (backed_up_new, deleted, delete_skipped_mismatch, deleted_ids, failed_step).
 
     """
     backup_metadata.create_all(source_session.connection(), checkfirst=True)
@@ -835,9 +864,14 @@ def _backup_and_delete(
             }
             for item in items_to_backup
         ]
-        source_session.execute(insert(backup_table), backup_dicts)
-        source_session.commit()
-        backed_up_new = len(items_to_backup)
+        try:
+            source_session.execute(insert(backup_table), backup_dicts)
+            source_session.commit()
+            backed_up_new = len(items_to_backup)
+        except _STORE_ERRORS as err:
+            source_session.rollback()
+            out.write(f"ERROR: backup step failed: {err}; no RAG chunks were changed; rerun to finish\n")
+            return 0, 0, 0, set(), "backup"
 
     target_ids = [item.id for item in target_items]
     live_rows = (
@@ -872,11 +906,16 @@ def _backup_and_delete(
     deleted = 0
     if true_match_ids:
         del_stmt = delete(PlayerMilestone).where(PlayerMilestone.id.in_(true_match_ids))
-        source_session.execute(del_stmt)
-        source_session.commit()
-        deleted = len(true_match_ids)
+        try:
+            source_session.execute(del_stmt)
+            source_session.commit()
+            deleted = len(true_match_ids)
+        except _STORE_ERRORS as err:
+            source_session.rollback()
+            out.write(f"ERROR: delete step failed: {err}; no RAG chunks were changed; rerun to finish\n")
+            return backed_up_new, 0, delete_skipped_mismatch, set(), "delete"
 
-    return backed_up_new, deleted, delete_skipped_mismatch, set(true_match_ids)
+    return backed_up_new, deleted, delete_skipped_mismatch, set(true_match_ids), None
 
 
 def _resolve_tombstone_keys(
@@ -1107,6 +1146,7 @@ def _build_vector_update_sql(
     *,
     has_is_active: bool,
     has_valid_to: bool,
+    dialect_name: str = "postgresql",
 ) -> str:
     """Build update SQL statement for vector tombstone."""
     set_clauses = ["index_status = 'DELETED'"]
@@ -1114,6 +1154,8 @@ def _build_vector_update_sql(
         set_clauses.append("is_active = false")
     if has_valid_to:
         set_clauses.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
+    if has_is_active or has_valid_to:
+        set_clauses.append(_vector_meta_set_marker_sql(dialect_name))
 
     where_clauses = ["source_table = :table", "source_row_id = :row_id"]
     if has_is_active:
@@ -1200,7 +1242,10 @@ def _tombstone_one_vector_key(
     if curr_status == "DELETED" and (not has_is_active or not is_active_true):
         return 0, 0, 1, 0, False
 
-    update_sql = _build_vector_update_sql(has_is_active=has_is_active, has_valid_to=has_valid_to)
+    dialect_name = str(getattr(getattr(session.get_bind(), "dialect", None), "name", "postgresql"))
+    update_sql = _build_vector_update_sql(
+        has_is_active=has_is_active, has_valid_to=has_valid_to, dialect_name=dialect_name
+    )
     params: dict[str, Any] = {"table": source_table, "row_id": source_row_id}
     if has_is_active:
         params["true_val"] = True
@@ -1628,11 +1673,14 @@ def _retire_legacy_vector_chunks(
     has_is_act = "is_active" in vcols
     has_val_to = "valid_to" in vcols
 
+    dialect_name = str(getattr(getattr(vector_session.get_bind(), "dialect", None), "name", "postgresql"))
     set_clauses = ["index_status = 'DELETED'"]
     if has_is_act:
         set_clauses.append("is_active = false")
     if has_val_to:
         set_clauses.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
+    if has_is_act or has_val_to:
+        set_clauses.append(_vector_meta_set_marker_sql(dialect_name))
     update_sql = text(f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE id = :id")
 
     legacy_vector_tombstoned = 0
@@ -2047,6 +2095,7 @@ def run_cleanup(
             deleted,
             delete_skipped_mismatch,
             deleted_live_ids,
+            failed_step,
         ) = _backup_and_delete(
             source_session,
             target_items,
@@ -2055,6 +2104,47 @@ def run_cleanup(
             out=out,
         )
         would_delete = deleted
+        if failed_step is not None:
+            mode_str = "apply"
+            summary_line = (
+                f"mode={mode_str} selected={len(target_items)} backed_up_new={backed_up_new} "
+                f"deleted={deleted} sparse_tombstoned=0 "
+                f"sparse_deactivated_only=0 "
+                f"sparse_already=0 sparse_missing=0 "
+                f"vector_tombstoned=0 "
+                f"vector_deactivated_only=0 "
+                f"vector_already=0 vector_missing=0 "
+                f"legacy_sparse_tombstoned=0 "
+                f"legacy_vector_tombstoned=0 "
+                f"legacy_vector_deactivated_only=0\n"
+            )
+            out.write(summary_line)
+            return CleanupReport(
+                mode=mode_str,
+                selected=len(target_items),
+                already_backed_up=already_backed_up,
+                would_back_up=would_back_up,
+                backed_up_new=backed_up_new,
+                would_delete=would_delete,
+                deleted=deleted,
+                sparse_active=0,
+                sparse_tombstoned=0,
+                sparse_already=0,
+                sparse_missing=0,
+                vector_active=0,
+                vector_tombstoned=0,
+                vector_already=0,
+                vector_missing=0,
+                vector_skipped=vector_session is None,
+                status_code=1,
+                error_message=f"{failed_step} step failed",
+                sparse_deactivated_only=0,
+                vector_deactivated_only=0,
+                delete_skipped_mismatch=delete_skipped_mismatch,
+                legacy_sparse_tombstoned=0,
+                legacy_vector_tombstoned=0,
+                legacy_vector_deactivated_only=0,
+            )
     else:
         backed_up_new = 0
         deleted = 0
