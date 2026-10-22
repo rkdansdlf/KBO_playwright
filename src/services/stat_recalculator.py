@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from src.models.game import GameBattingStat, GamePitchingStat
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 
@@ -25,13 +24,20 @@ class StatRecalculator:
         self.session = session
 
     def recalc_player_milestones(self, season: int = 2026) -> int:
-        """Recalculate remaining milestones for active players based on game stats.
+        """Normalise ``remaining_val`` and ``is_achieved`` from the stored ``current_val``/``target_val``.
+
+        ``current_val`` is a snapshot of a player's running total taken from the source, so it is never
+        re-derived here. The previous implementation added the sum of **all** ``game_*_stats`` rows to
+        ``current_val`` on every run. That is not idempotent and has no season filter, so each nightly run
+        inflated the totals (e.g. a 300-save target showing 35,417) and flagged most rows as achieved.
+
+        This method is idempotent: running it twice changes nothing the second time.
 
         Args:
             season: Target season.
 
         Returns:
-            Number of milestones updated.
+            Number of milestone rows whose derived fields changed.
 
         """
         stmt = select(PlayerMilestone).where(PlayerMilestone.season == season)
@@ -39,39 +45,16 @@ class StatRecalculator:
         updated_count = 0
 
         for m in milestones:
-            if not m.player_id:
-                continue
-            added = self._milestone_progress(m.milestone_category, m.player_id)
-            if added > 0:
-                new_val = m.current_val + added
-                m.current_val = new_val
-                m.remaining_val = max(0, m.target_val - new_val)
-                # NOTE: DDL stores is_achieved as integer; coerce the bool.
-                m.is_achieved = int(m.remaining_val == 0)
+            remaining = max(0, m.target_val - m.current_val)
+            # NOTE: DDL stores is_achieved as integer; compare and assign integers, not bools.
+            achieved = int(m.current_val >= m.target_val)
+            if m.remaining_val != remaining or int(m.is_achieved) != achieved:
+                m.remaining_val = remaining
+                m.is_achieved = achieved
                 updated_count += 1
 
-        logger.info("Recalculated %d player milestones for season %d.", updated_count, season)
+        logger.info("Normalised %d player milestones for season %d.", updated_count, season)
         return updated_count
-
-    def _milestone_progress(self, category: str, player_id: str) -> int:
-        """Sum game-level stats feeding a milestone category."""
-        if "안타" in category:
-            return self._sum_column(GameBattingStat, "hits", player_id)
-        if "홈런" in category:
-            return self._sum_column(GameBattingStat, "home_runs", player_id)
-        if "탈삼진" in category:
-            return self._sum_column(GamePitchingStat, "strikeouts", player_id)
-        if "세이브" in category:
-            return self._sum_column(GamePitchingStat, "saves", player_id)
-        if "승" in category:
-            return self._sum_column(GamePitchingStat, "wins", player_id)
-        return 0
-
-    def _sum_column(self, model: object, column: str, player_id: str) -> int:
-        """Sum a nullable integer column over a player's game rows."""
-        stat_stmt = select(getattr(model, column)).where(model.player_id == player_id)
-        values = list(self.session.execute(stat_stmt).scalars().all())
-        return sum(v for v in values if v)
 
     def recalc_player_splits(self, season: int = 2026) -> int:
         """Recalculate situational splits stats for players.
