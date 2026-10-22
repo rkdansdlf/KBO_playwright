@@ -19,17 +19,25 @@ logger = logging.getLogger(__name__)
 class RecoveryManager:
     """RecoveryManager class."""
 
-    def __init__(self, checkpoint_path: str = "data/recovery/healer_checkpoint.json") -> None:
+    def __init__(
+        self,
+        checkpoint_path: str = "data/recovery/healer_checkpoint.json",
+        *,
+        read_only: bool = False,
+    ) -> None:
         """Initialize a new instance.
 
         Args:
             checkpoint_path: Checkpoint file path.
-            checkpoint_path: Checkpoint file path.
+            read_only: Load the checkpoint but never write or delete it; state
+                changes stay in memory (used by ``--dry-run``).
 
         """
         self.path = Path(checkpoint_path)
+        self.read_only = read_only
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not read_only:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.state: dict[str, Any] = {
             "run_id": None,
             "total_count": 0,
@@ -221,7 +229,9 @@ class RecoveryManager:
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
-        """Save save."""
+        """Write the checkpoint to disk (no-op for a read-only manager)."""
+        if self.read_only:
+            return
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
@@ -346,8 +356,11 @@ class RecoveryManager:
         return cast("list[str]", self.state.get("pending", []))
 
     def clear(self) -> None:
-        """Clear clear."""
-        if self.path.exists():
+        """Reset the checkpoint; a read-only manager only resets it in memory."""
+        if self.read_only:
+            if self.path.exists():
+                logger.info("[DRY-RUN] Would delete checkpoint %s", self.path)
+        elif self.path.exists():
             self.path.unlink()
         self.state = {
             "run_id": None,

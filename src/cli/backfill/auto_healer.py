@@ -597,7 +597,9 @@ async def run_healer_async(
     """
     logger.info("\n🩺 Running KBO Pipeline Auto-Healer...")
 
-    recovery_mgr = RecoveryManager()
+    # A dry run reads the checkpoint but never writes or deletes it: pending
+    # targets, retries, pruning and --reset are all computed in memory only.
+    recovery_mgr = RecoveryManager(read_only=dry_run)
     if reset_checkpoint:
         recovery_mgr.clear()
 
@@ -996,6 +998,10 @@ def run_healer(argv: Sequence[str] | None = None) -> int:
         )
 
     kwargs: dict[str, Any] = {"dry_run": args.dry_run, "reset_checkpoint": args.reset}
+    if args.game_id and not args.pa_formula:
+        logger.warning(
+            "⚠️  --game-id is ignored without --pa-formula or --pbp; running the automatic healer instead.",
+        )
     if args.pa_formula and args.game_id:
         kwargs["target_game_ids"] = args.game_id
     res = asyncio.run(run_healer_async(**kwargs))

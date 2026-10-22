@@ -226,3 +226,22 @@ class TestMarkCompletedClearsFailure:
         assert reloaded.state["completed"] == ["g1"]
         assert reloaded.state["failed"] == {}
         assert reloaded.get_pending_targets() == []
+
+
+class TestReadOnlyManager:
+    """PR #56 review 2/3: a read-only manager (dry run) never touches the file."""
+
+    def test_read_only_changes_stay_in_memory(self, tmp_path: Path):
+        path = tmp_path / "checkpoint.json"
+        writer = RecoveryManager(str(path))
+        writer.initialize_run("run1", ["g1"])
+        writer.mark_failed("g1", "fetch_404")
+        before = path.read_bytes()
+
+        reader = RecoveryManager(str(path), read_only=True)
+        reader.initialize_run("run1", ["g1", "g2"], retry_ids=["g1"], prune_missing=True)
+        reader.mark_completed("g1")
+        reader.clear()
+
+        assert reader.state["run_id"] is None
+        assert path.read_bytes() == before
