@@ -37,6 +37,7 @@ from src.scheduler.config import (
     _env_enabled,
     _env_float,
     _env_int,
+    milestone_crawl_enabled,
 )
 from src.scheduler.jobs.live import _previous_day_kst
 from src.scheduler.locks import (
@@ -1173,9 +1174,17 @@ def crawl_futures_schedule_job() -> None:
 def crawl_milestones_job() -> None:
     """Crawl KBO player milestone snapshots.
 
-    Runs daily at 06:40 KST, before recalc_milestones_and_rag (07:15 KST), because the crawler is now
-    the only writer of current_val.
+    Registered at 06:40 KST only when MILESTONE_CRAWL_ENABLED is truthy (default
+    off), before recalc_milestones_and_rag (07:15 KST). MilestoneCrawler reads
+    Record/History/Top/Hitter.aspx and Pitcher.aspx, which are KBO's all-time
+    top 10 single-season record pages (no playerId links), causing scheduled runs
+    to upsert junk rows that recalc_milestones_and_rag (07:15 KST) indexes into RAG.
+    Re-crawls keep an existing row's target_val.
     """
+    if not milestone_crawl_enabled():
+        logger.info("crawl_milestones_job disabled (MILESTONE_CRAWL_ENABLED is off); skipping")
+        return
+
     _register_job("crawl_milestones_job", dependencies=["crawl_daily_games"])
 
     can_run, reason = _can_run_job("crawl_milestones_job")

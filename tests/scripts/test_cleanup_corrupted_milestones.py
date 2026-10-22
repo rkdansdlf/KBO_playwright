@@ -8,13 +8,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import create_engine, func, inspect, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from scripts.maintenance.cleanup_corrupted_milestones import (
     BACKUP_TABLE_NAME,
+    REACTIVATE_CHUNKS_SQL,
+    REACTIVATE_VECTOR_CHUNKS_SQL,
+    RESTORE_ROWS_SQL,
     SELECTION_REASON,
     backup_table,
+    check_confirm_target,
     main,
+    restore_row_ids,
     run_cleanup,
 )
 from src.models.base import Base
@@ -29,7 +35,7 @@ if TYPE_CHECKING:
 class MilestoneTestHarness:
     """In-memory SQLite test harness with source, sparse, and vector stores."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, with_optional_vector_cols: bool = True) -> None:
         """Initialize in-memory databases and sessions."""
         self.source_engine: Engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(self.source_engine)
@@ -38,7 +44,17 @@ class MilestoneTestHarness:
 
         self.vector_engine: Engine = create_engine("sqlite:///:memory:")
         with self.vector_engine.begin() as conn:
-            conn.execute(text("CREATE TABLE rag_chunks (source_table TEXT, source_row_id TEXT, index_status TEXT)"))
+            if with_optional_vector_cols:
+                conn.execute(
+                    text(
+                        "CREATE TABLE rag_chunks ("
+                        "source_table TEXT, source_row_id TEXT, index_status TEXT, "
+                        "is_active INTEGER, valid_to TIMESTAMP"
+                        ")"
+                    )
+                )
+            else:
+                conn.execute(text("CREATE TABLE rag_chunks (source_table TEXT, source_row_id TEXT, index_status TEXT)"))
         self.vector_session: Session = Session(self.vector_engine)
 
     def close(self) -> None:
@@ -124,15 +140,26 @@ def _seed_corrupted(harness: MilestoneTestHarness) -> None:
 
     # Vector store chunks
     with harness.vector_engine.begin() as conn:
+        cols = {col["name"] for col in inspect(conn).get_columns("rag_chunks")}
+        has_is_active = "is_active" in cols
         for m in (m1, m2, m3):
             row_id = stable_milestone_source_row_id(m.season, m.player_id, m.milestone_category)
-            conn.execute(
-                text(
-                    "INSERT INTO rag_chunks (source_table, source_row_id, index_status) "
-                    "VALUES ('milestone', :r, 'ACTIVE')"
-                ),
-                {"r": row_id},
-            )
+            if has_is_active:
+                conn.execute(
+                    text(
+                        "INSERT INTO rag_chunks (source_table, source_row_id, index_status, is_active, valid_to) "
+                        "VALUES ('milestone', :r, 'ACTIVE', 1, NULL)"
+                    ),
+                    {"r": row_id},
+                )
+            else:
+                conn.execute(
+                    text(
+                        "INSERT INTO rag_chunks (source_table, source_row_id, index_status) "
+                        "VALUES ('milestone', :r, 'ACTIVE')"
+                    ),
+                    {"r": row_id},
+                )
 
 
 def test_dry_run_writes_nothing_reports_counts() -> None:
@@ -192,6 +219,7 @@ def test_apply_backs_up_deletes_and_tombstones() -> None:
         harness.index_session,
         harness.vector_session,
         apply=True,
+        expect_count=3,
         out=out,
     )
     assert report.status_code == 0
@@ -248,7 +276,13 @@ def test_second_apply_is_noop_with_zero_counts() -> None:
     _seed_corrupted(harness)
 
     # First run executes cleanup
-    run_cleanup(harness.source_session, harness.index_session, harness.vector_session, apply=True)
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
 
     # Second run
     out = io.StringIO()
@@ -270,7 +304,8 @@ def test_second_apply_is_noop_with_zero_counts() -> None:
     assert second_report.vector_already == 3
 
     output = out.getvalue()
-    assert "frozen backup set" in output
+    assert "season=2025 mode=frozen rows=1" in output
+    assert "season=2026 mode=frozen rows=2" in output
     assert "backed_up_new=0 deleted=0 sparse_tombstoned=0" in output
     assert "vector_tombstoned=0" in output
     harness.close()
@@ -282,7 +317,13 @@ def test_rerun_after_recrawl_preserves_new_row_and_chunk() -> None:
     _seed_corrupted(harness)
 
     # First run cleans up rows 1, 2, 3
-    run_cleanup(harness.source_session, harness.index_session, harness.vector_session, apply=True)
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
 
     # Re-crawl re-inserts a valid milestone with the same natural key as row 1 (2026, 101, 500홈런)
     new_milestone = PlayerMilestone(
@@ -386,6 +427,7 @@ def test_season_filter_limits_selection() -> None:
         harness.vector_session,
         apply=True,
         season=2026,
+        expect_count=2,
         out=out,
     )
     assert report.status_code == 0
@@ -419,6 +461,7 @@ def test_vector_session_none_prints_skip_completes_rest() -> None:
         harness.index_session,
         vector_session=None,
         apply=True,
+        expect_count=3,
         out=out,
     )
     assert report.status_code == 0
@@ -448,6 +491,7 @@ def test_production_guard_refuses_before_write(monkeypatch: pytest.MonkeyPatch) 
         harness.index_session,
         harness.vector_session,
         apply=True,
+        expect_count=3,
         out=out,
     )
     assert report.status_code == 3
@@ -468,6 +512,7 @@ def test_production_guard_refuses_before_write(monkeypatch: pytest.MonkeyPatch) 
         harness.index_session,
         harness.vector_session,
         apply=True,
+        expect_count=3,
         out=out2,
     )
     assert report2.status_code == 0
@@ -480,7 +525,6 @@ def test_main_cli_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     harness = MilestoneTestHarness()
     _seed_corrupted(harness)
 
-    # Mock DB session context managers
     from contextlib import contextmanager
 
     @contextmanager
@@ -505,21 +549,670 @@ def test_main_cli_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     harness.close()
 
 
-def test_any_earlier_apply_freezes_selection_for_every_season() -> None:
-    """After one --apply, no later run re-selects live rows, even for a season that was not cleaned."""
+def test_r1_per_season_frozen_sets() -> None:
+    """R1: apply --season 2026 (expect_count=2) then full run backs up only 2025 rows (expect_count=1)
+
+    and 2026 stays frozen; then --season 2025 frozen rerun is no-op; re-crawled 2026 row is untouched.
+    """
     harness = MilestoneTestHarness()
     _seed_corrupted(harness)
-    run_cleanup(harness.source_session, harness.index_session, harness.vector_session, apply=True, season=2026)
 
-    out = io.StringIO()
-    report = run_cleanup(
-        harness.source_session, harness.index_session, harness.vector_session, apply=True, season=2025, out=out
+    # Step 1: apply --season 2026 (expect_count=2)
+    out1 = io.StringIO()
+    rep1 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        season=2026,
+        expect_count=2,
+        out=out1,
+    )
+    assert rep1.status_code == 0
+    assert rep1.selected == 2
+    assert rep1.backed_up_new == 2
+    assert rep1.deleted == 2
+    assert "season=2026 mode=new rows=2" in out1.getvalue()
+
+    # Re-crawl inserts a new 2026 milestone
+    recrawled_2026 = PlayerMilestone(
+        id=999,
+        season=2026,
+        player_id="101",
+        player_name="최정",
+        team_code="SSG",
+        milestone_category="500홈런",
+        current_val=500,
+        target_val=500,
+        remaining_val=0,
+        is_achieved=1,
+        achieved_date=date(2026, 4, 15),
+        created_at=datetime(2026, 6, 1, 10, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 1, 10, 0, 0, tzinfo=UTC),
+    )
+    harness.source_session.add(recrawled_2026)
+    harness.source_session.commit()
+
+    # Step 2: full run without --season: backs up only 2025 rows (expect_count=1), leaves 2026 frozen
+    out2 = io.StringIO()
+    rep2 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=1,
+        out=out2,
+    )
+    assert rep2.status_code == 0
+    assert rep2.backed_up_new == 1
+    assert rep2.already_backed_up == 2
+    assert rep2.would_back_up == 1
+    out2_val = out2.getvalue()
+    assert "season=2025 mode=new rows=1" in out2_val
+    assert "season=2026 mode=frozen rows=2" in out2_val
+
+    # Re-crawled 2026 row is untouched
+    live_999 = harness.source_session.scalar(select(PlayerMilestone).where(PlayerMilestone.id == 999))
+    assert live_999 is not None
+
+    # Step 3: later --season 2025 run is frozen too and no-op
+    out3 = io.StringIO()
+    rep3 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        season=2025,
+        out=out3,
+    )
+    assert rep3.status_code == 0
+    assert rep3.backed_up_new == 0
+    assert rep3.already_backed_up == 1
+    assert "season=2025 mode=frozen rows=1" in out3.getvalue()
+    harness.close()
+
+
+def test_r2_expect_count_requirements() -> None:
+    """R2: first apply without expect_count -> 3 and nothing written; frozen rerun without expect_count ok; mismatch -> 3."""
+    harness = MilestoneTestHarness()
+    _seed_corrupted(harness)
+
+    # 1. First apply without expect_count -> 3, nothing written
+    out1 = io.StringIO()
+    rep1 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=None,
+        out=out1,
+    )
+    assert rep1.status_code == 3
+    assert "--apply with new rows to back up requires --expect-count 3" in out1.getvalue()
+    assert harness.source_session.scalar(select(func.count(PlayerMilestone.id))) == 3
+
+    # 2. Mismatch -> 3
+    out2 = io.StringIO()
+    rep2 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=999,
+        out=out2,
+    )
+    assert rep2.status_code == 3
+    assert "count mismatch: expected 999, found 3" in out2.getvalue()
+
+    # Apply with correct count succeeds
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
     )
 
-    assert report.status_code == 0
-    assert report.selected == 0
-    assert report.deleted == 0
-    assert "frozen backup set" in out.getvalue()
-    remaining = harness.source_session.scalars(select(PlayerMilestone)).all()
-    assert [m.season for m in remaining] == [2025]
+    # 3. Frozen rerun without expect_count ok; nonzero match ok; mismatch -> 3
+    out3 = io.StringIO()
+    rep3 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=None,
+        out=out3,
+    )
+    assert rep3.status_code == 0
+
+    # 0 is ok
+    rep3_zero = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=0,
+    )
+    assert rep3_zero.status_code == 0
+
+    # Nonzero mismatch -> 3
+    out4 = io.StringIO()
+    rep4 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=999,
+        out=out4,
+    )
+    assert rep4.status_code == 3
+    assert "count mismatch: expected 999, found 3" in out4.getvalue()
     harness.close()
+
+
+def test_r3_check_confirm_target_helper() -> None:
+    """R3: check_confirm_target unit tests (missing -> error, wrong host -> error, all hosts confirmed -> None, multiple distinct hosts)."""
+    urls_single = {"source": "postgresql://user:pass@db.prod.internal:5432/kbo"}
+
+    # Missing -> error
+    err_missing = check_confirm_target(urls_single, None)
+    assert err_missing is not None
+    assert "db.prod.internal" in err_missing
+
+    err_empty = check_confirm_target(urls_single, [])
+    assert err_empty is not None
+    assert "db.prod.internal" in err_empty
+
+    # Wrong host -> error
+    err_wrong = check_confirm_target(urls_single, ["other.host"])
+    assert err_wrong is not None
+    assert "db.prod.internal" in err_wrong
+
+    # All hosts confirmed -> None
+    assert check_confirm_target(urls_single, ["db.prod.internal"]) is None
+
+    # Multiple distinct hosts
+    urls_multi = {
+        "source": "postgresql://user:pass@host1.internal:5432/db",
+        "sparse": "postgresql://user:pass@host2.internal:5432/db",
+        "vector": "postgresql://user:pass@host3.internal:5432/vec",
+    }
+    # Partial confirmation -> error
+    err_partial = check_confirm_target(urls_multi, ["host1.internal", "host2.internal"])
+    assert err_partial is not None
+    assert "host3.internal" in err_partial
+
+    # All distinct hosts confirmed -> None
+    assert check_confirm_target(urls_multi, ["host1.internal", "host2.internal", "host3.internal"]) is None
+
+
+def test_r3_main_pgvector_test_url_mismatch_refuses_before_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R3: main() with PGVECTOR_TEST_URL differing on --apply -> 3 without opening sessions; redacted URL printed without password."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://app_user:secret_pw123@db.prod.internal:5432/bega_prod")
+    monkeypatch.setenv("PGVECTOR_URL", "postgresql://vec_user:vec_pw456@vec.prod.internal:5432/kbo_rag")
+    monkeypatch.setenv("PGVECTOR_TEST_URL", "postgresql://vec_user:vec_pw456@test.vec.internal:5432/kbo_rag")
+
+    def explode() -> None:
+        message = "Session factory should not have been called!"
+        raise AssertionError(message)
+
+    monkeypatch.setattr("src.db.engine.get_db_session", explode)
+    monkeypatch.setattr("src.db.engine.get_rag_index_session", explode)
+    monkeypatch.setattr("src.db.vector_engine.get_vector_session", explode)
+
+    out = io.StringIO()
+    exit_code = main(["--apply", "--expect-count", "353", "--confirm-target", "db.prod.internal"], out=out)
+    assert exit_code == 3
+    output = out.getvalue()
+    assert "PGVECTOR_TEST_URL is set and would override PGVECTOR_URL" in output
+    assert "secret_pw123" not in output
+    assert "vec_pw456" not in output
+    assert "***" in output
+
+
+def test_r4_vector_tombstone_honest_counting() -> None:
+    """R4: vector tombstone sets is_active=0 and valid_to non-null; already-DELETED-but-active rows get deactivated on rerun
+
+    and counted as deactivated_only; simulated failure on one key -> committed keys counted, failed key not counted, status 1,
+    and DB state matches counts.
+    """
+    harness = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness)
+
+    # First apply
+    rep1 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
+    assert rep1.status_code == 0
+    assert rep1.vector_tombstoned == 3
+
+    # Check that is_active=0 and valid_to is not null
+    with harness.vector_engine.begin() as conn:
+        rows = conn.execute(text("SELECT is_active, valid_to FROM rag_chunks")).fetchall()
+        for is_act, val_to in rows:
+            assert is_act == 0
+            assert val_to is not None
+
+        # Simulate an older script run that set DELETED but left is_active=1
+        conn.execute(
+            text("UPDATE rag_chunks SET is_active = 1, valid_to = NULL WHERE source_row_id = '2026_101_500홈런'")
+        )
+
+    # Rerun: already-DELETED-but-active row gets deactivated on rerun and counted as deactivated_only
+    rep2 = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+    )
+    assert rep2.status_code == 0
+    assert rep2.vector_tombstoned == 0
+    assert rep2.vector_deactivated_only == 1
+    assert rep2.vector_already == 2
+
+    # Simulated failure on one key: wrapper around vector_session.execute that raises on key 2026_102_2500안타
+    with harness.vector_engine.begin() as conn:
+        conn.execute(text("UPDATE rag_chunks SET index_status = 'ACTIVE', is_active = 1"))
+
+    orig_execute = harness.vector_session.execute
+
+    def flaky_execute(stmt: object, params: dict[str, object] | None = None, *args: object, **kwargs: object) -> object:
+        if params and params.get("row_id") == "2026_102_2500안타" and "UPDATE" in str(stmt):
+            message = "Simulated failure for 2026_102_2500안타"
+            raise OperationalError(message, params, Exception(message))
+        return orig_execute(stmt, params, *args, **kwargs)
+
+    harness.vector_session.execute = flaky_execute  # type: ignore[assignment]
+
+    out_fail = io.StringIO()
+    rep_fail = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        out=out_fail,
+    )
+    assert rep_fail.status_code == 1
+    assert rep_fail.vector_tombstoned == 2
+
+    # Restore execute and check DB state matches counts
+    harness.vector_session.execute = orig_execute
+    with harness.vector_engine.begin() as conn:
+        failed_row = conn.execute(
+            text("SELECT index_status, is_active FROM rag_chunks WHERE source_row_id = '2026_102_2500안타'")
+        ).first()
+        assert failed_row[0] == "ACTIVE"
+        assert failed_row[1] == 1
+
+        success_row = conn.execute(
+            text("SELECT index_status, is_active FROM rag_chunks WHERE source_row_id = '2026_101_500홈런'")
+        ).first()
+        assert success_row[0] == "DELETED"
+        assert success_row[1] == 0
+
+    harness.close()
+
+
+def test_r5_sparse_without_is_active_prints_line() -> None:
+    """R5: sparse without is_active columns prints the 'index_status only' line."""
+    harness = MilestoneTestHarness()
+    _seed_corrupted(harness)
+
+    out = io.StringIO()
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        vector_session=None,
+        apply=False,
+        out=out,
+    )
+    assert "sparse store has no is_active/valid_to columns: index_status only" in out.getvalue()
+    harness.close()
+
+
+def test_r6_delete_only_true_matches_skips_mismatch() -> None:
+    """R6: a live row reusing a backed-up id with a different natural key is not deleted (delete_skipped_mismatch=1)."""
+    harness = MilestoneTestHarness()
+    _seed_corrupted(harness)
+
+    # First apply to back up and delete
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
+
+    # Insert a new live row reusing id=1 but with a different milestone_category
+    mismatched = PlayerMilestone(
+        id=1,
+        season=2026,
+        player_id="101",
+        player_name="최정",
+        team_code="SSG",
+        milestone_category="4000루타",  # Different from backup "500홈런"
+        current_val=4005,
+        target_val=4000,
+        remaining_val=0,
+        is_achieved=1,
+        achieved_date=date(2026, 4, 15),
+        created_at=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 4, 15, 22, 0, 0, tzinfo=UTC),
+    )
+    harness.source_session.add(mismatched)
+    harness.source_session.commit()
+
+    # Rerun cleanup in frozen mode
+    out = io.StringIO()
+    rep = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        out=out,
+    )
+    assert rep.status_code == 0
+    assert rep.delete_skipped_mismatch == 1
+    assert rep.deleted == 0
+
+    # Ensure mismatched row was left alone
+    surviving = harness.source_session.get(PlayerMilestone, 1)
+    assert surviving is not None
+    assert surviving.milestone_category == "4000루타"
+    harness.close()
+
+
+def test_r7_incompatible_backup_schema_refuses_status_3() -> None:
+    """R7: pre-existing incompatible backup table -> 3 with clear message, no traceback, nothing written."""
+    harness = MilestoneTestHarness()
+    _seed_corrupted(harness)
+
+    # Pre-create incompatible backup table (missing several required columns)
+    with harness.source_engine.begin() as conn:
+        conn.execute(text(f"CREATE TABLE {BACKUP_TABLE_NAME} (id INTEGER PRIMARY KEY, season INTEGER)"))
+
+    out = io.StringIO()
+    rep = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=False,
+        out=out,
+    )
+    assert rep.status_code == 3
+    output = out.getvalue()
+    assert f"existing {BACKUP_TABLE_NAME} has an incompatible schema; missing columns:" in output
+    assert "player_id" in output
+    assert "rag_source_key" in output
+
+    # In apply mode also refuses
+    rep_apply = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+        out=io.StringIO(),
+    )
+    assert rep_apply.status_code == 3
+    # Nothing was deleted from live
+    assert harness.source_session.scalar(select(func.count(PlayerMilestone.id))) == 3
+    harness.close()
+
+
+def test_r8_legacy_empty_key_chunks() -> None:
+    """R8: matched legacy chunk reported in dry-run, retired in both stores on apply, second apply 0; unmatched legacy chunk stays ACTIVE."""
+    # --- Case 1: Matched legacy chunk ---
+    harness1 = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness1)
+
+    legacy_matched = RagChunk(
+        source_table="milestone",
+        source_row_id="",
+        content="최정 레거시 청크",
+        index_status="ACTIVE",
+        meta={"player_name": "최정", "milestone_category": "500홈런"},
+    )
+    harness1.index_session.add(legacy_matched)
+    harness1.index_session.commit()
+
+    with harness1.vector_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO rag_chunks (source_table, source_row_id, index_status, is_active, valid_to) "
+                "VALUES ('milestone', '', 'ACTIVE', 1, NULL)"
+            )
+        )
+
+    # Dry-run
+    out_dry = io.StringIO()
+    rep_dry = run_cleanup(
+        harness1.source_session,
+        harness1.index_session,
+        harness1.vector_session,
+        apply=False,
+        out=out_dry,
+    )
+    assert rep_dry.status_code == 0
+    dry_val = out_dry.getvalue()
+    assert "legacy_empty_key_chunks: sparse_found=1 matched=1 active=1 vector_found=1" in dry_val
+
+    # Apply 1: retires matched legacy chunk in both stores
+    rep_app1 = run_cleanup(
+        harness1.source_session,
+        harness1.index_session,
+        harness1.vector_session,
+        apply=True,
+        expect_count=3,
+    )
+    assert rep_app1.status_code == 0
+    assert rep_app1.legacy_sparse_tombstoned == 1
+    assert rep_app1.legacy_vector_tombstoned == 1
+
+    # Matched legacy sparse chunk is DELETED
+    assert legacy_matched.index_status == "DELETED"
+
+    # Vector store legacy row is DELETED
+    with harness1.vector_engine.begin() as conn:
+        vec_legacy = conn.execute(
+            text(
+                "SELECT index_status, is_active FROM rag_chunks WHERE source_table = 'milestone' AND source_row_id = ''"
+            )
+        ).first()
+        assert vec_legacy[0] == "DELETED"
+        assert vec_legacy[1] == 0
+
+    # Apply 2: second apply gives 0 retired legacy chunks
+    rep_app2 = run_cleanup(
+        harness1.source_session,
+        harness1.index_session,
+        harness1.vector_session,
+        apply=True,
+    )
+    assert rep_app2.status_code == 0
+    assert rep_app2.legacy_sparse_tombstoned == 0
+    assert rep_app2.legacy_vector_tombstoned == 0
+    harness1.close()
+
+    # --- Case 2: Unmatched legacy chunk stays ACTIVE ---
+    harness2 = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness2)
+
+    legacy_unmatched = RagChunk(
+        source_table="milestone",
+        source_row_id="",
+        content="이정후 레거시 청크",
+        index_status="ACTIVE",
+        meta={"player_name": "이정후", "milestone_category": "1000안타"},
+    )
+    harness2.index_session.add(legacy_unmatched)
+    harness2.index_session.commit()
+
+    out_unmatched = io.StringIO()
+    rep_unmatched = run_cleanup(
+        harness2.source_session,
+        harness2.index_session,
+        harness2.vector_session,
+        apply=True,
+        expect_count=3,
+        out=out_unmatched,
+    )
+    assert rep_unmatched.status_code == 0
+    assert rep_unmatched.legacy_sparse_tombstoned == 0
+    assert "legacy empty-key chunk unmatched" in out_unmatched.getvalue()
+    assert legacy_unmatched.index_status == "ACTIVE"
+    harness2.close()
+
+
+def test_r9_restore_and_reactivate_chunks() -> None:
+    """R9: after cleanup + re-crawl that re-creates one natural key, executing RESTORE_ROWS_SQL for the season
+
+    does not raise and restores only non-conflicting rows; REACTIVATE_CHUNKS_SQL with restore_row_ids reactivates exactly those chunks.
+    """
+    harness = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness)
+
+    # 1. Cleanup runs (backs up and deletes 3 rows)
+    run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
+    assert harness.source_session.scalar(select(func.count(PlayerMilestone.id))) == 0
+
+    # 2. Re-crawl re-creates one natural key for 2026 (최정 500홈런) with a new ID
+    recrawled = PlayerMilestone(
+        id=999,
+        season=2026,
+        player_id="101",
+        player_name="최정",
+        team_code="SSG",
+        milestone_category="500홈런",
+        current_val=500,
+        target_val=500,
+        remaining_val=0,
+        is_achieved=1,
+        achieved_date=date(2026, 4, 15),
+        created_at=datetime(2026, 6, 1, 10, 0, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 1, 10, 0, 0, tzinfo=UTC),
+    )
+    harness.source_session.add(recrawled)
+    harness.source_session.commit()
+
+    # 3. Execute RESTORE_ROWS_SQL for 2026 on SQLite
+    harness.source_session.execute(RESTORE_ROWS_SQL, {"season": 2026})
+    harness.source_session.commit()
+
+    # Verify only non-conflicting row (id=2, 손아섭 2500안타) was restored; 최정 was not restored with id=1
+    live_rows = list(harness.source_session.scalars(select(PlayerMilestone).order_by(PlayerMilestone.id)).all())
+    assert len(live_rows) == 2
+    assert live_rows[0].id == 2
+    assert live_rows[0].player_name == "손아섭"
+    assert live_rows[1].id == 999
+    assert live_rows[1].player_name == "최정"
+
+    # 4. restore_row_ids returns only the restored row (id=2)
+    restored_ids = restore_row_ids(harness.source_session, 2026)
+    expected_row_id = stable_milestone_source_row_id(2026, "102", "2500안타")
+    assert restored_ids == [expected_row_id]
+
+    # 5. Execute REACTIVATE_CHUNKS_SQL and REACTIVATE_VECTOR_CHUNKS_SQL
+    harness.index_session.execute(REACTIVATE_CHUNKS_SQL, {"row_ids": restored_ids})
+    harness.index_session.commit()
+
+    harness.vector_session.execute(REACTIVATE_VECTOR_CHUNKS_SQL, {"row_ids": restored_ids})
+    harness.vector_session.commit()
+
+    # Verify 손아섭 chunk is ACTIVE, 최정 chunk is still DELETED
+    sparse_son = harness.index_session.scalar(
+        select(RagChunk.index_status).where(RagChunk.source_row_id == expected_row_id)
+    )
+    assert sparse_son == "ACTIVE"
+
+    choi_row_id = stable_milestone_source_row_id(2026, "101", "500홈런")
+    sparse_choi = harness.index_session.scalar(
+        select(RagChunk.index_status).where(RagChunk.source_row_id == choi_row_id)
+    )
+    assert sparse_choi == "DELETED"
+
+    # In vector store:
+    with harness.vector_engine.begin() as conn:
+        vec_son = conn.execute(
+            text("SELECT index_status, is_active, valid_to FROM rag_chunks WHERE source_row_id = :r"),
+            {"r": expected_row_id},
+        ).first()
+        assert vec_son[0] == "ACTIVE"
+        assert vec_son[1] == 1
+        assert vec_son[2] is None
+
+        vec_choi = conn.execute(
+            text("SELECT index_status, is_active FROM rag_chunks WHERE source_row_id = :r"),
+            {"r": choi_row_id},
+        ).first()
+        assert vec_choi[0] == "DELETED"
+        assert vec_choi[1] == 0
+
+    harness.close()
+
+
+def test_minimal_3_column_vector_table() -> None:
+    """Verify vector tombstone operates correctly when rag_chunks has only 3 columns (no is_active/valid_to)."""
+    harness = MilestoneTestHarness(with_optional_vector_cols=False)
+    _seed_corrupted(harness)
+
+    rep = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+    )
+    assert rep.status_code == 0
+    assert rep.vector_tombstoned == 3
+
+    statuses = harness.vector_session.scalars(text("SELECT index_status FROM rag_chunks")).all()
+    assert all(s == "DELETED" for s in statuses)
+    harness.close()
+
+
+def test_production_guard_does_not_block_when_target_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Documented behaviour: without RAG_TARGET_ENV the guard defaults to "local" and does not block.
+
+    That is why --confirm-target and --expect-count are required on every --apply instead.
+    """
+    from scripts.maintenance.cleanup_corrupted_milestones import check_production_guard
+
+    monkeypatch.delenv("RAG_TARGET_ENV", raising=False)
+    monkeypatch.delenv("RAG_INDEX_ALLOW_PRODUCTION_WRITE", raising=False)
+    assert check_production_guard(apply=True) is None
+    monkeypatch.setenv("RAG_TARGET_ENV", "staging")
+    assert check_production_guard(apply=True) is None
+    monkeypatch.setenv("RAG_TARGET_ENV", "production")
+    assert check_production_guard(apply=True) is not None
+
+
+def test_apply_without_confirm_target_refuses_before_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--apply without --confirm-target refuses (3) before any session is opened."""
+    monkeypatch.delenv("PGVECTOR_TEST_URL", raising=False)
+    monkeypatch.setenv("PGVECTOR_URL", "postgresql://vec_user:vec_pw@vec.example.internal:5432/kbo_rag")
+
+    def explode() -> None:
+        message = "Session factory should not have been called!"
+        raise AssertionError(message)
+
+    monkeypatch.setattr("src.db.engine.get_db_session", explode)
+    monkeypatch.setattr("src.db.engine.get_rag_index_session", explode)
+    monkeypatch.setattr("src.db.vector_engine.get_vector_session", explode)
+
+    out = io.StringIO()
+    assert main(["--apply", "--expect-count", "3"], out=out) == 3
+    assert "unconfirmed host(s)" in out.getvalue()
+    assert "vec.example.internal" in out.getvalue()
+    assert "vec_pw" not in out.getvalue()

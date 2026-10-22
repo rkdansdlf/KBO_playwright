@@ -5,14 +5,32 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from apscheduler.triggers.cron import CronTrigger
 
+from src.scheduler.config import MILESTONE_CRAWL_ENABLED_ENV
 from src.scheduler.jobs.daily import crawl_milestones_job
 from src.scheduler.registry import job_specs
 
 
-def test_crawl_milestones_job_registered_in_job_specs() -> None:
-    """crawl_milestones is registered with hour=6, minute=40 and runs before recalc_milestones_and_rag."""
+def test_crawl_milestones_absent_when_flag_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """crawl_milestones is absent from job_specs when the flag is unset."""
+    monkeypatch.delenv(MILESTONE_CRAWL_ENABLED_ENV, raising=False)
+    specs = {job_id: (fn, trigger, name, grace) for fn, trigger, job_id, name, grace in job_specs(CronTrigger)}
+    assert "crawl_milestones" not in specs
+
+
+@pytest.mark.parametrize("falsy_val", ["0", "false"])
+def test_crawl_milestones_absent_when_flag_falsy(monkeypatch: pytest.MonkeyPatch, falsy_val: str) -> None:
+    """crawl_milestones is absent from job_specs when MILESTONE_CRAWL_ENABLED is 0 or false."""
+    monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, falsy_val)
+    specs = {job_id: (fn, trigger, name, grace) for fn, trigger, job_id, name, grace in job_specs(CronTrigger)}
+    assert "crawl_milestones" not in specs
+
+
+def test_crawl_milestones_job_registered_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """crawl_milestones is present at 06:40 KST and fires before recalc when flag is 1."""
+    monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, "1")
     specs = {job_id: (fn, trigger, name, grace) for fn, trigger, job_id, name, grace in job_specs(CronTrigger)}
 
     assert "crawl_milestones" in specs
@@ -32,3 +50,28 @@ def test_crawl_milestones_job_registered_in_job_specs() -> None:
     assert crawl_fire_time is not None
     assert recalc_fire_time is not None
     assert crawl_fire_time < recalc_fire_time
+
+
+@pytest.mark.parametrize("falsy_val", [None, "0", "false"])
+def test_crawl_milestones_job_disabled_returns_early(
+    monkeypatch: pytest.MonkeyPatch,
+    falsy_val: str | None,
+) -> None:
+    """crawl_milestones_job returns early when disabled without importing or calling main."""
+    if falsy_val is None:
+        monkeypatch.delenv(MILESTONE_CRAWL_ENABLED_ENV, raising=False)
+    else:
+        monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, falsy_val)
+
+    # Patch DB gate to be hermetic without touching database
+    monkeypatch.setattr("src.scheduler.locks._db_gate", lambda *args, **kwargs: True)
+
+    import src.cli.collection.crawl_milestones
+
+    def _exploding_main(*args: object, **kwargs: object) -> None:
+        raise AssertionError("src.cli.collection.crawl_milestones.main must not be called when disabled")
+
+    monkeypatch.setattr(src.cli.collection.crawl_milestones, "main", _exploding_main)
+
+    # Must return cleanly
+    crawl_milestones_job()

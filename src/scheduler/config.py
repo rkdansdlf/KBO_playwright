@@ -56,6 +56,8 @@ SQLITE_WRITE_LOCK_TIMEOUT_SECONDS = 60.0
 # Alert threshold: number of lock-skips per monitor interval that triggers a warning
 LOCK_SKIP_ALERT_THRESHOLD = float(os.getenv("LOCK_SKIP_ALERT_THRESHOLD", "5"))
 
+MILESTONE_CRAWL_ENABLED_ENV = "MILESTONE_CRAWL_ENABLED"
+
 
 def _scheduler_uses_sqlite_database() -> bool:
     database_url = os.getenv("DATABASE_URL", DATABASE_URL)
@@ -64,6 +66,23 @@ def _scheduler_uses_sqlite_database() -> bool:
 
 def _env_enabled(name: str, default: str = "1") -> bool:
     return os.getenv(name, default).strip().lower() not in FALSE_ENV_VALUES
+
+
+def milestone_crawl_enabled() -> bool:
+    """Return whether scheduled milestone crawling is enabled.
+
+    MilestoneCrawler reads Record/History/Top/Hitter.aspx and Pitcher.aspx, which
+    are KBO's 'all-time top 10' single-season record pages (no playerId links).
+    A scheduled run would upsert ~20 junk rows daily (e.g. player_id name_백인천 /
+    통산 안타 / 0->10) that recalc_milestones_and_rag (07:15 KST) then indexes into
+    RAG. Milestone crawling is therefore disabled by default until the crawler has
+    a real milestone source.
+
+    Returns:
+        True if MILESTONE_CRAWL_ENABLED is truthy, False otherwise (default: False).
+
+    """
+    return _env_enabled(MILESTONE_CRAWL_ENABLED_ENV, "0")
 
 
 def _env_int(name: str, default: int) -> int:
