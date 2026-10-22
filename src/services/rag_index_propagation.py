@@ -14,6 +14,10 @@ from src.models.rag_chunk_vector import RagChunkVector
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.rag_index_identity import chunk_content_hash, current_index_version
+from src.services.rag_vector_reactivation import (
+    find_deleted_vector_keys,
+    reactivate_vector_chunks_by_keys,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -201,7 +205,13 @@ def _bulk_upsert_sparse(session: Session, payloads: list[dict[str, Any]], index_
 
 def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_status: str) -> None:
     """Bulk upsert vector rows using PostgreSQL's conflict-aware insert."""
+    if not payloads:
+        return
+
     from sqlalchemy.dialects.postgresql import insert
+
+    keys = [(str(payload["source_table"]), str(payload["source_row_id"])) for payload in payloads]
+    deleted_keys = find_deleted_vector_keys(session, keys)
 
     statement = insert(RagChunkVector).values(_vector_rows(payloads, index_status))
     update_columns = {
@@ -234,6 +244,9 @@ def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_
             set_=update_columns,
         )
     )
+
+    if index_status == "ACTIVE" and deleted_keys:
+        reactivate_vector_chunks_by_keys(session, deleted_keys)
 
 
 def _reject_purged_batch(primary_session: Session, vector_session: Session, payloads: list[dict[str, Any]]) -> None:

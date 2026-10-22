@@ -31,6 +31,7 @@ from src.cli.pipelines.advanced_daily_steps import (
     crawl_baserunning_step,
     crawl_fielding_step,
 )
+from src.config.milestone_flags import milestone_crawl_enabled
 from src.constants import DATE_STR_LEN
 from src.crawlers.daily_roster_crawler import DailyRosterCrawler
 from src.crawlers.game_detail_crawler import GameDetailCrawler
@@ -1297,6 +1298,9 @@ async def _step_12_content_history(ctx: _RunContext) -> None:
         ("player splits", "src.cli.crawl_player_splits"),
         ("draft history", "src.cli.crawl_player_drafts"),
     ):
+        if label == "milestones" and not milestone_crawl_enabled():
+            logger.info("   ⏭ milestones skipped (MILESTONE_CRAWL_ENABLED is off)")
+            continue
         try:
             ctx.runner(["-m", module, "--season", str(ctx.year), "--save"])
         except RUNNER_EXCEPTIONS:

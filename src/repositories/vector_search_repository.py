@@ -16,10 +16,12 @@ from src.db.vector_engine import get_vector_session, is_pgvector_available
 from src.models.rag_chunk_vector import RagChunkVector
 from src.services.rag_index_identity import (
     ACTIVE_INDEX_STATUS,
+    DELETED_INDEX_STATUS,
     RETRIEVABLE_INDEX_STATUSES,
     chunk_content_hash,
     current_index_version,
 )
+from src.services.rag_vector_reactivation import reactivate_vector_chunk_by_id
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -214,6 +216,7 @@ class VectorSearchRepository:
                 RagChunkVector.source_row_id == source_row_id,
             )
         )
+        prev_status = existing.index_status if existing else None
 
         if existing:
             existing.title = title
@@ -257,6 +260,11 @@ class VectorSearchRepository:
                     indexed_at=indexed_at,
                 )
             )
+
+        if prev_status == DELETED_INDEX_STATUS and index_status == ACTIVE_INDEX_STATUS:
+            session.flush()
+            if existing and existing.id:
+                reactivate_vector_chunk_by_id(session, existing.id)
 
     def count_chunks(self, source_table: str | None = None) -> int:
         """저장된 청크 수를 반환합니다.

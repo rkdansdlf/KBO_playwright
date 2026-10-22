@@ -7,6 +7,7 @@ from typing import Any
 
 from playwright.async_api import Error as PlaywrightError
 
+from src.services.milestone_targets import initial_milestone_target
 from src.utils.compliance import compliance, log_source_limited
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.request_policy import RequestPolicy
@@ -93,8 +94,8 @@ class MilestoneCrawler:
                                     player_id = href.split("playerId=")[-1].split("&")[0]
 
                             current_val = int(current_str) if current_str.isdigit() else 0
-                            target_val = current_val + 10
-                            remaining_val = 10
+                            target_val = initial_milestone_target(category_label, current_val)
+                            remaining_val = max(0, target_val - current_val)
 
                             results.append(
                                 {
