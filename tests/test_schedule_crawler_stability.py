@@ -37,6 +37,7 @@ class _FakeSchedulePage:
         self.selector_calls = []
         self.selected = {"#ddlYear": "2025", "#ddlMonth": "04", "#ddlSeries": "0"}
         self.select_calls = []
+        self.function_calls = []
 
     async def goto(self, url: str, **kwargs):
         self.url = url
@@ -44,6 +45,10 @@ class _FakeSchedulePage:
 
     async def wait_for_selector(self, selector: str, **kwargs):
         self.selector_calls.append((selector, kwargs))
+
+    async def wait_for_function(self, script: str, arg=None, **kwargs):
+        # The crawler waits until the table shows the requested month; the fake records the call.
+        self.function_calls.append((script, arg, kwargs))
 
     async def eval_on_selector_all(self, selector: str, _script: str):
         assert selector == "#ddlSeries option"
@@ -144,3 +149,6 @@ def test_crawl_month_records_schedule_empty_reason(monkeypatch):
 
     assert games == []
     assert crawler.get_last_failure_reason("2025-04:all") == "schedule_empty"
+    # Every month wait is made for the requested month (the crawler may wait more than once).
+    assert page.function_calls
+    assert {arg for _script, arg, _kwargs in page.function_calls} == {"04"}
