@@ -692,25 +692,32 @@ def _record_detail_result_status(ctx: _RunContext, game_id: str, item: GameColle
 
 
 def _send_detail_recovery_escalation_alert(ctx: _RunContext) -> None:
-    if not ctx.detail_retry_escalation_game_ids:
-        return
-    game_ids = sorted(set(ctx.detail_retry_escalation_game_ids))
-    apply_incidents(
-        [
-            AlertEvent(
-                source=AlertSource.RECOVERY,
-                component="detail_recovery",
-                severity=AlertSeverity.WARNING,
-                title="Detail recovery repeated failures",
-                message=(
-                    f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
-                    f"game_ids={','.join(game_ids)}"
+    incident_key = f"recovery:detail:{ctx.target_date}"
+    if ctx.detail_retry_escalation_game_ids:
+        game_ids = sorted(set(ctx.detail_retry_escalation_game_ids))
+        apply_incidents(
+            [
+                AlertEvent(
+                    source=AlertSource.RECOVERY,
+                    component="detail_recovery",
+                    severity=AlertSeverity.WARNING,
+                    title="Detail recovery repeated failures",
+                    message=(
+                        f"target_date={ctx.target_date} threshold={DETAIL_RECOVERY_RETRY_ALERT_THRESHOLD} "
+                        f"game_ids={','.join(game_ids)}"
+                    ),
+                    incident_key=incident_key,
+                    metadata={"target_date": ctx.target_date, "game_ids": game_ids},
                 ),
-                incident_key=f"recovery:detail:{ctx.target_date}",
-                metadata={"target_date": ctx.target_date, "game_ids": game_ids},
-            ),
-        ],
-    )
+            ],
+        )
+        return
+    # A date this run walked and left nothing missing has no detail gap left, so
+    # the incident this run would have raised is over. Only opening the key left
+    # three dates (20261014/17/18) OPEN long after their games were recovered --
+    # nothing ever handed the key back, and the incident outlived its cause.
+    if not ctx.detail_still_missing:
+        apply_incidents([], resolve_keys=[incident_key])
 
 
 def _finalize_detail_results(
