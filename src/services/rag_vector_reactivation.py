@@ -1,23 +1,39 @@
 """Vector store tombstone reactivation helpers for RAG chunk upserts.
 
 When maintenance or cleanup scripts mark corrupted or obsolete RAG entries as
-DELETED, external schemas (such as bega_AI) set tombstone markers:
+DELETED, the vector store (pgvector) sets tombstone markers:
     is_active = false
     valid_to = COALESCE(valid_to, now())
-Because KBO's RagChunkVector ORM model does not map is_active or valid_to,
-subsequent upserts that restore a chunk to ACTIVE only write index_status,
-leaving the tombstone flags untouched. Downstream consumers filtering on
-is_active and valid_to would therefore continue to treat the row as deleted.
+In addition, the cleanup script stamps a tombstone marker into the chunk's JSON
+metadata:
+    CLEANUP_TOMBSTONE_META_KEY = "kbo_cleanup_tombstoned" (meta[key] = true)
 
-The functions in this module ensure that legitimately re-indexed chunks
-(whose index_status was 'DELETED' immediately prior to the upsert and is now
-'ACTIVE') have their tombstone markers cleared:
-    is_active = true
-    valid_to = NULL
+Why the marker is needed:
+During normal publishing (both the bulk PostgreSQL path `_publish_bulk` and the
+normal ORM path `publish_index_batch`), RAG chunks transition through a
+`PENDING` state before reaching `ACTIVE`. Consequently, any inspection checking
+whether the "previous status was DELETED" immediately prior to the `ACTIVE`
+write fails to trigger: the row was already updated to `PENDING`. Without a
+persistent marker, cleaned up rows that are recrawled and published would remain
+stuck in `ACTIVE | is_active = false | valid_to set` (hidden from downstream
+retrievers such as bega_AI) forever.
 
-Crucially, this reactivation is ONLY performed when transitioning from
-'DELETED' to 'ACTIVE'. Rows that were already 'ACTIVE' with an intentional
-time-bound or curated valid_to / is_active flag are never touched.
+Design highlights:
+- Persistent marker in the vector DB: `meta["kbo_cleanup_tombstoned"] = True`
+  is set atomically during cleanup on affected vector rows.
+- Works without external schema changes (e.g. bega_AI #31), operating strictly
+  within existing physical columns (`meta`, `is_active`, `valid_to`).
+- Atomic preservation: In PostgreSQL bulk upserts (`_bulk_upsert_vector`), the
+  `ON CONFLICT` update preserves the marker atomically via a SQL `CASE`
+  expression on `rag_chunks.meta`, preventing race conditions without read-then-write.
+- Atomic reactivation: On the final `ACTIVE` upsert, a single conditional
+  `UPDATE` clears `is_active = true`, `valid_to = NULL`, and strips the marker
+  from `meta` in the same transaction before commit.
+- Curated & time-bounded rows preserved: Chunks never touched by the cleanup
+  script lack the marker, ensuring that intentionally deactivated or time-bounded
+  `is_active = false` rows are never reactivated.
+- Sparse index independence: Sparse KBO `rag_chunks` has no `is_active` or
+  `valid_to` columns, so only the vector store requires this tombstone lifecycle.
 """
 
 from __future__ import annotations
@@ -27,11 +43,8 @@ import logging
 import weakref
 from typing import TYPE_CHECKING, Any
 
-import sqlalchemy as sa
-from sqlalchemy import inspect, select, text, tuple_
+from sqlalchemy import bindparam, inspect, text
 from sqlalchemy.exc import NoInspectionAvailable, NoSuchTableError, SQLAlchemyError
-
-from src.models.rag_chunk_vector import RagChunkVector
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -39,6 +52,8 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+CLEANUP_TOMBSTONE_META_KEY: str = "kbo_cleanup_tombstoned"
 
 _COLUMNS_CACHE: weakref.WeakKeyDictionary[Any, set[str]] = weakref.WeakKeyDictionary()
 _TOMBSTONE_COLUMNS = frozenset({"is_active", "valid_to"})
@@ -83,89 +98,53 @@ def get_reactivation_columns(session: Session) -> set[str]:
     return reactivation_cols
 
 
-def reactivate_vector_chunk_by_id(session: Session, chunk_id: int) -> None:
-    """Clear tombstone markers for a reactivated vector chunk by its primary key ID.
+def reactivate_cleanup_tombstoned_keys(session: Session, keys: Sequence[tuple[str, str]]) -> int:
+    """Clear cleanup tombstone marker and restore activity for reactivated vector chunks.
 
-    If a row with index_status='DELETED' is being updated to 'ACTIVE', this clears
-    'is_active = true' and 'valid_to = NULL' for that row, provided those columns
-    exist in the underlying rag_chunks table.
-
-    Args:
-        session: Active database session.
-        chunk_id: Primary key id of the rag_chunks row.
-
-    """
-    target_cols = get_reactivation_columns(session)
-    if not target_cols:
-        return
-
-    if "is_active" in target_cols and "valid_to" in target_cols:
-        stmt = text("UPDATE rag_chunks SET is_active = true, valid_to = NULL WHERE id = :id")
-    elif "is_active" in target_cols:
-        stmt = text("UPDATE rag_chunks SET is_active = true WHERE id = :id")
-    else:
-        stmt = text("UPDATE rag_chunks SET valid_to = NULL WHERE id = :id")
-
-    session.execute(stmt, {"id": chunk_id})
-
-
-def find_deleted_vector_keys(session: Session, keys: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Find source keys among the provided keys currently marked as DELETED in rag_chunks.
-
-    Args:
-        session: Active database session.
-        keys: Sequence of (source_table, source_row_id) pairs to inspect.
-
-    Returns:
-        List of (source_table, source_row_id) tuples whose index_status is 'DELETED'.
-
-    """
-    if not keys:
-        return []
-
-    key_list = [(str(t), str(r)) for t, r in keys]
-    stmt = select(RagChunkVector.source_table, RagChunkVector.source_row_id).where(
-        RagChunkVector.index_status == "DELETED",
-        tuple_(RagChunkVector.source_table, RagChunkVector.source_row_id).in_(key_list),
-    )
-    # Errors propagate: swallowing them would leave a PostgreSQL transaction aborted
-    # and silently skip the tombstone reset for re-activated chunks.
-    rows = session.execute(stmt).fetchall()
-    return [(str(row[0]), str(row[1])) for row in rows]
-
-
-def reactivate_vector_chunks_by_keys(session: Session, keys: Sequence[tuple[str, str]]) -> None:
-    """Clear tombstone markers for reactivated vector chunks identified by source keys.
-
-    If rows with index_status='DELETED' are being updated to 'ACTIVE', this clears
-    'is_active = true' and 'valid_to = NULL' for those identities, provided those
-    columns exist in the underlying rag_chunks table.
+    Runs after the ACTIVE upsert and before commit to atomically re-activate rows
+    marked with the cleanup tombstone marker (CLEANUP_TOMBSTONE_META_KEY).
+    Only existing columns among is_active and valid_to are updated; the marker is
+    always stripped from the meta JSON.
 
     Args:
         session: Active database session.
         keys: Sequence of (source_table, source_row_id) pairs to reactivate.
 
+    Returns:
+        Number of rows reactivated.
+
     """
     if not keys:
-        return
+        return 0
 
     target_cols = get_reactivation_columns(session)
-    if not target_cols:
-        return
-
-    table = sa.table(
-        "rag_chunks",
-        sa.column("source_table", sa.Text),
-        sa.column("source_row_id", sa.Text),
-        sa.column("is_active", sa.Boolean),
-        sa.column("valid_to", sa.DateTime),
-    )
-    values: dict[str, Any] = {}
+    set_clauses: list[str] = []
     if "is_active" in target_cols:
-        values["is_active"] = True
+        set_clauses.append("is_active = true")
     if "valid_to" in target_cols:
-        values["valid_to"] = None
+        set_clauses.append("valid_to = NULL")
+
+    dialect_name = ""
+    try:
+        bind = session.get_bind()
+        dialect_name = str(getattr(getattr(bind, "dialect", None), "name", ""))
+    except TypeError, SQLAlchemyError:
+        dialect_name = ""
+
+    if dialect_name == "postgresql":
+        set_clauses.append(f"meta = meta - '{CLEANUP_TOMBSTONE_META_KEY}'")
+        where_cond = f"meta ? '{CLEANUP_TOMBSTONE_META_KEY}'"
+    else:
+        set_clauses.append(f"meta = json_remove(meta, '$.{CLEANUP_TOMBSTONE_META_KEY}')")
+        where_cond = f"json_extract(meta, '$.{CLEANUP_TOMBSTONE_META_KEY}') IS NOT NULL"
 
     key_list = [(str(t), str(r)) for t, r in keys]
-    stmt = sa.update(table).where(tuple_(table.c.source_table, table.c.source_row_id).in_(key_list)).values(**values)
-    session.execute(stmt)
+    stmt = text(
+        f"UPDATE rag_chunks SET {', '.join(set_clauses)} "  # noqa: S608
+        f"WHERE (source_table, source_row_id) IN :keys "
+        f"AND index_status = 'ACTIVE' "
+        f"AND {where_cond}"
+    ).bindparams(bindparam("keys", expanding=True))
+
+    res = session.execute(stmt, {"keys": key_list})
+    return int(res.rowcount or 0)
