@@ -1208,6 +1208,20 @@ class TestNaverRecordPath:
         assert payload["home_team_code"] == "HH"
         assert payload["teams"]["away"]["code"] == "KIA"
         assert payload["teams"]["away"]["score"] == 6
+
+    def test_a_scored_record_does_not_claim_the_game_is_running(self):
+        """A score cannot tell a live game from a finished one.
+
+        The record path used to write ``running`` whenever a score existed, and
+        one night of detail recrawls rewrote 87 completed games to an active
+        lifecycle (2026-10-21). The KS clincher ``20261020HTLG0`` is exactly that
+        shape -- final at 13:1 with a full scoreboard -- so a payload that cannot
+        tell the two apart must leave the stored lifecycle alone.
+        """
+        payload = self._payload()
+
+        assert payload["teams"]["away"]["score"] == 6
+        assert payload["lifecycle_state"] is None
         assert payload["teams"]["home"]["score"] == 3
 
     def test_teams_include_naver_inning_scores(self):

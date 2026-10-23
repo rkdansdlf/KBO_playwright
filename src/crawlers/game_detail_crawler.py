@@ -1007,9 +1007,13 @@ class GameDetailCrawler:
                 if entry.get("player_id") == starting_codes.get(side):
                     entry["is_starting"] = True
 
+        # A finished game and a live one have the same shape here: a score. The
+        # score is not evidence of which one this is, and writing ``running``
+        # from it rewrote 87 completed games to an active lifecycle in a single
+        # night (2026-10-21). The relay path owns this field and maps Naver's
+        # own ``RESULT``/``RUNNING`` through ``derive_lifecycle_from_naver_status``;
+        # a payload that cannot tell the two apart leaves the stored state alone.
         lifecycle_state = None
-        if away_score is not None or home_score is not None:
-            lifecycle_state = "running"
 
         return {
             "game_id": normalize_kbo_game_id(game_id),
