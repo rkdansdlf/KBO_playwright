@@ -66,6 +66,10 @@ _RAG_INCREMENTAL_WRITE_ENV = {
 #: Upper bound for the integrity recheck window. Each extra day re-runs the whole
 #: check suite, so an unbounded window would let one job monopolise the database.
 _INTEGRITY_RECHECK_LOOKBACK_MAX = 7
+#: Upper bound on stale integrity incidents re-validated in a single run. The
+#: list is sorted oldest-first, so a backlog drains across runs instead of
+#: turning one job tick into hundreds of date replays.
+_INTEGRITY_STALE_REVALIDATION_MAX = 200
 
 
 def _rag_vector_backend_configured() -> bool:
@@ -304,6 +308,91 @@ def _integrity_target_dates() -> list[str]:
     return [(newest - timedelta(days=offset)).strftime("%Y%m%d") for offset in range(lookback + 1)]
 
 
+def _integrity_stale_revalidation_limit() -> int:
+    """Return how many stale integrity incidents one run may re-validate."""
+    raw = os.getenv("INTEGRITY_STALE_REVALIDATION_LIMIT", "20").strip()
+    try:
+        return max(0, min(int(raw), _INTEGRITY_STALE_REVALIDATION_MAX))
+    except ValueError:
+        return 20
+
+
+def _stale_integrity_incident_dates(within: set[str], limit: int) -> list[tuple[str, str]]:
+    """Return date-scoped integrity incidents the recent window never reaches.
+
+    The job evaluates yesterday plus a bounded lookback, and incident keys are
+    date-scoped. An incident opened for an older date therefore had no later
+    chance to pass: once the window moved past it, the data could be repaired and
+    the incident would still read OPEN (``20261005``/``06``/``07``, ``20260930``
+    were all healthy rows still reported as failures).
+
+    Only ``integrity:`` keys whose trailing segment is a date are returned, so a
+    key this function cannot date is left alone rather than guessed at. Results
+    are oldest-first so the date that has waited longest is re-validated next.
+
+    Args:
+        within: Dates the recent window already evaluates; those are skipped.
+        limit: Maximum number of incidents to return.
+
+    Returns:
+        ``(incident_key, compact_date)`` pairs, oldest date first.
+
+    """
+    from src.constants import DATE_STR_LEN
+    from src.notifications.incident import IncidentManager
+
+    selected: list[tuple[str, str]] = []
+    try:
+        with SessionLocal() as session:
+            for incident in IncidentManager(session).active_incidents():
+                key = incident.incident_key
+                if not key.startswith("integrity:"):
+                    continue
+                target_date = key.rsplit(":", 1)[-1]
+                if len(target_date) != DATE_STR_LEN or not target_date.isdigit():
+                    continue
+                if target_date in within:
+                    continue
+                selected.append((key, target_date))
+    except SCHEDULER_JOB_EXCEPTIONS:
+        # Listing the backlog is an addition to the window check, not a
+        # replacement for it. A read that fails here -- an unmigrated ledger, a
+        # dropped connection -- must not cost the run its primary evaluation.
+        logger.exception("Could not list stale integrity incidents; skipping re-validation")
+        return []
+    selected.sort(key=lambda item: item[1])
+    return selected[:limit]
+
+
+def _revalidate_stale_integrity_incidents(evaluated_dates: set[str], resolve_keys: list[str]) -> None:
+    """Re-run the checks behind integrity incidents the recent window has passed.
+
+    A passing check hands its key back as resolved; a failing one is left exactly
+    as it is. Re-publishing a failure here would re-notify on a known backlog
+    without adding information -- the incident is already OPEN and its state is
+    unchanged.
+
+    Args:
+        evaluated_dates: Dates the recent window already covers.
+        resolve_keys: Accumulator the caller passes to ``apply_incidents``.
+
+    """
+    from src.cli.reports.data_integrity_checker import run_integrity_checks
+
+    stale = _stale_integrity_incident_dates(evaluated_dates, _integrity_stale_revalidation_limit())
+    if not stale:
+        return
+    logger.info("=== Re-validating %d stale integrity incident(s) ===", len(stale))
+    for target_date in sorted({date for _, date in stale}):
+        try:
+            report = run_integrity_checks(target_date)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            # The state is unknown rather than healthy, so its incidents stay put.
+            logger.exception("Stale integrity re-validation raised for %s; leaving its incidents", target_date)
+            continue
+        resolve_keys.extend(f"integrity:{result.name}:{target_date}" for result in report.results if result.passed)
+
+
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def data_integrity_check_job() -> None:
@@ -316,7 +405,9 @@ def data_integrity_check_job() -> None:
 
             events: list[AlertEvent] = []
             resolve_keys: list[str] = []
+            evaluated_dates: set[str] = set()
             for target_date in _integrity_target_dates():
+                evaluated_dates.add(target_date)
                 try:
                     report = run_integrity_checks(target_date)
                 except SCHEDULER_JOB_EXCEPTIONS:
@@ -345,6 +436,7 @@ def data_integrity_check_job() -> None:
                         report.total_checks,
                     )
 
+            _revalidate_stale_integrity_incidents(evaluated_dates, resolve_keys)
             apply_incidents(events, resolve_keys=resolve_keys)
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Data Integrity Check job failed")
