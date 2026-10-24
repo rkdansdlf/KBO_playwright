@@ -74,6 +74,33 @@ _COOLDOWN_ENV_VARS: dict[AlertSeverity, str] = {
     AlertSeverity.CRITICAL: "ALERT_COOLDOWN_CRITICAL_SECONDS",
 }
 
+#: How long an incident whose details have *not* changed waits before it is
+#: announced again.
+#:
+#: The cooldown answers "was this reported recently"; this answers "has anything
+#: moved since it was". They are different questions, and reading only the first
+#: one made a standing backlog indistinguishable from a developing one. A stuck
+#: DLQ row set was re-published every 30 minutes by the recovery sweep, and the
+#: ERROR cooldown (10 minutes) expired before each sweep, so 362 messages went
+#: out over three days for the same five rows. Nothing in them had changed.
+#:
+#: A detailed incident still reports on the first occurrence, immediately on a
+#: severity escalation, and again as soon as its details move. The interval only
+#: bounds how often an unchanged one repeats itself.
+DEFAULT_RENOTIFY_SECONDS: dict[AlertSeverity, int] = {
+    AlertSeverity.INFO: 24 * _HOUR,
+    AlertSeverity.WARNING: 12 * _HOUR,
+    AlertSeverity.ERROR: 6 * _HOUR,
+    AlertSeverity.CRITICAL: 1 * _HOUR,
+}
+
+_RENOTIFY_ENV_VARS: dict[AlertSeverity, str] = {
+    AlertSeverity.INFO: "ALERT_RENOTIFY_INFO_SECONDS",
+    AlertSeverity.WARNING: "ALERT_RENOTIFY_WARNING_SECONDS",
+    AlertSeverity.ERROR: "ALERT_RENOTIFY_ERROR_SECONDS",
+    AlertSeverity.CRITICAL: "ALERT_RENOTIFY_CRITICAL_SECONDS",
+}
+
 _SEVERITY_BY_NAME: dict[str, AlertSeverity] = {
     "info": AlertSeverity.INFO,
     "warning": AlertSeverity.WARNING,
@@ -105,6 +132,16 @@ def _env_int(name: str, default: int) -> int:
 def cooldown_seconds(severity: AlertSeverity) -> int:
     """Return the re-notification cooldown for a severity, honoring env overrides."""
     return _env_int(_COOLDOWN_ENV_VARS[severity], DEFAULT_COOLDOWN_SECONDS[severity])
+
+
+def renotify_seconds(severity: AlertSeverity) -> int:
+    """Return how long an unchanged incident waits before repeating itself.
+
+    Unlike ``cooldown_seconds`` this is measured from the last notification
+    regardless of what changed: it is the ceiling on repeating a finding whose
+    details are identical to the ones already sent.
+    """
+    return _env_int(_RENOTIFY_ENV_VARS[severity], DEFAULT_RENOTIFY_SECONDS[severity])
 
 
 def severity_to_priority(severity: AlertSeverity) -> NotificationPriority:

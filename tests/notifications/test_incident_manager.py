@@ -27,6 +27,7 @@ from src.notifications.alert_dto import (
     AlertStatus,
 )
 from src.notifications.incident import IncidentManager
+from src.notifications.policy import renotify_seconds
 
 BASE_TIME = datetime(2026, 9, 25, 4, 45, 0)
 
@@ -101,7 +102,14 @@ class TestIncidentLifecycle:
         assert transition.occurrence_count == 2
         assert transition.should_notify is False
 
-    def test_duplicate_after_cooldown_repeats(self, session: Session) -> None:
+    def test_an_unchanged_duplicate_waits_out_the_renotify_interval(self, session: Session) -> None:
+        """The cooldown alone no longer repeats a finding that has not moved.
+
+        While it did, a 30-minute sweep over a standing backlog sent 362 messages
+        for the same five DLQ rows: nothing in them changed, but the ERROR
+        cooldown (10 minutes) expired before every sweep. The sweep cycle and the
+        cooldown answering the same question is what produced the traffic.
+        """
         manager = IncidentManager(session)
         manager.process(_event(), now=BASE_TIME)
         manager.mark_notified("integrity:game_stats:20260925", now=BASE_TIME)
@@ -109,8 +117,34 @@ class TestIncidentLifecycle:
         later = BASE_TIME + timedelta(minutes=11)
         transition = manager.process(_event(occurred_at=later), now=later)
 
+        assert transition.decision == AlertDecision.SUPPRESSED
+        assert transition.should_notify is False
+        # The occurrence is still counted: suppression is about delivery, not about
+        # whether the failure kept happening.
+        assert transition.occurrence_count == 2
+
+    def test_a_changed_finding_after_cooldown_repeats(self, session: Session) -> None:
+        """A finding that moved is announced as soon as the cooldown allows."""
+        manager = IncidentManager(session)
+        manager.process(_event(), now=BASE_TIME)
+        manager.mark_notified("integrity:game_stats:20260925", now=BASE_TIME)
+
+        later = BASE_TIME + timedelta(minutes=11)
+        transition = manager.process(_event(message="6 integrity checks failed", occurred_at=later), now=later)
+
         assert transition.decision == AlertDecision.REPEAT
         assert transition.should_notify is True
+
+    def test_an_unchanged_incident_repeats_after_the_renotify_interval(self, session: Session) -> None:
+        """Silence is bounded: an incident nobody has heard about recently speaks again."""
+        manager = IncidentManager(session)
+        manager.process(_event(), now=BASE_TIME)
+        manager.mark_notified("integrity:game_stats:20260925", now=BASE_TIME)
+
+        later = BASE_TIME + timedelta(seconds=renotify_seconds(AlertSeverity.ERROR) + 1)
+        transition = manager.process(_event(occurred_at=later), now=later)
+
+        assert transition.decision == AlertDecision.REPEAT
 
     def test_severity_escalation_notifies_immediately(self, session: Session) -> None:
         manager = IncidentManager(session)

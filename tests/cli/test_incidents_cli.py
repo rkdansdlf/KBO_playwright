@@ -32,6 +32,7 @@ from src.notifications.incident import (
     SUPPRESSION_ACKNOWLEDGED,
     SUPPRESSION_COOLDOWN,
     SUPPRESSION_FLOOR,
+    SUPPRESSION_UNCHANGED,
 )
 from src.models.base import Base
 from src.models.notification_delivery import (
@@ -422,8 +423,12 @@ class TestSuppressionReason:
         session.commit()
 
         assert _suppression_reason(incident, NOW) == SUPPRESSION_COOLDOWN
-        # Well past the 600s ERROR window, the same row is free to notify.
-        assert _suppression_reason(incident, NOW + timedelta(hours=1)) is None
+        # Past the 600s ERROR window but inside the re-notification interval, an
+        # unchanged row is still held back -- the cooldown answers "was this said
+        # recently" and the interval answers "has anything moved since".
+        assert _suppression_reason(incident, NOW + timedelta(hours=1)) == SUPPRESSION_UNCHANGED
+        # Past both, the row is free to notify again.
+        assert _suppression_reason(incident, NOW + timedelta(hours=7)) is None
 
     def test_a_never_notified_incident_is_not_in_cooldown(self, session: Session) -> None:
         """``last_notified_at is None`` means the window never started.

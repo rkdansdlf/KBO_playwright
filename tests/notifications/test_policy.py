@@ -8,9 +8,11 @@ from src.notifications.alert_dto import AlertSeverity, AlertSource
 from src.notifications.dto import NotificationPriority
 from src.notifications.policy import (
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_RENOTIFY_SECONDS,
     DESTINATION_ENV_MAP,
     cooldown_seconds,
     min_notify_severity,
+    renotify_seconds,
     resolve_chat_id,
     severity_to_priority,
     should_notify_severity,
@@ -63,6 +65,37 @@ class TestCooldown:
     def test_invalid_env_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ALERT_COOLDOWN_WARNING_SECONDS", "not-a-number")
         assert cooldown_seconds(AlertSeverity.WARNING) == DEFAULT_COOLDOWN_SECONDS[AlertSeverity.WARNING]
+
+
+class TestRenotifyInterval:
+    """The interval bounds repeating an unchanged finding.
+
+    It is not a second cooldown. The cooldown says "this was reported recently";
+    the interval says "and nothing has moved since". The difference matters
+    because a sweep that re-publishes a standing backlog on a shorter cycle than
+    the cooldown produces one message per sweep forever -- 362 of them over three
+    days for five unchanged DLQ rows.
+    """
+
+    def test_an_unchanged_finding_is_held_longer_than_the_cooldown(self) -> None:
+        for severity in AlertSeverity:
+            assert DEFAULT_RENOTIFY_SECONDS[severity] > DEFAULT_COOLDOWN_SECONDS[severity]
+
+    def test_the_interval_shrinks_as_severity_rises(self) -> None:
+        intervals = [DEFAULT_RENOTIFY_SECONDS[s] for s in AlertSeverity]
+        assert intervals == sorted(intervals, reverse=True)
+
+    def test_defaults_returned_without_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ALERT_RENOTIFY_ERROR_SECONDS", raising=False)
+        assert renotify_seconds(AlertSeverity.ERROR) == DEFAULT_RENOTIFY_SECONDS[AlertSeverity.ERROR]
+
+    def test_env_override_applies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ALERT_RENOTIFY_CRITICAL_SECONDS", "42")
+        assert renotify_seconds(AlertSeverity.CRITICAL) == 42
+
+    def test_invalid_env_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ALERT_RENOTIFY_WARNING_SECONDS", "not-a-number")
+        assert renotify_seconds(AlertSeverity.WARNING) == DEFAULT_RENOTIFY_SECONDS[AlertSeverity.WARNING]
 
 
 class TestDestinationResolution:
