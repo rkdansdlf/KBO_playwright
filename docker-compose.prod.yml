@@ -31,8 +31,10 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        # 야간 동기화(05:00 KST)의 실패 원인이 다음 날 아침에도 남아 있어야 한다.
+        # 10m x 3 은 이틀 안에 회전해 10-22/10-23 부분 실패 원인이 유실됐다.
+        max-size: "50m"
+        max-file: "10"
     env_file:
       - .env
     environment:

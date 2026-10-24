@@ -196,3 +196,16 @@ def test_published_ports_are_never_bound_to_every_interface(compose_path: Path) 
     for service, spec in ports:
         assert spec.startswith("${KBO_BIND_ADDR:-127.0.0.1}:"), f"{service}: {spec} is not bound to KBO_BIND_ADDR"
         assert not spec.startswith("0.0.0.0"), f"{service}: {spec} binds every interface"
+
+
+@pytest.mark.parametrize("compose_path", [DEV_COMPOSE, PROD_COMPOSE], ids=["dev", "prod"])
+def test_scheduler_keeps_at_least_a_week_of_logs_room(compose_path: Path) -> None:
+    """The nightly sync reports failures only through the scheduler's stdout.
+
+    With ``10m x 3`` the json-file driver rotated them away within two days, so the
+    cause of a partial failure was gone by the time anyone looked. Retention must be
+    at least 200MB so a failure survives several nights.
+    """
+    options = _services(_load(compose_path))["scheduler"]["logging"]["options"]
+    size_mb = int(options["max-size"].rstrip("m"))
+    assert size_mb * int(options["max-file"]) >= 200
