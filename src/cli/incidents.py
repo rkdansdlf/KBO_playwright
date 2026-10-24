@@ -228,9 +228,10 @@ def _delivery_notice_state(incident: NotificationIncident) -> str:
     "Not announced" is deliberately not the same as "suppressed". A failed
     delivery also leaves ``notification_count`` unmoved, so a growing gap can
     mean a working cooldown policy, an ``ALERT_MIN_SEVERITY`` floor, an
-    acknowledged incident, or a transport that refused every send. Section 3.2 of
-    the runbook is what separates them; this column only says which incidents are
-    worth that look.
+    acknowledged incident, a re-notify interval holding back an unchanged
+    finding, or a transport that refused every send. Section 3.2 of the runbook
+    is what separates them; this column only says which incidents are worth that
+    look.
 
     Read as:
 

@@ -106,7 +106,7 @@ suppresses the recovery notice without skipping the state change.
   | Column | Question | Answer |
   | --- | --- | --- |
   | `NOTICE` | what already happened | `notified` (every occurrence announced), `partly`, `silent` |
-  | `SILENCED_BY` | what would silence the next one | `floor`, `acknowledged`, `cooldown`, or `-` |
+  | `SILENCED_BY` | what would silence the next one | `floor`, `acknowledged`, `cooldown`, `unchanged`, or `-` |
 
   `incidents list --notice silent` filters on the first. `NOTICE` summarises
   history and `SILENCED_BY` is forward-looking: an incident can read
@@ -229,10 +229,15 @@ Read it as follows:
 
 - `NOTICE = silent` means nothing was ever announced for that incident. Read
   `SILENCED_BY` next: it names the policy that would keep it quiet
-  (`floor`, `acknowledged`, `cooldown`) or `-` when nothing is blocking the next
-  occurrence.
+  (`floor`, `acknowledged`, `cooldown`, `unchanged`) or `-` when nothing is
+  blocking the next occurrence.
 - `NOTICE = partly` with `OCC` climbing and `NOTIF` flat is the common healthy
-  case — a cooldown or an `ALERT_MIN_SEVERITY` floor is doing its job.
+  case — a cooldown, a re-notify interval or an `ALERT_MIN_SEVERITY` floor is
+  doing its job.
+- `SILENCED_BY = unchanged` with a climbing `OCC` means the failure is still
+  happening and reporting nothing new. That is the intended state for a standing
+  backlog; check the incident is not *actually* frozen by reading its `message`
+  or `metadata` before assuming the detector works.
 - `NOTIF` flat where you expect it to move is **not** automatically suppression.
   `notification_count` only advances on a successful delivery, so a transport
   that refused every send looks identical from here. Step 3 tells them apart.
@@ -385,19 +390,31 @@ one action that erases real signal.
 
 ### 4.3 Too much noise
 
-Re-notification is throttled per severity, not per incident:
+Re-notification is throttled per severity, not per incident, and by **two**
+windows that answer different questions:
 
-| Severity | Default cooldown | Override |
-| --- | --- | --- |
-| `CRITICAL` | 5 min | `ALERT_COOLDOWN_CRITICAL_SECONDS` |
-| `ERROR` | 10 min | `ALERT_COOLDOWN_ERROR_SECONDS` |
-| `WARNING` | 30 min | `ALERT_COOLDOWN_WARNING_SECONDS` |
-| `INFO` | 6 h | `ALERT_COOLDOWN_INFO_SECONDS` |
+| Severity | Cooldown ("was this said recently?") | Re-notify ("has anything moved?") | Overrides |
+| --- | --- | --- | --- |
+| `CRITICAL` | 5 min | 1 h | `ALERT_COOLDOWN_CRITICAL_SECONDS` / `ALERT_RENOTIFY_CRITICAL_SECONDS` |
+| `ERROR` | 10 min | 6 h | `ALERT_COOLDOWN_ERROR_SECONDS` / `ALERT_RENOTIFY_ERROR_SECONDS` |
+| `WARNING` | 30 min | 12 h | `ALERT_COOLDOWN_WARNING_SECONDS` / `ALERT_RENOTIFY_WARNING_SECONDS` |
+| `INFO` | 6 h | 24 h | `ALERT_COOLDOWN_INFO_SECONDS` / `ALERT_RENOTIFY_INFO_SECONDS` |
+
+The cooldown alone is not enough, because a sweep that re-publishes a standing
+backlog can run on a shorter cycle than the cooldown. The DLQ recovery sweep runs
+every 30 minutes and the `ERROR` cooldown is 10 minutes, so every sweep got
+through: 362 messages over three days for the same five dead letters, none of
+which had changed. The re-notify interval is what bounds that.
+
+An occurrence is delivered when it is new, when the severity rises, when its
+details (`details_hash` over `message|alert_type|metadata`) differ from the last
+one sent, or when the re-notify interval has elapsed. `SILENCED_BY` shows
+`unchanged` while the last two conditions are what is holding a row back.
 
 `ALERT_MIN_SEVERITY` (default `WARNING`) drops everything below the floor to
 `SUPPRESSED`. Raising it is the blunt instrument; raising a specific cooldown is
-usually the right one. Both are read at call time, so a change takes effect on the
-next dispatch without a restart.
+usually the right one. All of these are read at call time, so a change takes
+effect on the next dispatch without a restart.
 
 ---
 
