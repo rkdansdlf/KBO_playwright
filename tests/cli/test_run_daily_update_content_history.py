@@ -28,9 +28,13 @@ def _context(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-def test_step_12_skips_milestones_when_flag_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When MILESTONE_CRAWL_ENABLED is off, milestones are skipped and splits/drafts run."""
-    monkeypatch.delenv("MILESTONE_CRAWL_ENABLED", raising=False)
+@pytest.mark.parametrize("flag_val", [None, "", "  "])
+def test_step_12_skips_milestones_when_flag_off(monkeypatch: pytest.MonkeyPatch, flag_val: str | None) -> None:
+    """When MILESTONE_CRAWL_ENABLED is off (unset or empty), milestones are skipped and splits/drafts run."""
+    if flag_val is None:
+        monkeypatch.delenv("MILESTONE_CRAWL_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("MILESTONE_CRAWL_ENABLED", flag_val)
     ctx = _context()
 
     asyncio.run(pipeline._step_12_content_history(ctx))

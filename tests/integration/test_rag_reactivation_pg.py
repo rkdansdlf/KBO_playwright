@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import io
 import os
 from collections.abc import Generator
+from datetime import UTC, date, datetime
 
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from src.models.base import Base
+from src.models.player_milestone import PlayerMilestone
 from src.models.rag_chunk import RagChunk
 from src.models.rag_chunk_vector import RagChunkVector
+from scripts.maintenance.cleanup_corrupted_milestones import run_cleanup
+from src.services.rag_index_identity import stable_milestone_source_row_id
 from src.services.rag_index_propagation import _can_bulk_publish, publish_index_batch
 from src.services.rag_vector_reactivation import (
     CLEANUP_TOMBSTONE_META_KEY,
@@ -157,3 +163,117 @@ def test_bulk_pg_publish_reactivation_lifecycle(pg_engines: tuple[sa.Engine, sa.
     assert m1_repeat[1] is True
     assert m1_repeat[2] is None
     assert CLEANUP_TOMBSTONE_META_KEY not in m1_repeat[3]
+
+
+def _milestone_source_session() -> Session:
+    """Return an in-memory operational DB with two corrupted 2026 milestone rows."""
+    engine = sa.create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    for mid, pid, name, cat in ((1, "101", "최정", "500홈런"), (2, "102", "손아섭", "2500안타")):
+        session.add(
+            PlayerMilestone(
+                id=mid,
+                season=2026,
+                player_id=pid,
+                player_name=name,
+                team_code="SSG",
+                milestone_category=cat,
+                current_val=505,
+                target_val=500,
+                remaining_val=0,
+                is_achieved=1,
+                achieved_date=date(2026, 4, 15),
+                created_at=datetime(2026, 3, 1, tzinfo=UTC),
+                updated_at=datetime(2026, 4, 15, tzinfo=UTC),
+            )
+        )
+    session.commit()
+    return session
+
+
+def test_cleanup_then_publish_keeps_curated_inactive_row_on_pg(pg_engines: tuple[sa.Engine, sa.Engine]) -> None:
+    """QA #60 item 2 on PostgreSQL: cleanup + publish keep ACTIVE|false|2099 rows inactive, reactivate the rest."""
+    engine_sparse, engine_vector = pg_engines
+    curated = stable_milestone_source_row_id(2026, "101", "500홈런")
+    normal = stable_milestone_source_row_id(2026, "102", "2500안타")
+    for engine in (engine_sparse, engine_vector):
+        with engine.connect() as conn:
+            extra_cols = ", is_active, valid_to" if engine is engine_vector else ""
+            conn.execute(
+                sa.text(
+                    f"INSERT INTO rag_chunks (source_table, source_row_id, title, content, index_status{extra_cols}) "
+                    "VALUES ('milestone', :c, 'T', 'C', 'ACTIVE'"
+                    + (", false, '2099-12-31 00:00:00+00'" if engine is engine_vector else "")
+                    + "), ('milestone', :n, 'T', 'C', 'ACTIVE'"
+                    + (", true, NULL" if engine is engine_vector else "")
+                    + ")"
+                ),
+                {"c": curated, "n": normal},
+            )
+            conn.commit()
+
+    source_session = _milestone_source_session()
+    with Session(engine_sparse) as s_sparse, Session(engine_vector) as s_vec:
+        report = run_cleanup(source_session, s_sparse, s_vec, apply=True, expect_count=2, out=io.StringIO())
+        assert report.status_code == 0
+        assert report.vector_tombstoned == 2
+
+    with engine_vector.connect() as conn:
+        rows = {
+            r[0]: r
+            for r in conn.execute(
+                sa.text("SELECT source_row_id, index_status, is_active, valid_to, meta FROM rag_chunks")
+            ).fetchall()
+        }
+    assert rows[curated][1:3] == ("DELETED", False)
+    assert rows[curated][3].year == 2099
+    assert CLEANUP_TOMBSTONE_META_KEY not in rows[curated][4]
+    assert rows[normal][1:3] == ("DELETED", False)
+    assert rows[normal][4].get(CLEANUP_TOMBSTONE_META_KEY) is True
+
+    payloads = [
+        {"source_table": "milestone", "source_row_id": curated, "title": "T", "content": "C2"},
+        {"source_table": "milestone", "source_row_id": normal, "title": "T", "content": "C2"},
+    ]
+    with Session(engine_sparse) as s_sparse, Session(engine_vector) as s_vec:
+        assert publish_index_batch(s_sparse, s_vec, payloads) == 2
+
+    with engine_vector.connect() as conn:
+        rows = {
+            r[0]: r
+            for r in conn.execute(
+                sa.text("SELECT source_row_id, index_status, is_active, valid_to, meta FROM rag_chunks")
+            ).fetchall()
+        }
+    assert rows[curated][1:3] == ("ACTIVE", False)
+    assert rows[curated][3].year == 2099
+    assert rows[normal][1:4] == ("ACTIVE", True, None)
+    assert CLEANUP_TOMBSTONE_META_KEY not in rows[normal][4]
+    source_session.close()
+
+
+def test_cleanup_refuses_while_publish_pending_on_pg(pg_engines: tuple[sa.Engine, sa.Engine]) -> None:
+    """QA #60 item 3 on PostgreSQL: a PENDING vector row (publish in flight) makes --apply refuse with no writes."""
+    engine_sparse, engine_vector = pg_engines
+    pending = stable_milestone_source_row_id(2026, "102", "2500안타")
+    with engine_vector.connect() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO rag_chunks (source_table, source_row_id, title, content, index_status, is_active) "
+                "VALUES ('milestone', :p, 'T', 'C', 'PENDING', true)"
+            ),
+            {"p": pending},
+        )
+        conn.commit()
+
+    source_session = _milestone_source_session()
+    with Session(engine_sparse) as s_sparse, Session(engine_vector) as s_vec:
+        report = run_cleanup(source_session, s_sparse, s_vec, apply=True, expect_count=2, out=io.StringIO())
+    assert report.status_code == 3
+    assert "vector_pending=1" in (report.error_message or "")
+    assert source_session.scalar(sa.select(sa.func.count(PlayerMilestone.id))) == 2
+    with engine_vector.connect() as conn:
+        row = conn.execute(sa.text("SELECT index_status, is_active FROM rag_chunks")).one()
+    assert tuple(row) == ("PENDING", True)
+    source_session.close()

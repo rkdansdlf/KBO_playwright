@@ -29,6 +29,20 @@ Vector and Sparse Deactivation:
     stay searchable. Therefore, already-DELETED rows from an earlier run must also get
     is_active=false on rerun.
 
+Cleanup Tombstone Marker (vector store):
+    A vector chunk gets the `kbo_cleanup_tombstoned` meta marker only when its recorded prior state
+    was active (prior is_active true or NULL). The publish path reactivates marker rows only, so a
+    curated chunk that was already inactive before cleanup (e.g. ACTIVE|is_active=false|valid_to=2099)
+    stays inactive with its valid_to preserved when the same key is re-published. Reruns reuse the
+    first recorded prior state from `player_milestones_cleanup_chunk_state`.
+
+In-flight Publish (PENDING) Guard:
+    The publish path writes index_status=PENDING, commits, then promotes to ACTIVE. Tombstoning a
+    PENDING chunk would be overwritten by that promotion, so --apply refuses (status 3, no writes)
+    when any target chunk in the sparse or vector store is PENDING, or when that check itself fails.
+    Dry-run only prints a WARNING. A vector chunk that turns PENDING during the run is skipped and
+    reported as a store error (exit 1). Stop the scheduler, let the publish finish, then rerun.
+
 New Seasons After Cleanup:
     Once ANY backup row exists, a season that is not in the backup table is NOT selected by default.
     Instead, it is reported as skipped (`mode=skipped-new-season`). Rows created after the cleanup
@@ -52,7 +66,9 @@ Rollback:
        `reactivate_chunks` restores each chunk to its exact recorded prior index_status, is_active,
        and valid_to state from `player_milestones_cleanup_chunk_state` (including chunks whose prior
        status was already DELETED/TOMBSTONED). In the vector store, it also strips the
-       `kbo_cleanup_tombstoned` marker from `meta`. Upon successful chunk restoration, its state record
+       `kbo_cleanup_tombstoned` marker from `meta`. Legacy empty-key chunks (ledger ref
+       `legacy:id=<id>`) are restored too when their meta (player_name, milestone_category) pair
+       belongs to a backup row that is live again in `player_milestones`. Upon successful chunk restoration, its state record
        is deleted from `player_milestones_cleanup_chunk_state` so subsequent cleanup/restore cycles record fresh state.
     3. Re-index knowledge per season:
        ```bash
@@ -130,7 +146,7 @@ from src.services.rag_vector_tombstone import split_source_key
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from sqlalchemy.engine import RowMapping
+    from sqlalchemy.engine import Row, RowMapping
     from sqlalchemy.orm import Session
 
 #: Per-key store failures that are reported and counted (exit 1) instead of aborting the run.
@@ -153,6 +169,11 @@ def _vector_meta_remove_marker_sql(dialect_name: str) -> str:
 
 BACKUP_TABLE_NAME = "player_milestones_cleanup_backup"
 CHUNK_STATE_TABLE_NAME = "player_milestones_cleanup_chunk_state"
+LEGACY_CHUNK_REF_PREFIX = "legacy:id="
+PENDING_INDEX_STATUS = "PENDING"
+_PENDING_SKIP_MESSAGE = (
+    "index_status is PENDING (in-flight publish); skipped. Stop the scheduler, let the publish finish, then rerun"
+)
 SELECTION_REASON = "corrupted_pre_deploy_batch"
 GUARD_ENV = "RAG_INDEX_ALLOW_PRODUCTION_WRITE"
 
@@ -283,13 +304,14 @@ class CleanupReport:
         return self.selected
 
 
-def _find_restored_row_ids(source_session: Session, season: int) -> list[str]:
-    """Identify restored milestone row IDs for a given season."""
+def _find_restored_backup_rows(source_session: Session, season: int) -> list[Row[Any]]:
+    """Return backup rows of a season that are live again with their original id."""
     backup_rows = source_session.execute(
         select(
             backup_table.c.id,
             backup_table.c.season,
             backup_table.c.player_id,
+            backup_table.c.player_name,
             backup_table.c.milestone_category,
             backup_table.c.rag_source_key,
         ).where(backup_table.c.season == season)
@@ -310,18 +332,141 @@ def _find_restored_row_ids(source_session: Session, season: int) -> list[str]:
         k = (r.season, pid, r.milestone_category.strip())
         live_by_key.setdefault(k, []).append(r.id)
 
-    restored_row_ids: list[str] = []
+    restored: list[Row[Any]] = []
     for b in backup_rows:
         pid = str(b.player_id).strip() if b.player_id is not None else "UNKNOWN"
         k = (b.season, pid, b.milestone_category.strip())
         live_ids = live_by_key.get(k, [])
         if len(live_ids) == 1 and live_ids[0] == b.id:
-            key_part = b.rag_source_key.partition(":")[2]
-            if not key_part:
-                key_part = stable_milestone_source_row_id(b.season, b.player_id, b.milestone_category)
-            restored_row_ids.append(key_part)
+            restored.append(b)
+    return restored
 
+
+def _find_restored_row_ids(source_session: Session, season: int) -> list[str]:
+    """Identify restored milestone row IDs for a given season."""
+    restored_row_ids: list[str] = []
+    for b in _find_restored_backup_rows(source_session, season):
+        key_part = b.rag_source_key.partition(":")[2]
+        if not key_part:
+            key_part = stable_milestone_source_row_id(b.season, b.player_id, b.milestone_category)
+        restored_row_ids.append(key_part)
     return restored_row_ids
+
+
+def _legacy_meta_pair(meta: object) -> tuple[str, str] | None:
+    """Return the (player_name, milestone_category) pair stored in a legacy chunk's meta."""
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except json.JSONDecodeError, ValueError:
+            return None
+    if not isinstance(meta, dict):
+        return None
+    return str(meta.get("player_name", "")).strip(), str(meta.get("milestone_category", "")).strip()
+
+
+def _legacy_ledger_chunk_id_if_restored(
+    store_session: Session,
+    chunk_ref: str,
+    restored_pairs: set[tuple[str, str]],
+    store: str,
+    out: TextIO | None,
+) -> int | None:
+    """Return the store row id of a ``legacy:id=<id>`` ledger entry when its meta pair was restored."""
+    try:
+        chunk_id = int(chunk_ref.removeprefix(LEGACY_CHUNK_REF_PREFIX))
+    except ValueError:
+        if out is not None:
+            out.write(f"restore_legacy_chunk_targets: skipping unparseable ledger ref {chunk_ref!r}\n")
+        return None
+    row = store_session.execute(
+        text(
+            "SELECT meta FROM rag_chunks WHERE id = :id AND source_table = 'milestone' "
+            "AND (source_row_id = '' OR source_row_id IS NULL)"
+        ),
+        {"id": chunk_id},
+    ).first()
+    if row is None:
+        if out is not None:
+            out.write(f"restore_legacy_chunk_targets: legacy chunk {chunk_ref} not found in {store} store\n")
+        return None
+    if _legacy_meta_pair(row[0]) not in restored_pairs:
+        return None
+    return chunk_id
+
+
+def restore_legacy_chunk_targets(
+    source_session: Session,
+    store_session: Session,
+    season: int,
+    store: str,
+    out: TextIO | None = None,
+) -> list[tuple[int, str, str | None, int | None, datetime | None]]:
+    """Return legacy empty-key chunk targets (``legacy:id=<id>`` ledger rows) for restored rows of a season.
+
+    Legacy chunks have no stable source_row_id, so cleanup recorded them by store row id. A legacy
+    chunk is restored when its meta (player_name, milestone_category) pair - the same pair cleanup
+    used to retire it - belongs to a backup row of the season that is live again with its original id.
+    Ledger rows for other pairs are left for a later restore of their season.
+
+    Returns:
+        List of tuples: (chunk_id, chunk_ref, prior_index_status, prior_is_active, prior_valid_to).
+
+    """
+    bind = source_session.connection()
+    insp = inspect(bind)
+    if not insp.has_table(BACKUP_TABLE_NAME) or not insp.has_table(CHUNK_STATE_TABLE_NAME):
+        return []
+
+    state_rows = (
+        source_session.execute(
+            select(
+                chunk_state_table.c.chunk_ref,
+                chunk_state_table.c.prior_index_status,
+                chunk_state_table.c.prior_is_active,
+                chunk_state_table.c.prior_valid_to,
+            )
+            .where(
+                chunk_state_table.c.store == store,
+                chunk_state_table.c.chunk_ref.like(f"{LEGACY_CHUNK_REF_PREFIX}%"),
+            )
+            .order_by(chunk_state_table.c.chunk_ref)
+        )
+        .mappings()
+        .all()
+    )
+    if not state_rows:
+        return []
+
+    restored_pairs = {
+        (str(b.player_name).strip(), str(b.milestone_category).strip())
+        for b in _find_restored_backup_rows(source_session, season)
+    }
+    if not restored_pairs:
+        return []
+
+    store_cols = {col["name"] for col in inspect(store_session.connection()).get_columns("rag_chunks")}
+    if "meta" not in store_cols or "id" not in store_cols:
+        if out is not None:
+            out.write(
+                f"restore_legacy_chunk_targets: {store} rag_chunks has no id/meta column; legacy chunks skipped\n"
+            )
+        return []
+
+    targets: list[tuple[int, str, str | None, int | None, datetime | None]] = []
+    for state in state_rows:
+        chunk_id = _legacy_ledger_chunk_id_if_restored(store_session, state["chunk_ref"], restored_pairs, store, out)
+        if chunk_id is not None:
+            targets.append(
+                (
+                    chunk_id,
+                    str(state["chunk_ref"]),
+                    state["prior_index_status"],
+                    state["prior_is_active"],
+                    state["prior_valid_to"],
+                )
+            )
+    return targets
 
 
 def restore_chunk_targets(
@@ -397,6 +542,66 @@ def restore_chunk_targets(
     return targets
 
 
+@dataclass(frozen=True)
+class _ChunkRestoreContext:
+    """Per-store settings shared by every chunk restored by ``reactivate_chunks``."""
+
+    source_session: Session
+    store_session: Session
+    store: str
+    has_is_active: bool
+    has_valid_to: bool
+    dialect_name: str
+    out: TextIO
+
+
+def _restore_chunk_row(
+    ctx: _ChunkRestoreContext,
+    chunk_ref: str,
+    where_sql: str,
+    where_params: dict[str, Any],
+    prior_index_status: str | None,
+    prior_is_active: int | None,
+    prior_valid_to: datetime | None,
+) -> bool:
+    """Restore one chunk to its recorded prior state and drop its ledger row on success."""
+    set_clauses = ["index_status = :index_status"]
+    params: dict[str, Any] = dict(where_params, index_status=prior_index_status or "ACTIVE")
+    if ctx.has_is_active:
+        set_clauses.append("is_active = :is_active")
+        # Bind a real boolean: PostgreSQL has no implicit integer -> boolean assignment cast.
+        params["is_active"] = None if prior_is_active is None else bool(prior_is_active)
+    if ctx.has_valid_to:
+        set_clauses.append("valid_to = :valid_to")
+        params["valid_to"] = prior_valid_to
+    if ctx.store == "vector":
+        set_clauses.append(_vector_meta_remove_marker_sql(ctx.dialect_name))
+
+    stmt = text(f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE {where_sql}")
+    try:
+        res = ctx.store_session.execute(stmt, params)
+        ctx.store_session.commit()
+    except _STORE_ERRORS as err:
+        ctx.store_session.rollback()
+        ctx.out.write(f"Error reactivating chunk {chunk_ref} in {ctx.store}: {err}\n")
+        return False
+    if not res.rowcount or res.rowcount <= 0:
+        ctx.out.write(f"reactivate_chunks: chunk {chunk_ref} not found in {ctx.store} store\n")
+        return False
+    try:
+        ctx.source_session.execute(
+            delete(chunk_state_table).where(
+                chunk_state_table.c.store == ctx.store,
+                chunk_state_table.c.chunk_ref == chunk_ref,
+            )
+        )
+        ctx.source_session.commit()
+    except _STORE_ERRORS as err:
+        ctx.source_session.rollback()
+        ctx.out.write(f"Error removing chunk state for {chunk_ref} in {ctx.store}: {err}\n")
+    return True
+
+
 def reactivate_chunks(
     source_session: Session,
     store_session: Session,
@@ -408,6 +613,8 @@ def reactivate_chunks(
 
     Restores index_status to the prior status and, when the columns exist in that store,
     is_active and valid_to to the recorded prior values (NULL if prior value was NULL).
+    Covers both keyed chunks (``restore_chunk_targets``) and legacy empty-key chunks recorded
+    as ``legacy:id=<id>`` (``restore_legacy_chunk_targets``), the latter updated by store row id.
     In the vector store, also strips the cleanup tombstone marker from meta.
     Commits per row, and upon success deletes the recorded chunk_state row.
 
@@ -423,57 +630,49 @@ def reactivate_chunks(
 
     """
     targets = restore_chunk_targets(source_session, season, store, out=out)
-    if not targets:
+    legacy_targets = restore_legacy_chunk_targets(source_session, store_session, season, store, out=out)
+    if not targets and not legacy_targets:
         return 0
 
     bind = store_session.connection()
     cols = {col["name"] for col in inspect(bind).get_columns("rag_chunks")}
     has_is_active = "is_active" in cols
     has_valid_to = "valid_to" in cols
+    dialect_name = str(getattr(getattr(store_session.get_bind(), "dialect", None), "name", "postgresql"))
+
+    ctx = _ChunkRestoreContext(
+        source_session=source_session,
+        store_session=store_session,
+        store=store,
+        has_is_active=has_is_active,
+        has_valid_to=has_valid_to,
+        dialect_name=dialect_name,
+        out=out,
+    )
 
     count = 0
     for source_row_id, prior_index_status, prior_is_active, prior_valid_to in targets:
-        set_clauses = ["index_status = :index_status"]
-        params: dict[str, Any] = {
-            "table": "milestone",
-            "row_id": source_row_id,
-            "index_status": prior_index_status or "ACTIVE",
-        }
-        if has_is_active:
-            set_clauses.append("is_active = :is_active")
-            # Bind a real boolean: PostgreSQL has no implicit integer -> boolean assignment cast.
-            params["is_active"] = None if prior_is_active is None else bool(prior_is_active)
-        if has_valid_to:
-            set_clauses.append("valid_to = :valid_to")
-            params["valid_to"] = prior_valid_to
-        if store == "vector":
-            dialect_name = str(getattr(getattr(store_session.get_bind(), "dialect", None), "name", "postgresql"))
-            set_clauses.append(_vector_meta_remove_marker_sql(dialect_name))
-
-        stmt = text(
-            f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE source_table = :table AND source_row_id = :row_id"
-        )
-        try:
-            res = store_session.execute(stmt, params)
-            store_session.commit()
-            if res.rowcount and res.rowcount > 0:
-                count += 1
-                try:
-                    source_session.execute(
-                        delete(chunk_state_table).where(
-                            chunk_state_table.c.store == store,
-                            chunk_state_table.c.chunk_ref == source_row_id,
-                        )
-                    )
-                    source_session.commit()
-                except _STORE_ERRORS as err:
-                    source_session.rollback()
-                    out.write(f"Error removing chunk state for {source_row_id} in {store}: {err}\n")
-            else:
-                out.write(f"reactivate_chunks: chunk {source_row_id} not found in {store} store\n")
-        except _STORE_ERRORS as err:
-            store_session.rollback()
-            out.write(f"Error reactivating chunk {source_row_id} in {store}: {err}\n")
+        if _restore_chunk_row(
+            ctx,
+            source_row_id,
+            "source_table = :table AND source_row_id = :row_id",
+            {"table": "milestone", "row_id": source_row_id},
+            prior_index_status,
+            prior_is_active,
+            prior_valid_to,
+        ):
+            count += 1
+    for chunk_id, chunk_ref, prior_index_status, prior_is_active, prior_valid_to in legacy_targets:
+        if _restore_chunk_row(
+            ctx,
+            chunk_ref,
+            "id = :id AND source_table = 'milestone' AND (source_row_id = '' OR source_row_id IS NULL)",
+            {"id": chunk_id},
+            prior_index_status,
+            prior_is_active,
+            prior_valid_to,
+        ):
+            count += 1
 
     return count
 
@@ -648,7 +847,7 @@ def _record_chunk_prior_state(
     prior_index_status: str | None,
     prior_is_active: int | None,
     prior_valid_to: datetime | str | None,
-) -> None:
+) -> int | None:
     """Insert current state of a chunk into player_milestones_cleanup_chunk_state if not present.
 
     Never overwrites an existing row to preserve the pre-cleanup state across reruns.
@@ -663,15 +862,19 @@ def _record_chunk_prior_state(
         prior_is_active: Pre-cleanup is_active value (as integer 1/0, or None).
         prior_valid_to: Pre-cleanup valid_to datetime, string, or None.
 
+    Returns:
+        The recorded pre-cleanup is_active (1/0, or None when unknown/NULL). On reruns this is
+        the value recorded by the first run, not the current (already deactivated) value.
+
     """
-    existing = source_session.scalar(
-        select(chunk_state_table.c.store).where(
+    existing = source_session.execute(
+        select(chunk_state_table.c.prior_is_active).where(
             chunk_state_table.c.store == store,
             chunk_state_table.c.chunk_ref == chunk_ref,
         )
-    )
+    ).first()
     if existing is not None:
-        return
+        return existing[0]
 
     parsed_valid_to: datetime | None = None
     if isinstance(prior_valid_to, datetime):
@@ -696,6 +899,19 @@ def _record_chunk_prior_state(
         )
     )
     source_session.commit()
+    return prior_is_active
+
+
+def _prior_was_active(prior_is_active: int | None) -> bool:
+    """Return whether a recorded pre-cleanup is_active means "searchable".
+
+    NULL/unknown counts as active (bega_AI filters on COALESCE(is_active, true)). Only chunks that
+    were searchable before the cleanup get the cleanup tombstone marker: the marker tells the
+    publisher to set is_active=true/valid_to=NULL on the next ACTIVE upsert, which must not happen
+    to curated rows that were deliberately inactive (e.g. ACTIVE|is_active=false|valid_to 2099).
+    Without the marker the publisher keeps their is_active/valid_to as they were.
+    """
+    return prior_is_active is None or bool(prior_is_active)
 
 
 def _resolve_target_set(
@@ -1142,20 +1358,39 @@ def _process_sparse_store(
     return active, tombstoned, already, missing, deactivated_only, has_error
 
 
-def _build_vector_update_sql(
+def _vector_tombstone_set_clauses(
     *,
     has_is_active: bool,
     has_valid_to: bool,
-    dialect_name: str = "postgresql",
-) -> str:
-    """Build update SQL statement for vector tombstone."""
+    dialect_name: str,
+    set_marker: bool,
+) -> list[str]:
+    """Build SET clauses for a vector tombstone (marker only when ``set_marker``)."""
     set_clauses = ["index_status = 'DELETED'"]
     if has_is_active:
         set_clauses.append("is_active = false")
     if has_valid_to:
         set_clauses.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
-    if has_is_active or has_valid_to:
+    if set_marker and (has_is_active or has_valid_to):
         set_clauses.append(_vector_meta_set_marker_sql(dialect_name))
+    return set_clauses
+
+
+def _build_vector_update_sql(
+    *,
+    has_is_active: bool,
+    has_valid_to: bool,
+    dialect_name: str = "postgresql",
+    set_marker: bool = True,
+) -> str:
+    """Build update SQL statement for vector tombstone.
+
+    ``set_marker`` is False for chunks that were already inactive before the cleanup
+    (see ``_prior_was_active``), so a later re-publish keeps their is_active/valid_to.
+    """
+    set_clauses = _vector_tombstone_set_clauses(
+        has_is_active=has_is_active, has_valid_to=has_valid_to, dialect_name=dialect_name, set_marker=set_marker
+    )
 
     where_clauses = ["source_table = :table", "source_row_id = :row_id"]
     if has_is_active:
@@ -1219,13 +1454,18 @@ def _tombstone_one_vector_key(
         return 0, 0, 0, 1, False
 
     curr_status = str(row["index_status"] or "")
+    if curr_status == PENDING_INDEX_STATUS:
+        # An in-flight publish committed PENDING and will write ACTIVE next. Tombstoning now
+        # would be overwritten by that ACTIVE upsert (and the marker would re-activate it).
+        out.write(f"Vector store error on {key}: {_PENDING_SKIP_MESSAGE}\n")
+        return 0, 0, 0, 0, True
     is_act = row.get("is_active") if has_is_active else None
     is_active_true = is_act is None or bool(is_act) is True
     prior_is_act = int(is_act) if is_act is not None else None
     prior_val_to = row.get("valid_to") if has_valid_to else None
 
     try:
-        _record_chunk_prior_state(
+        recorded_prior_is_act = _record_chunk_prior_state(
             source_session,
             store="vector",
             chunk_ref=source_row_id,
@@ -1244,7 +1484,10 @@ def _tombstone_one_vector_key(
 
     dialect_name = str(getattr(getattr(session.get_bind(), "dialect", None), "name", "postgresql"))
     update_sql = _build_vector_update_sql(
-        has_is_active=has_is_active, has_valid_to=has_valid_to, dialect_name=dialect_name
+        has_is_active=has_is_active,
+        has_valid_to=has_valid_to,
+        dialect_name=dialect_name,
+        set_marker=_prior_was_active(recorded_prior_is_act),
     )
     params: dict[str, Any] = {"table": source_table, "row_id": source_row_id}
     if has_is_active:
@@ -1524,7 +1767,7 @@ def _record_legacy_sparse_prior_state(
                 _record_chunk_prior_state(
                     source_session,
                     store="sparse",
-                    chunk_ref=f"legacy:id={chunk.id}",
+                    chunk_ref=f"{LEGACY_CHUNK_REF_PREFIX}{chunk.id}",
                     source_row_id=None,
                     prior_index_status=p_status,
                     prior_is_active=p_act,
@@ -1674,14 +1917,18 @@ def _retire_legacy_vector_chunks(
     has_val_to = "valid_to" in vcols
 
     dialect_name = str(getattr(getattr(vector_session.get_bind(), "dialect", None), "name", "postgresql"))
-    set_clauses = ["index_status = 'DELETED'"]
-    if has_is_act:
-        set_clauses.append("is_active = false")
-    if has_val_to:
-        set_clauses.append("valid_to = COALESCE(valid_to, CURRENT_TIMESTAMP)")
-    if has_is_act or has_val_to:
-        set_clauses.append(_vector_meta_set_marker_sql(dialect_name))
-    update_sql = text(f"UPDATE rag_chunks SET {', '.join(set_clauses)} WHERE id = :id")
+    update_sql_by_marker = {
+        set_marker: text(
+            "UPDATE rag_chunks SET "
+            + ", ".join(
+                _vector_tombstone_set_clauses(
+                    has_is_active=has_is_act, has_valid_to=has_val_to, dialect_name=dialect_name, set_marker=set_marker
+                )
+            )
+            + " WHERE id = :id"
+        )
+        for set_marker in (True, False)
+    }
 
     legacy_vector_tombstoned = 0
     legacy_vector_deactivated_only = 0
@@ -1692,12 +1939,16 @@ def _retire_legacy_vector_chunks(
         curr_status = str(row["index_status"] or "")
         p_act = int(row["is_active"]) if (has_is_act and row.get("is_active") is not None) else None
         p_val = row.get("valid_to") if has_val_to else None
+        if curr_status == PENDING_INDEX_STATUS:
+            has_error = True
+            out.write(f"Vector store error tombstoning legacy chunk id={row_id}: {_PENDING_SKIP_MESSAGE}\n")
+            continue
 
         try:
-            _record_chunk_prior_state(
+            recorded_p_act = _record_chunk_prior_state(
                 source_session,
                 store="vector",
-                chunk_ref=f"legacy:id={row_id}",
+                chunk_ref=f"{LEGACY_CHUNK_REF_PREFIX}{row_id}",
                 source_row_id=None,
                 prior_index_status=curr_status,
                 prior_is_active=p_act,
@@ -1710,6 +1961,7 @@ def _retire_legacy_vector_chunks(
             continue
 
         try:
+            update_sql = update_sql_by_marker[_prior_was_active(recorded_p_act)]
             vector_session.execute(update_sql, {"id": row_id})
             vector_session.commit()
             if curr_status != "DELETED":
@@ -1949,6 +2201,89 @@ def _inspect_dry_run_matches(
     return len(true_match_ids), delete_skipped_mismatch, set(true_match_ids)
 
 
+def _count_pending_target_chunks(session: Session, keys: Sequence[str]) -> int:
+    """Count PENDING milestone chunks for the target keys and legacy empty-key rows in one store.
+
+    A publish writes PENDING, commits, then writes ACTIVE in a second statement. Cleanup running in
+    between would tombstone a chunk that the in-flight ACTIVE upsert immediately overwrites with the
+    corrupted content (and, with the cleanup marker, re-activates). Cleanup therefore refuses while
+    any such row is PENDING.
+    """
+    row_ids_by_table: dict[str, list[str]] = {}
+    for key in keys:
+        try:
+            table, row_id = split_source_key(key)
+        except ValueError:
+            continue
+        row_ids_by_table.setdefault(table, []).append(row_id)
+
+    total = 0
+    for table, row_ids in row_ids_by_table.items():
+        for start in range(0, len(row_ids), 500):
+            batch = row_ids[start : start + 500]
+            params: dict[str, object] = {"table": table, "pending": PENDING_INDEX_STATUS}
+            placeholders = []
+            for idx, row_id in enumerate(batch):
+                params[f"r{idx}"] = row_id
+                placeholders.append(f":r{idx}")
+            stmt = text(
+                "SELECT COUNT(*) FROM rag_chunks WHERE source_table = :table "
+                f"AND index_status = :pending AND source_row_id IN ({', '.join(placeholders)})"
+            )
+            total += int(session.execute(stmt, params).scalar() or 0)
+
+    legacy_stmt = text(
+        "SELECT COUNT(*) FROM rag_chunks WHERE source_table = 'milestone' "
+        "AND (source_row_id = '' OR source_row_id IS NULL) AND index_status = :pending"
+    )
+    total += int(session.execute(legacy_stmt, {"pending": PENDING_INDEX_STATUS}).scalar() or 0)
+    return total
+
+
+def _check_pending_publish(
+    index_session: Session,
+    vector_session: Session | None,
+    keys: Sequence[str],
+) -> tuple[str | None, str | None]:
+    """Return (refusal_error, warning) for in-flight PENDING chunks in either store."""
+    counts: dict[str, int] = {}
+    for store, session in (("sparse", index_session), ("vector", vector_session)):
+        if session is None:
+            continue
+        try:
+            counts[store] = _count_pending_target_chunks(session, keys)
+        except _STORE_ERRORS as err:
+            session.rollback()
+            return f"could not check {store} store for PENDING chunks: {err}", None
+    if not any(counts.values()):
+        return None, None
+    detail = " ".join(f"{store}_pending={count}" for store, count in counts.items())
+    return (
+        (
+            f"in-flight publish detected ({detail}): target milestone chunks are PENDING. "
+            "Stop the scheduler / wait for the publish to finish, then rerun"
+        ),
+        f"WARNING: {detail} target milestone chunks are PENDING; --apply will refuse until the publish finishes",
+    )
+
+
+def _pending_publish_error(
+    index_session: Session,
+    vector_session: Session | None,
+    target_items: Sequence[CorruptedMilestoneItem],
+    *,
+    apply: bool,
+    out: TextIO,
+) -> str | None:
+    """Return a refusal error for --apply while target chunks are PENDING; dry-run only warns."""
+    pending_keys = tuple(dict.fromkeys(item.rag_source_key for item in target_items))
+    pending_err, pending_warning = _check_pending_publish(index_session, vector_session, pending_keys)
+    if pending_err is None or apply:
+        return pending_err
+    out.write(f"{pending_warning or 'WARNING: ' + pending_err}\n")
+    return None
+
+
 def run_cleanup(
     source_session: Session,
     index_session: Session,
@@ -2065,7 +2400,7 @@ def run_cleanup(
 
     count_err = _validate_expect_count(
         apply=apply, would_back_up=would_back_up, expect_count=expect_count, total_items=len(target_items)
-    )
+    ) or _pending_publish_error(index_session, vector_session, target_items, apply=apply, out=out)
     if count_err is not None:
         out.write(f"Refusing write: {count_err}\n")
         return CleanupReport(
