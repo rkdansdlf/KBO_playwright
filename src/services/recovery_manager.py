@@ -6,9 +6,12 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from src.utils.team_codes import normalize_kbo_game_id
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -16,17 +19,25 @@ logger = logging.getLogger(__name__)
 class RecoveryManager:
     """RecoveryManager class."""
 
-    def __init__(self, checkpoint_path: str = "data/recovery/healer_checkpoint.json") -> None:
+    def __init__(
+        self,
+        checkpoint_path: str = "data/recovery/healer_checkpoint.json",
+        *,
+        read_only: bool = False,
+    ) -> None:
         """Initialize a new instance.
 
         Args:
             checkpoint_path: Checkpoint file path.
-            checkpoint_path: Checkpoint file path.
+            read_only: Load the checkpoint but never write or delete it; state
+                changes stay in memory (used by ``--dry-run``).
 
         """
         self.path = Path(checkpoint_path)
+        self.read_only = read_only
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not read_only:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.state: dict[str, Any] = {
             "run_id": None,
             "total_count": 0,
@@ -218,21 +229,38 @@ class RecoveryManager:
                 logger.debug("No existing recovery state at %s", self.path)
 
     def save(self) -> None:
-        """Save save."""
+        """Write the checkpoint to disk (no-op for a read-only manager)."""
+        if self.read_only:
+            return
         with self.path.open("w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2, ensure_ascii=False)
 
-    def initialize_run(self, run_id: str, targets: list[str]) -> None:
-        # If it's a new run ID, reset everything
-        """Initialize initialize run.
+    def initialize_run(
+        self,
+        run_id: str,
+        targets: list[str],
+        *,
+        retry_ids: Iterable[str] | None = None,
+        prune_missing: bool = False,
+    ) -> None:
+        """Start a run, or fold newly detected targets into the current one.
+
+        A new ``run_id`` resets the checkpoint. The same ``run_id`` keeps what
+        was already completed or failed, but targets that appeared since the
+        checkpoint was written are added to ``pending``; otherwise a checkpoint
+        that never clears would hide every new anomaly for good (issue #55).
 
         Args:
             run_id: Run ID.
-            targets: Targets.
-            run_id: Run ID.
-            targets: Targets.
-            run_id: Run ID.
-            targets: Targets.
+            targets: Targets detected for this run.
+            retry_ids: Targets to retry even if an earlier pass already marked
+                them completed or failed (e.g. recent games whose source only
+                became readable later).
+            prune_missing: On the same ``run_id``, drop ``pending``,
+                ``completed`` and ``failed`` entries that are not in
+                ``targets`` (games that are no longer anomalies). Off by
+                default: a targeted run passes only a few ids and must not
+                erase the rest of the checkpoint.
 
         """
         if self.state.get("run_id") != run_id:
@@ -242,9 +270,45 @@ class RecoveryManager:
                 "total_count": len(targets),
                 "completed": [],
                 "failed": {},
-                "pending": targets,
+                "pending": list(targets),
                 "detail_recovery_queue": queue if isinstance(queue, dict) else {},
             }
+            self.save()
+            return
+
+        pending: list[str] = list(self.state.get("pending") or [])
+        completed: list[str] = list(self.state.get("completed") or [])
+        failed: dict[str, str] = dict(self.state.get("failed") or {})
+        target_set = set(targets)
+        retry = set(retry_ids or ()) & target_set
+        changed = False
+        if prune_missing:
+            kept_pending = [game_id for game_id in pending if game_id in target_set]
+            kept_completed = [game_id for game_id in completed if game_id in target_set]
+            kept_failed = {game_id: reason for game_id, reason in failed.items() if game_id in target_set}
+            if (len(kept_pending), len(kept_completed), len(kept_failed)) != (
+                len(pending),
+                len(completed),
+                len(failed),
+            ):
+                changed = True
+            pending, completed, failed = kept_pending, kept_completed, kept_failed
+        for game_id in targets:
+            if game_id in retry:
+                if game_id in completed:
+                    completed.remove(game_id)
+                    changed = True
+                if failed.pop(game_id, None) is not None:
+                    changed = True
+            if game_id in pending or game_id in completed or game_id in failed:
+                continue
+            pending.append(game_id)
+            changed = True
+        if changed:
+            self.state["pending"] = pending
+            self.state["completed"] = completed
+            self.state["failed"] = failed
+            self.state["total_count"] = len(pending) + len(completed) + len(failed)
             self.save()
 
     def mark_completed(self, game_id: str) -> None:
@@ -258,6 +322,8 @@ class RecoveryManager:
         """
         if game_id not in self.state["completed"]:
             self.state["completed"].append(game_id)
+        # A retried game that succeeds must not also stay recorded as failed.
+        self.state["failed"].pop(game_id, None)
         if game_id in self.state["pending"]:
             self.state["pending"].remove(game_id)
         self.save()
@@ -290,8 +356,11 @@ class RecoveryManager:
         return cast("list[str]", self.state.get("pending", []))
 
     def clear(self) -> None:
-        """Clear clear."""
-        if self.path.exists():
+        """Reset the checkpoint; a read-only manager only resets it in memory."""
+        if self.read_only:
+            if self.path.exists():
+                logger.info("[DRY-RUN] Would delete checkpoint %s", self.path)
+        elif self.path.exists():
             self.path.unlink()
         self.state = {
             "run_id": None,
