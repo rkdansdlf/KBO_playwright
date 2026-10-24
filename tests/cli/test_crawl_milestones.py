@@ -11,12 +11,21 @@ import src.cli.collection.crawl_milestones as crawl_cli
 from src.config.milestone_flags import MILESTONE_CRAWL_ENABLED_ENV
 
 
+@pytest.mark.parametrize("flag_val", [None, "", "  ", "0", "enabled"])
 def test_crawl_milestones_refused_when_save_and_flag_off(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    flag_val: str | None,
 ) -> None:
-    """When --save is passed and flag is off, return cleanly without crawling or opening DB."""
-    monkeypatch.delenv(MILESTONE_CRAWL_ENABLED_ENV, raising=False)
+    """When --save is passed and flag is off, return cleanly without crawling or opening DB.
+
+    QA repro: `MILESTONE_CRAWL_ENABLED= python -m src.cli.collection.crawl_milestones --save`
+    used to crawl and save because an empty value was not in the falsy denylist.
+    """
+    if flag_val is None:
+        monkeypatch.delenv(MILESTONE_CRAWL_ENABLED_ENV, raising=False)
+    else:
+        monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, flag_val)
 
     def _exploding_crawler(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("MilestoneCrawler must not be instantiated when crawl is refused")

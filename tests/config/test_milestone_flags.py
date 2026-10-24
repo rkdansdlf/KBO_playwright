@@ -13,14 +13,37 @@ def test_milestone_crawl_enabled_defaults_to_false(monkeypatch: pytest.MonkeyPat
     assert milestone_crawl_enabled() is False
 
 
-@pytest.mark.parametrize("falsy_val", ["0", "false", "False", "no", "NO", "off", "OFF", "  0  ", "  off  "])
+@pytest.mark.parametrize(
+    "falsy_val",
+    [
+        "0",
+        "false",
+        "False",
+        "no",
+        "NO",
+        "off",
+        "OFF",
+        "  0  ",
+        "  off  ",
+        # QA: an empty/blank value (`MILESTONE_CRAWL_ENABLED=`) used to enable the crawl.
+        "",
+        "   ",
+        "\t",
+        # Unknown values are off too (allowlist, not denylist).
+        "enabled",
+        "2",
+        "y",
+        "tru",
+        "disabled",
+    ],
+)
 def test_milestone_crawl_enabled_falsy_values(monkeypatch: pytest.MonkeyPatch, falsy_val: str) -> None:
     """Explicitly recognized falsy strings disable milestone crawling."""
     monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, falsy_val)
     assert milestone_crawl_enabled() is False
 
 
-@pytest.mark.parametrize("truthy_val", ["1", "true", "True", "yes", "YES", "on", "ON", "enabled"])
+@pytest.mark.parametrize("truthy_val", ["1", "true", "True", "TRUE", "yes", "YES", "on", "ON", " 1 ", "  true\n"])
 def test_milestone_crawl_enabled_truthy_values(monkeypatch: pytest.MonkeyPatch, truthy_val: str) -> None:
     """Truthy strings enable milestone crawling."""
     monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, truthy_val)

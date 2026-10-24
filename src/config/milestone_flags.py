@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 
 MILESTONE_CRAWL_ENABLED_ENV = "MILESTONE_CRAWL_ENABLED"
-_FALSE_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+# Allowlist: only these (trimmed, case-insensitive) enable the crawl. Anything else,
+# including an empty string (`MILESTONE_CRAWL_ENABLED=`), a typo or "enabled", is off.
+_TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def milestone_crawl_enabled() -> bool:
@@ -19,8 +21,9 @@ def milestone_crawl_enabled() -> bool:
     a real milestone source.
 
     Returns:
-        True if MILESTONE_CRAWL_ENABLED is truthy, False otherwise (default: False).
+        True only if MILESTONE_CRAWL_ENABLED is explicitly 1/true/yes/on (trimmed,
+        case-insensitive); False otherwise, including unset or empty (default: False).
 
     """
-    val = os.getenv(MILESTONE_CRAWL_ENABLED_ENV, "0")
-    return val.strip().lower() not in _FALSE_ENV_VALUES
+    val = os.getenv(MILESTONE_CRAWL_ENABLED_ENV) or ""
+    return val.strip().lower() in _TRUE_ENV_VALUES
