@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameEvent, GamePlayByPlay
+from src.models.game import Game, GameEvent, GameInningScore, GamePlayByPlay
 from src.models.season import KboSeason
 from src.repositories.game_repository import (
     backfill_game_play_by_play_from_existing_events,
@@ -94,6 +94,16 @@ class RelayRecoveryTarget:
     has_events: bool = False
     has_event_state: bool = False
     has_pbp: bool = False
+    #: Whether the stored play-by-play reaches the game's own last inning.
+    #:
+    #: ``has_pbp`` only says a row exists, and a game stopped at the first
+    #: inning has rows. Ten 2026 games read as recovered on that test while
+    #: holding between 5 and 213 rows of a nine-inning record, because the live
+    #: poll wrote whatever it had reached and the completion crawl never
+    #: replaced it. The game's ``game_inning_scores`` say how far it actually
+    #: went; when they are absent the row-existence test is still the only
+    #: evidence available and this is True whenever the rows are.
+    pbp_covers_game: bool = False
     needs_event_recovery: bool = True
     needs_pbp_recovery: bool = True
 
@@ -120,6 +130,10 @@ class RelayRecoveryTarget:
             has_events=state.has_events,
             has_event_state=state.has_event_state,
             has_pbp=state.has_pbp,
+            # ``GameStateInput`` states no game length, so row existence is the
+            # only evidence this path has. It must not claim coverage it cannot
+            # see, and it must not deny it either.
+            pbp_covers_game=state.has_pbp,
             needs_event_recovery=not state.has_event_state,
             needs_pbp_recovery=not state.has_pbp,
         )
@@ -256,6 +270,70 @@ def load_game_ids_from_file(path: str | Path | None) -> list[str]:
     return game_ids
 
 
+#: The row the relay feed writes to close a finished game. It is what separates
+#: a game that stopped early from one whose ``game_inning_scores`` carry trailing
+#: zero innings: every 2025-03-22 game is recorded to the 12th inning while its
+#: play-by-play ends at the 9th with this marker, so an inning-count test alone
+#: calls 736 healthy 2025 games incomplete.
+FINAL_PBP_MARKER = "====================================="
+
+
+def pbp_complete_game_ids(session: Session, game_ids: Sequence[str]) -> set[str]:
+    """Return the games whose stored play-by-play reached the end of the game.
+
+    Two kinds of evidence count, and the order matters:
+
+    * the closing marker the relay feed writes -- direct proof the feed finished
+      the game, whatever the stored innings say;
+    * reaching the last inning ``game_inning_scores`` state, for feeds that do
+      not carry the marker.
+
+    A game with no score rows states no length, so row existence stands in: it
+    is the honest answer when nothing says how long the game was. A game *with*
+    a stated length is held to it, which is where ten partially stored 2026 games
+    were let through by testing only whether a row existed.
+
+    Args:
+        session: Session to read from.
+        game_ids: Games to judge.
+
+    Returns:
+        The subset of ``game_ids`` whose play-by-play is complete.
+
+    """
+    if not game_ids:
+        return set()
+    complete = {
+        row[0]
+        for row in session.query(GamePlayByPlay.game_id)
+        .filter(
+            GamePlayByPlay.game_id.in_(game_ids),
+            GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+        )
+        .distinct()
+        .all()
+    }
+    pbp_last_inning = dict(
+        session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning))
+        .filter(GamePlayByPlay.game_id.in_(game_ids))
+        .group_by(GamePlayByPlay.game_id)
+        .all(),
+    )
+    game_last_inning = dict(
+        session.query(GameInningScore.game_id, func.max(GameInningScore.inning))
+        .filter(GameInningScore.game_id.in_(game_ids))
+        .group_by(GameInningScore.game_id)
+        .all(),
+    )
+    for game_id in game_ids:
+        if game_id in complete or game_id not in pbp_last_inning:
+            continue
+        expected = game_last_inning.get(game_id)
+        if expected is None or (pbp_last_inning.get(game_id) or 0) >= expected:
+            complete.add(game_id)
+    return complete
+
+
 def load_relay_recovery_targets(
     criteria: RecoveryTargetCriteria,
     *,
@@ -305,6 +383,10 @@ def load_relay_recovery_targets(
             .distinct()
             .all()
         }
+        complete_pbp = pbp_complete_game_ids(session, row_game_ids)
+
+    def _pbp_covers(game_id: str) -> bool:
+        return game_id in complete_pbp
 
     targets: list[RelayRecoveryTarget] = []
     skipped = 0
@@ -312,7 +394,8 @@ def load_relay_recovery_targets(
         has_events = game_id in event_set
         has_event_state = game_id in event_state_set
         has_pbp = game_id in pbp_set
-        if criteria.missing_only and has_event_state and has_pbp:
+        pbp_covers_game = _pbp_covers(game_id)
+        if criteria.missing_only and has_event_state and pbp_covers_game:
             skipped += 1
             continue
         targets.append(
@@ -323,8 +406,9 @@ def load_relay_recovery_targets(
                 has_events=has_events,
                 has_event_state=has_event_state,
                 has_pbp=has_pbp,
+                pbp_covers_game=pbp_covers_game,
                 needs_event_recovery=not has_event_state,
-                needs_pbp_recovery=not has_pbp,
+                needs_pbp_recovery=not pbp_covers_game,
             ),
         )
 

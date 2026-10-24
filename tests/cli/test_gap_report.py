@@ -110,9 +110,33 @@ class TestGapReport:
         assert event.incident_key == "gap:RELAY"
         assert event.component == "RELAY"
         assert event.severity == AlertSeverity.WARNING
-        assert event.message == "6 games missing PBP"
-        assert event.remediation == ("G1", "G2", "G3", "G4", "G5")
+        # Both counts are reported now. A record that stops short of the last
+        # inning is a gap the row-existence test never saw, so the message has to
+        # carry it; without it the count reads zero while ten games are short.
+        assert event.message == ("6 games missing PBP, 0 games with play-by-play short of the last inning")
+        # The remediation list is capped at five and names which kind each id is.
+        assert event.remediation == ("missing:G1", "missing:G2", "missing:G3", "missing:G4", "missing:G5")
         assert mock.call_args.kwargs["resolve_keys"] == []
+
+    def test_send_gap_alerts_names_partial_records_in_the_message(self):
+        report = {
+            "gaps": {
+                "RELAY": {
+                    "ok": False,
+                    "missing_count": 0,
+                    "missing_game_ids": [],
+                    "partial_count": 2,
+                    "partial_game_ids": ["P1", "P2"],
+                },
+            },
+        }
+
+        with patch("src.cli.gap_report.apply_incidents") as mock:
+            send_gap_alerts(report)
+
+        event = mock.call_args.args[0][0]
+        assert event.message == ("0 games missing PBP, 2 games with play-by-play short of the last inning")
+        assert event.remediation == ("partial:P1", "partial:P2")
 
     def test_send_gap_alerts_publishes_freshness_incident(self):
         report = {
@@ -185,17 +209,60 @@ class TestCheckRelayGaps:
             result = check_relay_gaps()
             assert result["ok"] is True
 
-    def test_finds_gaps(self):
-        with patch("src.cli.gap_report.SessionLocal") as mock_sf:
-            mock_session = MagicMock()
-            mock_sf.return_value.__enter__.return_value = mock_session
-            mock_result = MagicMock()
-            mock_result.scalars.return_value.all.return_value = ["G1"]
-            mock_session.execute.return_value = mock_result
+    def _session(self, mock_sf, *, game_ids, covered):
+        mock_session = MagicMock()
+        mock_sf.return_value.__enter__.return_value = mock_session
+        games = MagicMock()
+        games.scalars.return_value.all.return_value = list(game_ids)
+        seen = MagicMock()
+        seen.scalars.return_value.all.return_value = list(covered)
+        mock_session.execute.side_effect = [games, seen]
+        return mock_session
+
+    def test_finds_games_with_no_play_by_play(self):
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.services.relay_recovery_service.pbp_complete_game_ids", return_value=set()),
+        ):
+            self._session(mock_sf, game_ids=["G1"], covered=[])
 
             result = check_relay_gaps()
+
             assert result["ok"] is False
             assert result["missing_count"] == 1
+            assert result["partial_count"] == 0
+
+    def test_finds_games_whose_play_by_play_stopped_short(self):
+        """Rows exist, but the record does not reach the game's last inning."""
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.services.relay_recovery_service.pbp_complete_game_ids", return_value=set()),
+        ):
+            self._session(mock_sf, game_ids=["G1"], covered=["G1"])
+
+            result = check_relay_gaps()
+
+            assert result["ok"] is False
+            assert result["missing_count"] == 0
+            assert result["partial_count"] == 1
+            assert result["partial_game_ids"] == ["G1"]
+
+    def test_a_fully_covered_game_is_not_a_gap(self):
+        with (
+            patch("src.cli.gap_report.SessionLocal") as mock_sf,
+            patch("src.services.relay_recovery_service.pbp_complete_game_ids", return_value={"G1"}),
+        ):
+            self._session(mock_sf, game_ids=["G1"], covered=["G1"])
+
+            result = check_relay_gaps()
+
+            assert result == {
+                "ok": True,
+                "missing_count": 0,
+                "missing_game_ids": [],
+                "partial_count": 0,
+                "partial_game_ids": [],
+            }
 
     def test_primary_game_predicate_is_oracle_compatible(self):
         with patch("src.cli.gap_report.SessionLocal") as mock_sf:
@@ -205,7 +272,9 @@ class TestCheckRelayGaps:
 
             check_relay_gaps()
 
-            statement = mock_session.execute.call_args.args[0]
+            # The first statement is the candidate query; a later call may exist,
+            # so ``call_args`` (the last one) would be the wrong statement to read.
+            statement = mock_session.execute.call_args_list[0].args[0]
         compiled = str(statement.compile(dialect=oracle.dialect()))
         assert "IS 1" not in compiled
         assert "is_primary = 1" in compiled
