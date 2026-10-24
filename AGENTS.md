@@ -279,7 +279,18 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-10-19
+Last updated: 2026-10-25
+
+### 2026-10-25: 인시던트 신뢰성 복구 — 1경기 반복 장애 · lifecycle 오염 87건 · 재알림 주기
+- **`20261020HTLG0` 한 경기가 만든 3중 인과**: ① 포스트시즌 Naver `gameId`는 연도가 아니라 시리즈 prefix(`3333`)를 쓰므로 직접 매핑 `20261020HTLG02026`이 **404** ② 그 ID를 schedule API로 해결하는 `_resolve_naver_game_id`/`SCHEDULE_RESOLUTION_WINDOW_DAYS`는 **`630b411c`(10-21 16:33 UTC)에서야 추가** ③ 그런데 **10-22 19:50 UTC 재시도도 실패** = **미배포**. DLQ 5행이 `original_run_id`별로 쌓여 exhausted. **원천은 정상이었다** — `33331020HTLG02026` record는 HTTP 200/18,647 bytes로 완전한 boxscore(KIA 13:1 LG)를 준다. "원천 미제공" 가설은 기각.
+- **`_PRIMARY_REASONS`가 진단을 뭉갠다**: `FETCH_HTTP_ERROR`·`FETCH_RATE_LIMITED`·`PARSE_INVALID_FORMAT`이 **모두 `naver_record_unavailable`** 로 매핑된다(`game_detail_crawler.py:313-316`). 404(포스트시즌 ID)와 rate-limit과 파싱 실패가 같은 문구가 되어 로그만으로 원인을 알 수 없다. **미수정 잔여**.
+- **재수집이 만들 뻔한 새 결함**: record 경로가 **점수 존재만으로 `game_lifecycle_state="running"`을 단정**했다. 종료 경기도 점수를 가지므로 이는 관측이 아니고, **10-21 대량 재수집이 COMPLETED 51건**을 덮었다(개별 재수집이 나머지를 더해 **총 87건**). `running → final`은 `game_state.validate_transition`상 불허이고 `result_pending_stabilization` 경유가 정본이다. `efedc706`이 단정을 제거했고(회귀 + mutation), `scripts/maintenance/repair_running_lifecycle_on_finished_games.py`(ff254afa)가 4개 조건(COMPLETED/DRAW + 두 점수 + batting + 과거 날짜)으로 87건을 `final`로 복원하고 `correction_audit_trail`에 근거를 남겼다. `result_pending_stabilization` 6건은 반증 근거가 없어 제외.
+- **복원 스크립트의 commit 누락을 실측으로 잡았다**: 첫 실행이 "87 game(s) repaired"를 보고하고 **한 행도 쓰지 않았다** — 세션 컨텍스트 매니저는 commit하지 않는다. 같은 세션에서 읽는 테스트는 이 차이를 못 본다. **다른 세션에서 읽는 테스트**를 추가했고 commit을 제거하면 그 한 건만 실패한다. `scripts/maintenance/repair_no_game_declared.py`의 `db.commit()` 패턴을 따르는 것이 정본.
+- **인시던트가 원인보다 오래 사는 두 구조**: ① `recovery:detail:<date>`는 `_send_detail_recovery_escalation_alert`가 **키를 돌려주지 않아** 복구 후에도 영영 OPEN이었다(20261014/17/18). 이 실행이 그 날짜를 훑고 `detail_still_missing`이 비었으면 resolve하도록 고쳤다(`34ec5bf3`) ② `integrity:<check>:<date>`는 재검사 창(기본 2일)이 지나면 이후 통과할 기회가 없다. 같은 잡에 **창 밖 OPEN 재검증**을 추가해(`ec9a23c9`) 통과한 키만 `resolve_keys`로 되돌린다 — 실패는 재발행하지 않고(이미 OPEN), **검사 불가(예외)면 닫지 않는다**. 목록 조회 실패가 잡을 죽이지 않게 분리했다(부가 기능이 본 기능을 막으면 안 됨).
+- **재알림은 쿨다운만으로 판정할 수 없다(`8236947a`)**: DLQ 회수 sweep이 **30분 주기**인데 `ERROR` 쿨다운이 **10분**이라 매 sweep이 통과해 **3일간 362건**이 같은 5행에 대해 나갔다. `details_hash`는 이미 저장돼 있었지만 판정에 쓰이지 않았다. 이제 **변경 → 쿨다운만**, **동일 → 재알림 주기**(CRITICAL 1h/ERROR 6h/WARNING 12h/INFO 24h, `ALERT_RENOTIFY_*`)까지 억제한다. `SILENCED_BY`에 `unchanged`가 추가됐고 **실측 26건 중 8건이 이 상태**다. 계약 변경이므로 "쿨다운 후 즉시 재알림"을 단정하던 테스트 2건을 새 계약으로 고쳤다.
+- **운영 실측(10-24~25)**: 스케줄러는 **다른 호스트(Windows 서버, `WINDOWS_SCHEDULER.md:3`)** 에서 정상 가동(최근 3일 252 런, 매시간 4~8건). 로컬 로그 0바이트·프로세스 부재는 계약대로이며 정지가 아니다. `crawl_execution_runs.origin`은 **4,333행 전부 NULL** — 미배포가 아니라 **배선 누락**(origin을 넘기는 곳이 replay 2곳뿐).
+- **미수정 잔여**: ① PBP 결손 **10경기**(9-01 5 · 8-27 4 · 10-14 1, 정상 550~760 대비 5~213행) — AGENTS.md의 "2026 781경기 PBP 누락 0" 기록은 **실측(784경기 중 10경기)과 다르다** ② `dlq:exhausted` 알림 362회의 구조는 위에서 막았지만 **DLQ 중복 행 자체**(`original_run_id`별 신규 행)는 남음 ③ Telegram bot token이 **httpx INFO 로그에 평문 노출**(`api.telegram.org/bot<token>/sendMessage`) ④ `compute_park_factor` 실패의 예외형 미확정(`SCHEDULER_JOB_EXCEPTIONS` 밖 — `AttributeError` 등) ⑤ RAG `REINDEX_REQUIRED` 30만 건·`indexed_at` 95% NULL의 설정 주체 미확정 ⑥ `rag:identity` 40건은 **거짓 양성**(census가 숫자 키를 legacy로 단정)이고 조치 없이는 영구 OPEN.
+- **커밋**: `efedc706`(lifecycle 단정 제거) · `34ec5bf3`(recovery:detail 해소) · `ec9a23c9`(창 밖 재검증) · `ff254afa`(87건 복원 스크립트) · `8236947a`(재알림 주기) · `793581c3`(런북). 전부 mutation 검증을 거쳤고 origin/main에 push됨.
 
 ### 2026-10-19: 3.12 인터프리터 유발 PEP 758 역변환 — 155파일 작업 트리 손상 복구
 - **증상**: `git status`에 **155개 파일**이 수정 상태로 뜨는데 `git diff`는 `except (A, B):` ↔ `except A, B:` 만 보였고, 어디에도 근거가 없었다. 추가로 `src/utils/playwright_pool.py`가 `pass    from types import TracebackType` 로 **줄이 붙어 SyntaxError**가 났고, `src/api/app.py` import가 깨져 **크롤러 테스트 전체가 collection error**로 죽었다.
