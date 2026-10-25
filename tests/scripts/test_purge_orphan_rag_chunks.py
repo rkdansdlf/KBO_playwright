@@ -23,11 +23,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from scripts.maintenance import purge_orphan_rag_chunks as purge_module
 from scripts.maintenance.purge_orphan_rag_chunks import (
     INDEXED_SOURCE_TABLES,
+    absent_source_identity,
     classify_unregenerable,
     deletion_path,
     purge_unregenerable,
 )
 from src.cli.rag import build_rag_index
+from src.models.game import GameLineup
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_lifecycle import can_transition
 
@@ -37,8 +39,22 @@ def session() -> Iterator[Session]:
     """Give each test its own SQLite store for the lifecycle writes to be real."""
     engine = create_engine("sqlite://")
     RagChunk.__table__.create(engine)
+    GameLineup.__table__.create(engine)
     with sessionmaker(bind=engine)() as session:
         yield session
+
+
+def _lineup_source(session: Session, game_id: str, *, side: str = "away") -> GameLineup:
+    """Put one real lineup row in the source table the rule reads."""
+    row = GameLineup(
+        game_id=game_id,
+        team_side=side,
+        player_name="홍길동",
+        appearance_seq=1,
+        batting_order=1,
+    )
+    session.add(row)
+    return row
 
 
 def _chunk(
@@ -79,13 +95,24 @@ class TestWhatCountsAsUnregenerable:
     def test_the_legacy_numeric_key_convention_is_unregenerable(self) -> None:
         assert classify_unregenerable("player_season_batting", "id=1096") == "legacy_key_convention"
 
+    def test_a_partitioned_legacy_key_is_not_named_yet(self) -> None:
+        # ``id=1873#part1`` is the same legacy convention with a chunk suffix and
+        # accounts for 5,564 of the 5,589 rows the audit reports as
+        # ``REINDEX_REQUIRED``. It is deliberately not named: those rows carry
+        # embeddings, so the scan never reaches them, and Phase B replaces them
+        # under the current key rather than re-embedding a key that is about to
+        # disappear. Widening the pattern without also deciding the Phase B order
+        # would spend embedding budget on rows that are already scheduled to go.
+        assert classify_unregenerable("player_season_batting", "id=1873#part1") is None
+
     def test_a_current_key_convention_is_left_alone(self) -> None:
         assert classify_unregenerable("player_season_batting", "96616_2001_KIA_REGULAR") is None
 
-    def test_a_lineup_key_is_left_alone_even_when_the_generator_skipped_it(self) -> None:
+    def test_a_lineup_key_is_not_named_by_the_shape_rules_alone(self) -> None:
         # 523 lineup rows have no current counterpart, but their key shape is the
-        # one the generator still produces. A shape match is not proof of an
-        # orphan; the non-scope here is deliberate.
+        # one the generator still produces. Shape is not proof of an orphan, so
+        # the pure rules stay silent and the reason has to come from measured
+        # source absence (see TestSourceAbsence) rather than from a key pattern.
         assert classify_unregenerable("game_lineups", "20180316KTHH0_away") is None
 
     def test_only_tables_the_build_targets_count_as_indexed(self) -> None:
@@ -98,6 +125,66 @@ class TestWhatCountsAsUnregenerable:
         # delete: a source added to the build would stay "not indexed" here. The
         # equality is the contract; asserting individual names is not enough.
         assert frozenset(build_rag_index._SOURCE_TABLE_BY_SOURCE.values()) == INDEXED_SOURCE_TABLES
+
+
+class TestSourceAbsence:
+    """A key with no source row cannot be re-embedded, but absence is measured."""
+
+    def test_a_lineup_whose_game_has_no_lineup_rows_is_absent(self, session: Session) -> None:
+        _lineup_source(session, "20261017LGHT0")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20180316KTHH0_away"])
+
+        assert absent == frozenset({"20180316KTHH0_away"})
+
+    def test_a_lineup_whose_game_has_rows_is_left_alone(self, session: Session) -> None:
+        _lineup_source(session, "20261017LGHT0", side="away")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20261017LGHT0_away"])
+
+        assert absent == frozenset()
+
+    def test_absence_is_decided_per_game_not_per_side(self, session: Session) -> None:
+        # Only the away side is stored for this game. The home chunk still has a
+        # source game with lineups, so it is not evidence of absence -- the
+        # generator may simply have produced one side. Deciding per side would
+        # retire a row whose game is present.
+        _lineup_source(session, "20261017LGHT0", side="away")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20261017LGHT0_home"])
+
+        assert absent == frozenset()
+
+    def test_an_empty_source_table_is_not_evidence_of_absence(self, session: Session) -> None:
+        # A reload empties the table before filling it. Reading that as "no game
+        # has lineups" would retire every lineup chunk in the store in one run,
+        # and the report would describe it as housekeeping.
+        session.commit()
+
+        absent = absent_source_identity(
+            session,
+            "game_lineups",
+            ["20180316KTHH0_away", "20180316KTHH0_home", "20261017LGHT0_away"],
+        )
+
+        assert absent == frozenset()
+
+    def test_a_table_with_no_key_parser_is_never_judged_absent(self, session: Session) -> None:
+        # The parser is what turns a chunk key back into a source identity. A
+        # table without one would need a guess, and a guess here writes deletes.
+        _lineup_source(session, "20261017LGHT0")
+        session.commit()
+
+        assert absent_source_identity(session, "player_season_batting", ["96616_2001_KIA_REGULAR"]) == frozenset()
+
+    def test_an_unparseable_key_is_never_judged_absent(self, session: Session) -> None:
+        _lineup_source(session, "20261017LGHT0")
+        session.commit()
+
+        assert absent_source_identity(session, "game_lineups", ["nounderscore"]) == frozenset()
 
 
 class TestTheLifecyclePathIsOneTheContractAllows:
@@ -165,6 +252,50 @@ class TestPurgeWrites:
         session.refresh(row)
         assert row.index_status == "ACTIVE"
         assert report.orphan_count == 0
+
+    def test_a_large_out_of_scope_table_with_embeddings_is_not_a_scope_of_deletion(self, session: Session) -> None:
+        # ``game_summary`` holds 68,829 rows whose keys all match the legacy
+        # ``id=<n>`` shape and whose table no current source builds -- both rules
+        # fire on it. It is *also* fully embedded and served. "No current
+        # generator can reproduce it" and "it is not being served" are different
+        # claims, and only the second one justifies a delete. The guard is the
+        # scan predicate, so this pins the predicate rather than the rules.
+        rows = [_chunk(session, "game_summary", f"id={n}", embedding=[0.1, 0.2]) for n in range(50)]
+        session.commit()
+
+        report = purge_unregenerable(session, apply=True)
+
+        for row in rows:
+            session.refresh(row)
+            assert row.index_status == "ACTIVE"
+        assert report.orphan_count == 0
+        assert report.scanned == 0
+
+    def test_a_lineup_whose_game_has_rows_is_left_alone(self, session: Session) -> None:
+        _lineup_source(session, "20261017LGHT0", side="away")
+        session.commit()
+        _chunk(session, "game_lineups", "20261017LGHT0_away")
+        session.commit()
+
+        report = purge_unregenerable(session, apply=True)
+
+        assert report.orphan_count == 0
+        assert report.scanned == 1
+
+    def test_a_lineup_with_no_source_game_is_retired(self, session: Session) -> None:
+        _lineup_source(session, "20261017LGHT0")
+        _chunk(session, "game_lineups", "20180316KTHH0_away")
+        session.commit()
+
+        report = purge_unregenerable(session, apply=True, backup_path=None)
+
+        assert report.orphan_count == 1
+        assert report.by_reason == {"source_rows_absent": 1}
+        with sessionmaker(bind=session.get_bind())() as reader:
+            status = reader.execute(
+                select(RagChunk.index_status).where(RagChunk.source_table == "game_lineups"),
+            ).scalar_one()
+        assert status == "DELETED"
 
     def test_the_report_counts_each_reason_and_table(self, session: Session) -> None:
         _chunk(session, "game_metadata", "20261025HTSS0")
