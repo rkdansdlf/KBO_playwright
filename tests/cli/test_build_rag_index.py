@@ -1361,3 +1361,287 @@ def test_player_chunk_survives_a_status_alone(monkeypatch) -> None:
 
     assert len(chunks) == 1
     assert "상태: active" in chunks[0]["content"]
+
+
+def _inning_game(
+    game_id: str = "20180313LGLT0",
+    *,
+    game_date: date = date(2018, 3, 13),
+    away: str = "LG",
+    home: str = "LT",
+    away_score: int | None = 4,
+    home_score: int | None = 3,
+    status: str = "COMPLETED",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        game_id=game_id,
+        game_date=game_date,
+        away_team=away,
+        home_team=home,
+        away_score=away_score,
+        home_score=home_score,
+        game_status=status,
+        season_id=201800,
+    )
+
+
+def _inning_rows(scores: dict[int, tuple[int, int]], game_id: str = "20180313LGLT0") -> list:
+    rows = []
+    for inning, (away_runs, home_runs) in scores.items():
+        rows.append(SimpleNamespace(game_id=game_id, inning=inning, team_side="away", runs=away_runs))
+        rows.append(SimpleNamespace(game_id=game_id, inning=inning, team_side="home", runs=home_runs))
+    return rows
+
+
+def _inning_chunks(
+    game: SimpleNamespace,
+    inning_rows: list,
+    *,
+    pbp_max: list[tuple[str, int]] | None = None,
+    curtailed: list[tuple[str]] | None = None,
+    minutes: list[tuple[str, int]] | None = None,
+    teams: list | None = None,
+) -> list[dict]:
+    """Run the line-score generator over in-memory rows instead of a live session."""
+    from src.models.game import Game, GameInningScore, GameMetadata, GamePlayByPlay
+    from src.models.team import Team
+
+    class _Query:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def group_by(self, *args, **kwargs):
+            return self
+
+        def distinct(self):
+            return self
+
+        def yield_per(self, size):
+            return iter(self._rows)
+
+        def __iter__(self):
+            return iter(self._rows)
+
+        def all(self):
+            return list(self._rows)
+
+    class _Session:
+        def query(self, *models):
+            owner = models[0] if isinstance(models[0], type) else models[0].class_
+            if owner is GameInningScore:
+                return _Query([(row, game) for row in inning_rows])
+            if owner is GamePlayByPlay:
+                return _Query((pbp_max or []) if len(models) == 2 else (curtailed or []))
+            if owner is GameMetadata:
+                return _Query(minutes or [])
+            if owner is Team:
+                return _Query(teams or [])
+            message = f"unexpected query for {owner}"
+            raise AssertionError(message)
+
+    return list(build_rag_index._iter_inning_score_chunks(_Session(), None, None))
+
+
+def _team(team_id: str, name: str) -> SimpleNamespace:
+    return SimpleNamespace(team_id=team_id, team_name=name, team_short_name=name)
+
+
+_PADDED_NINE = {
+    1: (0, 0),
+    2: (0, 0),
+    3: (0, 0),
+    4: (0, 1),
+    5: (0, 1),
+    6: (0, 0),
+    7: (1, 0),
+    8: (0, 0),
+    9: (1, 0),
+    10: (0, 0),
+    11: (0, 0),
+    12: (0, 0),
+}
+
+
+def test_decided_inning_returns_none_while_the_score_is_level() -> None:
+    assert build_rag_index._decided_inning({1: {"away": 3, "home": 3}}) is None
+
+
+def test_decided_inning_stops_when_the_home_team_never_batted() -> None:
+    """3-2 with only the top of the ninth stored: the game ended at nine, not later."""
+    by_inning = {1: {"away": 3, "home": 2}, 9: {"away": 0}}
+
+    assert build_rag_index._decided_inning(by_inning) == 9
+
+
+def test_decided_inning_reaches_the_extra_inning_that_settled_it() -> None:
+    by_inning = {
+        **{n: {"away": 0, "home": 0} for n in range(1, 9)},
+        9: {"away": 4, "home": 4},
+        10: {"away": 0, "home": 1},
+    }
+
+    assert build_rag_index._decided_inning(by_inning) == 10
+
+
+def test_played_innings_ignores_padding_beyond_the_score() -> None:
+    """2024 stores twelve innings for every game; this one was level, not twelve."""
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(11, 13)},
+        domain_max=12,
+        pbp_max=9,
+        game_minutes=None,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (9, "pbp")
+
+
+def test_played_innings_accepts_a_short_game_from_the_curtailment_caption() -> None:
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(1, 6)},
+        domain_max=5,
+        pbp_max=6,
+        game_minutes=None,
+        curtailed=True,
+    )
+
+    assert (innings, evidence) == (5, "curtailed")
+
+
+def test_played_innings_stops_at_the_last_run_when_the_length_is_unrecorded() -> None:
+    """Eight curtailed games (90~130 minutes) have no play-by-play to count innings from.
+
+    Their domain rows are filled out to 12, so the count has to come from the runs.
+    """
+    scores = {n: {"away": 0, "home": 0} for n in range(1, 13)}
+    scores.update({1: {"away": 0, "home": 2}, 2: {"away": 4, "home": 0}, 5: {"away": 0, "home": 4}})
+    innings, evidence = build_rag_index._played_innings(
+        scores,
+        domain_max=12,
+        pbp_max=0,
+        game_minutes=127,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (5, "curtailed_unknown")
+
+
+def test_played_innings_does_not_trim_a_game_whose_stub_play_by_play_stops_early() -> None:
+    """2011 play-by-play holds one or two rows per inning; a normal clock outranks it."""
+    scores = {**{n: {"away": 0, "home": 0} for n in range(1, 13)}, 3: {"away": 0, "home": 2}}
+    innings, evidence = build_rag_index._played_innings(
+        scores,
+        domain_max=12,
+        pbp_max=1,
+        game_minutes=208,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (9, "decided")
+
+
+def test_played_innings_reads_a_running_time_as_a_curtailment() -> None:
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(1, 6)},
+        domain_max=5,
+        pbp_max=5,
+        game_minutes=96,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (5, "curtailed")
+
+
+def test_played_innings_keeps_the_filled_innings_when_a_tie_has_no_play_by_play() -> None:
+    """Early draws carry no play-by-play at all, so nothing contradicts the filled rows."""
+    innings, evidence = build_rag_index._played_innings(
+        {1: {"away": 1, "home": 1}, 2: {"away": 2, "home": 1}},
+        domain_max=12,
+        pbp_max=0,
+        game_minutes=None,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (12, "domain")
+
+
+def test_line_score_notes_read_a_tie_from_the_score_not_the_status() -> None:
+    """``20210529NCLT1`` is stored COMPLETED at 10-10 and is still a draw."""
+    assert build_rag_index._line_score_notes(9, 10, 10, "decided") == " (무승부)"
+    assert build_rag_index._line_score_notes(9, 4, 3, "decided") == ""
+
+
+def test_line_score_notes_mark_an_extension_and_a_short_game() -> None:
+    assert build_rag_index._line_score_notes(11, 5, 4, "decided") == " (연장 2회)"
+    assert build_rag_index._line_score_notes(6, 5, 4, "curtailed") == " (6회 종료)"
+
+
+def test_line_score_notes_do_not_invent_a_count_for_an_unrecorded_short_game() -> None:
+    assert build_rag_index._line_score_notes(5, 4, 6, "curtailed_unknown") == " (조기 종료)"
+
+
+def test_inning_score_chunk_replaces_the_false_extension_with_the_played_innings() -> None:
+    """The index held ``(무승부) (연장 3회)`` for a game that stopped after nine."""
+    game = _inning_game(
+        game_id="20240630SSKT1",
+        game_date=date(2024, 6, 30),
+        away="SS",
+        home="KT",
+        away_score=2,
+        home_score=2,
+        status="DRAW",
+    )
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(_PADDED_NINE, game.game_id),
+        pbp_max=[(game.game_id, 9)],
+        teams=[_team("SS", "삼성 라이온즈"), _team("KT", "kt wiz")],
+    )[0]
+
+    assert chunk["content"].splitlines()[3] == "삼성 라이온즈 2 - 2 kt wiz (무승부)"
+    assert "연장" not in chunk["content"]
+    assert chunk["content"].splitlines()[4].endswith("9회 1-0")
+    assert chunk["meta"]["innings_played"] == 9
+
+
+def test_inning_score_chunk_renders_the_extension_a_game_reached() -> None:
+    """``20180327LGWO0`` was level at 3-3 after nine and settled in the tenth."""
+    scores = dict.fromkeys(range(1, 13), (0, 0))
+    scores.update({3: (1, 0), 4: (0, 1), 5: (1, 0), 6: (0, 1), 9: (1, 1), 10: (0, 1)})
+    game = _inning_game(game_id="20180327LGWO0", home="WO", away_score=3, home_score=4)
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(scores, game.game_id),
+        pbp_max=[(game.game_id, 10)],
+        teams=[_team("LG", "LG 트윈스"), _team("WO", "키움 히어로즈")],
+    )[0]
+
+    assert chunk["content"].splitlines()[3] == "LG 트윈스 3 - 4 키움 히어로즈 (연장 1회)"
+    assert chunk["meta"]["innings_evidence"] == "decided"
+
+
+def test_inning_score_chunk_keeps_the_existing_identity_and_shape() -> None:
+    """The store already holds ``{game_id}_line`` rows; regenerating must not duplicate them."""
+    game = _inning_game()
+    scores = {1: (0, 1), 2: (0, 0), 3: (0, 0), 4: (0, 0), 5: (2, 0), 6: (2, 0), 7: (0, 2), 8: (0, 0), 9: (0, 0)}
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(scores, game.game_id),
+        teams=[_team("LG", "LG 트윈스"), _team("LT", "롯데 자이언츠")],
+    )[0]
+
+    assert chunk["source_table"] == "game_inning_scores"
+    assert chunk["source_row_id"] == "20180313LGLT0_line"
+    assert chunk["title"] == "[2018-03-13] LG 트윈스 vs 롯데 자이언츠 라인스코어"
+    assert chunk["document_type"] == "game_line_score"
+    assert chunk["meta"]["kind"] == "game_line_score"
+    assert chunk["content"].startswith("경기 라인스코어\n경기: 20180313LGLT0\n경기일: 2018-03-13\n")

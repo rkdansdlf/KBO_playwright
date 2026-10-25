@@ -101,6 +101,7 @@ _VALID_SOURCES = (
     "teams",
     "team_history",
     "highlights",
+    "inning_scores",
     "pbp",
     "markdown_docs",
     "kbo_definitions",
@@ -565,6 +566,27 @@ def _team_label_map(session: Session) -> dict[str, str]:
     return {team.team_id: (team.team_short_name or team.team_name) for team in session.query(Team).all()}
 
 
+def _team_name_map(session: Session) -> dict[str, str]:
+    """Map ``team_id`` to the full Korean name a line score is written with.
+
+    Line scores read ``롯데 자이언츠 9 - 9 kt wiz``. The short name the player chunks
+    use (``롯데``) would rewrite every line score the index already holds, so the two
+    conventions stay apart: player rows are labelled for the person, line scores for
+    the club as it appears in a scoreboard.
+
+    The name is the club's current one, taken from the code the ``game`` row carries
+    (``SSG``, ``KH``), not the name the club played under that season (``SK``,
+    ``넥센``). A 2018 line score therefore reads ``키움 히어로즈``. Era names stay
+    reachable because the search path resolves them to the same code — ``extract_kbo_entities``
+    maps ``넥센`` and ``와이번스`` to ``KH`` and ``SSG`` — while the reverse is not true:
+    naming per season would tie every historical chunk to ``team_history`` rows whose
+    ranges overlap, so a later franchise edit would rewrite text the index has embedded.
+    """
+    from src.models.team import Team
+
+    return {team.team_id: (team.team_name or team.team_short_name) for team in session.query(Team).all()}
+
+
 def _colliding_player_labels(session: Session, team_labels: dict[str, str]) -> set[tuple[str, str]]:
     """``(name, club)`` pairs produced by more than one ``player_basic`` row.
 
@@ -813,6 +835,231 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
                 "away_score": game.away_score,
                 "winner": winner,
                 "stadium": stadium,
+            },
+        }
+
+
+#: PBP 문구로 조기 종료를 알리는 낱말. 이닝 수를 도메인보다 짧게 확정할 수 있는 근거다.
+#: ``중단``은 넣지 않는다 — 우천으로 멈췄다가 이어서 9회까지 마친 경기 265건에 붙어 있어,
+#: 그것을 조기 종료로 읽으면 그 경기들의 이닝을 도리어 깎는다.
+_CURTAILED_PBP_KEYWORDS = ("콜드", "순연", "서스펜디드")
+#: 9회 경기는 통상 170분 이상 걸린다. 130분 이하는 조기 종료로 본다.
+_SHORT_GAME_MINUTES = 130
+#: 무승부가 아니면 경기가 반드시 치르는 이닝 수.
+_REGULATION_INNINGS = 9
+
+
+def _decided_inning(by_inning: dict[int, dict[str, int]]) -> int | None:
+    """Return the inning a game was decided in, or ``None`` when it ended tied.
+
+    A game cannot end before the ninth, and the home team does not bat once it is
+    already ahead in the top half. Both facts are needed: without the first, the
+    earliest lead would end the game; without the second, a 3-2 game would look
+    undecided only because the bottom of the ninth was never recorded.
+    """
+    away = home = 0
+    for inning in range(1, max(by_inning, default=0) + 1):
+        halves = by_inning.get(inning, {})
+        away += halves.get("away", 0)
+        if inning >= _REGULATION_INNINGS and home > away:
+            return inning
+        home += halves.get("home", 0)
+        if inning >= _REGULATION_INNINGS and away != home:
+            return inning
+    return None
+
+
+def _last_scoring_inning(by_inning: dict[int, dict[str, int]]) -> int:
+    """Return the last inning either side scored in, and at least one inning.
+
+    Every inning up to a run that was actually scored was played, so this is a floor
+    the index can stand on when the game's length is unknown.
+    """
+    scored = [inning for inning, halves in by_inning.items() if sum(halves.values()) > 0]
+    return max(scored) if scored else 1
+
+
+def _played_innings(
+    by_inning: dict[int, dict[str, int]],
+    *,
+    domain_max: int,
+    pbp_max: int,
+    game_minutes: int | None,
+    curtailed: bool,
+) -> tuple[int, str]:
+    """Return how many innings were played, with the evidence behind that number.
+
+    ``game_inning_scores`` fills every game out to 12 innings in 2002~2019 and
+    2024~2025 — 0-0 rows for innings nobody played — and stops at the real inning in
+    2021~2023, so the table alone cannot say how far a game went. Believing it either
+    way has already put false text in the index: ``20240630SSKT1`` was called after
+    nine innings and its chunk read ``연장 3회``. Two things settle it instead. The
+    score ends a game exactly when the game ends, which trims the filling; and a
+    curtailment caption or a running time no full game fits in says play stopped early,
+    which trims the innings nobody played at all.
+    """
+    if curtailed or (game_minutes is not None and game_minutes <= _SHORT_GAME_MINUTES):
+        if pbp_max:
+            return min(pbp_max, domain_max), "curtailed"
+        # 조기 종료는 확실하지만 몇 회까지 치렀는지 기록이 없다. 득점이 확인된
+        # 마지막 이닝까지만 적으면 적힌 모든 줄이 실제로 치른 이닝이 된다.
+        return _last_scoring_inning(by_inning), "curtailed_unknown"
+    decided = _decided_inning(by_inning)
+    if decided:
+        return decided, "decided"
+    if pbp_max >= _REGULATION_INNINGS:
+        return pbp_max, "pbp"
+    return domain_max, "domain"
+
+
+def _line_score_notes(innings: int, away_score: int | None, home_score: int | None, evidence: str) -> str:
+    """Add only the notes the innings count and the score support.
+
+    A tie is a fact of the score, not of ``game_status``: ``20210529NCLT1`` is stored
+    ``COMPLETED`` at 10-10 and would otherwise read like a win.
+    """
+    notes: list[str] = []
+    if innings > _REGULATION_INNINGS:
+        notes.append(f"연장 {innings - _REGULATION_INNINGS}회")
+    if away_score is not None and home_score is not None and away_score == home_score:
+        notes.append("무승부")
+    elif evidence == "curtailed_unknown":
+        notes.append("조기 종료")
+    elif innings < _REGULATION_INNINGS:
+        notes.append(f"{innings}회 종료")
+    return f" ({', '.join(notes)})" if notes else ""
+
+
+def _pbp_inning_evidence(session: Session) -> tuple[dict[str, int], set[str]]:
+    """Collect the two play-by-play facts an innings count may lean on.
+
+    ``max(inning)`` also carries the inning header of a game that never got there —
+    the closing marker and the winning pitcher are filed under the next inning number —
+    so it is only used downwards, where the true last inning cannot be later than the
+    last one recorded.
+    """
+    from sqlalchemy import func, or_
+
+    from src.models.game import GamePlayByPlay
+
+    maxima = {
+        game_id: int(inning_max)
+        for game_id, inning_max in session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning)).group_by(
+            GamePlayByPlay.game_id
+        )
+        if inning_max
+    }
+    curtailed = {
+        game_id
+        for (game_id,) in session.query(GamePlayByPlay.game_id)
+        .filter(or_(*[GamePlayByPlay.play_description.like(f"%{keyword}%") for keyword in _CURTAILED_PBP_KEYWORDS]))
+        .distinct()
+    }
+    return maxima, curtailed
+
+
+def _game_minutes_by_id(session: Session) -> dict[str, int]:
+    """Map ``game_id`` to its recorded running time, where one was recorded."""
+    from src.models.game import GameMetadata
+
+    return {
+        game_id: int(minutes)
+        for game_id, minutes in session.query(GameMetadata.game_id, GameMetadata.game_time_minutes)
+        if minutes is not None
+    }
+
+
+def _iter_inning_score_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
+    """game_inning_scores에서 경기 라인스코어 청크를 생성합니다 (경기당 1청크)."""
+    from itertools import groupby
+
+    from sqlalchemy import or_
+
+    from src.models.game import Game, GameInningScore
+
+    query = (
+        session.query(GameInningScore, Game)
+        .join(Game, GameInningScore.game_id == Game.game_id)
+        .filter(or_(Game.game_status.is_(None), Game.game_status.notin_(("CANCELLED", "POSTPONED"))))
+        .order_by(
+            Game.game_date,
+            Game.game_id,
+            GameInningScore.inning,
+            GameInningScore.team_side,
+        )
+    )
+    if season:
+        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+
+    pbp_maxima, curtailed_games = _pbp_inning_evidence(session)
+    minutes_by_game = _game_minutes_by_id(session)
+    team_names = _team_name_map(session)
+
+    for count, (game_id, group) in enumerate(
+        groupby(query.yield_per(5000), key=lambda row: row[0].game_id),
+        start=1,
+    ):
+        if limit and count > limit:
+            break
+        by_inning: dict[int, dict[str, int]] = {}
+        game = None
+        for inning_row, game_row in group:
+            game = game_row
+            by_inning.setdefault(inning_row.inning, {})[inning_row.team_side] = inning_row.runs or 0
+        if game is None or not by_inning:
+            continue
+
+        innings, evidence = _played_innings(
+            by_inning,
+            domain_max=max(by_inning),
+            pbp_max=pbp_maxima.get(game_id, 0),
+            game_minutes=minutes_by_game.get(game_id),
+            curtailed=game_id in curtailed_games,
+        )
+        away = team_names.get(game.away_team or "", game.away_team or "?")
+        home = team_names.get(game.home_team or "", game.home_team or "?")
+        date_str = str(game.game_date) if game.game_date else "날짜불명"
+        away_score = game.away_score if game.away_score is not None else "?"
+        home_score = game.home_score if game.home_score is not None else "?"
+        notes = _line_score_notes(innings, game.away_score, game.home_score, evidence)
+        inning_runs = [
+            (number, by_inning.get(number, {}).get("away", 0), by_inning.get(number, {}).get("home", 0))
+            for number in range(1, innings + 1)
+        ]
+        content = "\n".join(
+            [
+                "경기 라인스코어",
+                f"경기: {game_id}",
+                f"경기일: {date_str}",
+                f"{away} {away_score} - {home_score} {home}{notes}",
+                "이닝별: " + ", ".join(f"{number}회 {a}-{h}" for number, a, h in inning_runs),
+            ]
+        )
+        yield {
+            "source_table": "game_inning_scores",
+            "source_row_id": f"{game_id}_line",
+            "title": f"[{date_str}] {away} vs {home} 라인스코어",
+            "content": content,
+            "team_id": game.home_team,
+            "player_id": None,
+            "season_year": (
+                game.game_date.year if game.game_date else _season_year_from_id(cast("int | None", game.season_id))
+            ),
+            "document_type": "game_line_score",
+            "game_date": game.game_date,
+            "published_at": None,
+            "source_url": None,
+            "language": _DEFAULT_LANGUAGE,
+            "league_type_code": _REGULAR_SEASON_CODE,
+            "meta": {
+                "kind": "game_line_score",
+                "game_id": game_id,
+                "innings_played": innings,
+                "innings_evidence": evidence,
+                "innings": [
+                    {"inning": number, "away_runs": runs_away, "home_runs": runs_home}
+                    for number, runs_away, runs_home in inning_runs
+                ],
             },
         }
 
@@ -1713,6 +1960,7 @@ _SOURCE_MAP = {
     "teams": _iter_team_chunks,
     "team_history": _iter_team_history_chunks,
     "highlights": _iter_highlight_chunks,
+    "inning_scores": _iter_inning_score_chunks,
     "pbp": _iter_pbp_chunks_keyset,
     "markdown_docs": _iter_markdown_chunks,
     "kbo_definitions": _iter_definition_chunks,
@@ -1734,6 +1982,7 @@ _SOURCE_TABLE_BY_SOURCE = {
     "teams": "teams",
     "team_history": "team_history",
     "highlights": "game_highlights",
+    "inning_scores": "game_inning_scores",
     "pbp": "game_play_by_play",
     "markdown_docs": "markdown_docs",
     "kbo_definitions": "kbo_definitions",
