@@ -90,12 +90,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, tuple_, update
 
 from src.cli.rag.build_rag_index import _SOURCE_TABLE_BY_SOURCE
 from src.constants import KST
 from src.db.engine import SessionLocal
-from src.models.game import GameLineup
+from src.models.game import Game, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_lifecycle import IndexLifecycleStatus, can_transition
 
@@ -131,6 +131,10 @@ _LINEUP_SIDES = frozenset({"home", "away"})
 
 _BACKUP_COLUMNS = ("source_table", "source_row_id", "reason", "previous_status")
 
+#: A restore records what it changed, so the restore is auditable the same way
+#: the purge it undoes is.
+_RESTORE_BACKUP_COLUMNS = ("source_table", "source_row_id", "previous_status", "restored_status")
+
 
 def _game_id_from_lineup_key(key: str) -> str | None:
     """Return the game a lineup chunk key names, or ``None`` when it cannot be read.
@@ -153,26 +157,40 @@ def _game_id_from_lineup_key(key: str) -> str | None:
 
 
 def _lineup_source_presence(session: Session, identities: set[str]) -> set[str] | None:
-    """Return which game ids hold at least one lineup row.
+    """Return the game ids that could still emit a lineup chunk for this key.
+
+    Two things count, and the second one is the whole reason this rule is not a
+    key-shape test. A game that already holds lineup rows has a source. A game
+    that exists with no lineup rows *yet* counts too: the generator writes
+    ``{game_id}_{team_side}``, so crawling that season later emits this exact
+    key again. Retiring it now would strand the row that arrives, because
+    ``DELETED`` is terminal to the incremental selector -- it blocks the key
+    instead of re-embedding it, and the reactivation path is only reached from
+    an upsert the selector never produces.
 
     Args:
-        session: Session the source table is read through.
+        session: Session the source tables are read through.
         identities: Game ids the candidate keys name.
 
     Returns:
-        The ids that have rows, or ``None`` when the question cannot be answered
-        because the table holds nothing at all.
+        The ids that could still produce a row, or ``None`` when the question
+        cannot be answered because neither table holds anything at all.
 
     """
     if not session.execute(select(func.count()).select_from(GameLineup)).scalar_one():
         # An empty table says "nothing is loaded", not "no game has lineups".
         # Reading it as absence would retire every lineup chunk in one run and
         # report it as housekeeping.
-        return None
-    rows = session.execute(
-        select(GameLineup.game_id).where(GameLineup.game_id.in_(identities)).distinct(),
+        if not session.execute(select(func.count()).select_from(Game)).scalar_one():
+            return None
+    lineups = session.execute(
+        select(GameLineup.game_id).where(GameLineup.game_id.in_(identities)),
     ).scalars()
-    return {str(game_id) for game_id in rows}
+    present = {str(game_id) for game_id in lineups}
+    games = session.execute(
+        select(Game.game_id).where(Game.game_id.in_(identities)),
+    ).scalars()
+    return present | {str(game_id) for game_id in games}
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,8 +200,9 @@ class SourceKeyRule:
     Attributes:
         parse_key: Turn a chunk key into the source-table identity it names, or
             ``None`` when the key cannot be read.
-        presence: Return the subset of identities the source table holds, or
-            ``None`` when the table cannot answer.
+        presence: Return the subset of identities that could still emit this key
+            -- which includes identities whose row has not been written yet but
+            can be -- or ``None`` when the tables cannot answer.
 
     """
 
@@ -354,12 +373,33 @@ def deletion_path(status: str) -> list[str] | None:
     return None
 
 
-def _write_backup(path: Path, rows: list[dict[str, str]]) -> str:
-    """Write the orphan list to CSV before anything is changed.
+@dataclass(frozen=True, slots=True)
+class RestoreReport:
+    """Describe what a restore read and what it wrote."""
+
+    requested: int = 0
+    restored: int = 0
+    not_deleted: int = 0
+    purged: int = 0
+    missing: int = 0
+    written: bool = False
+    backup_path: str | None = None
+
+    def summary_line(self) -> str:
+        """Return a one-line summary for logs."""
+        return (
+            f"requested={self.requested} restored={self.restored} not_deleted={self.not_deleted} "
+            f"purged={self.purged} missing={self.missing}"
+        )
+
+
+def _write_backup(path: Path, rows: list[dict[str, str]], columns: Sequence[str] = _BACKUP_COLUMNS) -> str:
+    """Write a pre-change state to CSV before anything is modified.
 
     Args:
         path: Destination file.
-        rows: Backup records, one per orphan.
+        rows: Backup records.
+        columns: Column order to write.
 
     Returns:
         The written path as a string.
@@ -367,7 +407,7 @@ def _write_backup(path: Path, rows: list[dict[str, str]]) -> str:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=_BACKUP_COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
     return str(path)
@@ -548,6 +588,163 @@ def purge_unregenerable(
     )
 
 
+def _read_purge_backup(path: Path | str) -> list[tuple[str, str, str]]:
+    """Read a purge backup into ``(table, key, previous_status)`` tuples.
+
+    Args:
+        path: CSV a previous purge wrote.
+
+    Returns:
+        One tuple per backed-up chunk, in file order.
+
+    """
+    requested: list[tuple[str, str, str]] = []
+    with Path(path).open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            requested.append(
+                (str(row["source_table"]), str(row["source_row_id"]), str(row["previous_status"])),
+            )
+    return requested
+
+
+@dataclass(frozen=True, slots=True)
+class _RestorePlan:
+    """The restorations a backup asks for, grouped the way the write needs them."""
+
+    to_restore: dict[str, list[int]] = field(default_factory=dict)
+    backup_rows: list[dict[str, str]] = field(default_factory=list)
+    not_deleted: int = 0
+    purged: int = 0
+    missing: int = 0
+
+    @property
+    def restored(self) -> int:
+        """Return how many rows the plan would return."""
+        return sum(len(ids) for ids in self.to_restore.values())
+
+
+def _plan_restore(session: Session, requested: Sequence[tuple[str, str, str]]) -> _RestorePlan:
+    """Decide which backed-up keys can be returned, and to what.
+
+    Args:
+        session: Session the current statuses are read through.
+        requested: ``(table, key, previous_status)`` tuples from the backup.
+
+    Returns:
+        The plan, with unactionable rows counted rather than written.
+
+    """
+    keys = [(table, key) for table, key, _ in requested]
+    found: dict[tuple[str, str], tuple[int, str]] = {}
+    if keys:
+        rows = session.execute(
+            select(RagChunk.id, RagChunk.source_table, RagChunk.source_row_id, RagChunk.index_status).where(
+                tuple_(RagChunk.source_table, RagChunk.source_row_id).in_(keys),
+            ),
+        ).all()
+        found = {(str(table), str(key)): (int(chunk_id), str(status)) for chunk_id, table, key, status in rows}
+
+    to_restore: dict[str, list[int]] = {}
+    backup_rows: list[dict[str, str]] = []
+    not_deleted = 0
+    purged = 0
+    missing = 0
+    for table, key, previous in requested:
+        current = found.get((table, key))
+        if current is None:
+            missing += 1
+            continue
+        chunk_id, status = current
+        if status == IndexLifecycleStatus.PURGED:
+            purged += 1
+            continue
+        if status != IndexLifecycleStatus.DELETED:
+            not_deleted += 1
+            continue
+        try:
+            target = str(IndexLifecycleStatus(previous))
+        except ValueError:
+            logger.exception("backup names unknown status %r for %s:%s; left alone", previous, table, key)
+            continue
+        to_restore.setdefault(target, []).append(chunk_id)
+        backup_rows.append(
+            {
+                "source_table": table,
+                "source_row_id": key,
+                "previous_status": status,
+                "restored_status": target,
+            },
+        )
+    return _RestorePlan(
+        to_restore=to_restore,
+        backup_rows=backup_rows,
+        not_deleted=not_deleted,
+        purged=purged,
+        missing=missing,
+    )
+
+
+def restore_from_backup(
+    session: Session,
+    *,
+    backup_path: Path | str,
+    apply: bool,
+    backup_out: Path | str | None = None,
+) -> RestoreReport:
+    """Return chunks named in a purge backup to the status the backup recorded.
+
+    This is the one write here that steps outside the lifecycle contract, and it
+    does so on purpose. ``can_transition`` refuses ``DELETED -> ACTIVE`` so that
+    nothing is reactivated *automatically*, and the selector enforces that by
+    blocking terminal keys. A restore is not automatic: it is a person saying the
+    purge's premise was wrong, and the backup is what lets that be said from
+    evidence rather than from memory.
+
+    ``PURGED`` is excluded because the contract offers no way out of it and the
+    row's storage is gone -- a CSV does not bring that back. Anything that is not
+    currently ``DELETED`` is reported rather than written, because the store may
+    have moved on since the backup and restoring a serving row would be a second
+    unrequested change.
+
+    Args:
+        session: Session the rows are read and written through.
+        backup_path: CSV a previous purge wrote.
+        apply: Write the restorations. When false nothing changes.
+        backup_out: Optional CSV path recording the restore itself.
+
+    Returns:
+        What was requested and what was done.
+
+    """
+    requested = _read_purge_backup(backup_path)
+    plan = _plan_restore(session, requested)
+
+    written_backup: str | None = None
+    written = False
+    if apply and plan.to_restore:
+        if backup_out is not None:
+            written_backup = _write_backup(Path(backup_out), plan.backup_rows, _RESTORE_BACKUP_COLUMNS)
+        for target, ids in plan.to_restore.items():
+            session.execute(
+                update(RagChunk)
+                .where(RagChunk.id.in_(ids))
+                .values(index_status=target)
+                .execution_options(synchronize_session=False),
+            )
+        session.commit()
+        written = True
+
+    return RestoreReport(
+        requested=len(requested),
+        restored=plan.restored,
+        not_deleted=plan.not_deleted,
+        purged=plan.purged,
+        missing=plan.missing,
+        written=written,
+        backup_path=written_backup,
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the purge from the command line.
 
@@ -559,12 +756,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    parser.add_argument("--apply", action="store_true", help="Write the lifecycle transitions (default: dry run)")
+    parser.add_argument("--apply", action="store_true", help="Write the changes (default: dry run)")
     parser.add_argument(
         "--backup-out",
         type=Path,
         default=None,
-        help="CSV path for the pre-change state (default: data/repair_backups/rag_orphans_<UTC>.csv)",
+        help=(
+            "CSV path for the pre-change state "
+            "(default: data/repair_backups/rag_orphans_<UTC>.csv for a purge, "
+            "data/repair_backups/rag_restore_<UTC>.csv for a restore)"
+        ),
+    )
+    parser.add_argument(
+        "--restore",
+        type=Path,
+        default=None,
+        metavar="BACKUP_CSV",
+        help="Return the chunks named in a purge backup to the status it recorded, instead of purging",
     )
     args = parser.parse_args(argv)
 
@@ -577,14 +785,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     backup_path = args.backup_out
     if args.apply and backup_path is None:
         stamp = datetime.now(KST).strftime("%Y%m%dT%H%M%S")
-        backup_path = Path("data") / "repair_backups" / f"rag_orphans_{stamp}.csv"
+        stem = "rag_restore" if args.restore is not None else "rag_orphans"
+        backup_path = Path("data") / "repair_backups" / f"{stem}_{stamp}.csv"
 
     with SessionLocal() as session:
-        report = purge_unregenerable(session, apply=args.apply, backup_path=backup_path)
+        if args.restore is not None:
+            restore_report = restore_from_backup(
+                session,
+                backup_path=args.restore,
+                apply=args.apply,
+                backup_out=backup_path,
+            )
+            logger.info("%s", restore_report.summary_line())
+            written_backup = restore_report.backup_path
+        else:
+            purge_report = purge_unregenerable(session, apply=args.apply, backup_path=backup_path)
+            logger.info("%s", purge_report.summary_line())
+            written_backup = purge_report.backup_path
 
-    logger.info("%s", report.summary_line())
-    if report.backup_path:
-        logger.info("backup written to %s", report.backup_path)
+    if written_backup:
+        logger.info("backup written to %s", written_backup)
     if not args.apply:
         logger.info("dry run; pass --apply with RAG_INDEX_ALLOW_WRITE=1 to write")
     return 0

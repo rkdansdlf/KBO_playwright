@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,9 +28,10 @@ from scripts.maintenance.purge_orphan_rag_chunks import (
     classify_unregenerable,
     deletion_path,
     purge_unregenerable,
+    restore_from_backup,
 )
 from src.cli.rag import build_rag_index
-from src.models.game import GameLineup
+from src.models.game import Game, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_lifecycle import can_transition
 
@@ -39,9 +41,17 @@ def session() -> Iterator[Session]:
     """Give each test its own SQLite store for the lifecycle writes to be real."""
     engine = create_engine("sqlite://")
     RagChunk.__table__.create(engine)
+    Game.__table__.create(engine)
     GameLineup.__table__.create(engine)
     with sessionmaker(bind=engine)() as session:
         yield session
+
+
+def _game(session: Session, game_id: str) -> Game:
+    """Put the parent game row in place, with no lineup rows under it."""
+    row = Game(game_id=game_id, game_date=date(2018, 3, 16), is_primary=True)
+    session.add(row)
+    return row
 
 
 def _lineup_source(session: Session, game_id: str, *, side: str = "away") -> GameLineup:
@@ -132,6 +142,29 @@ class TestSourceAbsence:
 
     def test_a_lineup_whose_game_has_no_lineup_rows_is_absent(self, session: Session) -> None:
         _lineup_source(session, "20261017LGHT0")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20180316KTHH0_away"])
+
+        assert absent == frozenset({"20180316KTHH0_away"})
+
+    def test_a_game_row_alone_keeps_the_chunk_off_the_list(self, session: Session) -> None:
+        # The game exists, so its lineup can still be crawled and the generator
+        # would emit this exact key. Retiring it now would make that future row
+        # unreachable: DELETED is in TERMINAL_INDEX_STATUSES, so the incremental
+        # selector blocks the key rather than re-embedding it, and the reactivation
+        # path is only reached from an upsert the selector never produces.
+        _game(session, "20180316KTHH0")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20180316KTHH0_away"])
+
+        assert absent == frozenset()
+
+    def test_the_same_key_is_absent_once_the_game_row_is_gone_too(self, session: Session) -> None:
+        # No lineup and no game: nothing can emit this key again, so the delete
+        # is not a bet on whether a crawler will revisit the season.
+        _game(session, "20261017LGHT0")
         session.commit()
 
         absent = absent_source_identity(session, "game_lineups", ["20180316KTHH0_away"])
@@ -388,3 +421,149 @@ class TestPurgeWrites:
         finally:
             writer.close()
             engine.dispose()
+
+
+class TestRestoreFromBackup:
+    """A purge is reversible from its own backup, and only from it."""
+
+    def _backup(self, path: Path, *rows: tuple[str, str, str, str]) -> Path:
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=["source_table", "source_row_id", "reason", "previous_status"],
+            )
+            writer.writeheader()
+            for source_table, source_row_id, reason, previous_status in rows:
+                writer.writerow(
+                    {
+                        "source_table": source_table,
+                        "source_row_id": source_row_id,
+                        "reason": reason,
+                        "previous_status": previous_status,
+                    },
+                )
+        return path
+
+    def test_a_deleted_row_returns_to_the_status_the_backup_recorded(self, session: Session, tmp_path: Path) -> None:
+        row = _chunk(session, "game_metadata", "20261025HTSS0", status="DELETED")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "STALE"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=True)
+
+        session.refresh(row)
+        assert row.index_status == "STALE"
+        assert report.restored == 1
+
+    def test_a_row_that_is_not_deleted_is_left_where_it_is(self, session: Session, tmp_path: Path) -> None:
+        # The store may have moved on since the backup was written. Restoring a
+        # row that is serving would be a second unrequested change.
+        row = _chunk(session, "game_metadata", "20261025HTSS0", status="ACTIVE")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "ACTIVE"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=True)
+
+        session.refresh(row)
+        assert row.index_status == "ACTIVE"
+        assert report.restored == 0
+        assert report.not_deleted == 1
+
+    def test_a_purged_row_is_not_restored(self, session: Session, tmp_path: Path) -> None:
+        # PURGED is the one state the contract gives no way out of, and it means
+        # the row's storage is gone. A backup file does not bring it back.
+        row = _chunk(session, "game_metadata", "20261025HTSS0", status="PURGED")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "ACTIVE"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=True)
+
+        session.refresh(row)
+        assert row.index_status == "PURGED"
+        assert report.restored == 0
+        assert report.purged == 1
+
+    def test_a_backed_up_key_that_is_gone_from_the_store_is_reported(self, session: Session, tmp_path: Path) -> None:
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "ACTIVE"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=True)
+
+        assert report.restored == 0
+        assert report.missing == 1
+
+    def test_a_dry_run_reports_without_writing(self, session: Session, tmp_path: Path) -> None:
+        row = _chunk(session, "game_metadata", "20261025HTSS0", status="DELETED")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "ACTIVE"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=False)
+
+        session.refresh(row)
+        assert row.index_status == "DELETED"
+        assert report.restored == 1
+        assert report.written is False
+
+    def test_the_restore_leaves_its_own_backup(self, session: Session, tmp_path: Path) -> None:
+        _chunk(session, "game_metadata", "20261025HTSS0", status="DELETED")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "ACTIVE"),
+        )
+        restore_backup = tmp_path / "restore.csv"
+
+        report = restore_from_backup(
+            session,
+            backup_path=backup,
+            apply=True,
+            backup_out=restore_backup,
+        )
+
+        assert report.backup_path == str(restore_backup)
+        with restore_backup.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows == [
+            {
+                "source_table": "game_metadata",
+                "source_row_id": "20261025HTSS0",
+                "previous_status": "DELETED",
+                "restored_status": "ACTIVE",
+            },
+        ]
+
+    def test_an_unreadable_previous_status_is_left_alone(self, session: Session, tmp_path: Path) -> None:
+        # The backup is a file on disk, so its contents are input, not truth. A
+        # status the lifecycle does not define would write a value the rest of the
+        # system cannot interpret -- the one write here that bypasses the
+        # transition contract still has to land on a state the contract names.
+        row = _chunk(session, "game_metadata", "20261025HTSS0", status="DELETED")
+        session.commit()
+        backup = self._backup(
+            tmp_path / "orphans.csv",
+            ("game_metadata", "20261025HTSS0", "source_table_not_indexed", "BOGUS"),
+        )
+
+        report = restore_from_backup(session, backup_path=backup, apply=True)
+
+        session.refresh(row)
+        assert row.index_status == "DELETED"
+        assert report.requested == 1
+        assert report.restored == 0
+        assert report.not_deleted == 0
+        assert report.written is False
