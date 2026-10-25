@@ -317,7 +317,13 @@ def publish_index_batch(
 
 
 def publish_single_store_batch(session: Session, payloads: list[dict[str, Any]]) -> int:
-    """Publish a batch into Oracle's single sparse/vector ``rag_chunks`` table."""
+    """Publish a batch into a single ``rag_chunks`` table serving both indexes.
+
+    Oracle has always kept one table, and PostgreSQL reaches the same shape when
+    ``PGVECTOR_URL`` names the operational database. Either way the dense row
+    builder cannot be used: it writes the five display columns the separate
+    pgvector store owned, while the shared table keeps them in ``meta``.
+    """
     if not payloads:
         return 0
     for payload in payloads:

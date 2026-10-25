@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
@@ -510,38 +511,126 @@ def _validate_embeddings(embeddings: list[list[float]], expected_count: int) -> 
 
 # ─── 청크 생성 함수 ────────────────────────────────────────────────────────────
 
+# Values a source uses to say "I do not have this". They are truthy strings, so a
+# plain `a or b` fallback never reaches the next candidate.
+_SENTINEL_TEXT_VALUES = frozenset({"unknown", "none", "null", "nan", "undefined", "n/a"})
+
+#: ``player_basic.status`` records crawl outcomes, not player facts. ``NOT_FOUND``
+#: (1,615 rows), ``PSEUDO`` and ``Unknown/Runtime`` are how the crawler says it could
+#: not find the record; rendering them states something the row does not support.
+_SENTINEL_STATUS_VALUES = frozenset({"not_found", "pseudo", "unknown/runtime"})
+
+#: ``bats``/``throws`` are single letters. The index is searched in Korean, and
+#: ``타석: R`` is not reachable by a reader who would type ``우타``.
+_BATS_LABELS = {"R": "우타", "L": "좌타", "S": "양타"}
+_THROWS_LABELS = {"R": "우투", "L": "좌투"}
+
+
+def _real_text(value: object | None) -> str | None:
+    """Return the value only when it carries information rather than a placeholder.
+
+    `game_lineups.standard_position` holds the literal string ``UNKNOWN`` for every
+    2026 row (20,919 of them) instead of NULL, so `standard_position or position`
+    never falls through. Rendering that sentinel as a position states a fact the
+    row does not support, which is how ``(UNKNOWN)`` reached the index.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in _SENTINEL_TEXT_VALUES:
+        return None
+    return text
+
+
+def _player_label(player: object | None, player_id: object | None) -> str:
+    """Name for a chunk title, falling back to the id when the name is unusable."""
+    name = _real_text(getattr(player, "name", None))
+    if name is not None and name.lower().startswith("unknown"):
+        # ``player_basic`` stores ``Unknown 74164`` when the crawl matched nothing
+        # but a placeholder. The name is the lookup key, so a filler that merely
+        # starts with "Unknown" is as useless as the bare sentinel.
+        name = None
+    return name or f"ID:{player_id}"
+
+
+def _team_label_map(session: Session) -> dict[str, str]:
+    """Map ``team_id`` to the short Korean name used in index text.
+
+    ``player_basic.team`` carries codes (``SS``, ``HT``, ``KIA``), but the index is
+    searched in Korean, so a chunk reading ``팀: SS`` is not reachable by someone
+    typing ``삼성``.
+    """
+    from src.models.team import Team
+
+    return {team.team_id: (team.team_short_name or team.team_name) for team in session.query(Team).all()}
+
+
+def _colliding_player_labels(session: Session, team_labels: dict[str, str]) -> set[tuple[str, str]]:
+    """``(name, club)`` pairs produced by more than one ``player_basic`` row.
+
+    A shared name alone is not ambiguity: ``김태훈 (삼성)`` and ``김태훈 (두산)`` are
+    already distinct. Suffixing every same-name row would put an id on 4,595 titles
+    for no gain, when only 1,976 rows in 784 pairs still collide once the club is
+    part of the label.
+    """
+    rows = session.execute(text("SELECT name, team FROM player_basic WHERE name IS NOT NULL")).fetchall()
+    counts = Counter((name, team_labels.get(team or "") or _real_text(team) or "") for name, team in rows)
+    return {key for key, count in counts.items() if count > 1}
+
 
 def _iter_player_chunks(session: Session, _season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """player_basic 테이블에서 선수 프로파일 청크를 생성합니다."""
     from src.models.player import PlayerBasic
+
+    team_labels = _team_label_map(session)
+    colliding_labels = _colliding_player_labels(session, team_labels)
 
     query = session.query(PlayerBasic).filter(PlayerBasic.name.is_not(None)).order_by(PlayerBasic.player_id)
     if limit:
         query = query.limit(limit)
 
     for player in query.yield_per(200):
-        parts = [f"선수: {player.name}"]
+        team_label = team_labels.get(player.team or "") or _real_text(player.team)
+
+        label = _player_label(player, player.player_id)
+        if (player.name, team_label or "") in colliding_labels:
+            # Two players sharing a name *and* a club would otherwise produce the
+            # same title; the id is the only thing that separates them.
+            label = f"{label} #{player.player_id}"
+        status = _real_text(player.status)
+        if status is not None and status.lower() in _SENTINEL_STATUS_VALUES:
+            status = None
+
+        parts = [f"선수: {label}"]
         details = [
-            ("팀", player.team),
-            ("포지션", player.position),
-            ("생년월일", player.birth_date),
+            ("팀", team_label),
+            ("포지션", _real_text(player.position)),
+            ("생년월일", _real_text(player.birth_date)),
             ("신장", f"{player.height_cm}cm" if player.height_cm else None),
             ("체중", f"{player.weight_kg}kg" if player.weight_kg else None),
-            ("타석", player.bats),
-            ("투구", player.throws),
+            ("타석", _BATS_LABELS.get(player.bats or "") or _real_text(player.bats)),
+            ("투구", _THROWS_LABELS.get(player.throws or "") or _real_text(player.throws)),
             ("데뷔", f"{player.debut_year}년" if player.debut_year else None),
-            ("출신교", player.career),
-            ("상태", player.status),
-            ("드래프트", player.draft_info),
-            ("연봉", player.salary_original),
+            ("출신교", _real_text(player.career)),
+            ("상태", status),
+            ("드래프트", _real_text(player.draft_info)),
+            ("연봉", _real_text(player.salary_original)),
         ]
-        parts.extend(f"{label}: {value}" for label, value in details if value)
+        parts.extend(f"{field_name}: {value}" for field_name, value in details if value)
+        if len(parts) == 1:
+            # 1,062 players carry no attribute at all -- not team, position, birth
+            # date, physicals, career, draft or salary. The chunk would say nothing
+            # but a name: a weak match for every player question and a poor answer
+            # to any of them. The row stays in player_basic.
+            continue
 
         content = ", ".join(parts)
         yield {
             "source_table": "player_basic",
             "source_row_id": str(player.player_id),
-            "title": f"{player.name} ({player.team or '무소속'})",
+            # ``무소속`` used to be rendered for the 2,119 players whose team is
+            # unknown, which states a fact the row does not support.
+            "title": f"{label} ({team_label})" if team_label else label,
             "content": content,
             "team_id": player.team,
             "player_id": str(player.player_id),
@@ -570,7 +659,7 @@ def _iter_batting_chunks(session: Session, season: int | None, limit: int | None
         query = query.limit(limit)
 
     for batting, player in query.yield_per(200):
-        name = player.name if player else f"ID:{batting.player_id}"
+        name = _player_label(player, batting.player_id)
 
         def _fmt(val: float | None, decimals: int = 3) -> str:
             return f"{val:.{decimals}f}" if val is not None else "-"
@@ -632,7 +721,7 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
         query = query.limit(limit)
 
     for pitching, player in query.yield_per(200):
-        name = player.name if player else f"ID:{pitching.player_id}"
+        name = _player_label(player, pitching.player_id)
 
         def _fmt(val: float | None, decimals: int = 2) -> str:
             return f"{val:.{decimals}f}" if val is not None else "-"
@@ -901,9 +990,15 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             game_date = game.game_date
             season_id = game.season_id
             team_code = lineup.team_code or game.home_team if lineup.team_side == "home" else game.away_team
-            pos = lineup.standard_position or lineup.position or ""
+            pos = _real_text(lineup.standard_position) or _real_text(lineup.position) or ""
+            # A missing batting order is a source-data gap, not a substitution. Rendering it as
+            # "None번" and tagging it "[교체]" states two facts the row does not support: every
+            # one of the 2,278 such rows (2,201 of them in 2001) carries neither a slot nor a
+            # starter flag, so the index has never seen a real substitute through this branch.
+            slot = f"{lineup.batting_order}번 " if lineup.batting_order is not None else ""
+            substitute = " [교체]" if lineup.is_starter is False and lineup.batting_order is not None else ""
             lines.append(
-                f"{lineup.batting_order}번 {lineup.player_name} ({pos})" + (" [교체]" if not lineup.is_starter else "")
+                f"{slot}{lineup.player_name} ({pos}){substitute}" if pos else f"{slot}{lineup.player_name}{substitute}"
             )
         content = (
             f"경기일: {game_date}, 경기 ID: {game_id}, "
@@ -1898,9 +1993,23 @@ def _oracle_vector_schema_available(index_session: Session) -> bool:
         return False
 
 
+def _vector_store_is_the_index_store(index_session: Session) -> bool:
+    """Return whether the dense index is the very table this build writes.
+
+    ``PGVECTOR_URL`` may name the operational database, and then ``rag_chunks``
+    is one table serving both roles. Publishing that batch through the dense
+    row builder fails on the first insert: it writes five display columns
+    (``document_type``, ``game_date``, ``published_at``, ``source_url``,
+    ``language``) that the shared table keeps in ``meta`` instead.
+    """
+    from src.db.vector_engine import vector_store_shares_database_with
+
+    return vector_store_shares_database_with(index_session.get_bind())
+
+
 def _persist_index_batch(batch: list[dict[str, Any]], index_session: Session) -> None:
     """Publish one batch through pending and final sparse/vector states."""
-    if _session_is_oracle(index_session):
+    if _session_is_oracle(index_session) or _vector_store_is_the_index_store(index_session):
         from src.services.rag_index_propagation import publish_single_store_batch
 
         publish_single_store_batch(index_session, batch)
