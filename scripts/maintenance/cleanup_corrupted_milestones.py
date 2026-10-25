@@ -40,8 +40,11 @@ In-flight Publish (PENDING) Guard:
     The publish path writes index_status=PENDING, commits, then promotes to ACTIVE. Tombstoning a
     PENDING chunk would be overwritten by that promotion, so --apply refuses (status 3, no writes)
     when any target chunk in the sparse or vector store is PENDING, or when that check itself fails.
-    Dry-run only prints a WARNING. A vector chunk that turns PENDING during the run is skipped and
-    reported as a store error (exit 1). Stop the scheduler, let the publish finish, then rerun.
+    Dry-run only prints a WARNING. The tombstone UPDATE itself is conditional on
+    ``COALESCE(index_status, '') <> 'PENDING'`` (compare-and-set): if an in-flight publish commits PENDING between
+    the cleanup SELECT and UPDATE, the UPDATE touches 0 rows and is reported as a store error
+    (exit 1, nothing counted). The legacy vector path uses the same guard. Stop the scheduler, let
+    the publish finish, then rerun.
 
 New Seasons After Cleanup:
     Once ANY backup row exists, a season that is not in the backup table is NOT selected by default.
@@ -171,6 +174,7 @@ BACKUP_TABLE_NAME = "player_milestones_cleanup_backup"
 CHUNK_STATE_TABLE_NAME = "player_milestones_cleanup_chunk_state"
 LEGACY_CHUNK_REF_PREFIX = "legacy:id="
 PENDING_INDEX_STATUS = "PENDING"
+_VECTOR_NOT_PENDING_GUARD = f"COALESCE(index_status, '') <> '{PENDING_INDEX_STATUS}'"
 _PENDING_SKIP_MESSAGE = (
     "index_status is PENDING (in-flight publish); skipped. Stop the scheduler, let the publish finish, then rerun"
 )
@@ -1392,7 +1396,7 @@ def _build_vector_update_sql(
         has_is_active=has_is_active, has_valid_to=has_valid_to, dialect_name=dialect_name, set_marker=set_marker
     )
 
-    where_clauses = ["source_table = :table", "source_row_id = :row_id"]
+    where_clauses = ["source_table = :table", "source_row_id = :row_id", _VECTOR_NOT_PENDING_GUARD]
     if has_is_active:
         where_clauses.append("(index_status <> 'DELETED' OR is_active IS NULL OR is_active = :true_val)")
     else:
@@ -1427,6 +1431,30 @@ def _fetch_vector_chunk_row(
         session.rollback()
         out.write(f"Vector store error on {source_table}:{source_row_id}: {err}\n")
         return None, True
+
+
+def _execute_vector_tombstone_update(
+    session: Session,
+    key: str,
+    update_sql: str,
+    params: dict[str, Any],
+    curr_status: str,
+    out: TextIO,
+) -> tuple[int, int, int, int, bool]:
+    """Execute the vector tombstone UPDATE, commit, and verify rowcount."""
+    try:
+        res = session.execute(text(update_sql), params)
+        session.commit()
+        if not res.rowcount or res.rowcount < 0:
+            out.write(f"Vector store error on {key}: {_PENDING_SKIP_MESSAGE} (row changed after read)\n")
+            return 0, 0, 0, 0, True
+        if curr_status != "DELETED":
+            return 1, 0, 0, 0, False
+        return 0, 1, 0, 0, False
+    except _STORE_ERRORS as err:
+        session.rollback()
+        out.write(f"Vector store error on {key}: {err}\n")
+        return 0, 0, 0, 0, True
 
 
 def _tombstone_one_vector_key(
@@ -1493,16 +1521,7 @@ def _tombstone_one_vector_key(
     if has_is_active:
         params["true_val"] = True
 
-    try:
-        session.execute(text(update_sql), params)
-        session.commit()
-        if curr_status != "DELETED":
-            return 1, 0, 0, 0, False
-        return 0, 1, 0, 0, False
-    except _STORE_ERRORS as err:
-        session.rollback()
-        out.write(f"Vector store error on {key}: {err}\n")
-        return 0, 0, 0, 0, True
+    return _execute_vector_tombstone_update(session, key, update_sql, params, curr_status, out)
 
 
 def _tombstone_vector_keys(
@@ -1925,7 +1944,7 @@ def _retire_legacy_vector_chunks(
                     has_is_active=has_is_act, has_valid_to=has_val_to, dialect_name=dialect_name, set_marker=set_marker
                 )
             )
-            + " WHERE id = :id"
+            + f" WHERE id = :id AND {_VECTOR_NOT_PENDING_GUARD}"
         )
         for set_marker in (True, False)
     }
@@ -1962,8 +1981,15 @@ def _retire_legacy_vector_chunks(
 
         try:
             update_sql = update_sql_by_marker[_prior_was_active(recorded_p_act)]
-            vector_session.execute(update_sql, {"id": row_id})
+            res = vector_session.execute(update_sql, {"id": row_id})
             vector_session.commit()
+            if not res.rowcount or res.rowcount < 0:
+                has_error = True
+                out.write(
+                    f"Vector store error tombstoning legacy chunk id={row_id}: "
+                    f"{_PENDING_SKIP_MESSAGE} (row changed after read)\n"
+                )
+                continue
             if curr_status != "DELETED":
                 legacy_vector_tombstoned += 1
             else:

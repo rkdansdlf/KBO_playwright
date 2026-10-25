@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlalchemy import create_engine, func, inspect, select, text
@@ -2425,3 +2425,149 @@ def _vector_legacy_id(harness: MilestoneTestHarness, player_name: str) -> int:
                 text("SELECT id FROM rag_chunks WHERE source_row_id = '' AND meta LIKE :m"), {"m": f"%{player_name}%"}
             ).scalar()
         )
+
+
+# ---------------------------------------------------------------------------
+# PR #62 regression tests: SELECT/UPDATE race on the vector store
+# ---------------------------------------------------------------------------
+
+
+def test_build_vector_update_sql_contains_pending_guard() -> None:
+    """_build_vector_update_sql must include _VECTOR_NOT_PENDING_GUARD in both has_is_active variants."""
+    from scripts.maintenance.cleanup_corrupted_milestones import (
+        _VECTOR_NOT_PENDING_GUARD,
+        _build_vector_update_sql,
+    )
+
+    sql_with = _build_vector_update_sql(has_is_active=True, has_valid_to=True)
+    assert _VECTOR_NOT_PENDING_GUARD in sql_with
+    assert "'PENDING'" in sql_with
+
+    sql_without = _build_vector_update_sql(has_is_active=False, has_valid_to=False)
+    assert _VECTOR_NOT_PENDING_GUARD in sql_without
+    assert "'PENDING'" in sql_without
+
+
+def test_tombstone_vector_key_pending_race_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A row flipped to PENDING between SELECT and UPDATE must NOT be tombstoned; error is reported."""
+    import scripts.maintenance.cleanup_corrupted_milestones as mod
+
+    harness = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness)
+
+    target_key = stable_milestone_source_row_id(2026, "102", "2500안타")
+
+    original_fetch = mod._fetch_vector_chunk_row
+
+    def racing_fetch(
+        session: Session,
+        source_table: str,
+        source_row_id: str,
+        **kw: Any,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        result = original_fetch(session, source_table, source_row_id, **kw)
+        if source_row_id == target_key:
+            # Simulate in-flight publish writing PENDING through a separate connection
+            with harness.vector_engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE rag_chunks SET index_status = 'PENDING' WHERE source_row_id = :r"),
+                    {"r": target_key},
+                )
+        return result
+
+    monkeypatch.setattr(mod, "_fetch_vector_chunk_row", racing_fetch)
+
+    out = io.StringIO()
+    report = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+        out=out,
+    )
+
+    # The key must remain PENDING (not overwritten to DELETED)
+    vec_row = harness.vector_session.execute(
+        text("SELECT index_status, is_active FROM rag_chunks WHERE source_row_id = :r"),
+        {"r": target_key},
+    ).one()
+    assert vec_row[0] == "PENDING", f"Expected PENDING but got {vec_row[0]}"
+
+    # Report must signal error
+    assert report.status_code == 1
+    output = out.getvalue()
+    assert "PENDING (in-flight publish); skipped" in output
+    assert "row changed after read" in output
+
+    # The tombstoned count must NOT include the racing key
+    assert report.vector_tombstoned == 2
+    harness.close()
+
+
+def test_retire_legacy_vector_pending_race_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A legacy vector row flipped to PENDING between inspection and UPDATE is not tombstoned; error reported."""
+    import scripts.maintenance.cleanup_corrupted_milestones as mod
+
+    harness = MilestoneTestHarness(with_optional_vector_cols=True)
+    _seed_corrupted(harness)
+
+    # Seed a legacy empty-key vector chunk matching a target pair
+    with harness.vector_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO rag_chunks (source_table, source_row_id, index_status, is_active, valid_to, meta) "
+                "VALUES ('milestone', '', 'ACTIVE', 1, NULL, :meta)"
+            ),
+            {"meta": '{"player_name": "최정", "milestone_category": "500홈런"}'},
+        )
+
+    # Get the legacy chunk id
+    with harness.vector_engine.begin() as conn:
+        legacy_id = conn.execute(
+            text("SELECT id FROM rag_chunks WHERE source_row_id = '' AND meta LIKE '%최정%'")
+        ).scalar()
+
+    original_record = mod._record_chunk_prior_state
+
+    def racing_record(
+        source_session: Session,
+        *,
+        store: str,
+        chunk_ref: str,
+        **kw: Any,
+    ) -> int | None:
+        result = original_record(source_session, store=store, chunk_ref=chunk_ref, **kw)
+        # After recording prior state for the legacy chunk, flip it to PENDING
+        if store == "vector" and chunk_ref == f"legacy:id={legacy_id}":
+            with harness.vector_engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE rag_chunks SET index_status = 'PENDING' WHERE id = :id"),
+                    {"id": legacy_id},
+                )
+        return result
+
+    monkeypatch.setattr(mod, "_record_chunk_prior_state", racing_record)
+
+    out = io.StringIO()
+    report = run_cleanup(
+        harness.source_session,
+        harness.index_session,
+        harness.vector_session,
+        apply=True,
+        expect_count=3,
+        out=out,
+    )
+
+    # The legacy chunk must remain PENDING
+    with harness.vector_engine.begin() as conn:
+        row = conn.execute(text("SELECT index_status FROM rag_chunks WHERE id = :id"), {"id": legacy_id}).one()
+    assert row[0] == "PENDING", f"Expected PENDING but got {row[0]}"
+
+    # Report must signal error
+    assert report.status_code == 1
+    assert report.legacy_vector_tombstoned == 0
+    output = out.getvalue()
+    assert "PENDING (in-flight publish); skipped" in output
+    assert "row changed after read" in output
+    harness.close()
