@@ -279,7 +279,20 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
+
+### 2026-10-26: RAG P0 Phase A — lineups 24,505건 재임베딩 · 고아 1,537건 전이 · standings 2022/2023/2025 복구
+- **재임베딩 완료**: `--source lineups --skip-existing`로 **24,505청크**(245배치, 약 62분). `game_lineups`의 임베딩 보유 행이 2,404 → **25,105**가 됐고, 인덱스 총계는 142,887 → **155,731**이다. 증가분 12,844는 중복이 아니라 **한 번도 인덱싱되지 않았던 과거 라인업**이다(2018~2023 구간이 DB에 없었다). 쓰기 가드는 `RAG_TARGET_ENV=production` + `RAG_INDEX_ALLOW_WRITE=1` + `RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`이고, `PGVECTOR_URL`=`DATABASE_URL`(단일 저장소)이라 `RAG_INDEX_DB_URL`은 필요 없다. 가드 없이 실행하면 exit 2로 **아무것도 쓰지 않고** 멈춘다(실측).
+- **`--limit`은 필터를 바꾸지 않는다(재확인)**: `--limit 400`은 0건이었고 전체 실행은 24,505건이었다. 앞부분 청크가 이미 healthy라 표본 위치만 다르다. 10-25에 기록한 "필터 무력" 오판을 다시 반증한다.
+- **고아 정리 (신규 `scripts/maintenance/purge_orphan_rag_chunks.py`)**: `embedding_missing` 17,708건 중 **1,537건**만 재생성 불가로 확정해 `ACTIVE → DELETE_PENDING → DELETED` 전이로 정리했다 — `legacy_key_convention` **1,534**(`player_season_batting`의 `id=1096` 형식) + `absolute_source_path` **3**(`/app/docs/kbo_knowledge/...` 컨테이너 경로). 백업 `data/repair_backups/rag_orphans_20261026T002032.csv`에 `source_table,source_row_id,reason,previous_status`를 남겼다. 결과: `embedding_missing` **17,708 → 5,914**, `deleted` 1,890(기존 353 + 1,537), orphan·hash_mismatch·version_mismatch·identity_unmeasured **모두 0**.
+- **삭제는 대입이 아니라 전이다**: `can_transition`이 `ACTIVE → DELETED`를 불허하므로 경로를 **`can_transition` 자체로 BFS**해 찾는다(전이표를 복사하지 않는다). `ACTIVE`는 **경로의 중간 단계로 쓰지 않는다** — 삭제할 행이 지금 서비스 중이라고 주장하는 것은 반대 방향의 같은 거짓말이다. `INDEXED`는 `ACTIVE`를 거치지 않고 `STALE → DELETE_PENDING → DELETED`로 간다.
+- **"설계 범위 밖" 판정은 만료된다 — 하마터면 살아있는 5,391건을 지울 뻔했다**: 10-25 기록은 `game_inning_scores`가 `_SOURCE_TABLE_BY_SOURCE`에 없어 범위 밖이라고 적었다. **그 기록은 2026-10-26 00:03에 거짓이 됐다** — 병행 세션이 `inning_scores` 소스를 추가했고(+249줄), 그래서 `INDEXED_SOURCE_TABLES`를 **복사하지 않고 빌드에서 유도**한 덕분에 5,391건이 "재생성 가능"으로 재분류돼 정리에서 빠졌다. 복사본이었다면 그 행들은 고아로 삭제됐을 것이다. 회귀 `test_the_scope_is_read_from_the_build_rather_than_copied`가 이 유도를 고정하며, 목록을 복사하는 뮤테이션은 실패한다. **같은 이유로 "이 테이블은 인덱싱 대상이 아니다"라는 판정은 배포가 바뀌면 다시 물어야 한다.**
+- **부분 인덱스의 실체 — `player_season_batting`은 key 규약이 둘로 갈려 있다**: 9,942행 중 **`id=N` 구규약 9,308건**(임베딩 보유 7,774 + 이번에 정리한 1,534)이고 현행 규약(`96616_2001_KIA_REGULAR`)은 **634건**뿐이다. 생성기는 13,438청크를 만들므로 **12,804청크가 미인덱싱**이다. Phase B에서 `--source batting`을 돌린 뒤 **구규약 7,774건을 함께 정리해야 한다** — 그러지 않으면 같은 선수-시즌이 두 규약으로 중복 검색되고, 감사는 임베딩이 있으므로 초록으로 통과한다.
+- **`markdown_docs`의 key는 환경 의존이다**: `source_row_id = f"{source_path}_{chunk_index - 1}"`에서 `source_path`가 **루트 기준 상대경로**라 `KBO_MARKDOWN_DOCS_DIR`가 바뀌면 전체 key가 바뀐다. DB에는 규약 3종이 공존한다(`docs_kbo_chatbot_kb_v2#part4` · `markdown_docs_part_1` · `kbo_culture.md_0`). 컨테이너 경로 3건은 정리했지만 규약 자체는 미수정 잔여다.
+- **SQLite에서 `embedding=None`을 명시하면 SQL NULL이 아니다**: JSON 변형이 텍스트 `'null'`을 쓴다. 감사는 `embedding IS NULL`로 측정하므로 테스트 헬퍼는 컬럼을 **생략**해야 운영 상태를 재현한다(명시하면 그 테스트만 초록이고 실제 술어는 못 본다).
+- **standings 2022·2023·2025 복구**: 세 해 모두 `team_standings_daily`가 **0행**이었다(종료 경기 797·802·736건이 있는데도). `calculate_standings --year`로 2022 **1,862행**(04-02~10-28) · 2023 **1,840행**(04-01~10-17) · 2025 **1,800행**(03-22~10-31)을 채웠다. **2026의 마지막 값 10-12는 지연이 아니다** — 정규시즌 종료일이고, 10-14부터는 와일드카드·포스트시즌(`season_id` 202602·312·202603)이다.
+- **검증**: `ruff check`/`ruff format --check` 통과, 신규 계약 테스트 **26건** 통과, 뮤테이션 **8건 전부** 실패 생성(직행 DELETED·ACTIVE 경유·백업 후행·commit 누락·테이블 검사 제거·TOMBSTONED 미종결·전이 수 집계·목록 복사). `player_season_batting` 1,534행의 `DELETED` 전이는 **다른 연결**에서 읽어 확인했다(SQLite 메모리는 세션마다 같은 연결을 주므로 파일 DB로 측정).
+- **미수정 잔여**: ① `embedding_missing` 5,914 = `game_inning_scores` 5,391(새 소스로 재임베딩 대상, 병행 세션 작업) + `game_lineups` 523(키 형식은 현행인데 생성기가 라인업을 만들지 않음 — 원인 미확정) ② `REINDEX_REQUIRED` 5,589건(`embedding_fingerprint` 누락, `--repair-legacy-fingerprint` 처리 여부 미결정) ③ `player_season_batting` 구규약 7,774건 ④ `markdown_docs` key 환경 의존.
 
 ### 2026-10-25 (2): 2025 시즌 PBP 복구 — capability 캐시가 4개월간 버킷을 막았다
 - **496경기의 원인은 수집 실패가 아니라 캐시였다**: `data/recovery/source_capability.csv`에 `2025_regular_kbo,naver,1,false,2026-06-27T18:42:01,timeout after 30.0s`가 남아 2025 시즌 전체가 Naver relay를 거부당했다. **`sample_size=1`** — 단 1회 probe의 30초 타임아웃이 버킷 전체를 4개월간 막았다. 원천은 정상이었다(직접 조회 시 `events=90, raw_pbp_rows=571`). PBP가 76~92행에 머문 이유가 여기 있다.
