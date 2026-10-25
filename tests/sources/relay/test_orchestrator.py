@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.sources.relay.base import CapabilityRecord, NormalizedRelayResult, RelaySourceAdapter
 from src.sources.relay.circuit_breaker import SourceCircuitBreaker
-from src.sources.relay.orchestrator import RelayRecoveryOrchestrator
+from src.sources.relay.orchestrator import DEFAULT_CAPABILITY_TTL_SECONDS, RelayRecoveryOrchestrator
 
 
 @pytest.fixture
@@ -95,13 +96,13 @@ class TestRelayRecoveryOrchestrator:
     def test_uses_bucket_probe_none(self, orchestrator):
         assert orchestrator._uses_bucket_probe(None) is False
 
-    def _make_capability(self, supported: bool) -> CapabilityRecord:
+    def _make_capability(self, supported: bool, *, checked_at: str = "2026-10-24T00:00:00") -> CapabilityRecord:
         return CapabilityRecord(
             bucket_id="b1",
             source_name="s1",
             sample_size=2,
             supported=supported,
-            last_checked_at="2025-01-01T00:00:00",
+            last_checked_at=checked_at,
         )
 
     def test_can_skip_from_capability_unsupported_with_cache(self, orchestrator):
@@ -109,11 +110,18 @@ class TestRelayRecoveryOrchestrator:
         adapter.supports_bucket_probe = True
         adapter.cache_negative_probe = True
         capability = self._make_capability(supported=False)
-        assert orchestrator._can_skip_from_capability(adapter, capability) is True
+        assert (
+            orchestrator._can_skip_from_capability(adapter, capability, now=datetime(2026, 10, 25, tzinfo=UTC)) is True
+        )
 
     def test_can_skip_from_capability_supported(self, orchestrator):
         capability = self._make_capability(supported=True)
         assert orchestrator._can_skip_from_capability(None, capability) is False
+
+    def test_a_positive_verdict_never_expires(self, orchestrator):
+        """Only negative verdicts block work, so only they need an expiry."""
+        capability = self._make_capability(supported=True, checked_at="2020-01-01T00:00:00")
+        assert orchestrator._can_skip_from_capability(None, capability, now=datetime(2026, 10, 25, tzinfo=UTC)) is False
 
     def test_can_skip_from_capability_none(self, orchestrator):
         assert orchestrator._can_skip_from_capability(None, None) is False
@@ -277,3 +285,64 @@ class TestRelayRecoveryOrchestrator:
         orchestrator._capability_cache = {"key": "value"}
         orchestrator._invalidate_capability_cache()
         assert orchestrator._capability_cache is None
+
+
+class TestANegativeVerdictExpires:
+    """A negative verdict records one attempt, not a property of the bucket.
+
+    On 2026-06-27 a single 30-second probe timeout wrote
+    ``2025_regular_kbo / naver = unsupported`` with ``sample_size=1``. The file
+    kept saying so for four months: every incomplete 2025 game was refused a
+    source that answers normally, and nothing ever asked again. These cases pin
+    the expiry that lets the bucket re-probe itself.
+    """
+
+    def _capability(self, *, checked_at: str, supported: bool = False) -> CapabilityRecord:
+        return CapabilityRecord(
+            bucket_id="2025_regular_kbo",
+            source_name="naver",
+            sample_size=1,
+            supported=supported,
+            last_checked_at=checked_at,
+        )
+
+    def _adapter(self) -> MagicMock:
+        adapter = MagicMock(spec=RelaySourceAdapter)
+        adapter.supports_bucket_probe = True
+        adapter.cache_negative_probe = True
+        return adapter
+
+    def test_a_fresh_verdict_still_skips(self, orchestrator) -> None:
+        now = datetime(2026, 10, 25, tzinfo=UTC)
+        capability = self._capability(checked_at="2026-10-24T00:00:00+00:00")
+
+        assert orchestrator._can_skip_from_capability(self._adapter(), capability, now=now) is True
+
+    def test_a_verdict_past_its_ttl_is_reprobed(self, orchestrator) -> None:
+        """The 2025 case: a four-month-old timeout must not keep blocking the bucket."""
+        now = datetime(2026, 10, 25, tzinfo=UTC)
+        capability = self._capability(checked_at="2026-06-27T18:42:01.188296+00:00")
+
+        assert orchestrator._can_skip_from_capability(self._adapter(), capability, now=now) is False
+
+    @pytest.mark.parametrize("raw", ["", "   ", "not-a-timestamp"])
+    def test_a_verdict_that_cannot_date_itself_is_reprobed(self, orchestrator, raw: str) -> None:
+        """No timestamp is no evidence it was ever checked."""
+        now = datetime(2026, 10, 25, tzinfo=UTC)
+        capability = self._capability(checked_at=raw)
+
+        assert orchestrator._can_skip_from_capability(self._adapter(), capability, now=now) is False
+
+    def test_a_naive_timestamp_is_read_as_utc(self, orchestrator) -> None:
+        """The current writer stores an offset, but an older row may not."""
+        now = datetime(2026, 10, 25, tzinfo=UTC)
+        capability = self._capability(checked_at="2026-06-27T18:42:01.188296")
+
+        assert orchestrator._can_skip_from_capability(self._adapter(), capability, now=now) is False
+
+    def test_the_boundary_is_expired(self, orchestrator) -> None:
+        checked = datetime(2026, 10, 18, tzinfo=UTC)
+        now = checked + timedelta(seconds=DEFAULT_CAPABILITY_TTL_SECONDS)
+        capability = self._capability(checked_at=checked.isoformat())
+
+        assert orchestrator._can_skip_from_capability(self._adapter(), capability, now=now) is False

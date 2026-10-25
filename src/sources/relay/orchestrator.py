@@ -18,6 +18,46 @@ from .base import (
 )
 from .circuit_breaker import SourceCircuitBreaker
 
+#: How long a *negative* capability verdict is trusted before the bucket is
+#: probed again.
+#:
+#: A negative verdict records one failed attempt, not a property of the bucket.
+#: One 30-second timeout on 2026-06-27 marked ``2025_regular_kbo`` / ``naver``
+#: unsupported with ``sample_size=1``, and the file kept saying so: all 496
+#: incomplete 2025 games were refused a source that answers with 571-747 rows,
+#: for four months, because nothing ever asked again. A positive verdict needs no
+#: expiry -- it does not block anything.
+DEFAULT_CAPABILITY_TTL_SECONDS = 7 * 24 * 3600
+
+
+def capability_verdict_expired(record: CapabilityRecord, *, now: datetime | None = None) -> bool:
+    """Return whether a negative capability verdict is old enough to re-probe.
+
+    An unreadable or absent timestamp counts as expired: a verdict that cannot
+    say when it was reached has no claim on the bucket, and re-probing costs one
+    request while trusting it can cost a season.
+
+    Args:
+        record: The stored verdict.
+        now: Optional instant override, for tests.
+
+    Returns:
+        True when the verdict should be ignored and the bucket re-probed.
+
+    """
+    raw = (record.last_checked_at or "").strip()
+    if not raw:
+        return True
+    try:
+        checked = datetime.fromisoformat(raw)
+    except ValueError:
+        return True
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=UTC)
+    moment = now or datetime.now(UTC)
+    return (moment - checked).total_seconds() >= DEFAULT_CAPABILITY_TTL_SECONDS
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
@@ -92,8 +132,12 @@ class RelayRecoveryOrchestrator:
     def _can_skip_from_capability(
         adapter: RelaySourceAdapter | None,
         capability: CapabilityRecord | None,
+        *,
+        now: datetime | None = None,
     ) -> bool:
         if capability is None or capability.supported or adapter is None:
+            return False
+        if capability_verdict_expired(capability, now=now):
             return False
         return bool(getattr(adapter, "supports_bucket_probe", True) and getattr(adapter, "cache_negative_probe", True))
 
