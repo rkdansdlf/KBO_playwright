@@ -186,3 +186,56 @@ class TestQualityGateCheck:
                 }
                 result = main([])
                 assert result == 1
+
+
+def _ok_result() -> dict:
+    categories = [
+        "batting",
+        "pitching",
+        "pa_formula",
+        "team_batting",
+        "team_pitching",
+        "futures_batting",
+        "futures_pitching",
+    ]
+    return {
+        "ok": True,
+        **{name: {"ok": True, "checked_players": 1, "mismatches": []} for name in categories},
+    }
+
+
+class TestTheVerdictReachesTheOperator:
+    """A passing gate used to print nothing at all.
+
+    The report goes through ``logger.info`` and a CLI process configures no
+    logging, so the whole verdict was dropped: zero bytes on stdout made a
+    healthy gate indistinguishable from a command that never ran. The gate was
+    reported as broken for as long as nobody could see it pass.
+    """
+
+    def test_the_cli_configures_logging_before_it_reports(self) -> None:
+        calls: list[dict] = []
+        with (
+            patch(
+                "src.cli.reports.quality_gate_check.logging.basicConfig",
+                side_effect=lambda **kwargs: calls.append(kwargs),
+            ),
+            patch("src.cli.reports.quality_gate_check.SessionLocal") as session,
+            patch("src.cli.reports.quality_gate_check.run_quality_gate", return_value=_ok_result()),
+        ):
+            session.return_value.__enter__.return_value = MagicMock()
+            exit_code = main(["--year", "2026"])
+
+        assert calls, "a CLI that reports through a logger has to configure one"
+        assert exit_code == 0
+
+    def test_a_failing_gate_returns_one(self) -> None:
+        result = _ok_result()
+        result["ok"] = False
+        with (
+            patch("src.cli.reports.quality_gate_check.logging.basicConfig"),
+            patch("src.cli.reports.quality_gate_check.SessionLocal") as session,
+            patch("src.cli.reports.quality_gate_check.run_quality_gate", return_value=result),
+        ):
+            session.return_value.__enter__.return_value = MagicMock()
+            assert main(["--year", "2026"]) == 1
