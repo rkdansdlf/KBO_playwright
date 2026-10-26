@@ -69,6 +69,11 @@ from src.services.rag_index_identity import (
     stable_player_movement_source_row_id,
     stable_team_history_source_row_id,
 )
+from src.utils.season_classification import (
+    POSTSEASON_STAGES,
+    REGULAR,
+    SEASON_TYPE_TO_LEAGUE_CODE,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -112,6 +117,16 @@ _VALID_SOURCES = (
 
 # 정규 시즌 리그 코드 (kbo_seasons.league_type_code 0 = 정규시즌)
 _REGULAR_SEASON_CODE = 0
+#: Season types a ``--season`` build reads: the regular season and every
+#: postseason round. Derived from the canonical map rather than written as
+#: ``(0, 2, 3, 4, 5)`` so a round added there is picked up here instead of
+#: silently never being indexed -- which is how the postseason was missed.
+#: Exhibition play (code 1) is left out on purpose: 886 spring-training games
+#: are not what a season query asks about.
+_INDEXED_SEASON_TYPE_CODES: tuple[int, ...] = (
+    SEASON_TYPE_TO_LEAGUE_CODE[REGULAR],
+    *(SEASON_TYPE_TO_LEAGUE_CODE[stage] for stage in POSTSEASON_STAGES),
+)
 # 전 소스 공통 언어
 _DEFAULT_LANGUAGE = "ko"
 # 순위 청크당 상위 N위까지만 포함
@@ -137,13 +152,22 @@ _PBP_KEYWORDS = (
 )
 
 
-def _regular_season_ids(season: int) -> Select:
-    """Return all stored IDs for a regular season year."""
+def _season_ids(season: int) -> Select:
+    """Return every stored season ID for a year, postseason rounds included.
+
+    A ``--season 2026`` build has to see the Korean Series. The filter used to
+    keep only ``league_type_code == 0``, so the postseason rounds were never
+    read: 2026's 14 postseason games held 32 chunks between them while the
+    regular season held 140,000. The audits could not see the loss, because they
+    compare the index against itself rather than against the calendar -- which
+    is why the gap survived until someone counted the games by hand.
+
+    """
     from src.models.season import KboSeason
 
     return select(KboSeason.season_id).where(
         KboSeason.season_year == season,
-        KboSeason.league_type_code == _REGULAR_SEASON_CODE,
+        KboSeason.league_type_code.in_(_INDEXED_SEASON_TYPE_CODES),
     )
 
 
@@ -797,7 +821,7 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
 
     query = session.query(Game).filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
     query = query.order_by(Game.game_date.desc())
     if limit:
         query = query.limit(limit)
@@ -989,7 +1013,7 @@ def _iter_inning_score_chunks(session: Session, season: int | None, limit: int |
         )
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
 
     pbp_maxima, curtailed_games = _pbp_inning_evidence(session)
     minutes_by_game = _game_minutes_by_id(session)
@@ -1222,7 +1246,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
         )
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
 
     for count, (key, group) in enumerate(
         groupby(query.yield_per(2000), key=lambda row: (row[0].game_id, row[0].team_side)),
@@ -1433,7 +1457,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
         .order_by(Game.game_date.desc(), GameHighlight.wpa.desc())
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
     if limit:
         query = query.limit(limit)
 
@@ -1525,7 +1549,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
         .filter(GamePlayByPlay.play_description.is_not(None))
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
 
     keywords = [
         "홈런",
@@ -1627,7 +1651,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
             .filter(GamePlayByPlay.id > last_id, GamePlayByPlay.play_description.is_not(None), keyword_filter)
         )
         if season:
-            query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+            query = query.filter(Game.season_id.in_(_season_ids(season)))
         rows = query.order_by(GamePlayByPlay.id.asc()).limit(_PBP_SCAN_BATCH_SIZE).all()
         if not rows:
             return

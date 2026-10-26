@@ -14,15 +14,104 @@ from sqlalchemy.orm import Session
 from src.cli import build_rag_index
 from src.models.rag_chunk import RagChunk
 from src.models.rankings import StatRanking
+from src.models.season import KboSeason
 from src.services.rag_index_identity import chunk_content_hash
+from src.utils.season_classification import (
+    EXHIBITION,
+    POSTSEASON_STAGES,
+    REGULAR,
+    SEASON_TYPE_TO_LEAGUE_CODE,
+)
 
 
 @pytest.mark.parametrize("season", [1988, 2025])
-def test_game_season_filter_uses_regular_season_metadata(season) -> None:
-    statement = str(build_rag_index._regular_season_ids(season))
+def test_game_season_filter_keys_on_the_season_year_metadata(season) -> None:
+    statement = str(build_rag_index._season_ids(season))
 
     assert "kbo_seasons.season_year" in statement
     assert "kbo_seasons.league_type_code" in statement
+
+
+class TestTheSeasonFilterCoversTheWholeSeasonYear:
+    """A ``--season`` build has to see the Korean Series.
+
+    The filter kept only ``league_type_code == 0``, so the postseason rounds
+    were never read. The audits could not see the loss either: they compare
+    what the index says about itself, not what the calendar says should be in
+    it. 2026's postseason held 32 chunks across 14 games.
+    """
+
+    def _store(self):
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        return engine
+
+    @staticmethod
+    def _season(season_id: int, year: int, code: int, name: str) -> KboSeason:
+        return KboSeason(
+            season_id=season_id,
+            season_year=year,
+            league_type_code=code,
+            league_type_name=name,
+        )
+
+    def test_a_postseason_round_is_part_of_its_season_year(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(313, 2026, 4, "플레이오프"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026, 313}
+
+    def test_exhibition_play_is_not_a_season(self) -> None:
+        # 886 exhibition games would otherwise land in every ``--season`` result.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(202601, 2026, 1, "시범경기"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026}
+
+    def test_another_years_postseason_is_not_swept_in(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(2025, 2025, 5, "한국시리즈"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026}
+
+    def test_the_codes_are_derived_from_the_canonical_map(self) -> None:
+        # A copied tuple would go stale when a round is added to the canonical
+        # map, and the failure would be silent: that round would simply never be
+        # indexed, exactly like the postseason was.
+        expected = {
+            SEASON_TYPE_TO_LEAGUE_CODE[REGULAR],
+            *(SEASON_TYPE_TO_LEAGUE_CODE[stage] for stage in POSTSEASON_STAGES),
+        }
+
+        assert set(build_rag_index._INDEXED_SEASON_TYPE_CODES) == expected
+        assert SEASON_TYPE_TO_LEAGUE_CODE[EXHIBITION] not in build_rag_index._INDEXED_SEASON_TYPE_CODES
 
 
 @pytest.mark.parametrize(

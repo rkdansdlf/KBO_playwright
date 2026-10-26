@@ -402,6 +402,48 @@ python3 -m src.cli.propagate_rag_index \
   --payload /path/to/chunk-update.json --apply --embedding-mode configured --json
 ```
 
+### Season Coverage of the Nightly Index Job (2026-10-26)
+
+`sync_rag_incremental_job` runs `--source <name> --season <current_year>
+--skip-existing` for every source except `pbp` (which adds the play-identity
+filters) and `staging_rag_chunks`, so the nightly build covers **the current
+season year only**. That is a deliberate budget decision — a full-corpus rebuild
+does not fit the two-hour window — but it has three consequences worth knowing
+before reading any coverage number.
+
+**The season filter covers the whole season year.** Until 2026-10-26 it kept
+`league_type_code == 0`, so the postseason rounds were never read by any of the
+five game-level sources (`games`, `inning_scores`, `lineups`, `highlights`,
+`pbp`). Every postseason game from 2018 to 2026 was missing: the 2018 and 2020
+Korean Series (15 and 13 games), 2023's fourteen, and 2026's first seven. The
+`game` source held **zero** chunks for each of them. `_season_ids` now includes
+the regular season and every round in `POSTSEASON_STAGES`, derived from
+`SEASON_TYPE_TO_LEAGUE_CODE` so a round added there is picked up rather than
+silently skipped. Exhibition play (886 games) stays out on purpose.
+
+**Back-filling a past season is a manual step.** Because the job reads only the
+current year, data crawled for an older season is stored but never indexed.
+After a historical crawl, run the affected sources for that year:
+
+```bash
+# One season, the five game-level sources that carry a season filter
+for source in games lineups inning_scores highlights pbp; do
+  RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION_WRITE=1 \
+    python3 -m src.cli.rag.build_rag_index --source "$source" --season 2025 --skip-existing
+done
+```
+
+`--skip-existing` makes this cheap to re-run: it touches only chunks whose
+content, version, or vector state is stale. The write guards are not optional —
+without them the builder exits 2 and writes nothing.
+
+**Coverage is not audited.** Neither `audit_rag_index` (index against index) nor
+`rag_identity_census` (retired store against canonical) answers "is what the
+calendar says should be in the index actually in it". The postseason gap
+survived four months without a signal, and was found only by counting games per
+season by hand. Counting source rows per season against indexed chunks is the
+check that would have caught it.
+
 ### AI Runtime Oracle Cutover Readiness (2026-08-23)
 
 The KBO_platform `bega_AI` runtime now ships a native-Oracle RAG adapter
