@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from src.cli.audit_rag_index import main
@@ -168,3 +169,98 @@ def test_audit_skips_the_postings_scan_on_a_colocated_store(capsys) -> None:
     postings.assert_not_called()
     payload = capsys.readouterr().out
     assert "postings_missing" not in payload
+
+
+def _run_audit(report: IndexConsistencyReport, argv: list[str]) -> int:
+    """Run the audit against a report, without touching a database."""
+    with (
+        patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
+        patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
+        patch("src.cli.audit_rag_index.get_vector_session") as vector,
+        patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
+    ):
+        primary.return_value.__enter__.return_value = MagicMock()
+        vector.return_value.__enter__.return_value = MagicMock()
+        return main(argv)
+
+
+class TestWorkInProgressIsNotDamage:
+    """A chunk that is not written yet is behind, not wrong.
+
+    The distinction is what keeps a daily gate readable while a crawl backlog
+    drains. Reported as one number, an unfinished index warns every day until it
+    is finished, and a warning that is always on is one nobody reads.
+    """
+
+    def test_a_chunk_awaiting_its_embedding_leaves_the_gate_open(self, capsys) -> None:
+        report = IndexConsistencyReport(
+            10,
+            10,
+            (IndexConsistencyFinding("game:g1", "VECTOR_EMBEDDING_MISSING"),),
+            total_keys=10,
+        )
+
+        assert _run_audit(report, ["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["damage"] == 0
+        assert payload["incomplete"] == 1
+        assert payload["consistent"] is True
+        assert payload["fully_consistent"] is False
+
+    def test_a_row_awaiting_its_reindex_leaves_the_gate_open(self, capsys) -> None:
+        report = IndexConsistencyReport(10, 10, (), total_keys=10, stale_keys=("game:g1",))
+
+        assert _run_audit(report, ["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["incomplete"] == 1
+        assert payload["damage"] == 0
+
+    def test_the_caller_can_still_demand_completeness(self, capsys) -> None:
+        report = IndexConsistencyReport(
+            10,
+            10,
+            (IndexConsistencyFinding("game:g1", "VECTOR_EMBEDDING_MISSING"),),
+            total_keys=10,
+        )
+
+        assert _run_audit(report, ["--require-complete", "--json"]) == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert "not fully indexed yet" in payload["error"]
+        assert payload["consistent"] is False
+
+    def test_the_old_flag_name_still_demands_completeness(self) -> None:
+        report = IndexConsistencyReport(
+            10,
+            10,
+            (IndexConsistencyFinding("game:g1", "VECTOR_EMBEDDING_MISSING"),),
+            total_keys=10,
+        )
+
+        assert _run_audit(report, ["--fail-on-findings", "--json"]) == 1
+
+    def test_disagreeing_stores_fail_whatever_the_flags_say(self, capsys) -> None:
+        # The index serving a row that says one thing while the vector says
+        # another is wrong now. Waiting does not fix it, so no flag may excuse it.
+        report = IndexConsistencyReport(
+            10,
+            10,
+            (
+                IndexConsistencyFinding("game:g1", "VECTOR_EMBEDDING_MISSING"),
+                IndexConsistencyFinding("game:g2", "CONTENT_HASH_MISMATCH"),
+            ),
+            total_keys=10,
+        )
+
+        assert _run_audit(report, ["--json"]) == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["damage"] == 1
+        assert payload["incomplete"] == 1
+        assert "disagree" in payload["error"]
+
+    def test_the_gate_verdict_and_the_finished_state_are_reported_separately(self, capsys) -> None:
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+
+        assert _run_audit(report, ["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["consistent"] is True
+        assert payload["fully_consistent"] is True

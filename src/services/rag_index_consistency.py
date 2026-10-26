@@ -4,10 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+#: Findings that report work not yet done rather than two stores disagreeing.
+#: A chunk with no embedding is one the generator has not produced yet -- the
+#: sparse row is honest about its own content and simply has no vector beside it.
+#: Every other issue here says the two stores make different claims about the
+#: same identity, which no amount of waiting resolves. The distinction is what
+#: keeps a daily gate meaningful while a crawl backlog drains: reported together
+#: they produce a warning every day until the backlog is empty, and a warning
+#: that is always on is one nobody reads.
+INCOMPLETENESS_ISSUES: Final[frozenset[str]] = frozenset({"VECTOR_EMBEDDING_MISSING"})
 
 
 @dataclass(frozen=True)
@@ -46,8 +57,30 @@ class IndexConsistencyReport:
 
     @property
     def is_consistent(self) -> bool:
-        """Return whether no cross-index mismatch was found."""
+        """Return whether nothing is wrong and nothing is still pending."""
         return not self.findings and not self.stale_keys
+
+    @property
+    def damage_keys(self) -> frozenset[str]:
+        """Return identities the two stores describe differently.
+
+        Waiting does not fix these: both rows exist and disagree, so the index
+        is serving something other than what it claims.
+
+        """
+        return frozenset(f.source_key for f in self.findings if f.issue not in INCOMPLETENESS_ISSUES)
+
+    @property
+    def incomplete_keys(self) -> frozenset[str]:
+        """Return identities whose rows are not fully written yet.
+
+        Missing embeddings and rows awaiting a reindex belong here. They are
+        work in progress, not corruption, and the same run that reports them
+        also reports how many are left.
+
+        """
+        pending = [f.source_key for f in self.findings if f.issue in INCOMPLETENESS_ISSUES]
+        return frozenset([*pending, *self.stale_keys])
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the consistency report."""
@@ -94,6 +127,8 @@ class IndexConsistencyReport:
             "stale": len(self.stale_keys),
             "deleted": len(self.deleted_keys),
             "finding_count": len(self.findings),
+            "damage": len(self.damage_keys),
+            "incomplete": len(self.incomplete_keys),
             "consistent": self.is_consistent,
             "findings": [finding.to_dict() for finding in self.findings],
         }

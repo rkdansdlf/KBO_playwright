@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from src.db.engine import get_rag_index_session
@@ -14,7 +15,11 @@ from src.db.vector_engine import (
     is_pgvector_available,
     shares_operational_database,
 )
-from src.services.rag_index_consistency import audit_index_sessions, audit_single_store_session
+from src.services.rag_index_consistency import (
+    IndexConsistencyReport,
+    audit_index_sessions,
+    audit_single_store_session,
+)
 
 #: Exit codes, named because the scheduler job that runs this must tell them
 #: apart. ``EXIT_STORE_UNREACHABLE`` means no vector backend answered and the
@@ -50,14 +55,67 @@ def _count_missing_postings(session: Session) -> int:
     return int(session.scalar(select(func.count()).select_from(missing_chunks)) or 0)
 
 
+@dataclass(frozen=True, slots=True)
+class GateRequirements:
+    """What the caller asked the audit to insist on."""
+
+    complete: bool = False
+    nonempty: bool = False
+    postings: bool = False
+
+
+def _gate_verdict(
+    report: IndexConsistencyReport,
+    requirements: GateRequirements,
+    *,
+    nonempty: bool,
+    postings_missing: int | None,
+) -> tuple[bool, str | None]:
+    """Decide whether the audit passes, and name the first reason it does not.
+
+    The two failure kinds are not the same claim. A store whose rows disagree
+    with the vector beside them is wrong now, and no amount of waiting fixes it,
+    so it fails whatever the flags say. A store that is still having chunks
+    embedded is behind, and only fails when the caller asks for completeness --
+    otherwise a draining crawl backlog raises a warning every single day, and a
+    warning that is always on is one nobody reads.
+
+    Args:
+        report: The consistency report to judge.
+        requirements: The flags the caller passed.
+        nonempty: Whether both sides hold at least one row.
+        postings_missing: Chunks lacking sparse postings, when that was measured.
+
+    Returns:
+        Whether the gate passes, and the reason when it does not.
+
+    """
+    damage = report.damage_keys
+    incomplete = report.incomplete_keys
+    if requirements.postings and postings_missing:
+        return False, f"{postings_missing} active chunks missing sparse postings"
+    if damage:
+        return False, f"{len(damage)} identities disagree between the sparse and vector stores"
+    if requirements.complete and incomplete:
+        return False, f"{len(incomplete)} identities are not fully indexed yet"
+    if requirements.nonempty and not nonempty:
+        return False, "RAG index is empty"
+    return True, None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Audit sparse and vector indexes without modifying either database."""
     parser = argparse.ArgumentParser(description="Audit sparse/vector RAG index consistency")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Render JSON output")
     parser.add_argument(
+        "--require-complete",
         "--fail-on-findings",
         action="store_true",
-        help="Compatibility flag; findings always return exit code 1",
+        dest="require_complete",
+        help=(
+            "Return exit code 1 when chunks are still missing embeddings or awaiting a reindex, "
+            "not only when the sparse and vector stores disagree (--fail-on-findings is the old name)"
+        ),
     )
     parser.add_argument(
         "--require-nonempty",
@@ -95,14 +153,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = report.to_dict()
     if postings_missing is not None:
         payload["postings_missing"] = postings_missing
-    nonempty = report.primary_count > 0 and report.vector_count > 0
-    consistent = report.is_consistent and (nonempty or not args.require_nonempty)
-    postings_gap = args.require_postings and postings_missing is not None and postings_missing > 0
-    if postings_gap:
-        consistent = False
-        payload["error"] = f"{postings_missing} active chunks missing sparse postings"
-    elif args.require_nonempty and not nonempty:
-        payload["error"] = "RAG index is empty"
+    consistent, error = _gate_verdict(
+        report,
+        GateRequirements(
+            complete=args.require_complete,
+            nonempty=args.require_nonempty,
+            postings=args.require_postings,
+        ),
+        nonempty=report.primary_count > 0 and report.vector_count > 0,
+        postings_missing=postings_missing,
+    )
+    if error is not None:
+        payload["error"] = error
+    # ``consistent`` is the gate verdict, so it stays aligned with the exit code.
+    # Whether the index is *finished* is a different question and is reported
+    # separately, because a store can be behind without being wrong.
+    payload["fully_consistent"] = report.is_consistent
     payload["consistent"] = consistent
     if args.as_json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
