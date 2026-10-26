@@ -20,7 +20,7 @@ def test_crawl_milestones_absent_when_flag_unset(monkeypatch: pytest.MonkeyPatch
     assert "crawl_milestones" not in specs
 
 
-@pytest.mark.parametrize("falsy_val", ["0", "false"])
+@pytest.mark.parametrize("falsy_val", ["0", "false", "", "  ", "enabled"])
 def test_crawl_milestones_absent_when_flag_falsy(monkeypatch: pytest.MonkeyPatch, falsy_val: str) -> None:
     """crawl_milestones is absent from job_specs when MILESTONE_CRAWL_ENABLED is 0 or false."""
     monkeypatch.setenv(MILESTONE_CRAWL_ENABLED_ENV, falsy_val)
@@ -52,7 +52,7 @@ def test_crawl_milestones_job_registered_when_enabled(monkeypatch: pytest.Monkey
     assert crawl_fire_time < recalc_fire_time
 
 
-@pytest.mark.parametrize("falsy_val", [None, "0", "false"])
+@pytest.mark.parametrize("falsy_val", [None, "0", "false", ""])
 def test_crawl_milestones_job_disabled_returns_early(
     monkeypatch: pytest.MonkeyPatch,
     falsy_val: str | None,

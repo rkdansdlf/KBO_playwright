@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from src.constants import KST
@@ -15,8 +16,8 @@ from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.rag_index_identity import chunk_content_hash, current_index_version
 from src.services.rag_vector_reactivation import (
-    find_deleted_vector_keys,
-    reactivate_vector_chunks_by_keys,
+    CLEANUP_TOMBSTONE_META_KEY,
+    reactivate_cleanup_tombstoned_keys,
 )
 
 if TYPE_CHECKING:
@@ -208,12 +209,16 @@ def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_
     if not payloads:
         return
 
-    from sqlalchemy.dialects.postgresql import insert
-
-    keys = [(str(payload["source_table"]), str(payload["source_row_id"])) for payload in payloads]
-    deleted_keys = find_deleted_vector_keys(session, keys)
+    from sqlalchemy.dialects.postgresql import JSONB, insert
 
     statement = insert(RagChunkVector).values(_vector_rows(payloads, index_status))
+    marker_case = sa.case(
+        (
+            RagChunkVector.meta.has_key(CLEANUP_TOMBSTONE_META_KEY),
+            sa.cast(sa.literal(f'{{"{CLEANUP_TOMBSTONE_META_KEY}": true}}'), JSONB),
+        ),
+        else_=sa.cast(sa.literal("{}"), JSONB),
+    )
     update_columns = {
         column: getattr(statement.excluded, column)
         for column in (
@@ -234,10 +239,11 @@ def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_
             "index_status",
             "indexed_at",
             "embedding",
-            "meta",
             "updated_at",
         )
     }
+    update_columns["meta"] = statement.excluded.meta.op("||")(marker_case)
+
     session.execute(
         statement.on_conflict_do_update(
             index_elements=[RagChunkVector.source_table, RagChunkVector.source_row_id],
@@ -245,8 +251,9 @@ def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_
         )
     )
 
-    if index_status == "ACTIVE" and deleted_keys:
-        reactivate_vector_chunks_by_keys(session, deleted_keys)
+    if index_status == "ACTIVE":
+        keys = [(str(payload["source_table"]), str(payload["source_row_id"])) for payload in payloads]
+        reactivate_cleanup_tombstoned_keys(session, keys)
 
 
 def _reject_purged_batch(primary_session: Session, vector_session: Session, payloads: list[dict[str, Any]]) -> None:
