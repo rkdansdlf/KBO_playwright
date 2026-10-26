@@ -5,9 +5,11 @@ from __future__ import annotations
 from src.pipeline.auto_healer_service import AutoHealerService
 from src.pipeline.defect_detector import PipelineDefectDetector
 from src.pipeline.dto import (
+    HEALING_STATUSES,
     DefectItem,
     DefectReport,
     HealingActionSummary,
+    HealingStatus,
     PipelineDefectType,
     PipelineRunSummary,
     PipelineStageResult,
@@ -15,11 +17,13 @@ from src.pipeline.dto import (
 from src.pipeline.orchestrator import DailyPipelineOrchestrator
 
 __all__ = [
+    "HEALING_STATUSES",
     "AutoHealerService",
     "DailyPipelineOrchestrator",
     "DefectItem",
     "DefectReport",
     "HealingActionSummary",
+    "HealingStatus",
     "PipelineDefectDetector",
     "PipelineDefectType",
     "PipelineRunSummary",

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from src.models.game import Game, GameInningScore
-from src.pipeline.dto import DefectItem, DefectReport, HealingActionSummary, PipelineDefectType
+from src.pipeline.dto import DefectItem, DefectReport, HealingActionSummary, HealingStatus, PipelineDefectType
 from src.repositories.game_repository import update_game_status
 from src.repositories.game_status import automatic_write_allowed, current_season_year, game_year_of
 from src.utils.game_status import GAME_STATUS_COMPLETED, GAME_STATUS_UNRESOLVED
@@ -37,7 +37,7 @@ class AutoHealerService:
             return HealingActionSummary(
                 game_id=game_id,
                 action_taken="lookup",
-                status="SKIPPED",
+                status=HealingStatus.SKIPPED.value,
                 error_message="Game record not found in database.",
                 elapsed_seconds=time.perf_counter() - t0,
             )
@@ -47,7 +47,7 @@ class AutoHealerService:
             return HealingActionSummary(
                 game_id=game_id,
                 action_taken="lookup",
-                status="SKIPPED",
+                status=HealingStatus.SKIPPED.value,
                 error_message="Historical guard: games outside the current season require explicit operator run.",
                 elapsed_seconds=time.perf_counter() - t0,
                 details={"previous_status": game.game_status, "game_date": str(game.game_date)},
@@ -65,7 +65,7 @@ class AutoHealerService:
         return HealingActionSummary(
             game_id=game_id,
             action_taken=f"update_status_to_{new_status}",
-            status="SUCCESS" if success else "FAILED",
+            status=HealingStatus.SUCCESS.value if success else HealingStatus.FAILED.value,
             elapsed_seconds=time.perf_counter() - t0,
             details={"previous_status": game.game_status, "new_status": new_status},
         )
@@ -78,7 +78,7 @@ class AutoHealerService:
             return HealingActionSummary(
                 game_id=game_id,
                 action_taken="reconcile_scores",
-                status="SKIPPED",
+                status=HealingStatus.SKIPPED.value,
                 error_message="Game not found",
                 elapsed_seconds=time.perf_counter() - t0,
             )
@@ -123,7 +123,7 @@ class AutoHealerService:
         return HealingActionSummary(
             game_id=game_id,
             action_taken="align_scores_to_innings",
-            status="SUCCESS",
+            status=HealingStatus.SUCCESS.value,
             elapsed_seconds=time.perf_counter() - t0,
             details={
                 "old_score": f"{old_away}:{old_home}",
@@ -141,24 +141,33 @@ class AutoHealerService:
         if dtype == PipelineDefectType.SCORE_MISMATCH:
             return self.heal_score_mismatch(game_id)
         if dtype == PipelineDefectType.MISSING_STATS:
+            # Nothing is recalculated here. The aggregates are rebuilt by the
+            # season-stat recalculation job, so claiming SUCCESS would report
+            # a repair this service never performed.
             return HealingActionSummary(
                 game_id=game_id,
-                action_taken="flag_for_stats_recalc",
-                status="SUCCESS",
-                details={"message": "Scheduled for stats recalculation"},
+                action_taken="defer_to_stats_recalc",
+                status=HealingStatus.DEFERRED.value,
+                details={
+                    "message": "No recalculation performed by the healer; owned by the season-stat recalculation job.",
+                    "remediation_owner": "src.cli.calc.recalc_player_stats",
+                },
             )
         if dtype == PipelineDefectType.UNVERIFIED_PBP:
             return HealingActionSummary(
                 game_id=game_id,
-                action_taken="flag_for_pbp_recrawl",
-                status="SUCCESS",
-                details={"message": "Flagged for PBP recrawl"},
+                action_taken="defer_to_pbp_recrawl",
+                status=HealingStatus.DEFERRED.value,
+                details={
+                    "message": "No PBP recollected by the healer; owned by the PBP backfill job.",
+                    "remediation_owner": "src.cli.collection.fetch_kbo_pbp",
+                },
             )
 
         return HealingActionSummary(
             game_id=game_id,
             action_taken="noop",
-            status="SKIPPED",
+            status=HealingStatus.SKIPPED.value,
             error_message=f"Unhandled defect type: {dtype}",
         )
 
@@ -175,23 +184,23 @@ class AutoHealerService:
                     HealingActionSummary(
                         game_id=defect.game_id,
                         action_taken="heal_defect",
-                        status="FAILED",
+                        status=HealingStatus.FAILED.value,
                         error_message=str(exc),
                     )
                 )
         return results
 
     def heal_from_quality_report(self, report: UnifiedQualityReport) -> list[HealingActionSummary]:
-        """Execute healing actions informed by QualityHub remediation hints."""
+        """Record QualityHub remediation hints without claiming they were executed."""
         results: list[HealingActionSummary] = []
         for hint in report.remediation_hints:
             logger.info("Processing remediation hint: %s", hint)
             results.append(
                 HealingActionSummary(
                     game_id="ALL",
-                    action_taken=f"execute_hint: {hint}",
-                    status="SUCCESS",
-                    details={"hint": hint},
+                    action_taken="record_remediation_hint",
+                    status=HealingStatus.DEFERRED.value,
+                    details={"hint": hint, "message": "Hint recorded only; no remediation was executed."},
                 )
             )
         return results

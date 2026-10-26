@@ -208,7 +208,7 @@ def test_diagnostics_engine_circuit_breaker_monitoring_and_auto_heal() -> None:
     assert cb_tripped_check.status == "FAIL"
 
     # Auto-heal should reset circuit
-    healed = diag.auto_heal("crawler")
-    assert len(healed) >= 1
-    assert "Reset" in healed[0]
+    result = diag.auto_heal("crawler")
+    assert len(result.actions) >= 1
+    assert "Reset" in result.actions[0]
     assert cb.get_state() == CircuitState.CLOSED

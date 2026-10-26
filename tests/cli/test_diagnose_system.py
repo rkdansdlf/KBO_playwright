@@ -9,8 +9,8 @@ import pytest
 
 from src.api.live_stream_dto import CircuitState as LiveCircuitState
 from src.api.routers.live_stream import live_relay_breaker
-from src.cli.diagnose_system import build_arg_parser, main
-from src.diagnostics.dto import DiagnosticSeverity, SubsystemType
+from src.cli.diagnose_system import _render_auto_heal, build_arg_parser, main
+from src.diagnostics.dto import AutoHealResult, DiagnosticSeverity, SubsystemType
 from src.diagnostics.engine import SystemDiagnosticsEngine
 
 
@@ -70,7 +70,45 @@ def test_auto_heal_live_relay_breaker() -> None:
     assert live_relay_breaker.state == LiveCircuitState.OPEN
 
     engine = SystemDiagnosticsEngine()
-    healed = engine.auto_heal("crawler")
+    result = engine.auto_heal("crawler")
 
-    assert any("live relay stream circuit breaker" in msg for msg in healed)
+    assert any("live relay stream circuit breaker" in msg for msg in result.actions)
+    assert result.addressed == ("crawler",)
     assert live_relay_breaker.state == LiveCircuitState.CLOSED
+
+
+def test_auto_heal_render_distinguishes_nothing_needed_from_not_supported() -> None:
+    """Three different truths must not share one sentence."""
+    nothing_needed = _render_auto_heal(AutoHealResult(actions=(), addressed=("crawler",), unsupported=()))
+    assert nothing_needed == ["[AUTO-HEAL] No repairs were needed for: crawler."]
+
+    not_supported = _render_auto_heal(AutoHealResult(actions=(), addressed=(), unsupported=("database",)))
+    assert not any("No repairs were needed" in line for line in not_supported)
+    assert "No automated remediation exists for: database" in not_supported[0]
+    assert "NOT healed" in not_supported[0]
+
+    did_work = _render_auto_heal(AutoHealResult(actions=("reset breaker",), addressed=("crawler",), unsupported=()))
+    assert did_work == ["[AUTO-HEAL] Executed 1 recovery actions:", "  - reset breaker"]
+
+
+def test_fix_for_an_unhealable_subsystem_does_not_claim_nothing_needed_healing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--subsystem database --fix` used to print 'No issues requiring healing were found.'."""
+    exit_code = main(["--subsystem", "database", "--fix"])
+    captured = capsys.readouterr()
+
+    assert exit_code in (0, 1)
+    assert "No issues requiring healing were found." not in captured.out
+    assert "No automated remediation exists for: database" in captured.out
+    assert "NOT healed" in captured.out
+
+
+def test_fix_in_json_mode_keeps_stdout_parseable(capsys: pytest.CaptureFixture[str]) -> None:
+    """The heal outcome moves to stderr so stdout stays machine-parseable."""
+    main(["--subsystem", "database", "--fix", "--json"])
+    captured = capsys.readouterr()
+
+    data = json.loads(captured.out[captured.out.find("{") :])
+    assert "overall_status" in data
+    assert "No automated remediation exists for: database" in captured.err
