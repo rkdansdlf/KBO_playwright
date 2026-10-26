@@ -1,0 +1,134 @@
+# Weekly live acceptance against the operational PostgreSQL, read-only.
+#
+# This replaces the Oracle ADB acceptance run. That job has failed every Sunday
+# since 2026-09-27 with DPY-6005 (service not registered with the listener):
+# the Oracle free-tier capacity is exhausted and Oracle is being phased out.
+# Production data now lands in PostgreSQL on the Windows host ch806-08, which is
+# reachable only over Tailscale (Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md).
+#
+# Read-only by design. The job connects with LIVE_DB_READONLY_URL, a role that
+# cannot write (setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4). The script it runs
+# sets every session and transaction to read-only and never commits. The job
+# applies no migrations and seeds nothing (init-db: 'false').
+
+name: Live Database Sync Acceptance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 19 * * 0'  # Weekly, Sunday 19:00 UTC = Monday 04:00 KST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-db-verification
+  cancel-in-progress: false
+
+jobs:
+  live-db-acceptance:
+    name: PostgreSQL Live Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The script runs by file path, so the repo root must be on the import path.
+      PYTHONPATH: ${{ github.workspace }}
+      # setup-python and the composite actions read DATABASE_URL, so it must be the
+      # read-only URL too: nothing in this job may fall back to a local SQLite file.
+      DATABASE_URL: ${{ secrets.LIVE_DB_READONLY_URL }}
+      LIVE_DB_URL: ${{ secrets.LIVE_DB_READONLY_URL }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check required secrets
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          LIVE_DB_READONLY_URL: ${{ secrets.LIVE_DB_READONLY_URL }}
+        run: |
+          missing=0
+          for name in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET LIVE_DB_READONLY_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set. See the 'Setup needed' section of the PR that introduced this workflow and Docs/runbooks/OPERATIONAL_RUNBOOK.md §4."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          case "$LIVE_DB_READONLY_URL" in
+            postgresql*) ;;
+            *)
+              echo "::error::LIVE_DB_READONLY_URL must be a postgresql:// URL (Setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4)."
+              exit 1
+              ;;
+          esac
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          hostname: gha-kbo-live-db-${{ github.run_id }}
+
+      - uses: ./.github/actions/kbo-job-setup
+        with:
+          init-db: 'false'
+
+      - name: Check PostgreSQL TCP reachability
+        run: |
+          python3 - <<'PY'
+          import os
+          import socket
+          import sys
+          from urllib.parse import urlsplit
+
+          target = urlsplit(os.environ["LIVE_DB_URL"])
+          if not target.hostname:
+              print(
+                  "::error::LIVE_DB_READONLY_URL has no host name. Store the full "
+                  "postgresql:// URL (Setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4)."
+              )
+              sys.exit(1)
+          host, port = target.hostname, target.port or 5432
+          try:
+              with socket.create_connection((host, port), timeout=10):
+                  pass
+          except OSError as exc:
+              print(
+                  "::error::Cannot open a TCP connection to the PostgreSQL host "
+                  f"({type(exc).__name__}). Check the Tailscale ACL for tag:ci and the Windows "
+                  "firewall rule on ch806-08 (Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md)."
+              )
+              sys.exit(1)
+          print("PostgreSQL port is reachable over Tailscale.")
+          PY
+
+      - name: Run read-only PostgreSQL acceptance
+        run: |
+          set -o pipefail
+          python3 scripts/verification/verify_live_postgres.py --json --require-readonly-role \
+            | tee "$RUNNER_TEMP/live_db_verification.json"
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-db-verification-${{ github.run_id }}
+          path: ${{ runner.temp }}/live_db_verification.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The database being unreachable is exactly the condition this job exists to
+      # detect, so a failure has to reach someone.
+      - uses: ./.github/actions/notify
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          status: ${{ job.status }}
+          workflow: 'Live Database Sync Acceptance'
+          channels: telegram

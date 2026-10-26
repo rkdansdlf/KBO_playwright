@@ -2,8 +2,10 @@
 
 Oracle Autonomous Database is the production store. The pull-request gate, however,
 only has SQLite and PostgreSQL available, so nothing on a PR would notice when
-Oracle-specific SQL drifts until the weekly `oci_live_verification.yml` run failed
-against a real ADB — or worse, until production did.
+Oracle-specific SQL drifts until a live run failed against a real ADB — or worse,
+until production did. The weekly live run no longer targets Oracle: since 2026-09-27 it
+has failed with DPY-6005, and the live workflow is now `live_db_verification.yml`, which
+checks PostgreSQL read-only. The Oracle live layer below is retired with the Oracle phase-out.
 
 This document defines the split between the two layers.
 
@@ -44,12 +46,11 @@ confirm the suite goes red:
 
 Restore with `git checkout src/sync/oracle_writer.py` afterwards.
 
-## Layer 2 — live ADB verification (weekly + manual)
+## Layer 2 — live ADB verification (retired)
 
-`.github/workflows/oci_live_verification.yml`
-
-Against `secrets.OCI_DB_URL`, which is a disposable schema and never the production
-`DATABASE_URL`. It runs:
+The former `.github/workflows/oci_live_verification.yml` (renamed to
+`live_db_verification.yml`, which now checks PostgreSQL read-only). It ran against
+`secrets.OCI_DB_URL`, a disposable schema and never the production `DATABASE_URL`:
 
 1. `apply_oracle_migrations` (apply, re-apply, `--check`)
 2. `scripts/verification/audit_oracle_schema.py`

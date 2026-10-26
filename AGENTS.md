@@ -18,7 +18,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 - **Oracle is legacy, not gone.** It is no longer the operational store, but it is still in the tree and must not be described as absent:
   - `migrations/oracle/` is the longer and older chain (65 migrations, numbered up to `076`) against PostgreSQL's 13 (up to `059`).
   - `src/models/rag_chunk.py` maps the canonical dense column `rag_chunks.embedding` to PostgreSQL's pgvector `Vector(1536)` and to JSON on SQLite. The Oracle dialect is **refused outright** (`OracleEmbeddingColumnUnsupportedError`) because Oracle's physical `EMBEDDING` column is the legacy JSON one, not the native vector column — a silent write there would corrupt the vector index.
-  - `.github/workflows/oci_connection_probe.yml` and `oci_live_verification.yml` still exercise Oracle via `OCI_DB_URL`.
+  - `.github/workflows/oci_connection_probe.yml` still exercises Oracle via `OCI_DB_URL`. The weekly live acceptance is `live_db_verification.yml`: it runs **read-only** against PostgreSQL over Tailscale (`scripts/verification/verify_live_postgres.py`). Oracle live verification is retired with the Oracle phase-out.
   - `src/cli/sync/sync_sqlite_to_oci.py` is a legacy loader, not the primary path.
   - `src/orchestration/master.py` carries a note that its live Oracle sync stage is **unwired**; the DAG does not depend on it.
 - **`kbo migrate --dialect` is required, not defaulted** (`6137a8f8`): a bare `kbo migrate` stops at argparse (exit 2) instead of inspecting the wrong chain. Pass `--dialect postgresql` explicitly. Earlier revisions of this file recorded an `oracle` default — the flag became required, so that footgun no longer exists.
@@ -269,7 +269,8 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ### Required Secrets
 - `DATABASE_URL`: PostgreSQL URL for the Tailscale-hosted operational database. Carry the `keepalives` query parameters; without them idle connections get reaped mid-transaction.
-- `OCI_DB_URL`: legacy disposable Oracle schema URL, used only by `oci_connection_probe.yml` and `oci_live_verification.yml`. Never use it as the application primary URL.
+- `LIVE_DB_READONLY_URL`: read-only PostgreSQL role URL for `live_db_verification.yml` (never the writable `DATABASE_URL`). `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET`: Tailscale OAuth client (`tag:ci`) that lets that job reach the Windows host. Setup: `Docs/runbooks/OPERATIONAL_RUNBOOK.md` §4.
+- `OCI_DB_URL`: legacy disposable Oracle schema URL, used only by `oci_connection_probe.yml`. Never use it as the application primary URL.
 - `ORACLE_WALLET_B64`: base64-encoded Oracle Wallet zip for the two legacy OCI workflows only.
 - `OCI_WALLET_PASSWORD`: Wallet password when the legacy OCI workflows require it.
 - `KBO_USER_ID`, `KBO_USER_PWD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
