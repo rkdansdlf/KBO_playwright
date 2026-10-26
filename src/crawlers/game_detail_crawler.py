@@ -857,6 +857,32 @@ class GameDetailCrawler:
             return CrawlResult.empty()
         return CrawlResult.success(self._naver_record_to_payload(record, game_id, game_date))
 
+    @staticmethod
+    def _naver_team_code_candidates(code: str) -> frozenset[str]:
+        """Return every team code Naver may answer with for one KBO code.
+
+        ``KBO_TO_NAVER_TEAM_CODE`` holds the *current* spellings (``SK`` →
+        ``SSG``, ``NX``/``KH`` → ``WO``), but Naver served older seasons under
+        the era codes. The 2010 Heroes game stored as ``20100926NXSK0`` comes
+        back from the schedule as ``20100926WOSK0`` -- ``WO`` for Nexen, and
+        still ``SK`` rather than ``SSG`` for the opponent. Treating the table
+        as a replacement would therefore fix one side and break the other, so
+        both spellings are accepted and the opponent check stays exact.
+
+        Args:
+            code: Two-letter KBO team code from the game ID.
+
+        Returns:
+            The candidate codes, empty when the input carries no code.
+
+        """
+        from src.crawlers.relay_crawler import KBO_TO_NAVER_TEAM_CODE
+
+        raw = str(code or "").strip()
+        if not raw:
+            return frozenset()
+        return frozenset({raw, KBO_TO_NAVER_TEAM_CODE.get(raw, raw)})
+
     async def _resolve_naver_game_id(self, game_id: str, game_date: str) -> str | None:
         """Resolve the Naver ``gameId`` for a KBO game via the schedule API.
 
@@ -886,9 +912,11 @@ class GameDetailCrawler:
         base = date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
         year = date_str[:4]
 
-        # Extract away/home team codes from the KBO game ID.
-        away_code = game_id[8:10] if len(game_id) >= 12 else ""  # noqa: PLR2004
-        home_code = game_id[10:12] if len(game_id) >= 12 else ""  # noqa: PLR2004
+        # Extract away/home team codes from the KBO game ID. Both the raw and
+        # the Naver spelling count, because the table is written for the current
+        # seasons while older schedules answer with the era codes.
+        away_codes = self._naver_team_code_candidates(game_id[8:10] if len(game_id) >= 12 else "")  # noqa: PLR2004
+        home_codes = self._naver_team_code_candidates(game_id[10:12] if len(game_id) >= 12 else "")  # noqa: PLR2004
 
         # Scan the target date first, then neighbours.
         scan_dates: list[date] = [base]
@@ -917,8 +945,8 @@ class GameDetailCrawler:
                     continue
                 # Match by team codes (either order, because reversedHomeAway
                 # swaps them in the response).
-                teams_match = (g_away == away_code and g_home == home_code) or (
-                    g_away == home_code and g_home == away_code
+                teams_match = (g_away in away_codes and g_home in home_codes) or (
+                    g_away in home_codes and g_home in away_codes
                 )
                 if teams_match:
                     # Further narrow by MMDD to avoid matching a different
