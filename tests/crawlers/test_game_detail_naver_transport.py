@@ -443,3 +443,113 @@ class TestPostseasonResolution:
 
         assert not result.ok
         assert result.http_status == 404
+
+
+class TestEraTeamCodeResolution:
+    """Naver answers older seasons under the era team codes, not the current ones.
+
+    ``20100926NXSK0`` is stored with the Nexen code, but the 2010 schedule
+    answers with ``WO`` -- and still ``SK``, not ``SSG``. A resolver that knows
+    only the current mapping misses the game twice over: it never proposes the
+    id Naver has, and a mapping applied as a replacement would reject the very
+    response that carries it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_heroes_game_stored_as_nx_resolves_through_the_naver_code(self) -> None:
+        target_game = "20100926NXSK0"
+        resolved_naver_id = "20100926WOSK0"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url_str = str(request.url)
+            if "schedule/today-games" in url_str:
+                return _json(
+                    {
+                        "result": {
+                            "games": [
+                                {
+                                    "gameId": resolved_naver_id,
+                                    "gameDate": "2010-09-26",
+                                    "awayTeamCode": "WO",
+                                    "homeTeamCode": "SK",
+                                }
+                            ]
+                        }
+                    }
+                )
+            if f"games/{target_game}2010/record" in url_str:
+                return httpx.Response(404, json={"message": "Not Found"})
+            if f"games/{resolved_naver_id}/record" in url_str:
+                return _json(RECORD_ENVELOPE)
+            return httpx.Response(404)
+
+        crawler = _crawler(handler)
+        result = await crawler._crawl_naver_single(target_game, "20100926")
+
+        assert result.ok
+        assert result.outcome is CrawlOutcome.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_the_era_code_does_not_match_against_a_different_opponent(self) -> None:
+        """Widening the codes must not drop the opponent check."""
+        target_game = "20100926NXSK0"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url_str = str(request.url)
+            if "schedule/today-games" in url_str:
+                return _json(
+                    {
+                        "result": {
+                            "games": [
+                                {
+                                    "gameId": "20100926WOLG0",
+                                    "gameDate": "2010-09-26",
+                                    "awayTeamCode": "WO",
+                                    "homeTeamCode": "LG",
+                                }
+                            ]
+                        }
+                    }
+                )
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        crawler = _crawler(handler)
+        result = await crawler._crawl_naver_single(target_game, "20100926")
+
+        assert not result.ok
+
+    @pytest.mark.asyncio
+    async def test_the_raw_code_stays_a_candidate_so_2010_sk_still_matches(self) -> None:
+        """``SK`` maps to ``SSG`` for the current seasons; 2010 Naver still says ``SK``.
+
+        Replacing the code with its mapping instead of adding to it would break
+        every pre-2021 game whose opponent the current table renames.
+        """
+        target_game = "20100926NXSK0"
+        resolved_naver_id = "20100926WOSK0"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            url_str = str(request.url)
+            if "schedule/today-games" in url_str:
+                return _json(
+                    {
+                        "result": {
+                            "games": [
+                                {
+                                    "gameId": resolved_naver_id,
+                                    "gameDate": "2010-09-26",
+                                    "awayTeamCode": "WO",
+                                    "homeTeamCode": "SK",
+                                }
+                            ]
+                        }
+                    }
+                )
+            if f"games/{resolved_naver_id}/record" in url_str:
+                return _json(RECORD_ENVELOPE)
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        crawler = _crawler(handler)
+        result = await crawler._crawl_naver_single(target_game, "20100926")
+
+        assert result.ok

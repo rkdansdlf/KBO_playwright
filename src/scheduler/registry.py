@@ -27,6 +27,7 @@ from src.scheduler.config import (
     KST,
     SCHEDULER_JOB_EXCEPTIONS,
     _env_int,
+    milestone_crawl_enabled,
 )
 from src.scheduler.jobs.alerts import (
     send_milestone_summary_job,
@@ -37,6 +38,7 @@ from src.scheduler.jobs.daily import (
     crawl_daily_games,
     crawl_futures_schedule_job,
     crawl_kbo_press_releases_job,
+    crawl_milestones_job,
     crawl_p0_non_game_job,
     crawl_p1p2_data_job,
     crawl_phase1_extra_job,
@@ -208,7 +210,7 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
         ``(callable, trigger, job_id, name, misfire_grace_seconds)`` tuples.
 
     """
-    return [
+    specs: list[tuple[object, object, str, str, int]] = [
         (
             selector_drift_sentinel_job,
             trigger_cls(hour=5, minute=40),
@@ -323,6 +325,22 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
             7200,
         ),
     ]
+    if milestone_crawl_enabled():
+        # Milestone crawling is off by default until a real milestone source is available;
+        # when enabled, insert right after crawl_futures_schedule (06:40 KST, before recalc at 07:15).
+        idx = next((i for i, item in enumerate(specs) if item[2] == "crawl_futures_schedule"), -1)
+        entry = (
+            crawl_milestones_job,
+            trigger_cls(hour=6, minute=40),
+            "crawl_milestones",
+            "KBO Player Milestone Crawl (06:40 KST)",
+            3600,
+        )
+        if idx != -1:
+            specs.insert(idx + 1, entry)
+        else:
+            specs.append(entry)
+    return specs
 
 
 def _publish_job_cadence_contract(scheduler: object) -> None:

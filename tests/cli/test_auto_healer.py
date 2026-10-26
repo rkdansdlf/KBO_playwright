@@ -128,20 +128,54 @@ class TestApplyHealOutcome:
         mock_item = MagicMock()
         mock_item.detail_saved = True
         mock_item.failure_reason = None
-        result = _apply_heal_outcome("G1", mock_item)
+        with patch("src.cli.auto_healer._read_persisted_status", return_value="COMPLETED"):
+            result = _apply_heal_outcome("G1", mock_item)
         assert result == "completed"
+
+    def test_draw_is_not_reported_as_win(self):
+        """A saved tie is a finished game; the outcome must not claim COMPLETED."""
+        mock_item = MagicMock()
+        mock_item.detail_saved = True
+        mock_item.failure_reason = None
+        with (
+            patch("src.cli.auto_healer._read_persisted_status", return_value="DRAW"),
+            patch("src.cli.auto_healer._reconcile_and_audit") as mock_audit,
+        ):
+            result = _apply_heal_outcome("G1", mock_item, previous_status="SCHEDULED")
+        assert result == "completed"
+        assert mock_audit.call_args.args[1] == "DRAW"
+
+    def test_saved_detail_that_left_the_row_non_terminal_is_not_a_heal(self):
+        mock_item = MagicMock()
+        mock_item.detail_saved = True
+        mock_item.failure_reason = None
+        with (
+            patch("src.cli.auto_healer._read_persisted_status", return_value="SCHEDULED"),
+            patch("src.cli.auto_healer.update_game_status") as mock_update,
+            patch("src.cli.auto_healer._reconcile_and_audit") as mock_audit,
+        ):
+            result = _apply_heal_outcome("G1", mock_item)
+        assert result == "unresolved"
+        mock_update.assert_not_called()
+        mock_audit.assert_not_called()
 
     def test_cancelled_when_failure_reason(self):
         mock_item = MagicMock()
         mock_item.detail_saved = False
         mock_item.failure_reason = "cancelled"
-        with patch("src.cli.auto_healer.update_game_status") as mock_update:
+        with (
+            patch("src.cli.auto_healer.update_game_status") as mock_update,
+            patch("src.cli.auto_healer._read_persisted_status", return_value="SCHEDULED"),
+        ):
             result = _apply_heal_outcome("G1", mock_item)
         assert result == "cancelled"
         mock_update.assert_called_once()
 
     def test_unresolved_when_no_item(self):
-        with patch("src.cli.auto_healer.update_game_status") as mock_update:
+        with (
+            patch("src.cli.auto_healer.update_game_status") as mock_update,
+            patch("src.cli.auto_healer._read_persisted_status", return_value="SCHEDULED"),
+        ):
             result = _apply_heal_outcome("G1", None)
         assert result == "unresolved"
         mock_update.assert_called_once()
@@ -150,7 +184,10 @@ class TestApplyHealOutcome:
         mock_item = MagicMock()
         mock_item.detail_saved = False
         mock_item.failure_reason = "timeout"
-        with patch("src.cli.auto_healer.update_game_status"):
+        with (
+            patch("src.cli.auto_healer.update_game_status"),
+            patch("src.cli.auto_healer._read_persisted_status", return_value="SCHEDULED"),
+        ):
             result = _apply_heal_outcome("G1", mock_item)
         assert result == "unresolved"
 
@@ -158,7 +195,10 @@ class TestApplyHealOutcome:
         mock_item = MagicMock()
         mock_item.detail_saved = False
         mock_item.failure_reason = "missing"
-        with patch("src.cli.auto_healer.update_game_status") as mock_update:
+        with (
+            patch("src.cli.auto_healer.update_game_status") as mock_update,
+            patch("src.cli.auto_healer._read_persisted_status", return_value="SCHEDULED"),
+        ):
             result = _apply_heal_outcome("G1", mock_item)
         assert result == "unresolved"
         mock_update.assert_called_once_with("G1", "UNRESOLVED_MISSING", allow_historical=False)

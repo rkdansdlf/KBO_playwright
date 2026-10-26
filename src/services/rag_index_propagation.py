@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from src.constants import KST
@@ -14,6 +15,10 @@ from src.models.rag_chunk_vector import RagChunkVector
 from src.repositories.rag_chunk_repository import RagChunkRepository
 from src.repositories.vector_search_repository import VectorSearchRepository
 from src.services.rag_index_identity import chunk_content_hash, current_index_version
+from src.services.rag_vector_reactivation import (
+    CLEANUP_TOMBSTONE_META_KEY,
+    reactivate_cleanup_tombstoned_keys,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -201,9 +206,19 @@ def _bulk_upsert_sparse(session: Session, payloads: list[dict[str, Any]], index_
 
 def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_status: str) -> None:
     """Bulk upsert vector rows using PostgreSQL's conflict-aware insert."""
-    from sqlalchemy.dialects.postgresql import insert
+    if not payloads:
+        return
+
+    from sqlalchemy.dialects.postgresql import JSONB, insert
 
     statement = insert(RagChunkVector).values(_vector_rows(payloads, index_status))
+    marker_case = sa.case(
+        (
+            RagChunkVector.meta.has_key(CLEANUP_TOMBSTONE_META_KEY),
+            sa.cast(sa.literal(f'{{"{CLEANUP_TOMBSTONE_META_KEY}": true}}'), JSONB),
+        ),
+        else_=sa.cast(sa.literal("{}"), JSONB),
+    )
     update_columns = {
         column: getattr(statement.excluded, column)
         for column in (
@@ -224,16 +239,21 @@ def _bulk_upsert_vector(session: Session, payloads: list[dict[str, Any]], index_
             "index_status",
             "indexed_at",
             "embedding",
-            "meta",
             "updated_at",
         )
     }
+    update_columns["meta"] = statement.excluded.meta.op("||")(marker_case)
+
     session.execute(
         statement.on_conflict_do_update(
             index_elements=[RagChunkVector.source_table, RagChunkVector.source_row_id],
             set_=update_columns,
         )
     )
+
+    if index_status == "ACTIVE":
+        keys = [(str(payload["source_table"]), str(payload["source_row_id"])) for payload in payloads]
+        reactivate_cleanup_tombstoned_keys(session, keys)
 
 
 def _reject_purged_batch(primary_session: Session, vector_session: Session, payloads: list[dict[str, Any]]) -> None:
@@ -304,7 +324,13 @@ def publish_index_batch(
 
 
 def publish_single_store_batch(session: Session, payloads: list[dict[str, Any]]) -> int:
-    """Publish a batch into Oracle's single sparse/vector ``rag_chunks`` table."""
+    """Publish a batch into a single ``rag_chunks`` table serving both indexes.
+
+    Oracle has always kept one table, and PostgreSQL reaches the same shape when
+    ``PGVECTOR_URL`` names the operational database. Either way the dense row
+    builder cannot be used: it writes the five display columns the separate
+    pgvector store owned, while the shared table keeps them in ``meta``.
+    """
     if not payloads:
         return 0
     for payload in payloads:

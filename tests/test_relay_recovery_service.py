@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
-from src.models.game import Game, GameEvent, GamePlayByPlay, GameValidationMetrics
+from src.models.game import Game, GameEvent, GameInningScore, GamePlayByPlay, GameValidationMetrics
 from src.models.season import KboSeason
 from src.services import relay_recovery_service as service
 from src.sources.relay import NormalizedRelayResult
@@ -33,6 +33,7 @@ def _build_session_factory():
     engine = create_engine("sqlite:///:memory:")
     KboSeason.__table__.create(bind=engine)
     Game.__table__.create(bind=engine)
+    GameInningScore.__table__.create(bind=engine)
     GameEvent.__table__.create(bind=engine)
     GamePlayByPlay.__table__.create(bind=engine)
     GameValidationMetrics.__table__.create(bind=engine)

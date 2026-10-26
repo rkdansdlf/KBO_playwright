@@ -54,7 +54,7 @@ from src.notifications.alert_dto import (
     severity_rank,
     utcnow,
 )
-from src.notifications.policy import cooldown_seconds, should_notify_severity
+from src.notifications.policy import cooldown_seconds, renotify_seconds, should_notify_severity
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -72,6 +72,19 @@ def _cooldown_elapsed(incident: NotificationIncident, severity: AlertSeverity, n
     return (now - incident.last_notified_at).total_seconds() >= cooldown_seconds(severity)
 
 
+def _renotify_elapsed(incident: NotificationIncident, severity: AlertSeverity, now: datetime) -> bool:
+    """Return whether an unchanged incident has waited out its re-notify interval.
+
+    ``last_notified_at is None`` means no notification was ever delivered --
+    a first occurrence, or a delivery the transport refused -- so the interval
+    has not started and the occurrence is free to notify. Reading the null as
+    "waited forever" would silence exactly the incidents nobody has seen yet.
+    """
+    if incident.last_notified_at is None:
+        return True
+    return (now - incident.last_notified_at).total_seconds() >= renotify_seconds(severity)
+
+
 def _notify_floor_allows(severity: AlertSeverity) -> bool:
     return should_notify_severity(severity)
 
@@ -80,6 +93,9 @@ def _notify_floor_allows(severity: AlertSeverity) -> bool:
 SUPPRESSION_FLOOR = "floor"
 SUPPRESSION_ACKNOWLEDGED = "acknowledged"
 SUPPRESSION_COOLDOWN = "cooldown"
+#: The cooldown passed, but nothing about the incident has changed since it was
+#: last announced, so it waits out the re-notification interval.
+SUPPRESSION_UNCHANGED = "unchanged"
 
 
 def classify_suppression(
@@ -104,7 +120,13 @@ def classify_suppression(
     decisions were never written down.
 
     The order mirrors :meth:`IncidentManager._active_decision` so the two cannot
-    disagree about which reason applies.
+    disagree about which reason applies. Both end on the same question: an
+    occurrence whose details are identical to the ones already sent waits out
+    ``renotify_seconds``. This function cannot see the incoming event, so it
+    answers that case the way an unchanged row behaves -- the honest reading of
+    a row that is not moving. An event whose details *did* change is announced
+    after the cooldown alone; until one does, this column keeps saying
+    ``unchanged`` about the row, which is why it is still there.
     """
     severity = AlertSeverity(incident.severity)
     if not _notify_floor_allows(severity):
@@ -113,6 +135,8 @@ def classify_suppression(
         return SUPPRESSION_ACKNOWLEDGED
     if not _cooldown_elapsed(incident, severity, now):
         return SUPPRESSION_COOLDOWN
+    if not _renotify_elapsed(incident, severity, now):
+        return SUPPRESSION_UNCHANGED
     return None
 
 
@@ -154,11 +178,14 @@ class IncidentManager:
 
         previous_state = AlertStatus(incident.state)
         previous_severity = AlertSeverity(incident.severity)
+        # Read before the update overwrites it: the decision below needs to know
+        # whether this occurrence says anything the stored one did not.
+        previous_details_hash = incident.details_hash
 
         if previous_state == AlertStatus.RECOVERED:
             return self._reopen(event, moment, previous_severity)
 
-        return self._update_active(event, moment, previous_state, previous_severity)
+        return self._update_active(event, moment, previous_state, previous_severity, previous_details_hash)
 
     def _open(self, event: AlertEvent, moment: datetime) -> IncidentTransition:
         """Insert a new incident, or fall through to the update path if a peer won.
@@ -328,8 +355,16 @@ class IncidentManager:
         moment: datetime,
         previous_state: AlertStatus,
         previous_severity: AlertSeverity,
+        previous_details_hash: str | None = None,
     ) -> IncidentTransition:
-        """Atomically bump an active incident and decide whether to notify."""
+        """Atomically bump an active incident and decide whether to notify.
+
+        ``previous_details_hash`` is the stored payload hash from before this
+        occurrence. ``None`` means the caller could not read one -- the
+        create-race recovery path, for instance -- and is treated as a change,
+        because announcing a finding twice is recoverable and never announcing
+        it is not.
+        """
         self.session.execute(
             update(NotificationIncident)
             .where(
@@ -351,7 +386,14 @@ class IncidentManager:
 
         incident = self._reload(event.incident_key)
         escalated = severity_rank(event.severity) > severity_rank(previous_severity)
-        decision = self._active_decision(event.severity, incident, moment, escalated=escalated)
+        details_changed = previous_details_hash != event.details_hash()
+        decision = self._active_decision(
+            event.severity,
+            incident,
+            moment,
+            escalated=escalated,
+            details_changed=details_changed,
+        )
         return _build_transition(
             incident,
             decision=decision,
@@ -367,16 +409,28 @@ class IncidentManager:
         moment: datetime,
         *,
         escalated: bool,
+        details_changed: bool = True,
     ) -> AlertDecision:
+        """Decide whether this occurrence is worth a notification.
+
+        ``details_changed`` defaults to True so a caller that does not track the
+        previous hash keeps the pre-existing behaviour -- the cooldown alone
+        decides. Only the update path, which has the stored hash in hand,
+        narrows it.
+        """
         if not _notify_floor_allows(severity):
             return AlertDecision.SUPPRESSED
         if escalated:
             return AlertDecision.ESCALATED
         if incident.state == INCIDENT_STATE_ACKNOWLEDGED:
             return AlertDecision.SUPPRESSED
-        if _cooldown_elapsed(incident, severity, moment):
-            return AlertDecision.REPEAT
-        return AlertDecision.SUPPRESSED
+        if not _cooldown_elapsed(incident, severity, moment):
+            return AlertDecision.SUPPRESSED
+        # A changed finding is announced once the cooldown allows, because the
+        # cooldown already bounds how often that can be said. An unchanged one
+        # waits out the re-notification interval instead.
+        worth_saying = details_changed or _renotify_elapsed(incident, severity, moment)
+        return AlertDecision.REPEAT if worth_saying else AlertDecision.SUPPRESSED
 
     # ------------------------------------------------------------- resolution
 

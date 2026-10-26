@@ -117,6 +117,20 @@ def _store_identity(engine: Engine | None) -> tuple[str | None, str | None, int 
     return (url.get_backend_name(), url.host, url.port, url.database)
 
 
+def vector_store_shares_database_with(engine: Engine | None) -> bool:
+    """Return whether ``PGVECTOR_URL`` reaches the same database as ``engine``.
+
+    The dense index is a separate pgvector store in the paired deployment, but
+    ``PGVECTOR_URL`` may legitimately point at one database where a single
+    ``rag_chunks`` table serves both roles. Callers must ask about the database
+    they are actually writing to, because a build can target something other
+    than the operational store. Two absent engines are not one store.
+    """
+    if VectorEngine is None or engine is None:
+        return False
+    return _store_identity(VectorEngine) == _store_identity(engine)
+
+
 def shares_operational_database() -> bool:
     """Return whether the vector store *is* the operational database.
 
@@ -125,11 +139,9 @@ def shares_operational_database() -> bool:
     itself. Auditing that as a pair of stores loads the same 606k rows twice and
     reports every finding twice, so the caller has to know the difference.
     """
-    if VectorEngine is None:
-        return False
     from src.db.engine import Engine as OperationalEngine
 
-    return _store_identity(VectorEngine) == _store_identity(OperationalEngine)
+    return vector_store_shares_database_with(OperationalEngine)
 
 
 def is_oracle_vector_schema_available() -> bool:

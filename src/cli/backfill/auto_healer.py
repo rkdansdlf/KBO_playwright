@@ -7,9 +7,15 @@ Two healing modes:
    and attempts to self-correct by re-crawling from the KBO GameCenter.
 
    Resolution logic per game:
-     - shared detail collection saved data → COMPLETED
+     - shared detail collection saved data → read back the status the save derived (COMPLETED or DRAW)
      - failure_reason=cancelled            → update status → CANCELLED
      - failure_reason=missing              → update status → UNRESOLVED_MISSING
+
+   The healer never invents a status. A full detail save already derives one from
+   the scores (``save_game_detail`` → ``derive_stable_game_status``), and a tie is
+   DRAW, so announcing COMPLETED here would overwrite a correct tie with a wrong
+   win. What this module owns is the record of the transition: the value the row
+   held before the attempt and the value that was actually persisted after it.
 
 2. PBP mode (--pbp flag):
    Scans game_metadata for games with pbp_validation_status='unverified' in COMPLETED/DRAW state,
@@ -37,7 +43,7 @@ from src.models.game import Game
 from src.notifications.alert_dto import AlertEvent, AlertSeverity, AlertSource
 from src.notifications.bridge import apply_incidents
 from src.notifications.standalone import send_notification
-from src.repositories.game_repository import update_game_status
+from src.repositories.game_repository import resolve_canonical_game_id, update_game_status
 from src.repositories.game_status import automatic_write_allowed, current_season_year, game_year_of
 from src.services.game_collection_service import (
     GameCollectionConfig,
@@ -47,7 +53,13 @@ from src.services.game_collection_service import (
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
 from src.services.recovery_manager import RecoveryManager
-from src.utils.game_status import GAME_STATUS_CANCELLED, GAME_STATUS_SCHEDULED, GAME_STATUS_UNRESOLVED
+from src.utils.game_status import (
+    GAME_STATUS_CANCELLED,
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_DRAW,
+    GAME_STATUS_SCHEDULED,
+    GAME_STATUS_UNRESOLVED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -196,8 +208,52 @@ def heal_season_stat_discrepancies(*, dry_run: bool = False) -> int:
     return fixed_count
 
 
-def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> None:
-    """Record reconciliation audit trail for auto-healed games."""
+#: Statuses a successful full-detail save can derive. ``DRAW`` is in here because
+#: a tie is a finished game: treating only COMPLETED as "healed" would report a
+#: correctly saved tie as a failure and invite a second write that turns it into a win.
+TERMINAL_HEAL_STATUSES = frozenset({GAME_STATUS_COMPLETED, GAME_STATUS_DRAW})
+
+
+def _read_persisted_status(game_id: str) -> str | None:
+    """Return the status the database currently holds for ``game_id``.
+
+    ``None`` means the row could not be read -- it is not "no status". Callers must
+    not read it as evidence that anything changed.
+
+    Args:
+        game_id: Game ID.
+
+    """
+    try:
+        with SessionLocal() as session:
+            canonical = resolve_canonical_game_id(game_id, session=session) or game_id
+            return session.execute(select(Game.game_status).where(Game.game_id == canonical)).scalar()
+    except (SQLAlchemyError, RuntimeError, ValueError, OSError) as exc:
+        logger.warning("[AutoHealer] Could not read persisted status for %s: %s", game_id, exc)
+        return None
+
+
+def _reconcile_and_audit(
+    game_id: str,
+    new_status: str,
+    reason: str | None,
+    *,
+    raw_status: str | None,
+) -> None:
+    """Record one status transition as it actually happened.
+
+    ``raw_status`` is what the row held before the healing attempt and is required.
+    Writing a fixed ``SCHEDULED`` would claim a transition that may never have
+    happened: the stuck finder also picks up ``UNRESOLVED`` games, and a detail
+    save can land on ``DRAW``. ``None`` is recorded as unknown rather than guessed.
+
+    Args:
+        game_id: Game ID.
+        new_status: Status that was persisted.
+        reason: Reason.
+        raw_status: Status the row held before the attempt, or None when unknown.
+
+    """
     try:
         from src.services.multi_source_reconciler import CorrectionAuditRequest, MultiSourceReconciler
 
@@ -208,7 +264,7 @@ def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> N
                 entity_type="game",
                 entity_id=game_id,
                 field_name="game_status",
-                raw_value=GAME_STATUS_SCHEDULED,
+                raw_value=raw_status,
                 raw_source="kbo_schedule",
                 corrected_value=new_status,
                 corrected_source="auto_healer",
@@ -221,8 +277,20 @@ def _reconcile_and_audit(game_id: str, new_status: str, reason: str | None) -> N
         logger.warning("[AutoHealer] Failed to record correction audit trail for %s: %s", game_id, e)
 
 
-def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None, *, allow_historical: bool = False) -> str:
+def _apply_heal_outcome(
+    game_id: str,
+    item: GameCollectionItemResult | None,
+    *,
+    allow_historical: bool = False,
+    previous_status: str | None = None,
+) -> str:
     """Apply status repair based on one shared collection result item.
+
+    A saved detail is not a status this function gets to choose: the save path
+    already derived one from the scores and committed it. So the success branch
+    reads the row back and reports that value. A row that is still non-terminal
+    after a "successful" save is not a heal, and saying so would hide a real defect
+    behind a green log line.
 
     Return one of: 'completed', 'cancelled', 'unresolved', 'skipped_past_season'
     ('skipped_past_season' when the current-season guard refuses the status write;
@@ -232,26 +300,36 @@ def _apply_heal_outcome(game_id: str, item: GameCollectionItemResult | None, *, 
         game_id: Game ID.
         item: Item.
         allow_historical: Opt in to pre-2001 writes (explicit operator run only).
+        previous_status: Status the row held before the healing attempt, if known.
 
     """
     if item and item.detail_saved:
-        _reconcile_and_audit(game_id, "COMPLETED", "score_saved")
-        logger.info("  ✅ %s → COMPLETED (score saved)", game_id)
+        persisted = _read_persisted_status(game_id)
+        if persisted not in TERMINAL_HEAL_STATUSES:
+            logger.error(
+                "  ❌ %s detail saved but persisted status is %r (expected COMPLETED or DRAW); not reporting a heal",
+                game_id,
+                persisted,
+            )
+            return "unresolved"
+        _reconcile_and_audit(game_id, persisted, "score_saved", raw_status=previous_status)
+        logger.info("  ✅ %s healed: %s → %s (score saved)", game_id, previous_status or "?", persisted)
         return "completed"
 
+    status_before = previous_status if previous_status is not None else _read_persisted_status(game_id)
     failure_reason = item.failure_reason if item else None
     if failure_reason == "cancelled":
         if not update_game_status(game_id, GAME_STATUS_CANCELLED, allow_historical=allow_historical):
             logger.info("  ⏭️  %s skipped: status write refused by current-season guard", game_id)
             return "skipped_past_season"
-        _reconcile_and_audit(game_id, GAME_STATUS_CANCELLED, "cancelled")
+        _reconcile_and_audit(game_id, GAME_STATUS_CANCELLED, "cancelled", raw_status=status_before)
         logger.info("  🚫 %s → CANCELLED", game_id)
         return "cancelled"
 
     if not update_game_status(game_id, GAME_STATUS_UNRESOLVED, allow_historical=allow_historical):
         logger.info("  ⏭️  %s skipped: status write refused by current-season guard", game_id)
         return "skipped_past_season"
-    _reconcile_and_audit(game_id, GAME_STATUS_UNRESOLVED, failure_reason)
+    _reconcile_and_audit(game_id, GAME_STATUS_UNRESOLVED, failure_reason, raw_status=status_before)
     logger.info("  ❓ %s → UNRESOLVED_MISSING (reason=%s)", game_id, failure_reason)
     return "unresolved"
 
@@ -519,7 +597,12 @@ async def _run_recovery(
         )
         for game in recovery_candidates:
             item = collection_result.items.get(game.game_id)  # type: ignore[call-overload]
-            outcome = _apply_heal_outcome(game.game_id, item, allow_historical=allow_historical)  # type: ignore[arg-type]
+            outcome = _apply_heal_outcome(
+                game.game_id,
+                item,  # type: ignore[arg-type]
+                allow_historical=allow_historical,
+                previous_status=game.game_status,
+            )
             results[outcome] = results.get(outcome, 0) + 1
             if outcome == "completed":
                 recovery_mgr.mark_completed(game.game_id)  # type: ignore[arg-type]

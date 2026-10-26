@@ -6,6 +6,8 @@ pgvector DB에 저장된 rag_chunks 테이블에서
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -20,8 +22,14 @@ from src.services.rag_index_identity import (
     chunk_content_hash,
     current_index_version,
 )
+from src.services.rag_vector_reactivation import (
+    CLEANUP_TOMBSTONE_META_KEY,
+    get_reactivation_columns,
+)
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -30,8 +38,118 @@ _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 _DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
 
 
+def _has_tombstone_marker(existing: RagChunkVector | None) -> bool:
+    """Return whether an existing vector chunk carries the cleanup tombstone marker."""
+    if existing is None or not existing.meta:
+        return False
+    if isinstance(existing.meta, dict):
+        return bool(existing.meta.get(CLEANUP_TOMBSTONE_META_KEY))
+    if isinstance(existing.meta, str):
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            parsed = json.loads(existing.meta)
+            if isinstance(parsed, dict):
+                return bool(parsed.get(CLEANUP_TOMBSTONE_META_KEY))
+    return False
+
+
+def _build_upsert_meta(chunk_data: dict[str, Any], *, has_marker: bool, index_status: str) -> dict[str, Any]:
+    """Build metadata dict preserving or stripping the cleanup tombstone marker."""
+    new_meta = dict(chunk_data.get("meta") or {})
+    if has_marker:
+        if index_status != ACTIVE_INDEX_STATUS:
+            new_meta[CLEANUP_TOMBSTONE_META_KEY] = True
+        else:
+            new_meta.pop(CLEANUP_TOMBSTONE_META_KEY, None)
+    return new_meta
+
+
+def _apply_chunk_tombstone_reactivation(session: Session, existing_id: int) -> None:
+    """Reactivate tombstoned chunk columns after an ACTIVE flush."""
+    session.flush()
+    target_cols = get_reactivation_columns(session)
+    set_clauses: list[str] = []
+    if "is_active" in target_cols:
+        set_clauses.append("is_active = true")
+    if "valid_to" in target_cols:
+        set_clauses.append("valid_to = NULL")
+    if set_clauses:
+        stmt = text(
+            f"UPDATE rag_chunks SET {', '.join(set_clauses)} "  # noqa: S608
+            f"WHERE id = :id AND index_status = 'ACTIVE'"
+        )
+        session.execute(stmt, {"id": existing_id})
+
+
 class VectorSearchRepository:
     """pgvector 코사인 유사도 기반 청크 검색 및 upsert."""
+
+    @staticmethod
+    def _update_existing_chunk(  # noqa: PLR0913
+        existing: RagChunkVector,
+        chunk_data: dict[str, Any],
+        title: str | None,
+        content: str,
+        content_hash: str,
+        index_version: str,
+        index_status: str,
+        indexed_at: datetime | None,
+        meta: dict[str, Any],
+    ) -> None:
+        existing.title = title
+        existing.content = content
+        existing.embedding = chunk_data.get("embedding")
+        existing.meta = meta
+        existing.team_id = chunk_data.get("team_id")
+        existing.player_id = chunk_data.get("player_id")
+        existing.season_year = chunk_data.get("season_year")
+        existing.document_type = chunk_data.get("document_type")
+        existing.game_date = chunk_data.get("game_date")
+        existing.published_at = chunk_data.get("published_at")
+        existing.source_url = chunk_data.get("source_url")
+        existing.language = chunk_data.get("language")
+        existing.league_type_code = chunk_data.get("league_type_code")
+        existing.content_hash = content_hash
+        existing.index_version = index_version
+        existing.index_status = index_status
+        existing.indexed_at = indexed_at
+
+    @staticmethod
+    def _insert_new_chunk(  # noqa: PLR0913
+        session: Session,
+        chunk_data: dict[str, Any],
+        source_table: str,
+        source_row_id: str,
+        title: str | None,
+        content: str,
+        content_hash: str,
+        index_version: str,
+        index_status: str,
+        indexed_at: datetime | None,
+        meta: dict[str, Any],
+    ) -> None:
+        session.add(
+            RagChunkVector(
+                source_table=source_table,
+                source_row_id=source_row_id,
+                title=title,
+                content=content,
+                embedding=chunk_data.get("embedding"),
+                meta=meta,
+                team_id=chunk_data.get("team_id"),
+                player_id=chunk_data.get("player_id"),
+                season_year=chunk_data.get("season_year"),
+                document_type=chunk_data.get("document_type"),
+                game_date=chunk_data.get("game_date"),
+                published_at=chunk_data.get("published_at"),
+                source_url=chunk_data.get("source_url"),
+                language=chunk_data.get("language"),
+                league_type_code=chunk_data.get("league_type_code"),
+                content_hash=content_hash,
+                index_version=index_version,
+                index_status=index_status,
+                indexed_at=indexed_at,
+            )
+        )
 
     def search_by_cosine(  # noqa: PLR0913 (public 검색 API 호환성 유지)
         self,
@@ -209,54 +327,46 @@ class VectorSearchRepository:
         indexed_at = chunk_data.get("indexed_at")
 
         existing = session.scalar(
-            select(RagChunkVector).where(
+            select(RagChunkVector)
+            .where(
                 RagChunkVector.source_table == source_table,
                 RagChunkVector.source_row_id == source_row_id,
             )
+            .with_for_update()
         )
 
+        has_marker = _has_tombstone_marker(existing)
+        new_meta = _build_upsert_meta(chunk_data, has_marker=has_marker, index_status=index_status)
+
         if existing:
-            existing.title = title
-            existing.content = content
-            existing.embedding = chunk_data.get("embedding")
-            existing.meta = chunk_data.get("meta", {})
-            existing.team_id = chunk_data.get("team_id")
-            existing.player_id = chunk_data.get("player_id")
-            existing.season_year = chunk_data.get("season_year")
-            existing.document_type = chunk_data.get("document_type")
-            existing.game_date = chunk_data.get("game_date")
-            existing.published_at = chunk_data.get("published_at")
-            existing.source_url = chunk_data.get("source_url")
-            existing.language = chunk_data.get("language")
-            existing.league_type_code = chunk_data.get("league_type_code")
-            existing.content_hash = content_hash
-            existing.index_version = index_version
-            existing.index_status = index_status
-            existing.indexed_at = indexed_at
-        else:
-            session.add(
-                RagChunkVector(
-                    source_table=source_table,
-                    source_row_id=source_row_id,
-                    title=title,
-                    content=content,
-                    embedding=chunk_data.get("embedding"),
-                    meta=chunk_data.get("meta", {}),
-                    team_id=chunk_data.get("team_id"),
-                    player_id=chunk_data.get("player_id"),
-                    season_year=chunk_data.get("season_year"),
-                    document_type=chunk_data.get("document_type"),
-                    game_date=chunk_data.get("game_date"),
-                    published_at=chunk_data.get("published_at"),
-                    source_url=chunk_data.get("source_url"),
-                    language=chunk_data.get("language"),
-                    league_type_code=chunk_data.get("league_type_code"),
-                    content_hash=content_hash,
-                    index_version=index_version,
-                    index_status=index_status,
-                    indexed_at=indexed_at,
-                )
+            self._update_existing_chunk(
+                existing,
+                chunk_data=chunk_data,
+                title=title,
+                content=content,
+                content_hash=content_hash,
+                index_version=index_version,
+                index_status=index_status,
+                indexed_at=indexed_at,
+                meta=new_meta,
             )
+        else:
+            self._insert_new_chunk(
+                session,
+                chunk_data=chunk_data,
+                source_table=source_table,
+                source_row_id=source_row_id,
+                title=title,
+                content=content,
+                content_hash=content_hash,
+                index_version=index_version,
+                index_status=index_status,
+                indexed_at=indexed_at,
+                meta=new_meta,
+            )
+
+        if has_marker and index_status == ACTIVE_INDEX_STATUS and existing and existing.id:
+            _apply_chunk_tombstone_reactivation(session, existing.id)
 
     def count_chunks(self, source_table: str | None = None) -> int:
         """저장된 청크 수를 반환합니다.

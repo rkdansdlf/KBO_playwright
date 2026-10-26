@@ -246,6 +246,67 @@ class TestBuildIdentityCensus:
         # One SAFE_REKEY (legacy "1" maps to source), one ORPHAN_SOURCE_ROW (legacy "999" has no source)
         assert report.unsafe_entry_count == 1
 
+    def test_a_numeric_natural_key_is_not_read_as_a_legacy_id(self) -> None:
+        """``press_release`` keys on KBO's notice number, which is numeric.
+
+        Reading every numeric index key as a legacy ``id`` awaiting a rekey made
+        all 40 healthy press-release chunks ``ORPHAN_SOURCE_ROW`` every night.
+        Their keys are the *natural* keys, and a natural key is not found among
+        the source's own ``id`` values, so the census reported an orphan that
+        had never been one.
+        """
+        source_records = [
+            SourceIdentityRecord("press_release", "3", "9646"),
+            SourceIdentityRecord("press_release", "4", "9645"),
+        ]
+        existing_rows = [
+            ExistingIdentityRow(100, "press_release", "9646", "hash1", "ACTIVE"),
+            ExistingIdentityRow(200, "press_release", "9645", "hash2", "ACTIVE"),
+        ]
+
+        report = build_identity_census(existing_rows, source_records, source_tables=["press_release"])
+
+        assert report.entries == ()
+        assert report.unsafe_entry_count == 0
+        assert report.totals()["legacy_numeric_rows"] == 0
+
+    def test_a_legacy_row_beside_its_numeric_natural_target_is_not_safe(self) -> None:
+        # The rekey has already happened for this row: both the legacy key and
+        # the natural key are in the index. Reading the natural target as a
+        # legacy id hides it, the collision goes unseen, and the rekey is called
+        # safe and run again -- duplicating the identity it was meant to fix.
+        source_records = [
+            SourceIdentityRecord("press_release", "3", "9646"),
+        ]
+        existing_rows = [
+            ExistingIdentityRow(100, "press_release", "3", "hash-legacy", "ACTIVE"),
+            ExistingIdentityRow(200, "press_release", "9646", "hash-legacy", "ACTIVE"),
+        ]
+
+        report = build_identity_census(existing_rows, source_records, source_tables=["press_release"])
+
+        entry = next(e for e in report.entries if e.legacy_source_row_id == "3")
+        assert entry.target_chunk_ids == (200,)
+        assert entry.disposition == "TARGET_EXISTS_SAME_CONTENT"
+
+    def test_a_numeric_key_that_is_not_the_natural_key_stays_legacy(self) -> None:
+        # The exemption is keyed on the source's own natural keys, not on the
+        # shape of the value. A press-release row still sitting on its table
+        # ``id`` is a real legacy row and has to keep being reported.
+        source_records = [
+            SourceIdentityRecord("press_release", "3", "9646"),
+        ]
+        existing_rows = [
+            ExistingIdentityRow(100, "press_release", "3", "hash1", "ACTIVE"),
+        ]
+
+        report = build_identity_census(existing_rows, source_records, source_tables=["press_release"])
+
+        assert len(report.entries) == 1
+        assert report.entries[0].legacy_source_row_id == "3"
+        assert report.entries[0].natural_source_row_id == "9646"
+        assert report.totals()["legacy_numeric_rows"] == 1
+
 
 class TestIterSourceIdentityRecords:
     def test_unsupported_table_raises(self) -> None:

@@ -501,6 +501,27 @@ def _is_legacy_numeric_id(source_row_id: str) -> bool:
     return source_row_id.isascii() and source_row_id.isdecimal()
 
 
+def _is_legacy_candidate(source_row_id: str, natural_keys: frozenset[str]) -> bool:
+    """Return whether an index key is a legacy id still awaiting its rekey.
+
+    Being numeric is not enough. ``press_release`` keys on KBO's notice number,
+    which is itself numeric, so every one of its healthy chunks read as a legacy
+    ``id`` -- and then as an orphan, because a natural key is not among the
+    source's own ``id`` values. The exemption is keyed on the source's natural
+    keys rather than on the shape of the value, so a row still sitting on its
+    table ``id`` keeps being reported.
+
+    Args:
+        source_row_id: The key stored in the index.
+        natural_keys: Every natural key the source records produce.
+
+    Returns:
+        Whether the key names a legacy identity that has not been rekeyed.
+
+    """
+    return _is_legacy_numeric_id(source_row_id) and source_row_id not in natural_keys
+
+
 def _target_disposition(
     legacy: ExistingIdentityRow,
     targets: Sequence[ExistingIdentityRow],
@@ -524,7 +545,8 @@ def _build_source_summary(
 ) -> SourceIdentitySummary:
     """Calculate counters for one source from its manifest entries."""
     by_disposition = Counter(entry.disposition for entry in entries)
-    numeric_rows = sum(_is_legacy_numeric_id(row.source_row_id) for row in existing_rows)
+    natural_keys = frozenset(record.natural_source_row_id for record in source_records)
+    numeric_rows = sum(_is_legacy_candidate(row.source_row_id, natural_keys) for row in existing_rows)
     source_ids = {record.source_row_id for record in source_records}
     matched_ids = {entry.legacy_source_row_id for entry in entries if entry.natural_source_row_id is not None}
     expected_groups: defaultdict[str, list[SourceIdentityRecord]] = defaultdict(list)
@@ -622,14 +644,15 @@ def _source_entries(
 ) -> list[IdentityCensusEntry]:
     """Build manifest entries for one source table's legacy rows."""
     source_by_id, source_by_natural_id = _source_indexes(source_records)
+    natural_keys = frozenset(source_by_natural_id)
     natural_targets: defaultdict[str, list[ExistingIdentityRow]] = defaultdict(list)
     for row in existing_rows:
-        if not _is_legacy_numeric_id(row.source_row_id):
+        if not _is_legacy_candidate(row.source_row_id, natural_keys):
             natural_targets[row.source_row_id].append(row)
 
     entries: list[IdentityCensusEntry] = []
     for legacy in sorted(existing_rows, key=lambda row: (row.source_row_id, row.chunk_id)):
-        if not _is_legacy_numeric_id(legacy.source_row_id):
+        if not _is_legacy_candidate(legacy.source_row_id, natural_keys):
             continue
         candidates = source_by_id.get(legacy.source_row_id, [])
         if not candidates:

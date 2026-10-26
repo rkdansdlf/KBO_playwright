@@ -6,8 +6,29 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import TYPE_CHECKING
 
-from src.diagnostics.engine import SystemDiagnosticsEngine
+from src.diagnostics.engine import HEALABLE_SUBSYSTEMS, SystemDiagnosticsEngine
+
+if TYPE_CHECKING:
+    from src.diagnostics.dto import AutoHealResult
+
+
+def _render_auto_heal(result: AutoHealResult) -> list[str]:
+    """Render an auto-heal outcome without claiming more than was performed."""
+    lines: list[str] = []
+    if result.actions:
+        lines.append(f"[AUTO-HEAL] Executed {len(result.actions)} recovery actions:")
+        lines.extend(f"  - {action}" for action in result.actions)
+    elif result.addressed:
+        lines.append(f"[AUTO-HEAL] No repairs were needed for: {', '.join(result.addressed)}.")
+    if result.unsupported:
+        healable = ", ".join(sorted(item.value for item in HEALABLE_SUBSYSTEMS))
+        lines.append(
+            f"[AUTO-HEAL] No automated remediation exists for: {', '.join(result.unsupported)}. "
+            f"Those subsystems were NOT healed (healable: {healable})."
+        )
+    return lines
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -41,14 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     engine = SystemDiagnosticsEngine()
 
     if args.fix:
-        healed_actions = engine.auto_heal(args.subsystem)
-        if not args.json:
-            if healed_actions:
-                print(f"[AUTO-HEAL] Executed {len(healed_actions)} recovery actions:")
-                for act in healed_actions:
-                    print(f"  - {act}")
-            else:
-                print("[AUTO-HEAL] No issues requiring healing were found.")
+        result = engine.auto_heal(args.subsystem)
+        # In JSON mode stdout stays machine-parseable, so the heal outcome goes
+        # to stderr rather than being dropped entirely.
+        stream = sys.stderr if args.json else sys.stdout
+        for line in _render_auto_heal(result):
+            print(line, file=stream)
 
     report = engine.diagnose_all(subsystem=args.subsystem)
 

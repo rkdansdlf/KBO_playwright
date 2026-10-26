@@ -51,7 +51,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${PGVECTOR_LOCAL_PASSWORD:?PGVECTOR_LOCAL_PASSWORD must be set in .env}
     ports:
-      - "55433:5432"
+      - "${KBO_BIND_ADDR:-127.0.0.1}:55433:5432"
     volumes:
       - kbo_pgvector:/var/lib/postgresql/data
     healthcheck:

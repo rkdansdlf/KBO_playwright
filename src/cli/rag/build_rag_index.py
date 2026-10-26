@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
@@ -67,6 +68,11 @@ from src.services.rag_index_identity import (
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
     stable_team_history_source_row_id,
+)
+from src.utils.season_classification import (
+    POSTSEASON_STAGES,
+    REGULAR,
+    SEASON_TYPE_TO_LEAGUE_CODE,
 )
 
 if TYPE_CHECKING:
@@ -100,6 +106,7 @@ _VALID_SOURCES = (
     "teams",
     "team_history",
     "highlights",
+    "inning_scores",
     "pbp",
     "markdown_docs",
     "kbo_definitions",
@@ -110,6 +117,22 @@ _VALID_SOURCES = (
 
 # 정규 시즌 리그 코드 (kbo_seasons.league_type_code 0 = 정규시즌)
 _REGULAR_SEASON_CODE = 0
+# 용도: 시즌 단위 집계 소스(player_season_*, team_standings_daily, stat_rankings,
+# team_history, player_movements, team_events, awards). 이들의 행은 정규시즌
+# 누적이므로 0을 쓰는 것은 추측이 아니라 그 행이 무엇인지 말하는 것이다.
+# 경기 단위 소스(game, game_inning_scores, game_lineups, game_highlights,
+# game_play_by_play)는 여기 해당하지 않는다 — 그쪽은 경기의 시즌에서 코드를
+# 읽는다(_game_season_codes). 팀 정보(teams)는 리그 종류가 없는 데이터라 None이다.
+#: Season types a ``--season`` build reads: the regular season and every
+#: postseason round. Derived from the canonical map rather than written as
+#: ``(0, 2, 3, 4, 5)`` so a round added there is picked up here instead of
+#: silently never being indexed -- which is how the postseason was missed.
+#: Exhibition play (code 1) is left out on purpose: 886 spring-training games
+#: are not what a season query asks about.
+_INDEXED_SEASON_TYPE_CODES: tuple[int, ...] = (
+    SEASON_TYPE_TO_LEAGUE_CODE[REGULAR],
+    *(SEASON_TYPE_TO_LEAGUE_CODE[stage] for stage in POSTSEASON_STAGES),
+)
 # 전 소스 공통 언어
 _DEFAULT_LANGUAGE = "ko"
 # 순위 청크당 상위 N위까지만 포함
@@ -135,14 +158,53 @@ _PBP_KEYWORDS = (
 )
 
 
-def _regular_season_ids(season: int) -> Select:
-    """Return all stored IDs for a regular season year."""
+def _season_ids(season: int) -> Select:
+    """Return every stored season ID for a year, postseason rounds included.
+
+    A ``--season 2026`` build has to see the Korean Series. The filter used to
+    keep only ``league_type_code == 0``, so the postseason rounds were never
+    read: 2026's 14 postseason games held 32 chunks between them while the
+    regular season held 140,000. The audits could not see the loss, because they
+    compare the index against itself rather than against the calendar -- which
+    is why the gap survived until someone counted the games by hand.
+
+    """
     from src.models.season import KboSeason
 
     return select(KboSeason.season_id).where(
         KboSeason.season_year == season,
-        KboSeason.league_type_code == _REGULAR_SEASON_CODE,
+        KboSeason.league_type_code.in_(_INDEXED_SEASON_TYPE_CODES),
     )
+
+
+def _game_season_codes(session: Session) -> dict[str, int]:
+    """Return ``game_id -> league_type_code`` for every stored game.
+
+    A chunk's ``league_type_code`` is what a search filters on to tell a Korean
+    Series game from a regular-season one. Every game-level generator wrote the
+    regular-season constant instead, so the field was a constant: a postseason
+    chunk could not be told apart from a regular-season one, and
+    ``WHERE league_type_code = 5`` returned nothing at all.
+
+    Keyed on the game because most of these sources only know the game they came
+    from, and one lookup here is cheaper than joining ``kbo_seasons`` into six
+    separate queries.
+
+    Returns:
+        A mapping of game id to its season's league type code. A game missing
+        from the map has no code, and callers must not substitute 0: "I do not
+        know" and "this is the regular season" are different claims.
+
+    """
+    from src.models.game import Game
+    from src.models.season import KboSeason
+
+    rows = (
+        session.query(Game.game_id, KboSeason.league_type_code)
+        .join(KboSeason, Game.season_id == KboSeason.season_id)
+        .all()
+    )
+    return {str(game_id): int(code) for game_id, code in rows}
 
 
 def _season_year_from_id(season_id: int | None) -> int | None:
@@ -510,38 +572,147 @@ def _validate_embeddings(embeddings: list[list[float]], expected_count: int) -> 
 
 # ─── 청크 생성 함수 ────────────────────────────────────────────────────────────
 
+# Values a source uses to say "I do not have this". They are truthy strings, so a
+# plain `a or b` fallback never reaches the next candidate.
+_SENTINEL_TEXT_VALUES = frozenset({"unknown", "none", "null", "nan", "undefined", "n/a"})
+
+#: ``player_basic.status`` records crawl outcomes, not player facts. ``NOT_FOUND``
+#: (1,615 rows), ``PSEUDO`` and ``Unknown/Runtime`` are how the crawler says it could
+#: not find the record; rendering them states something the row does not support.
+_SENTINEL_STATUS_VALUES = frozenset({"not_found", "pseudo", "unknown/runtime"})
+
+#: ``bats``/``throws`` are single letters. The index is searched in Korean, and
+#: ``타석: R`` is not reachable by a reader who would type ``우타``.
+_BATS_LABELS = {"R": "우타", "L": "좌타", "S": "양타"}
+_THROWS_LABELS = {"R": "우투", "L": "좌투"}
+
+
+def _real_text(value: object | None) -> str | None:
+    """Return the value only when it carries information rather than a placeholder.
+
+    `game_lineups.standard_position` holds the literal string ``UNKNOWN`` for every
+    2026 row (20,919 of them) instead of NULL, so `standard_position or position`
+    never falls through. Rendering that sentinel as a position states a fact the
+    row does not support, which is how ``(UNKNOWN)`` reached the index.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in _SENTINEL_TEXT_VALUES:
+        return None
+    return text
+
+
+def _player_label(player: object | None, player_id: object | None) -> str:
+    """Name for a chunk title, falling back to the id when the name is unusable."""
+    name = _real_text(getattr(player, "name", None))
+    if name is not None and name.lower().startswith("unknown"):
+        # ``player_basic`` stores ``Unknown 74164`` when the crawl matched nothing
+        # but a placeholder. The name is the lookup key, so a filler that merely
+        # starts with "Unknown" is as useless as the bare sentinel.
+        name = None
+    return name or f"ID:{player_id}"
+
+
+def _team_label_map(session: Session) -> dict[str, str]:
+    """Map ``team_id`` to the short Korean name used in index text.
+
+    ``player_basic.team`` carries codes (``SS``, ``HT``, ``KIA``), but the index is
+    searched in Korean, so a chunk reading ``팀: SS`` is not reachable by someone
+    typing ``삼성``.
+    """
+    from src.models.team import Team
+
+    return {team.team_id: (team.team_short_name or team.team_name) for team in session.query(Team).all()}
+
+
+def _team_name_map(session: Session) -> dict[str, str]:
+    """Map ``team_id`` to the full Korean name a line score is written with.
+
+    Line scores read ``롯데 자이언츠 9 - 9 kt wiz``. The short name the player chunks
+    use (``롯데``) would rewrite every line score the index already holds, so the two
+    conventions stay apart: player rows are labelled for the person, line scores for
+    the club as it appears in a scoreboard.
+
+    The name is the club's current one, taken from the code the ``game`` row carries
+    (``SSG``, ``KH``), not the name the club played under that season (``SK``,
+    ``넥센``). A 2018 line score therefore reads ``키움 히어로즈``. Era names stay
+    reachable because the search path resolves them to the same code — ``extract_kbo_entities``
+    maps ``넥센`` and ``와이번스`` to ``KH`` and ``SSG`` — while the reverse is not true:
+    naming per season would tie every historical chunk to ``team_history`` rows whose
+    ranges overlap, so a later franchise edit would rewrite text the index has embedded.
+    """
+    from src.models.team import Team
+
+    return {team.team_id: (team.team_name or team.team_short_name) for team in session.query(Team).all()}
+
+
+def _colliding_player_labels(session: Session, team_labels: dict[str, str]) -> set[tuple[str, str]]:
+    """``(name, club)`` pairs produced by more than one ``player_basic`` row.
+
+    A shared name alone is not ambiguity: ``김태훈 (삼성)`` and ``김태훈 (두산)`` are
+    already distinct. Suffixing every same-name row would put an id on 4,595 titles
+    for no gain, when only 1,976 rows in 784 pairs still collide once the club is
+    part of the label.
+    """
+    rows = session.execute(text("SELECT name, team FROM player_basic WHERE name IS NOT NULL")).fetchall()
+    counts = Counter((name, team_labels.get(team or "") or _real_text(team) or "") for name, team in rows)
+    return {key for key, count in counts.items() if count > 1}
+
 
 def _iter_player_chunks(session: Session, _season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """player_basic 테이블에서 선수 프로파일 청크를 생성합니다."""
     from src.models.player import PlayerBasic
+
+    team_labels = _team_label_map(session)
+    colliding_labels = _colliding_player_labels(session, team_labels)
 
     query = session.query(PlayerBasic).filter(PlayerBasic.name.is_not(None)).order_by(PlayerBasic.player_id)
     if limit:
         query = query.limit(limit)
 
     for player in query.yield_per(200):
-        parts = [f"선수: {player.name}"]
+        team_label = team_labels.get(player.team or "") or _real_text(player.team)
+
+        label = _player_label(player, player.player_id)
+        if (player.name, team_label or "") in colliding_labels:
+            # Two players sharing a name *and* a club would otherwise produce the
+            # same title; the id is the only thing that separates them.
+            label = f"{label} #{player.player_id}"
+        status = _real_text(player.status)
+        if status is not None and status.lower() in _SENTINEL_STATUS_VALUES:
+            status = None
+
+        parts = [f"선수: {label}"]
         details = [
-            ("팀", player.team),
-            ("포지션", player.position),
-            ("생년월일", player.birth_date),
+            ("팀", team_label),
+            ("포지션", _real_text(player.position)),
+            ("생년월일", _real_text(player.birth_date)),
             ("신장", f"{player.height_cm}cm" if player.height_cm else None),
             ("체중", f"{player.weight_kg}kg" if player.weight_kg else None),
-            ("타석", player.bats),
-            ("투구", player.throws),
+            ("타석", _BATS_LABELS.get(player.bats or "") or _real_text(player.bats)),
+            ("투구", _THROWS_LABELS.get(player.throws or "") or _real_text(player.throws)),
             ("데뷔", f"{player.debut_year}년" if player.debut_year else None),
-            ("출신교", player.career),
-            ("상태", player.status),
-            ("드래프트", player.draft_info),
-            ("연봉", player.salary_original),
+            ("출신교", _real_text(player.career)),
+            ("상태", status),
+            ("드래프트", _real_text(player.draft_info)),
+            ("연봉", _real_text(player.salary_original)),
         ]
-        parts.extend(f"{label}: {value}" for label, value in details if value)
+        parts.extend(f"{field_name}: {value}" for field_name, value in details if value)
+        if len(parts) == 1:
+            # 1,062 players carry no attribute at all -- not team, position, birth
+            # date, physicals, career, draft or salary. The chunk would say nothing
+            # but a name: a weak match for every player question and a poor answer
+            # to any of them. The row stays in player_basic.
+            continue
 
         content = ", ".join(parts)
         yield {
             "source_table": "player_basic",
             "source_row_id": str(player.player_id),
-            "title": f"{player.name} ({player.team or '무소속'})",
+            # ``무소속`` used to be rendered for the 2,119 players whose team is
+            # unknown, which states a fact the row does not support.
+            "title": f"{label} ({team_label})" if team_label else label,
             "content": content,
             "team_id": player.team,
             "player_id": str(player.player_id),
@@ -570,7 +741,7 @@ def _iter_batting_chunks(session: Session, season: int | None, limit: int | None
         query = query.limit(limit)
 
     for batting, player in query.yield_per(200):
-        name = player.name if player else f"ID:{batting.player_id}"
+        name = _player_label(player, batting.player_id)
 
         def _fmt(val: float | None, decimals: int = 3) -> str:
             return f"{val:.{decimals}f}" if val is not None else "-"
@@ -632,7 +803,7 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
         query = query.limit(limit)
 
     for pitching, player in query.yield_per(200):
-        name = player.name if player else f"ID:{pitching.player_id}"
+        name = _player_label(player, pitching.player_id)
 
         def _fmt(val: float | None, decimals: int = 2) -> str:
             return f"{val:.{decimals}f}" if val is not None else "-"
@@ -681,12 +852,13 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
 
 def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """Game 테이블에서 경기 결과 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game
     from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
     query = session.query(Game).filter(Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)))
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
     query = query.order_by(Game.game_date.desc())
     if limit:
         query = query.limit(limit)
@@ -716,7 +888,7 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "home_team": home,
                 "away_team": away,
@@ -724,6 +896,232 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
                 "away_score": game.away_score,
                 "winner": winner,
                 "stadium": stadium,
+            },
+        }
+
+
+#: PBP 문구로 조기 종료를 알리는 낱말. 이닝 수를 도메인보다 짧게 확정할 수 있는 근거다.
+#: ``중단``은 넣지 않는다 — 우천으로 멈췄다가 이어서 9회까지 마친 경기 265건에 붙어 있어,
+#: 그것을 조기 종료로 읽으면 그 경기들의 이닝을 도리어 깎는다.
+_CURTAILED_PBP_KEYWORDS = ("콜드", "순연", "서스펜디드")
+#: 9회 경기는 통상 170분 이상 걸린다. 130분 이하는 조기 종료로 본다.
+_SHORT_GAME_MINUTES = 130
+#: 무승부가 아니면 경기가 반드시 치르는 이닝 수.
+_REGULATION_INNINGS = 9
+
+
+def _decided_inning(by_inning: dict[int, dict[str, int]]) -> int | None:
+    """Return the inning a game was decided in, or ``None`` when it ended tied.
+
+    A game cannot end before the ninth, and the home team does not bat once it is
+    already ahead in the top half. Both facts are needed: without the first, the
+    earliest lead would end the game; without the second, a 3-2 game would look
+    undecided only because the bottom of the ninth was never recorded.
+    """
+    away = home = 0
+    for inning in range(1, max(by_inning, default=0) + 1):
+        halves = by_inning.get(inning, {})
+        away += halves.get("away", 0)
+        if inning >= _REGULATION_INNINGS and home > away:
+            return inning
+        home += halves.get("home", 0)
+        if inning >= _REGULATION_INNINGS and away != home:
+            return inning
+    return None
+
+
+def _last_scoring_inning(by_inning: dict[int, dict[str, int]]) -> int:
+    """Return the last inning either side scored in, and at least one inning.
+
+    Every inning up to a run that was actually scored was played, so this is a floor
+    the index can stand on when the game's length is unknown.
+    """
+    scored = [inning for inning, halves in by_inning.items() if sum(halves.values()) > 0]
+    return max(scored) if scored else 1
+
+
+def _played_innings(
+    by_inning: dict[int, dict[str, int]],
+    *,
+    domain_max: int,
+    pbp_max: int,
+    game_minutes: int | None,
+    curtailed: bool,
+) -> tuple[int, str]:
+    """Return how many innings were played, with the evidence behind that number.
+
+    ``game_inning_scores`` fills every game out to 12 innings in 2002~2019 and
+    2024~2025 — 0-0 rows for innings nobody played — and stops at the real inning in
+    2021~2023, so the table alone cannot say how far a game went. Believing it either
+    way has already put false text in the index: ``20240630SSKT1`` was called after
+    nine innings and its chunk read ``연장 3회``. Two things settle it instead. The
+    score ends a game exactly when the game ends, which trims the filling; and a
+    curtailment caption or a running time no full game fits in says play stopped early,
+    which trims the innings nobody played at all.
+    """
+    if curtailed or (game_minutes is not None and game_minutes <= _SHORT_GAME_MINUTES):
+        if pbp_max:
+            return min(pbp_max, domain_max), "curtailed"
+        # 조기 종료는 확실하지만 몇 회까지 치렀는지 기록이 없다. 득점이 확인된
+        # 마지막 이닝까지만 적으면 적힌 모든 줄이 실제로 치른 이닝이 된다.
+        return _last_scoring_inning(by_inning), "curtailed_unknown"
+    decided = _decided_inning(by_inning)
+    if decided:
+        return decided, "decided"
+    if pbp_max >= _REGULATION_INNINGS:
+        return pbp_max, "pbp"
+    return domain_max, "domain"
+
+
+def _line_score_notes(innings: int, away_score: int | None, home_score: int | None, evidence: str) -> str:
+    """Add only the notes the innings count and the score support.
+
+    A tie is a fact of the score, not of ``game_status``: ``20210529NCLT1`` is stored
+    ``COMPLETED`` at 10-10 and would otherwise read like a win.
+    """
+    notes: list[str] = []
+    if innings > _REGULATION_INNINGS:
+        notes.append(f"연장 {innings - _REGULATION_INNINGS}회")
+    if away_score is not None and home_score is not None and away_score == home_score:
+        notes.append("무승부")
+    elif evidence == "curtailed_unknown":
+        notes.append("조기 종료")
+    elif innings < _REGULATION_INNINGS:
+        notes.append(f"{innings}회 종료")
+    return f" ({', '.join(notes)})" if notes else ""
+
+
+def _pbp_inning_evidence(session: Session) -> tuple[dict[str, int], set[str]]:
+    """Collect the two play-by-play facts an innings count may lean on.
+
+    ``max(inning)`` also carries the inning header of a game that never got there —
+    the closing marker and the winning pitcher are filed under the next inning number —
+    so it is only used downwards, where the true last inning cannot be later than the
+    last one recorded.
+    """
+    from sqlalchemy import func, or_
+
+    from src.models.game import GamePlayByPlay
+
+    maxima = {
+        game_id: int(inning_max)
+        for game_id, inning_max in session.query(GamePlayByPlay.game_id, func.max(GamePlayByPlay.inning)).group_by(
+            GamePlayByPlay.game_id
+        )
+        if inning_max
+    }
+    curtailed = {
+        game_id
+        for (game_id,) in session.query(GamePlayByPlay.game_id)
+        .filter(or_(*[GamePlayByPlay.play_description.like(f"%{keyword}%") for keyword in _CURTAILED_PBP_KEYWORDS]))
+        .distinct()
+    }
+    return maxima, curtailed
+
+
+def _game_minutes_by_id(session: Session) -> dict[str, int]:
+    """Map ``game_id`` to its recorded running time, where one was recorded."""
+    from src.models.game import GameMetadata
+
+    return {
+        game_id: int(minutes)
+        for game_id, minutes in session.query(GameMetadata.game_id, GameMetadata.game_time_minutes)
+        if minutes is not None
+    }
+
+
+def _iter_inning_score_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
+    """game_inning_scores에서 경기 라인스코어 청크를 생성합니다 (경기당 1청크)."""
+    season_codes = _game_season_codes(session)
+    from itertools import groupby
+
+    from sqlalchemy import or_
+
+    from src.models.game import Game, GameInningScore
+
+    query = (
+        session.query(GameInningScore, Game)
+        .join(Game, GameInningScore.game_id == Game.game_id)
+        .filter(or_(Game.game_status.is_(None), Game.game_status.notin_(("CANCELLED", "POSTPONED"))))
+        .order_by(
+            Game.game_date,
+            Game.game_id,
+            GameInningScore.inning,
+            GameInningScore.team_side,
+        )
+    )
+    if season:
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
+
+    pbp_maxima, curtailed_games = _pbp_inning_evidence(session)
+    minutes_by_game = _game_minutes_by_id(session)
+    team_names = _team_name_map(session)
+
+    for count, (game_id, group) in enumerate(
+        groupby(query.yield_per(5000), key=lambda row: row[0].game_id),
+        start=1,
+    ):
+        if limit and count > limit:
+            break
+        by_inning: dict[int, dict[str, int]] = {}
+        game = None
+        for inning_row, game_row in group:
+            game = game_row
+            by_inning.setdefault(inning_row.inning, {})[inning_row.team_side] = inning_row.runs or 0
+        if game is None or not by_inning:
+            continue
+
+        innings, evidence = _played_innings(
+            by_inning,
+            domain_max=max(by_inning),
+            pbp_max=pbp_maxima.get(game_id, 0),
+            game_minutes=minutes_by_game.get(game_id),
+            curtailed=game_id in curtailed_games,
+        )
+        away = team_names.get(game.away_team or "", game.away_team or "?")
+        home = team_names.get(game.home_team or "", game.home_team or "?")
+        date_str = str(game.game_date) if game.game_date else "날짜불명"
+        away_score = game.away_score if game.away_score is not None else "?"
+        home_score = game.home_score if game.home_score is not None else "?"
+        notes = _line_score_notes(innings, game.away_score, game.home_score, evidence)
+        inning_runs = [
+            (number, by_inning.get(number, {}).get("away", 0), by_inning.get(number, {}).get("home", 0))
+            for number in range(1, innings + 1)
+        ]
+        content = "\n".join(
+            [
+                "경기 라인스코어",
+                f"경기: {game_id}",
+                f"경기일: {date_str}",
+                f"{away} {away_score} - {home_score} {home}{notes}",
+                "이닝별: " + ", ".join(f"{number}회 {a}-{h}" for number, a, h in inning_runs),
+            ]
+        )
+        yield {
+            "source_table": "game_inning_scores",
+            "source_row_id": f"{game_id}_line",
+            "title": f"[{date_str}] {away} vs {home} 라인스코어",
+            "content": content,
+            "team_id": game.home_team,
+            "player_id": None,
+            "season_year": (
+                game.game_date.year if game.game_date else _season_year_from_id(cast("int | None", game.season_id))
+            ),
+            "document_type": "game_line_score",
+            "game_date": game.game_date,
+            "published_at": None,
+            "source_url": None,
+            "language": _DEFAULT_LANGUAGE,
+            "league_type_code": season_codes.get(str(game_id)),
+            "meta": {
+                "kind": "game_line_score",
+                "game_id": game_id,
+                "innings_played": innings,
+                "innings_evidence": evidence,
+                "innings": [
+                    {"inning": number, "away_runs": runs_away, "home_runs": runs_home}
+                    for number, runs_away, runs_home in inning_runs
+                ],
             },
         }
 
@@ -870,6 +1268,7 @@ def _iter_movement_chunks(session: Session, season: int | None, limit: int | Non
 
 def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_lineups에서 경기 라인업 청크를 생성합니다 (게임+팀별 1청크)."""
+    season_codes = _game_season_codes(session)
     from itertools import groupby
 
     from src.models.game import Game, GameLineup
@@ -886,7 +1285,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
         )
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
 
     for count, (key, group) in enumerate(
         groupby(query.yield_per(2000), key=lambda row: (row[0].game_id, row[0].team_side)),
@@ -901,9 +1300,15 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             game_date = game.game_date
             season_id = game.season_id
             team_code = lineup.team_code or game.home_team if lineup.team_side == "home" else game.away_team
-            pos = lineup.standard_position or lineup.position or ""
+            pos = _real_text(lineup.standard_position) or _real_text(lineup.position) or ""
+            # A missing batting order is a source-data gap, not a substitution. Rendering it as
+            # "None번" and tagging it "[교체]" states two facts the row does not support: every
+            # one of the 2,278 such rows (2,201 of them in 2001) carries neither a slot nor a
+            # starter flag, so the index has never seen a real substitute through this branch.
+            slot = f"{lineup.batting_order}번 " if lineup.batting_order is not None else ""
+            substitute = " [교체]" if lineup.is_starter is False and lineup.batting_order is not None else ""
             lines.append(
-                f"{lineup.batting_order}번 {lineup.player_name} ({pos})" + (" [교체]" if not lineup.is_starter else "")
+                f"{slot}{lineup.player_name} ({pos}){substitute}" if pos else f"{slot}{lineup.player_name}{substitute}"
             )
         content = (
             f"경기일: {game_date}, 경기 ID: {game_id}, "
@@ -922,7 +1327,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game_id)),
             "meta": {"game_id": game_id, "team_side": team_side, "team_code": team_code},
         }
         if limit and count >= limit:
@@ -1032,7 +1437,7 @@ def _iter_team_chunks(session: Session, _season: int | None, limit: int | None) 
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": None,
             "meta": {
                 "team_id": team.team_id,
                 "team_name": team.team_name,
@@ -1083,6 +1488,7 @@ def _iter_team_history_chunks(session: Session, season: int | None, limit: int |
 
 def _iter_highlight_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_highlights에서 경기 명장면 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game, GameHighlight
 
     query = (
@@ -1091,7 +1497,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
         .order_by(Game.game_date.desc(), GameHighlight.wpa.desc())
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
     if limit:
         query = query.limit(limit)
 
@@ -1121,7 +1527,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "game_id": game.game_id,
                 "highlight_type": highlight.highlight_type,
@@ -1175,6 +1581,7 @@ def _iter_award_chunks(session: Session, season: int | None, limit: int | None) 
 
 def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_play_by_play에서 주요 승부처 및 득점 이벤트 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game, GamePlayByPlay
 
     query = (
@@ -1183,7 +1590,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
         .filter(GamePlayByPlay.play_description.is_not(None))
     )
     if season:
-        query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+        query = query.filter(Game.season_id.in_(_season_ids(season)))
 
     keywords = [
         "홈런",
@@ -1240,7 +1647,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
             "published_at": None,
             "source_url": None,
             "language": "ko",
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "game_id": game.game_id,
                 "inning": pbp.inning,
@@ -1254,6 +1661,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
 
 def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """Stream PBP rows with SQL keyword filtering and an integer keyset."""
+    season_codes = _game_season_codes(session)
     from sqlalchemy import or_
 
     from src.models.game import Game, GamePlayByPlay
@@ -1285,7 +1693,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
             .filter(GamePlayByPlay.id > last_id, GamePlayByPlay.play_description.is_not(None), keyword_filter)
         )
         if season:
-            query = query.filter(Game.season_id.in_(_regular_season_ids(season)))
+            query = query.filter(Game.season_id.in_(_season_ids(season)))
         rows = query.order_by(GamePlayByPlay.id.asc()).limit(_PBP_SCAN_BATCH_SIZE).all()
         if not rows:
             return
@@ -1340,7 +1748,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
                 "published_at": None,
                 "source_url": None,
                 "language": _DEFAULT_LANGUAGE,
-                "league_type_code": _REGULAR_SEASON_CODE,
+                "league_type_code": season_codes.get(str(game_id)),
                 "meta": {"game_id": game_id, "inning": inning, "event_type": event_type},
             }
             emitted += 1
@@ -1618,6 +2026,7 @@ _SOURCE_MAP = {
     "teams": _iter_team_chunks,
     "team_history": _iter_team_history_chunks,
     "highlights": _iter_highlight_chunks,
+    "inning_scores": _iter_inning_score_chunks,
     "pbp": _iter_pbp_chunks_keyset,
     "markdown_docs": _iter_markdown_chunks,
     "kbo_definitions": _iter_definition_chunks,
@@ -1639,6 +2048,7 @@ _SOURCE_TABLE_BY_SOURCE = {
     "teams": "teams",
     "team_history": "team_history",
     "highlights": "game_highlights",
+    "inning_scores": "game_inning_scores",
     "pbp": "game_play_by_play",
     "markdown_docs": "markdown_docs",
     "kbo_definitions": "kbo_definitions",
@@ -1898,9 +2308,23 @@ def _oracle_vector_schema_available(index_session: Session) -> bool:
         return False
 
 
+def _vector_store_is_the_index_store(index_session: Session) -> bool:
+    """Return whether the dense index is the very table this build writes.
+
+    ``PGVECTOR_URL`` may name the operational database, and then ``rag_chunks``
+    is one table serving both roles. Publishing that batch through the dense
+    row builder fails on the first insert: it writes five display columns
+    (``document_type``, ``game_date``, ``published_at``, ``source_url``,
+    ``language``) that the shared table keeps in ``meta`` instead.
+    """
+    from src.db.vector_engine import vector_store_shares_database_with
+
+    return vector_store_shares_database_with(index_session.get_bind())
+
+
 def _persist_index_batch(batch: list[dict[str, Any]], index_session: Session) -> None:
     """Publish one batch through pending and final sparse/vector states."""
-    if _session_is_oracle(index_session):
+    if _session_is_oracle(index_session) or _vector_store_is_the_index_store(index_session):
         from src.services.rag_index_propagation import publish_single_store_batch
 
         publish_single_store_batch(index_session, batch)

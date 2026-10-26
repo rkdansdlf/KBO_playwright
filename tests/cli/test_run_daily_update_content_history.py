@@ -11,6 +11,8 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.cli.pipelines import run_daily_update as pipeline
 
 EXPECTED_MODULES = [
@@ -26,8 +28,29 @@ def _context(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-def test_all_three_crawls_run_for_the_season_with_save() -> None:
-    """Each crawler is invoked with the season and ``--save``."""
+@pytest.mark.parametrize("flag_val", [None, "", "  "])
+def test_step_12_skips_milestones_when_flag_off(monkeypatch: pytest.MonkeyPatch, flag_val: str | None) -> None:
+    """When MILESTONE_CRAWL_ENABLED is off (unset or empty), milestones are skipped and splits/drafts run."""
+    if flag_val is None:
+        monkeypatch.delenv("MILESTONE_CRAWL_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("MILESTONE_CRAWL_ENABLED", flag_val)
+    ctx = _context()
+
+    asyncio.run(pipeline._step_12_content_history(ctx))
+
+    calls = [call.args[0] for call in ctx.runner.call_args_list]
+    modules = [argv[1] for argv in calls]
+    assert "src.cli.crawl_milestones" not in modules
+    assert modules == ["src.cli.crawl_player_splits", "src.cli.crawl_player_drafts"]
+    for argv in calls:
+        assert argv[:1] == ["-m"]
+        assert argv[2:] == ["--season", "2026", "--save"]
+
+
+def test_all_three_crawls_run_for_the_season_with_save(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When MILESTONE_CRAWL_ENABLED is on, all three crawlers are invoked with --save."""
+    monkeypatch.setenv("MILESTONE_CRAWL_ENABLED", "1")
     ctx = _context()
 
     asyncio.run(pipeline._step_12_content_history(ctx))
@@ -39,8 +62,9 @@ def test_all_three_crawls_run_for_the_season_with_save() -> None:
         assert argv[2:] == ["--season", "2026", "--save"]
 
 
-def test_a_failing_crawl_does_not_stop_the_others() -> None:
+def test_a_failing_crawl_does_not_stop_the_others(monkeypatch: pytest.MonkeyPatch) -> None:
     """One broken crawler must not skip the remaining refreshes."""
+    monkeypatch.setenv("MILESTONE_CRAWL_ENABLED", "1")
     ctx = _context()
     ctx.runner.side_effect = [RuntimeError("boom"), None, None]
 

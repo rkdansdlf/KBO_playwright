@@ -171,3 +171,41 @@ def test_dev_stack_does_not_require_an_oracle_wallet(dev: dict) -> None:
         for volume in service.get("volumes", []):
             assert "ORACLE_WALLET_HOST_PATH" not in str(volume), name
         assert "TNS_ADMIN" not in " ".join(_env_items(service)), name
+
+
+LOCAL_COMPOSE = ROOT / "docker-compose.local.yml"
+
+
+def _published_ports(doc: dict) -> list[tuple[str, str]]:
+    """Return ``(service, port_spec)`` for every published port in a compose document."""
+    return [(name, str(port)) for name, service in _services(doc).items() for port in service.get("ports", [])]
+
+
+@pytest.mark.parametrize("compose_path", [DEV_COMPOSE, LOCAL_COMPOSE], ids=["dev", "local"])
+def test_published_ports_are_never_bound_to_every_interface(compose_path: Path) -> None:
+    """A bare ``HOST:CONTAINER`` mapping listens on 0.0.0.0, including a public interface.
+
+    Docker Desktop on Windows also opens the host firewall for ``com.docker.backend.exe`` on the Public
+    profile, so a bare mapping on a host with a public address exposes Prometheus, Alertmanager, anonymous
+    Grafana, browserless and the databases to the internet. Every published port must name its bind address,
+    and the default must be loopback.
+    """
+    ports = _published_ports(_load(compose_path))
+    assert ports, "expected at least one published port"
+
+    for service, spec in ports:
+        assert spec.startswith("${KBO_BIND_ADDR:-127.0.0.1}:"), f"{service}: {spec} is not bound to KBO_BIND_ADDR"
+        assert not spec.startswith("0.0.0.0"), f"{service}: {spec} binds every interface"
+
+
+@pytest.mark.parametrize("compose_path", [DEV_COMPOSE, PROD_COMPOSE], ids=["dev", "prod"])
+def test_scheduler_keeps_at_least_a_week_of_logs_room(compose_path: Path) -> None:
+    """The nightly sync reports failures only through the scheduler's stdout.
+
+    With ``10m x 3`` the json-file driver rotated them away within two days, so the
+    cause of a partial failure was gone by the time anyone looked. Retention must be
+    at least 200MB so a failure survives several nights.
+    """
+    options = _services(_load(compose_path))["scheduler"]["logging"]["options"]
+    size_mb = int(options["max-size"].rstrip("m"))
+    assert size_mb * int(options["max-file"]) >= 200

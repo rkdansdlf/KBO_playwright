@@ -85,7 +85,10 @@ def _format_gap_summary(report: dict[str, Any]) -> str:
 
     relay = gaps.get("RELAY", {})
     relay_sev = _sev(relay)
-    relay_txt = f"{relay.get('missing_count', 0)}건 누락" if relay_sev != "ok" else "0건 누락 (정상)"
+    if relay_sev == "ok":
+        relay_txt = "0건 누락 (정상)"
+    else:
+        relay_txt = f"{relay.get('missing_count', 0)}건 누락 / {relay.get('partial_count', 0)}건 부분"
 
     profile = gaps.get("PROFILE", {})
     profile_sev = _sev(profile)
@@ -167,24 +170,57 @@ def _season_team_code_alert_rate() -> float:
 
 
 def check_relay_gaps() -> dict[str, Any]:
-    """Find COMPLETED/DRAW games missing game_play_by_play (last 14 days)."""
+    """Find COMPLETED/DRAW games whose play-by-play is missing or incomplete.
+
+    A game is only complete when its play-by-play reaches the last inning the
+    game actually played, which ``game_inning_scores`` state. Testing for the
+    mere existence of a row let ten 2026 games report as healthy while holding
+    between 5 and 213 rows of a nine-inning record: the live poll wrote however
+    far it had reached and nothing replaced it. Games with no score rows have no
+    stated length, so row existence remains the only evidence for them.
+    """
     from src.models.game import Game
+    from src.services.relay_recovery_service import pbp_complete_game_ids
     from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
     start = datetime.now(KST).date() - timedelta(days=14)
-    relay_games: list[str] = []
     with SessionLocal() as session:
         stmt = select(Game.game_id).where(
             Game.game_date >= start,
             Game.is_primary == true(),
             Game.game_status.in_(tuple(COMPLETED_LIKE_GAME_STATUSES)),
-            ~Game.game_id.in_(select(GamePlayByPlay.game_id).distinct()),
         )
-        relay_games = list(session.execute(stmt).scalars().all())
+        game_ids = list(session.execute(stmt).scalars().all())
+        if not game_ids:
+            return {
+                "ok": True,
+                "missing_count": 0,
+                "missing_game_ids": [],
+                "partial_count": 0,
+                "partial_game_ids": [],
+            }
+        covered = set(
+            session.execute(
+                select(GamePlayByPlay.game_id).where(GamePlayByPlay.game_id.in_(game_ids)).distinct(),
+            )
+            .scalars()
+            .all(),
+        )
+        complete = pbp_complete_game_ids(session, game_ids)
+
+    missing: list[str] = []
+    partial: list[str] = []
+    for game_id in game_ids:
+        if game_id not in covered:
+            missing.append(game_id)
+        elif game_id not in complete:
+            partial.append(game_id)
     return {
-        "ok": len(relay_games) == 0,
-        "missing_count": len(relay_games),
-        "missing_game_ids": relay_games,
+        "ok": not missing and not partial,
+        "missing_count": len(missing),
+        "missing_game_ids": missing,
+        "partial_count": len(partial),
+        "partial_game_ids": partial,
     }
 
 
@@ -533,7 +569,10 @@ def _gap_summary_parts(gap_type: str, gap_data: dict[str, Any]) -> list[str]:
 
 
 _GAP_SUMMARY_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
-    "RELAY": lambda d: [f"{d.get('missing_count', 0)} games missing PBP"],
+    "RELAY": lambda d: [
+        f"{d.get('missing_count', 0)} games missing PBP",
+        f"{d.get('partial_count', 0)} games with play-by-play short of the last inning",
+    ],
     "STALENESS": lambda d: [f"{d.get('stale_count', 0)} stale sources"],
     "STANDINGS": lambda d: [f"{d.get('mismatches', 0)} mismatches, {d.get('missing_scores', 0)} missing scores"],
     "PROFILE": lambda d: [f"{d.get('missing_count', 0)} players missing profiles"],
@@ -579,7 +618,10 @@ def _team_stats_detail_items(gap_data: dict[str, Any]) -> list[str]:
 
 
 _GAP_DETAIL_FORMATTERS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
-    "RELAY": lambda d: [f"{gid}" for gid in (d.get("missing_game_ids") or [])[:5]],
+    "RELAY": lambda d: [
+        *[f"missing:{gid}" for gid in (d.get("missing_game_ids") or [])[:5]],
+        *[f"partial:{gid}" for gid in (d.get("partial_game_ids") or [])[:5]],
+    ],
     "PROFILE": lambda d: [f"player_id={pid}" for pid in (d.get("missing_player_ids") or [])[:5]],
     "STALENESS": lambda d: d.get("details", [])[:5],
     "FRESHNESS": _freshness_detail_items,

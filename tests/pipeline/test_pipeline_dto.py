@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from src.pipeline.dto import (
+    HEALING_STATUSES,
     DefectItem,
     DefectReport,
     HealingActionSummary,
+    HealingStatus,
     PipelineDefectType,
     PipelineRunSummary,
     PipelineStageResult,
@@ -58,6 +60,39 @@ def test_healing_action_summary_to_dict() -> None:
     assert data["game_id"] == "20250615LGSS0"
     assert data["status"] == "SUCCESS"
     assert data["elapsed_seconds"] == 0.12
+
+
+def test_only_success_counts_as_healed() -> None:
+    """`healed` must not treat a deferral, a skip, or a failure as a repair."""
+
+    def action(status: str) -> HealingActionSummary:
+        return HealingActionSummary(game_id="20250615LGSS0", action_taken="x", status=status)
+
+    assert action(HealingStatus.SUCCESS.value).healed is True
+    for status in (
+        HealingStatus.DEFERRED,
+        HealingStatus.SKIPPED,
+        HealingStatus.FAILED,
+        HealingStatus.QUARANTINED,
+    ):
+        assert action(status.value).healed is False
+    # An unrecognised status is not evidence that anything was repaired.
+    assert action("SOMETHING_NEW").healed is False
+
+
+def test_the_healed_flag_is_serialized() -> None:
+    """Consumers read the flag, so it has to survive to_dict()."""
+    deferred = HealingActionSummary(game_id="g", action_taken="defer", status=HealingStatus.DEFERRED.value)
+
+    payload = deferred.to_dict()
+
+    assert payload["status"] == "DEFERRED"
+    assert payload["healed"] is False
+
+
+def test_the_status_vocabulary_is_closed() -> None:
+    """A new outcome has to be added here, not invented at a call site."""
+    assert {"SUCCESS", "DEFERRED", "SKIPPED", "FAILED", "QUARANTINED"} == HEALING_STATUSES
 
 
 def test_pipeline_run_summary_to_dict() -> None:

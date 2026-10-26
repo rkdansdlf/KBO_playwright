@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import argparse
@@ -10,17 +12,261 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.cli import build_rag_index
+from src.models.game import Game, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.models.rankings import StatRanking
+from src.models.team import Team
+from src.models.season import KboSeason
 from src.services.rag_index_identity import chunk_content_hash
+from src.utils.season_classification import (
+    EXHIBITION,
+    POSTSEASON_STAGES,
+    REGULAR,
+    SEASON_TYPE_TO_LEAGUE_CODE,
+)
 
 
 @pytest.mark.parametrize("season", [1988, 2025])
-def test_game_season_filter_uses_regular_season_metadata(season) -> None:
-    statement = str(build_rag_index._regular_season_ids(season))
+def test_game_season_filter_keys_on_the_season_year_metadata(season) -> None:
+    statement = str(build_rag_index._season_ids(season))
 
     assert "kbo_seasons.season_year" in statement
     assert "kbo_seasons.league_type_code" in statement
+
+
+class TestTheSeasonFilterCoversTheWholeSeasonYear:
+    """A ``--season`` build has to see the Korean Series.
+
+    The filter kept only ``league_type_code == 0``, so the postseason rounds
+    were never read. The audits could not see the loss either: they compare
+    what the index says about itself, not what the calendar says should be in
+    it. 2026's postseason held 32 chunks across 14 games.
+    """
+
+    def _store(self):
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        return engine
+
+    @staticmethod
+    def _season(season_id: int, year: int, code: int, name: str) -> KboSeason:
+        return KboSeason(
+            season_id=season_id,
+            season_year=year,
+            league_type_code=code,
+            league_type_name=name,
+        )
+
+    def test_a_postseason_round_is_part_of_its_season_year(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(313, 2026, 4, "플레이오프"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026, 313}
+
+    def test_exhibition_play_is_not_a_season(self) -> None:
+        # 886 exhibition games would otherwise land in every ``--season`` result.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(202601, 2026, 1, "시범경기"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026}
+
+    def test_another_years_postseason_is_not_swept_in(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all(
+                [
+                    self._season(2026, 2026, 0, "정규시즌"),
+                    self._season(2025, 2025, 5, "한국시리즈"),
+                ],
+            )
+            session.commit()
+
+            found = set(session.execute(build_rag_index._season_ids(2026)).scalars())
+
+        assert found == {2026}
+
+    def test_the_codes_are_derived_from_the_canonical_map(self) -> None:
+        # A copied tuple would go stale when a round is added to the canonical
+        # map, and the failure would be silent: that round would simply never be
+        # indexed, exactly like the postseason was.
+        expected = {
+            SEASON_TYPE_TO_LEAGUE_CODE[REGULAR],
+            *(SEASON_TYPE_TO_LEAGUE_CODE[stage] for stage in POSTSEASON_STAGES),
+        }
+
+        assert set(build_rag_index._INDEXED_SEASON_TYPE_CODES) == expected
+        assert SEASON_TYPE_TO_LEAGUE_CODE[EXHIBITION] not in build_rag_index._INDEXED_SEASON_TYPE_CODES
+
+
+class TestTheChunkCarriesItsSeasonType:
+    """A chunk's ``league_type_code`` has to come from the season it belongs to.
+
+    The field is what a search filters on to tell a Korean Series game from a
+    regular-season one. Every game-level generator wrote the regular-season
+    constant instead, so the field was a constant: a postseason chunk was
+    indistinguishable from a regular-season one, and ``WHERE league_type_code =
+    5`` returned nothing at all.
+    """
+
+    def _store(self):
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        Game.__table__.create(engine)
+        return engine
+
+    @staticmethod
+    def _seasons() -> list[KboSeason]:
+        return [
+            KboSeason(season_id=2026, season_year=2026, league_type_code=0, league_type_name="정규시즌"),
+            KboSeason(season_id=313, season_year=2026, league_type_code=4, league_type_name="플레이오프"),
+        ]
+
+    @staticmethod
+    def _games() -> list[Game]:
+        return [
+            Game(
+                game_id="20261001AAAA0",
+                game_date=date(2026, 10, 1),
+                season_id=2026,
+                game_status="COMPLETED",
+                home_team="AA",
+                away_team="BB",
+                is_primary=True,
+            ),
+            Game(
+                game_id="20261025HTSS0",
+                game_date=date(2026, 10, 25),
+                season_id=313,
+                game_status="COMPLETED",
+                home_team="SS",
+                away_team="HT",
+                is_primary=True,
+            ),
+        ]
+
+    def test_the_map_reads_the_code_from_the_season(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.commit()
+
+            codes = build_rag_index._game_season_codes(session)
+
+        assert codes == {"20261001AAAA0": 0, "20261025HTSS0": 4}
+
+    def test_a_game_without_a_season_has_no_code(self) -> None:
+        # "I do not know" and "this is the regular season" are different claims,
+        # and a missing entry must not be silently reported as a regular-season
+        # game the way the constant was.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add(
+                Game(
+                    game_id="20261001AAAA0",
+                    game_date=date(2026, 10, 1),
+                    season_id=None,
+                    game_status="COMPLETED",
+                    home_team="AA",
+                    away_team="BB",
+                    is_primary=True,
+                ),
+            )
+            session.commit()
+
+            codes = build_rag_index._game_season_codes(session)
+
+        assert codes == {}
+
+    def test_a_game_without_a_season_gets_no_code_on_its_chunk(self) -> None:
+        # The map has no entry for this game and the chunk must not be labelled
+        # a regular-season game to fill the gap -- filling it with 0 would make
+        # "I do not know" and "this is the regular season" the same answer on the
+        # very field a search filters on.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add(
+                Game(
+                    game_id="20261001AAAA0",
+                    game_date=date(2026, 10, 1),
+                    season_id=None,
+                    game_status="COMPLETED",
+                    home_team="AA",
+                    away_team="BB",
+                    is_primary=True,
+                ),
+            )
+            session.commit()
+
+            chunks = list(build_rag_index._iter_game_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [None]
+
+    def test_a_postseason_lineup_chunk_carries_the_postseason_code(self) -> None:
+        # Every game-level source reads the same map, so one more of them is
+        # checked here: a generator that kept the constant would be invisible to
+        # the game-source test above.
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        Game.__table__.create(engine)
+        GameLineup.__table__.create(engine)
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.add(
+                GameLineup(
+                    game_id="20261025HTSS0",
+                    team_side="away",
+                    player_name="홍길동",
+                    appearance_seq=1,
+                ),
+            )
+            session.commit()
+
+            chunks = list(build_rag_index._iter_lineup_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [4]
+
+    def test_a_team_chunk_claims_no_season_type(self) -> None:
+        # Team identity is not a season-scoped row, so it has no league type to
+        # report. Writing 0 would assert a regular season the row never had.
+        engine = create_engine("sqlite://")
+        Team.__table__.create(engine)
+        with Session(engine) as session:
+            session.add(Team(team_id=1, team_name="한화 이글스", team_short_name="한화", city="대전"))
+            session.commit()
+
+            chunks = list(build_rag_index._iter_team_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [None]
+
+    def test_a_postseason_game_chunk_carries_the_postseason_code(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.commit()
+
+            chunks = list(build_rag_index._iter_game_chunks(session, None, None))
+
+        codes = {chunk["source_row_id"]: chunk["league_type_code"] for chunk in chunks}
+        assert codes["20261025HTSS0"] == 4
+        assert codes["20261001AAAA0"] == 0
 
 
 @pytest.mark.parametrize(
@@ -401,6 +647,26 @@ def test_persist_index_batch_routes_by_actual_index_dialect(monkeypatch) -> None
     build_rag_index._persist_index_batch(batch, postgres_session)
 
     publish_index_batch.assert_called_once_with(postgres_session, vector_session, batch)
+
+
+def test_persist_index_batch_uses_the_single_store_when_the_dense_index_is_here(monkeypatch) -> None:
+    """A shared store has no second ``rag_chunks``, so the dense row builder must never run."""
+    batch = [{"source_table": "game", "source_row_id": "1", "content": "본문"}]
+    postgres_session = MagicMock()
+    postgres_session.get_bind.return_value.dialect.name = "postgresql"
+    single_store = MagicMock()
+    monkeypatch.setattr("src.services.rag_index_propagation.publish_single_store_batch", single_store)
+    monkeypatch.setattr("src.db.vector_engine.vector_store_shares_database_with", lambda engine: True)
+
+    def _refuse_second_session():
+        message = "a colocated dense index must not open a second session"
+        raise AssertionError(message)
+
+    monkeypatch.setattr("src.db.vector_engine.get_vector_session", _refuse_second_session)
+
+    build_rag_index._persist_index_batch(batch, postgres_session)
+
+    single_store.assert_called_once_with(postgres_session, batch)
 
 
 def test_skip_existing_index_rows_filters_healthy_identities() -> None:
@@ -997,3 +1263,651 @@ def test_play_presence_is_refused_without_skip_existing_or_for_other_sources() -
 
     assert no_skip.value.code == 2
     assert other_source.value.code == 2
+
+
+def _lineup_chunks(rows: list[tuple[SimpleNamespace, SimpleNamespace]]) -> list[dict]:
+    """Run the lineup generator over in-memory rows instead of a live session."""
+
+    class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def yield_per(self, size):
+            return iter(rows)
+
+    class _Session:
+        def query(self, *models):
+            return _Query()
+
+    return list(build_rag_index._iter_lineup_chunks(_Session(), None, None))
+
+
+def test_lineup_chunk_omits_a_missing_batting_order_instead_of_printing_none() -> None:
+    """2001 has 2,201 lineup rows with no slot; the chunk must not assert one."""
+    game = SimpleNamespace(game_date=date(2001, 4, 5), season_id=200100, home_team="OB", away_team="LG")
+    rows = [
+        (
+            SimpleNamespace(
+                game_id="20010405OBLG0",
+                team_side="home",
+                team_code="OB",
+                batting_order=None,
+                player_name="김동주",
+                standard_position="3루수",
+                position=None,
+                is_starter=False,
+                appearance_seq=1,
+            ),
+            game,
+        )
+    ]
+
+    chunk = _lineup_chunks(rows)[0]
+
+    assert "None번" not in chunk["content"]
+    assert "[교체]" not in chunk["content"]
+    assert "김동주 (3루수)" in chunk["content"]
+
+
+def test_lineup_chunk_keeps_slot_and_substitution_marker_when_the_row_supports_both() -> None:
+    """A row that really carries a slot and a bench flag keeps both facts."""
+    game = SimpleNamespace(game_date=date(2026, 5, 1), season_id=202600, home_team="LG", away_team="HH")
+    rows = [
+        (
+            SimpleNamespace(
+                game_id="20260501LGHH0",
+                team_side="home",
+                team_code="LG",
+                batting_order=3,
+                player_name="홍창기",
+                standard_position="우익수",
+                position=None,
+                is_starter=True,
+                appearance_seq=1,
+            ),
+            game,
+        ),
+        (
+            SimpleNamespace(
+                game_id="20260501LGHH0",
+                team_side="home",
+                team_code="LG",
+                batting_order=5,
+                player_name="문보경",
+                standard_position="1루수",
+                position=None,
+                is_starter=False,
+                appearance_seq=2,
+            ),
+            game,
+        ),
+    ]
+
+    chunk = _lineup_chunks(rows)[0]
+
+    assert "3번 홍창기 (우익수)" in chunk["content"]
+    assert "5번 문보경 (1루수) [교체]" in chunk["content"]
+    assert chunk["source_row_id"] == "20260501LGHH0_home"
+
+
+def test_lineup_chunk_drops_an_unknown_position_sentinel() -> None:
+    """Every 2026 lineup row stores the literal string UNKNOWN, not NULL.
+
+    `standard_position or position` therefore never fell through, and the index
+    recorded "(UNKNOWN)" as if it were a fielding position (1,462 chunks).
+    """
+    game = SimpleNamespace(game_date=date(2026, 3, 19), season_id=202600, home_team="SS", away_team="NC")
+    rows = [
+        (
+            SimpleNamespace(
+                game_id="20260319SSNC0",
+                team_side="away",
+                team_code="SS",
+                batting_order=1,
+                player_name="김영웅",
+                standard_position="UNKNOWN",
+                position=None,
+                is_starter=True,
+                appearance_seq=1,
+            ),
+            game,
+        )
+    ]
+
+    chunk = _lineup_chunks(rows)[0]
+
+    assert "UNKNOWN" not in chunk["content"]
+    assert "1번 김영웅" in chunk["content"]
+
+
+def test_lineup_chunk_falls_through_the_sentinel_to_the_next_position_column() -> None:
+    """A sentinel in one column must not hide a real value in the other."""
+    game = SimpleNamespace(game_date=date(2026, 3, 19), season_id=202600, home_team="SS", away_team="NC")
+    rows = [
+        (
+            SimpleNamespace(
+                game_id="20260319SSNC0",
+                team_side="away",
+                team_code="SS",
+                batting_order=2,
+                player_name="이재현",
+                standard_position="UNKNOWN",
+                position="유격수",
+                is_starter=True,
+                appearance_seq=1,
+            ),
+            game,
+        )
+    ]
+
+    chunk = _lineup_chunks(rows)[0]
+
+    assert "2번 이재현 (유격수)" in chunk["content"]
+
+
+@pytest.mark.parametrize("placeholder", [None, "", "   ", "Unknown", "UNKNOWN", "none", "null", "N/A", "Unknown 74164"])
+def test_player_label_falls_back_to_the_id_when_the_name_is_a_placeholder(placeholder: str | None) -> None:
+    """The source rows resolve today, but a blank or sentinel name must not become "None"."""
+    player = SimpleNamespace(name=placeholder)
+
+    assert build_rag_index._player_label(player, 50150) == "ID:50150"
+
+
+def test_player_label_keeps_a_real_name() -> None:
+    """A usable name is passed through with surrounding whitespace removed."""
+    player = SimpleNamespace(name="  김성현 ")
+
+    assert build_rag_index._player_label(player, 50150) == "김성현"
+
+
+def test_player_label_handles_a_missing_player_row() -> None:
+    """An outer join that finds nothing still has to produce a stable label."""
+    assert build_rag_index._player_label(None, 50150) == "ID:50150"
+
+
+def _batting_chunks(rows: list[tuple[SimpleNamespace, SimpleNamespace | None]]) -> list[dict]:
+    """Run the season-batting generator over in-memory rows instead of a live session."""
+
+    class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def limit(self, size):
+            return self
+
+        def yield_per(self, size):
+            return iter(rows)
+
+    class _Session:
+        def query(self, *models):
+            return _Query()
+
+    return list(build_rag_index._iter_batting_chunks(_Session(), None, None))
+
+
+def test_season_batting_chunk_uses_the_id_instead_of_a_sentinel_player_name() -> None:
+    """The 74 "Unknown는" chunks came from a name the source no longer serves."""
+    batting = SimpleNamespace(
+        player_id=91523,
+        season=2002,
+        team_code="SS",
+        league="regular",
+        level="KBO1",
+        games=131,
+        avg=0.258,
+        obp=None,
+        slg=None,
+        ops=None,
+        hits=0,
+        home_runs=12,
+        rbi=50,
+        runs=0,
+        stolen_bases=0,
+        strikeouts=0,
+        walks=0,
+    )
+
+    chunk = _batting_chunks([(batting, SimpleNamespace(name="Unknown"))])[0]
+
+    assert "Unknown" not in chunk["content"]
+    assert "Unknown" not in chunk["title"]
+    assert "ID:91523" in chunk["content"]
+
+
+def _player_chunks(monkeypatch, players, *, team_labels=None, duplicated=frozenset()):
+    """Run the player generator over in-memory rows instead of a live session."""
+
+    class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def limit(self, size):
+            return self
+
+        def yield_per(self, size):
+            return iter(players)
+
+    class _Session:
+        def query(self, *models):
+            return _Query()
+
+    monkeypatch.setattr(build_rag_index, "_team_label_map", lambda session: dict(team_labels or {}))
+    monkeypatch.setattr(build_rag_index, "_colliding_player_labels", lambda session, labels: set(duplicated))
+    return list(build_rag_index._iter_player_chunks(_Session(), None, None))
+
+
+def _player(**overrides):
+    """A complete player row so a missing attribute is never the reason a field is absent."""
+    base = {
+        "player_id": 50150,
+        "name": "김성현",
+        "team": None,
+        "position": None,
+        "birth_date": None,
+        "height_cm": None,
+        "weight_kg": None,
+        "bats": None,
+        "throws": None,
+        "debut_year": None,
+        "career": None,
+        "status": None,
+        "draft_info": None,
+        "salary_original": None,
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def test_player_chunk_renders_the_korean_club_name(monkeypatch) -> None:
+    """``팀: SS`` is unreachable for someone searching ``삼성``."""
+    chunk = _player_chunks(monkeypatch, [_player(team="SS")], team_labels={"SS": "삼성"})[0]
+
+    assert chunk["title"] == "김성현 (삼성)"
+    assert "팀: 삼성" in chunk["content"]
+    assert chunk["team_id"] == "SS"
+
+
+def test_player_chunk_omits_the_team_when_the_club_is_unknown(monkeypatch) -> None:
+    """``무소속`` claimed a fact for the 2,119 rows that simply have no team."""
+    chunk = _player_chunks(monkeypatch, [_player(position="포수")])[0]
+
+    assert chunk["title"] == "김성현"
+    assert "무소속" not in chunk["title"]
+    assert "팀:" not in chunk["content"]
+
+
+@pytest.mark.parametrize("status", ["NOT_FOUND", "PSEUDO", "Unknown/Runtime"])
+def test_player_chunk_drops_a_crawler_sentinel_status(monkeypatch, status: str) -> None:
+    """The status records what the crawl did, not what the player is."""
+    chunk = _player_chunks(monkeypatch, [_player(status=status, position="포수")])[0]
+
+    assert "상태:" not in chunk["content"]
+    assert status not in chunk["content"]
+
+
+def test_player_chunk_keeps_a_real_status(monkeypatch) -> None:
+    chunk = _player_chunks(monkeypatch, [_player(status="retired")])[0]
+
+    assert "상태: retired" in chunk["content"]
+
+
+def test_player_chunk_disambiguates_a_shared_name(monkeypatch) -> None:
+    """Two players with the same name *and* club would otherwise become one title."""
+    chunk = _player_chunks(monkeypatch, [_player(position="포수")], duplicated={("김성현", "")})[0]
+
+    assert chunk["title"] == "김성현 #50150"
+    assert "선수: 김성현 #50150" in chunk["content"]
+
+
+def test_player_chunk_keeps_the_title_clean_when_the_club_differs(monkeypatch) -> None:
+    """A shared name is not ambiguity once the club separates the two rows."""
+    chunk = _player_chunks(
+        monkeypatch,
+        [_player(team="SS", position="포수")],
+        team_labels={"SS": "삼성"},
+        duplicated={("김성현", "두산")},
+    )[0]
+
+    assert chunk["title"] == "김성현 (삼성)"
+
+
+def test_player_chunk_renders_bats_and_throws_in_korean(monkeypatch) -> None:
+    chunk = _player_chunks(monkeypatch, [_player(bats="R", throws="L")])[0]
+
+    assert "타석: 우타" in chunk["content"]
+    assert "투구: 좌투" in chunk["content"]
+
+
+def test_player_chunk_uses_the_id_when_the_name_is_a_placeholder(monkeypatch) -> None:
+    chunk = _player_chunks(monkeypatch, [_player(name="Unknown 74164", position="포수")])[0]
+
+    assert chunk["title"] == "ID:50150"
+    assert "Unknown" not in chunk["content"]
+
+
+def test_player_chunk_is_skipped_when_only_the_name_is_known(monkeypatch) -> None:
+    """1,062 players have no attribute at all; a name-only vector answers nothing."""
+    assert _player_chunks(monkeypatch, [_player()]) == []
+
+
+def test_player_chunk_survives_a_status_alone(monkeypatch) -> None:
+    """A crawl outcome is still something the row asserts, so the chunk is kept."""
+    chunks = _player_chunks(monkeypatch, [_player(status="active")])
+
+    assert len(chunks) == 1
+    assert "상태: active" in chunks[0]["content"]
+
+
+def _inning_game(
+    game_id: str = "20180313LGLT0",
+    *,
+    game_date: date = date(2018, 3, 13),
+    away: str = "LG",
+    home: str = "LT",
+    away_score: int | None = 4,
+    home_score: int | None = 3,
+    status: str = "COMPLETED",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        game_id=game_id,
+        game_date=game_date,
+        away_team=away,
+        home_team=home,
+        away_score=away_score,
+        home_score=home_score,
+        game_status=status,
+        season_id=201800,
+    )
+
+
+def _inning_rows(scores: dict[int, tuple[int, int]], game_id: str = "20180313LGLT0") -> list:
+    rows = []
+    for inning, (away_runs, home_runs) in scores.items():
+        rows.append(SimpleNamespace(game_id=game_id, inning=inning, team_side="away", runs=away_runs))
+        rows.append(SimpleNamespace(game_id=game_id, inning=inning, team_side="home", runs=home_runs))
+    return rows
+
+
+def _inning_chunks(
+    game: SimpleNamespace,
+    inning_rows: list,
+    *,
+    pbp_max: list[tuple[str, int]] | None = None,
+    curtailed: list[tuple[str]] | None = None,
+    minutes: list[tuple[str, int]] | None = None,
+    teams: list | None = None,
+) -> list[dict]:
+    """Run the line-score generator over in-memory rows instead of a live session."""
+    from src.models.game import Game, GameInningScore, GameMetadata, GamePlayByPlay
+    from src.models.team import Team
+
+    class _Query:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def group_by(self, *args, **kwargs):
+            return self
+
+        def distinct(self):
+            return self
+
+        def yield_per(self, size):
+            return iter(self._rows)
+
+        def __iter__(self):
+            return iter(self._rows)
+
+        def all(self):
+            return list(self._rows)
+
+    class _Session:
+        def query(self, *models):
+            owner = models[0] if isinstance(models[0], type) else models[0].class_
+            if owner is Game:
+                # The generator asks for a game -> season-type map; this store
+                # has no seasons, and an empty map is the honest answer.
+                return _Query([])
+            if owner is GameInningScore:
+                return _Query([(row, game) for row in inning_rows])
+            if owner is GamePlayByPlay:
+                return _Query((pbp_max or []) if len(models) == 2 else (curtailed or []))
+            if owner is GameMetadata:
+                return _Query(minutes or [])
+            if owner is Team:
+                return _Query(teams or [])
+            message = f"unexpected query for {owner}"
+            raise AssertionError(message)
+
+    return list(build_rag_index._iter_inning_score_chunks(_Session(), None, None))
+
+
+def _team(team_id: str, name: str) -> SimpleNamespace:
+    return SimpleNamespace(team_id=team_id, team_name=name, team_short_name=name)
+
+
+_PADDED_NINE = {
+    1: (0, 0),
+    2: (0, 0),
+    3: (0, 0),
+    4: (0, 1),
+    5: (0, 1),
+    6: (0, 0),
+    7: (1, 0),
+    8: (0, 0),
+    9: (1, 0),
+    10: (0, 0),
+    11: (0, 0),
+    12: (0, 0),
+}
+
+
+def test_decided_inning_returns_none_while_the_score_is_level() -> None:
+    assert build_rag_index._decided_inning({1: {"away": 3, "home": 3}}) is None
+
+
+def test_decided_inning_stops_when_the_home_team_never_batted() -> None:
+    """3-2 with only the top of the ninth stored: the game ended at nine, not later."""
+    by_inning = {1: {"away": 3, "home": 2}, 9: {"away": 0}}
+
+    assert build_rag_index._decided_inning(by_inning) == 9
+
+
+def test_decided_inning_reaches_the_extra_inning_that_settled_it() -> None:
+    by_inning = {
+        **{n: {"away": 0, "home": 0} for n in range(1, 9)},
+        9: {"away": 4, "home": 4},
+        10: {"away": 0, "home": 1},
+    }
+
+    assert build_rag_index._decided_inning(by_inning) == 10
+
+
+def test_played_innings_ignores_padding_beyond_the_score() -> None:
+    """2024 stores twelve innings for every game; this one was level, not twelve."""
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(11, 13)},
+        domain_max=12,
+        pbp_max=9,
+        game_minutes=None,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (9, "pbp")
+
+
+def test_played_innings_accepts_a_short_game_from_the_curtailment_caption() -> None:
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(1, 6)},
+        domain_max=5,
+        pbp_max=6,
+        game_minutes=None,
+        curtailed=True,
+    )
+
+    assert (innings, evidence) == (5, "curtailed")
+
+
+def test_played_innings_stops_at_the_last_run_when_the_length_is_unrecorded() -> None:
+    """Eight curtailed games (90~130 minutes) have no play-by-play to count innings from.
+
+    Their domain rows are filled out to 12, so the count has to come from the runs.
+    """
+    scores = {n: {"away": 0, "home": 0} for n in range(1, 13)}
+    scores.update({1: {"away": 0, "home": 2}, 2: {"away": 4, "home": 0}, 5: {"away": 0, "home": 4}})
+    innings, evidence = build_rag_index._played_innings(
+        scores,
+        domain_max=12,
+        pbp_max=0,
+        game_minutes=127,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (5, "curtailed_unknown")
+
+
+def test_played_innings_does_not_trim_a_game_whose_stub_play_by_play_stops_early() -> None:
+    """2011 play-by-play holds one or two rows per inning; a normal clock outranks it."""
+    scores = {**{n: {"away": 0, "home": 0} for n in range(1, 13)}, 3: {"away": 0, "home": 2}}
+    innings, evidence = build_rag_index._played_innings(
+        scores,
+        domain_max=12,
+        pbp_max=1,
+        game_minutes=208,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (9, "decided")
+
+
+def test_played_innings_reads_a_running_time_as_a_curtailment() -> None:
+    innings, evidence = build_rag_index._played_innings(
+        {n: {"away": 0, "home": 0} for n in range(1, 6)},
+        domain_max=5,
+        pbp_max=5,
+        game_minutes=96,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (5, "curtailed")
+
+
+def test_played_innings_keeps_the_filled_innings_when_a_tie_has_no_play_by_play() -> None:
+    """Early draws carry no play-by-play at all, so nothing contradicts the filled rows."""
+    innings, evidence = build_rag_index._played_innings(
+        {1: {"away": 1, "home": 1}, 2: {"away": 2, "home": 1}},
+        domain_max=12,
+        pbp_max=0,
+        game_minutes=None,
+        curtailed=False,
+    )
+
+    assert (innings, evidence) == (12, "domain")
+
+
+def test_line_score_notes_read_a_tie_from_the_score_not_the_status() -> None:
+    """``20210529NCLT1`` is stored COMPLETED at 10-10 and is still a draw."""
+    assert build_rag_index._line_score_notes(9, 10, 10, "decided") == " (무승부)"
+    assert build_rag_index._line_score_notes(9, 4, 3, "decided") == ""
+
+
+def test_line_score_notes_mark_an_extension_and_a_short_game() -> None:
+    assert build_rag_index._line_score_notes(11, 5, 4, "decided") == " (연장 2회)"
+    assert build_rag_index._line_score_notes(6, 5, 4, "curtailed") == " (6회 종료)"
+
+
+def test_line_score_notes_do_not_invent_a_count_for_an_unrecorded_short_game() -> None:
+    assert build_rag_index._line_score_notes(5, 4, 6, "curtailed_unknown") == " (조기 종료)"
+
+
+def test_inning_score_chunk_replaces_the_false_extension_with_the_played_innings() -> None:
+    """The index held ``(무승부) (연장 3회)`` for a game that stopped after nine."""
+    game = _inning_game(
+        game_id="20240630SSKT1",
+        game_date=date(2024, 6, 30),
+        away="SS",
+        home="KT",
+        away_score=2,
+        home_score=2,
+        status="DRAW",
+    )
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(_PADDED_NINE, game.game_id),
+        pbp_max=[(game.game_id, 9)],
+        teams=[_team("SS", "삼성 라이온즈"), _team("KT", "kt wiz")],
+    )[0]
+
+    assert chunk["content"].splitlines()[3] == "삼성 라이온즈 2 - 2 kt wiz (무승부)"
+    assert "연장" not in chunk["content"]
+    assert chunk["content"].splitlines()[4].endswith("9회 1-0")
+    assert chunk["meta"]["innings_played"] == 9
+
+
+def test_inning_score_chunk_renders_the_extension_a_game_reached() -> None:
+    """``20180327LGWO0`` was level at 3-3 after nine and settled in the tenth."""
+    scores = dict.fromkeys(range(1, 13), (0, 0))
+    scores.update({3: (1, 0), 4: (0, 1), 5: (1, 0), 6: (0, 1), 9: (1, 1), 10: (0, 1)})
+    game = _inning_game(game_id="20180327LGWO0", home="WO", away_score=3, home_score=4)
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(scores, game.game_id),
+        pbp_max=[(game.game_id, 10)],
+        teams=[_team("LG", "LG 트윈스"), _team("WO", "키움 히어로즈")],
+    )[0]
+
+    assert chunk["content"].splitlines()[3] == "LG 트윈스 3 - 4 키움 히어로즈 (연장 1회)"
+    assert chunk["meta"]["innings_evidence"] == "decided"
+
+
+def test_inning_score_chunk_keeps_the_existing_identity_and_shape() -> None:
+    """The store already holds ``{game_id}_line`` rows; regenerating must not duplicate them."""
+    game = _inning_game()
+    scores = {1: (0, 1), 2: (0, 0), 3: (0, 0), 4: (0, 0), 5: (2, 0), 6: (2, 0), 7: (0, 2), 8: (0, 0), 9: (0, 0)}
+    chunk = _inning_chunks(
+        game,
+        _inning_rows(scores, game.game_id),
+        teams=[_team("LG", "LG 트윈스"), _team("LT", "롯데 자이언츠")],
+    )[0]
+
+    assert chunk["source_table"] == "game_inning_scores"
+    assert chunk["source_row_id"] == "20180313LGLT0_line"
+    assert chunk["title"] == "[2018-03-13] LG 트윈스 vs 롯데 자이언츠 라인스코어"
+    assert chunk["document_type"] == "game_line_score"
+    assert chunk["meta"]["kind"] == "game_line_score"
+    assert chunk["content"].startswith("경기 라인스코어\n경기: 20180313LGLT0\n경기일: 2018-03-13\n")

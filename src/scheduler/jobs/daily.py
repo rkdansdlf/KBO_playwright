@@ -37,6 +37,7 @@ from src.scheduler.config import (
     _env_enabled,
     _env_float,
     _env_int,
+    milestone_crawl_enabled,
 )
 from src.scheduler.jobs.live import _previous_day_kst
 from src.scheduler.locks import (
@@ -1166,6 +1167,43 @@ def crawl_futures_schedule_job() -> None:
         except SCHEDULER_JOB_EXCEPTIONS:
             logger.exception("Futures League schedule crawl failed")
             _update_job_status("crawl_futures_schedule_job", JobStatus.FAILURE, "Exception")
+
+
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
+def crawl_milestones_job() -> None:
+    """Crawl KBO player milestone snapshots.
+
+    Registered at 06:40 KST only when MILESTONE_CRAWL_ENABLED is truthy (default
+    off), before recalc_milestones_and_rag (07:15 KST). MilestoneCrawler reads
+    Record/History/Top/Hitter.aspx and Pitcher.aspx, which are KBO's all-time
+    top 10 single-season record pages (no playerId links), causing scheduled runs
+    to upsert junk rows that recalc_milestones_and_rag (07:15 KST) indexes into RAG.
+    Re-crawls keep an existing row's target_val.
+    """
+    if not milestone_crawl_enabled():
+        logger.info("crawl_milestones_job disabled (MILESTONE_CRAWL_ENABLED is off); skipping")
+        return
+
+    _register_job("crawl_milestones_job", dependencies=["crawl_daily_games"])
+
+    can_run, reason = _can_run_job("crawl_milestones_job")
+    if not can_run:
+        _update_job_status("crawl_milestones_job", JobStatus.SKIPPED, f"Skipped: {reason}")
+        logger.warning("Skipping crawl_milestones_job: %s", reason)
+        return
+
+    with _scheduler_job_lock(DAILY_LOCK):
+        logger.info("=== Starting KBO Player Milestone Crawl ===")
+        try:
+            from src.cli.collection.crawl_milestones import main as milestones_main
+
+            milestones_main(["--save"])
+            logger.info("=== KBO Player Milestone Crawl Completed ===")
+            _update_job_status("crawl_milestones_job", JobStatus.SUCCESS, "Completed")
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("KBO player milestone crawl failed")
+            _update_job_status("crawl_milestones_job", JobStatus.FAILURE, "Exception")
 
 
 @_with_db_fail_fast_guard

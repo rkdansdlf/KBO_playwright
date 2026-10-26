@@ -153,6 +153,24 @@ def test_no_vector_engine_never_shares_the_operational_store(monkeypatch: pytest
     assert vector_engine.shares_operational_database() is False
 
 
+def _shares_with(vector_url: str, target_url: str) -> bool:
+    with patch.object(vector_engine, "VectorEngine", _UrlOnlyEngine(vector_url)):
+        return vector_engine.vector_store_shares_database_with(_UrlOnlyEngine(target_url))
+
+
+def test_the_shared_store_predicate_answers_for_the_database_it_is_given() -> None:
+    """A build may target another database, so the comparison cannot hardcode the operational one."""
+    assert _shares_with("postgresql://u:p@h:5432/bega_prod", "postgresql+psycopg2://u:p@h:5432/bega_prod") is True
+    assert _shares_with("postgresql://u:p@h:5432/bega_prod", "postgresql://u:p@h:5432/bega_dev") is False
+    assert _shares_with("postgresql://u:p@h:5432/bega_prod", "postgresql://u:p@h:5435/bega_prod") is False
+
+
+def test_two_absent_engines_are_not_one_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reading "nothing configured" as colocated would silently skip the paired path."""
+    monkeypatch.setattr(vector_engine, "VectorEngine", None)
+    assert vector_engine.vector_store_shares_database_with(None) is False
+
+
 def test_the_same_host_port_and_database_is_one_store() -> None:
     """Both indexes live in one ``rag_chunks`` table, so one scan must serve the audit."""
     assert (

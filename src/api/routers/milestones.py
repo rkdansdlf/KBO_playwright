@@ -37,7 +37,7 @@ def get_milestones(
         if team_code:
             stmt = stmt.where(PlayerMilestone.team_code == team_code)
         if is_achieved is not None:
-            stmt = stmt.where(PlayerMilestone.is_achieved == is_achieved)
+            stmt = stmt.where(PlayerMilestone.is_achieved == int(is_achieved))
 
         stmt = stmt.order_by(PlayerMilestone.remaining_val.asc()).limit(limit)
 

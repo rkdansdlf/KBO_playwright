@@ -168,7 +168,7 @@ class TestStatusCodesCarryTheirCode:
             (502, FailureCode.FETCH_HTTP_ERROR),
             (503, FailureCode.FETCH_HTTP_ERROR),
             (504, FailureCode.FETCH_HTTP_ERROR),
-            (404, FailureCode.FETCH_HTTP_ERROR),
+            (404, FailureCode.FETCH_NOT_FOUND),
             (418, FailureCode.FETCH_HTTP_ERROR),
         ],
     )

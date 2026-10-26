@@ -14,8 +14,14 @@ from requests import RequestException
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.config.env_loader import load_project_env
+from src.config.milestone_flags import MILESTONE_CRAWL_ENABLED_ENV, milestone_crawl_enabled
 from src.db.engine import DATABASE_URL
 from src.utils.lock import LockAcquisitionError
+
+__all__ = [
+    "MILESTONE_CRAWL_ENABLED_ENV",
+    "milestone_crawl_enabled",
+]
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

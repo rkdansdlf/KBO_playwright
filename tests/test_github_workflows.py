@@ -441,12 +441,13 @@ def test_docker_build_cannot_hang_without_a_timeout():
 def test_database_workflows_notify_on_failure():
     """A database outage has to reach someone.
 
-    Both Oracle workflows ran without a notify step, so
-    `oci_live_verification` failed every Sunday from 2026-08-23 onward
-    without an alert. The condition the job exists to detect is the one
-    that was going unreported, which is what let it run six weeks.
+    `oci_live_verification` ran without a notify step and failed every
+    Sunday from 2026-08-23 onward without an alert. The condition the job
+    exists to detect is the one that was going unreported, which is what
+    let it run six weeks. The weekly live check now lives in
+    `live_db_verification.yml`, so that is the file that must notify.
     """
-    for name in ("oci_live_verification.yml", "oci_connection_probe.yml"):
+    for name in ("live_db_verification.yml", "oci_connection_probe.yml"):
         workflow = _read(WORKFLOW_DIR / name)
         steps = _run_script_lines(workflow)
         notify = [i for i, line in enumerate(steps) if line.endswith("uses: ./.github/actions/notify")]
@@ -602,19 +603,80 @@ def test_test_suite_runs_lint_and_test_matrix():
     )
 
 
-def test_oci_live_verification_uses_dedicated_target_and_smoke_gates():
-    workflow = _read(WORKFLOW_DIR / "oci_live_verification.yml")
+def test_live_db_verification_is_read_only_postgres():
+    """The weekly live check reads the operational PostgreSQL and never writes.
 
-    assert "OCI_DB_URL: ${{ secrets.OCI_DB_URL }}" in workflow
-    assert "DATABASE_URL:" not in workflow
-    assert "init-db: 'false'" in workflow
-    assert "--include-safety-gated" in workflow
-    assert "scripts/verification/audit_oracle_schema.py" in workflow
-    assert "pytest tests/test_oracle_smoke.py -m oci -q -o addopts=''" in workflow
-    assert workflow.index("Apply Oracle migrations") < workflow.index("Reapply Oracle migrations")
-    assert workflow.index("Reapply Oracle migrations") < workflow.index("Check Oracle migrations")
-    assert workflow.index("Check Oracle migrations") < workflow.index("Run Oracle repository smoke tests")
-    assert workflow.index("Run Oracle repository smoke tests") < workflow.index("Run Live Oracle E2E Verification")
+    It replaces the Oracle acceptance run, which has failed with DPY-6005 since
+    2026-09-27. Only executable lines are checked, so the explanatory header
+    comment can name Oracle without tripping the Oracle-free assertion.
+    """
+    assert not (WORKFLOW_DIR / "oci_live_verification.yml").exists()
+    workflow = _read(WORKFLOW_DIR / "live_db_verification.yml")
+    code = "\n".join(_run_script_lines(workflow))
+    lowered = code.lower()
+
+    assert "name: Live Database Sync Acceptance" in workflow
+    assert "live-db-acceptance:" in workflow
+    assert "name: PostgreSQL Live Verification" in workflow
+    assert "cron: '0 19 * * 0'" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "timeout-minutes: 15" in workflow
+    assert "permissions:\n  contents: read" in workflow
+
+    for oracle_token in ("OCI_DB_URL", "ORACLE_WALLET", "TNS_ADMIN", "apply_oracle", "verify_oci_live_sync"):
+        assert oracle_token not in code, f"live_db_verification.yml still runs Oracle code: {oracle_token}"
+    assert "oracle" not in lowered
+    assert "wallet" not in lowered
+
+    # Migrations and seeding both write, and the script itself checks migrations.
+    assert "apply_postgres_migrations" not in code
+    assert "--apply" not in code
+    assert "init-db: 'false'" in code
+    assert "KBO_PROD_DB_NAMES" not in code
+
+    assert "PYTHONPATH: ${{ github.workspace }}" in workflow
+    job_env = workflow.split("    env:", 1)[1].split("    steps:", 1)[0]
+    assert "TS_OAUTH" not in job_env, "Tailscale secrets belong on the check step, not the job"
+    check_step = workflow.split("- name: Check required secrets", 1)[1].split(
+        "- uses: ./.github/actions/kbo-job-setup", 1
+    )[0]
+    for secret in ("TS_OAUTH_CLIENT_ID", "TS_OAUTH_SECRET", "LIVE_DB_READONLY_URL"):
+        assert f"{secret}: ${{{{ secrets.{secret} }}}}" in check_step
+    assert "has no host name" in workflow
+    assert "'Setup needed' section of the PR" in workflow
+    assert "DATABASE_URL: ${{ secrets.LIVE_DB_READONLY_URL }}" in workflow
+    assert "LIVE_DB_URL: ${{ secrets.LIVE_DB_READONLY_URL }}" in workflow
+    assert "secrets.DATABASE_URL" not in workflow
+
+    assert "uses: tailscale/github-action@v4" in code
+    assert "oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}" in code
+    assert "oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}" in code
+    assert "tags: tag:ci" in code
+    assert "hostname: gha-kbo-live-db-${{ github.run_id }}" in code
+
+    step_section = code.split("\nsteps:", 1)[1]
+    steps = [line.strip() for line in step_section.splitlines() if line.strip().startswith("- ")]
+    assert steps[0] == "- uses: actions/checkout@v7"
+    assert steps[1] == "- name: Check required secrets"
+    required_check = workflow.index("- name: Check required secrets")
+    assert "for name in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET LIVE_DB_READONLY_URL" in workflow
+    assert "::error::" in workflow
+
+    tailscale = workflow.index("uses: tailscale/github-action@v4")
+    setup = workflow.index("uses: ./.github/actions/kbo-job-setup")
+    reachability = workflow.index("- name: Check PostgreSQL TCP reachability")
+    acceptance = workflow.index("python3 scripts/verification/verify_live_postgres.py --json --require-readonly-role")
+    assert required_check < tailscale < setup < reachability < acceptance
+
+    assert "Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md" in workflow
+    assert "socket.create_connection" in workflow
+    assert "LIVE_DB_READONLY_URL" in workflow
+
+    upload = workflow.index("uses: actions/upload-artifact")
+    assert "if: always()" in workflow[upload - 60 : upload]
+    assert "retention-days: 14" in workflow
+    _assert_major_at_least(workflow, "actions/upload-artifact", "live_db_verification.yml")
+    assert "RUNNER_TEMP" in workflow or "runner.temp" in workflow
 
 
 def test_docker_build_has_full_build_chain():

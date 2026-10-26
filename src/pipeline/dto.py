@@ -19,6 +19,25 @@ class PipelineDefectType(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class HealingStatus(StrEnum):
+    """Outcome vocabulary for a single healing action.
+
+    ``SUCCESS`` claims that *this* process repaired the defect. ``DEFERRED``
+    means a remediation exists but belongs to another job, so nothing here was
+    repaired -- reporting that as ``SUCCESS`` invents work nobody did.
+    ``SKIPPED`` means no handler applies at all.
+    """
+
+    SUCCESS = "SUCCESS"
+    DEFERRED = "DEFERRED"
+    SKIPPED = "SKIPPED"
+    FAILED = "FAILED"
+    QUARANTINED = "QUARANTINED"
+
+
+HEALING_STATUSES = frozenset(status.value for status in HealingStatus)
+
+
 @dataclass
 class DefectItem:
     """Represents an individual data defect detected in the pipeline."""
@@ -84,10 +103,20 @@ class HealingActionSummary:
 
     game_id: str
     action_taken: str
-    status: str = "SUCCESS"  # "SUCCESS", "SKIPPED", "FAILED", "QUARANTINED"
+    status: str = HealingStatus.SUCCESS.value
     error_message: str | None = None
     elapsed_seconds: float = 0.0
     details: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def healed(self) -> bool:
+        """Return True only when this action actually repaired the defect.
+
+        An unrecognised status is not evidence of a repair, so it counts as
+        not healed: the failure mode of over-claiming is what this property
+        exists to prevent.
+        """
+        return self.status == HealingStatus.SUCCESS
 
     def to_dict(self) -> dict[str, Any]:
         """Convert healing summary to dictionary."""
@@ -95,6 +124,7 @@ class HealingActionSummary:
             "game_id": self.game_id,
             "action_taken": self.action_taken,
             "status": self.status,
+            "healed": self.healed,
             "error_message": self.error_message,
             "elapsed_seconds": round(self.elapsed_seconds, 2),
             "details": self.details,
