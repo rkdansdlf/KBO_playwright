@@ -27,6 +27,27 @@ class DiagnosticSeverity(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+@dataclass(frozen=True)
+class AutoHealResult:
+    """Outcome of an auto-heal request, including what could not be attempted.
+
+    ``unsupported`` exists so a caller cannot report "nothing needed healing"
+    when the truth is "this subsystem has no automated remediation at all".
+    """
+
+    actions: tuple[str, ...] = ()
+    addressed: tuple[str, ...] = ()
+    unsupported: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the auto-heal result to a serializable dictionary."""
+        return {
+            "actions": list(self.actions),
+            "addressed": list(self.addressed),
+            "unsupported": list(self.unsupported),
+        }
+
+
 @dataclass
 class SubsystemCheckItem:
     """Individual diagnostic check outcome."""

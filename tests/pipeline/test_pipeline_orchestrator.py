@@ -10,7 +10,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.models.base import Base
-from src.pipeline.dto import DefectReport, PipelineRunSummary
+from src.pipeline.dto import (
+    DefectItem,
+    DefectReport,
+    HealingActionSummary,
+    HealingStatus,
+    PipelineDefectType,
+    PipelineRunSummary,
+)
 from src.pipeline.orchestrator import DailyPipelineOrchestrator
 from src.services.quality_hub import UnifiedQualityReport
 
@@ -68,3 +75,50 @@ def test_orchestrator_run_pipeline(db_session) -> None:
     assert summary.stages[1].stage_name == "Stage 2: Standings & Aggregation"
     assert summary.stages[2].stage_name == "Stage 3: Validate & Self-Heal"
     assert summary.stages[3].stage_name == "Stage 4: Advanced Sync & RAG Indexing"
+
+
+def test_stage_3_counts_repairs_apart_from_intentions(db_session) -> None:
+    """`defects_healed` counts what was repaired, not how many actions ran."""
+    orchestrator = DailyPipelineOrchestrator(db_session)
+
+    orchestrator.detector = MagicMock()
+    orchestrator.detector.detect_all.return_value = DefectReport(
+        target_date="2025-06-15",
+        defects=[
+            DefectItem(game_id="g1", defect_type=PipelineDefectType.MISSING_STATS),
+            DefectItem(game_id="g2", defect_type=PipelineDefectType.STUCK_SCHEDULED),
+            DefectItem(game_id="g3", defect_type=PipelineDefectType.NULL_PLAYER_ID),
+        ],
+    )
+    orchestrator.healer = MagicMock()
+    orchestrator.healer.heal_from_defect_report.return_value = [
+        HealingActionSummary(
+            game_id="g1",
+            action_taken="defer_to_stats_recalc",
+            status=HealingStatus.DEFERRED.value,
+        ),
+        HealingActionSummary(
+            game_id="g2",
+            action_taken="update_status_to_COMPLETED",
+            status=HealingStatus.SUCCESS.value,
+        ),
+        HealingActionSummary(
+            game_id="g3",
+            action_taken="heal_defect",
+            status=HealingStatus.FAILED.value,
+        ),
+    ]
+    orchestrator.quality_hub = MagicMock()
+    orchestrator.quality_hub.run_full_audit.return_value = UnifiedQualityReport(
+        timestamp="2025-06-15T00:00:00",
+        overall_status="PASS",
+        quality_score=98,
+    )
+
+    stage, actions = orchestrator.execute_stage_3_validate_and_heal(date(2025, 6, 15))
+
+    assert len(actions) == 3
+    assert stage.metrics["defects_detected"] == 3
+    assert stage.metrics["defects_healed"] == 1
+    assert stage.metrics["defects_deferred"] == 1
+    assert stage.metrics["defects_failed"] == 1

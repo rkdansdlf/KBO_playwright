@@ -15,6 +15,7 @@ from src.crawlers.circuit_breaker import circuit_registry
 from src.crawlers.circuit_breaker_dto import CircuitState
 from src.db.engine import Engine, SessionLocal
 from src.diagnostics.dto import (
+    AutoHealResult,
     DiagnosticSeverity,
     SubsystemCheckItem,
     SubsystemType,
@@ -29,6 +30,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 KEY_TABLES = ("game", "player_basic", "team_standings_daily", "rag_chunks", "game_batting_stats")
+
+# Only these subsystems have a remediation implemented in this engine. Every
+# other subsystem is reported as unsupported instead of silently skipped.
+HEALABLE_SUBSYSTEMS: frozenset[SubsystemType] = frozenset({SubsystemType.SCHEDULER, SubsystemType.CRAWLER})
+
+
+def _resolve_auto_heal_targets(
+    subsystem: SubsystemType | str | None,
+) -> tuple[tuple[SubsystemType, ...], tuple[str, ...]]:
+    """Resolve an auto-heal request into known subsystems plus unknown names."""
+    if subsystem is None:
+        return tuple(SubsystemType), ()
+    if isinstance(subsystem, SubsystemType):
+        return (subsystem,), ()
+    raw = subsystem.strip()
+    if not raw or raw.lower() == "all":
+        return tuple(SubsystemType), ()
+    try:
+        return (SubsystemType(raw.lower()),), ()
+    except ValueError:
+        return (), (raw,)
 
 
 class SystemDiagnosticsEngine:
@@ -398,13 +420,20 @@ class SystemDiagnosticsEngine:
             generated_at=datetime.now(UTC).isoformat(),
         )
 
-    def auto_heal(self, subsystem: SubsystemType | str | None = None) -> list[str]:
-        """Perform automated self-healing actions on detected anomalies."""
+    def auto_heal(self, subsystem: SubsystemType | str | None = None) -> AutoHealResult:
+        """Perform automated self-healing for the subsystems that support it.
+
+        Only scheduler and crawler state is repairable here. Every other
+        requested subsystem comes back as unsupported, so a caller cannot
+        report "nothing needed healing" when nothing was even attempted.
+        """
+        requested, unknown = _resolve_auto_heal_targets(subsystem)
+        addressed = tuple(item for item in requested if item in HEALABLE_SUBSYSTEMS)
+        unsupported = tuple(item.value for item in requested if item not in HEALABLE_SUBSYSTEMS) + unknown
         healed: list[str] = []
-        sub_val = subsystem.value if isinstance(subsystem, SubsystemType) else (subsystem or "all").lower()
 
         # Heal scheduler stale locks
-        if sub_val in ("all", SubsystemType.SCHEDULER.value):
+        if SubsystemType.SCHEDULER in addressed:
             report = self.lock_manager.diagnose_locks()
             if report.daemon_pid is not None and not report.pid_alive:
                 pid_file = self.lock_manager.lock_dir / "scheduler.pid"
@@ -415,7 +444,7 @@ class SystemDiagnosticsEngine:
                     healed.append(msg)
 
         # Heal tripped crawler circuit breakers
-        if sub_val in ("all", SubsystemType.CRAWLER.value):
+        if SubsystemType.CRAWLER in addressed:
             stats = circuit_registry.get_all_stats()
             tripped_or_probing = [s for s in stats if s.state != CircuitState.CLOSED]
             if tripped_or_probing:
@@ -439,4 +468,8 @@ class SystemDiagnosticsEngine:
             except (RuntimeError, OSError, ValueError, TypeError) as exc:
                 logger.debug("Live relay breaker auto_heal skipped: %s", exc)
 
-        return healed
+        return AutoHealResult(
+            actions=tuple(healed),
+            addressed=tuple(item.value for item in addressed),
+            unsupported=unsupported,
+        )

@@ -27,6 +27,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _healing_metrics(actions: list[HealingActionSummary]) -> dict[str, int]:
+    """Count healing actions by outcome.
+
+    ``defects_healed`` counts only actions that actually repaired something.
+    Every other outcome gets its own ``defects_<status>`` key (deferred,
+    skipped, failed, ...), so a hand-off to another job can never be counted
+    as a repair.
+    """
+    metrics: dict[str, int] = {"defects_healed": 0}
+    for action in actions:
+        if action.healed:
+            metrics["defects_healed"] += 1
+            continue
+        key = f"defects_{action.status.lower()}"
+        metrics[key] = metrics.get(key, 0) + 1
+    return metrics
+
+
 class DailyPipelineOrchestrator:
     """Coordinates the 4-stage daily data pipeline with integrated validation and self-healing."""
 
@@ -107,7 +125,7 @@ class DailyPipelineOrchestrator:
 
             if auto_heal and defect_report.has_defects:
                 healed_actions = self.healer.heal_from_defect_report(defect_report)
-                metrics["defects_healed"] = len(healed_actions)
+                metrics.update(_healing_metrics(healed_actions))
                 self.session.flush()
 
             # Execute quality gate evaluation

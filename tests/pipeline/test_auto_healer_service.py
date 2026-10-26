@@ -12,8 +12,9 @@ from src.models.base import Base
 from src.models.game import Game, GameInningScore
 from src.pipeline import auto_healer_service
 from src.pipeline.auto_healer_service import AutoHealerService
-from src.pipeline.dto import DefectItem, DefectReport, PipelineDefectType
+from src.pipeline.dto import DefectItem, DefectReport, HealingStatus, PipelineDefectType
 from src.repositories import game_status
+from src.services.quality_hub import UnifiedQualityReport
 
 
 @pytest.fixture
@@ -152,3 +153,42 @@ def test_heal_stuck_game_skips_past_season(db_session) -> None:
     assert "Historical guard" in (summary.error_message or "")
     db_session.refresh(g)
     assert g.game_status == "SCHEDULED"
+
+
+@pytest.mark.parametrize(
+    ("defect_type", "expected_action"),
+    [
+        (PipelineDefectType.MISSING_STATS, "defer_to_stats_recalc"),
+        (PipelineDefectType.UNVERIFIED_PBP, "defer_to_pbp_recrawl"),
+    ],
+)
+def test_a_handoff_to_another_job_is_not_reported_as_a_repair(
+    db_session,
+    defect_type: PipelineDefectType,
+    expected_action: str,
+) -> None:
+    """Neither defect has a repair in this service, so neither can be SUCCESS."""
+    summary = AutoHealerService(db_session).heal_defect(DefectItem(game_id="20240404LGSS0", defect_type=defect_type))
+
+    assert summary.status == HealingStatus.DEFERRED
+    assert summary.healed is False
+    assert summary.action_taken == expected_action
+    assert summary.details["remediation_owner"]
+
+
+def test_quality_hints_are_recorded_without_claiming_execution(db_session) -> None:
+    """A remediation hint is a note, not an action that was carried out."""
+    report = UnifiedQualityReport(
+        timestamp="2024-04-04T00:00:00",
+        overall_status="WARN",
+        quality_score=80,
+        remediation_hints=["recalculate standings for 2024"],
+    )
+
+    actions = AutoHealerService(db_session).heal_from_quality_report(report)
+
+    assert len(actions) == 1
+    assert actions[0].status == HealingStatus.DEFERRED
+    assert actions[0].healed is False
+    assert actions[0].action_taken == "record_remediation_hint"
+    assert actions[0].details["hint"] == "recalculate standings for 2024"
