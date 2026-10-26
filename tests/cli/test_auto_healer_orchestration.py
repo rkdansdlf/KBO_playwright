@@ -22,6 +22,10 @@ def _game(game_id: str, status: str = "SCHEDULED"):
 
 def _session_factory():
     session = MagicMock()
+    # The success path reads the persisted status back instead of trusting
+    # ``detail_saved``, so a fake database has to answer with a terminal status --
+    # an unreadable row is "not a heal" by contract, and a MagicMock is unreadable.
+    session.execute.return_value.scalar.return_value = "COMPLETED"
     context = MagicMock()
     context.__enter__.return_value = session
     context.__exit__.return_value = False
