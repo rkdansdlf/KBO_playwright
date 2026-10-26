@@ -117,6 +117,12 @@ _VALID_SOURCES = (
 
 # 정규 시즌 리그 코드 (kbo_seasons.league_type_code 0 = 정규시즌)
 _REGULAR_SEASON_CODE = 0
+# 용도: 시즌 단위 집계 소스(player_season_*, team_standings_daily, stat_rankings,
+# team_history, player_movements, team_events, awards). 이들의 행은 정규시즌
+# 누적이므로 0을 쓰는 것은 추측이 아니라 그 행이 무엇인지 말하는 것이다.
+# 경기 단위 소스(game, game_inning_scores, game_lineups, game_highlights,
+# game_play_by_play)는 여기 해당하지 않는다 — 그쪽은 경기의 시즌에서 코드를
+# 읽는다(_game_season_codes). 팀 정보(teams)는 리그 종류가 없는 데이터라 None이다.
 #: Season types a ``--season`` build reads: the regular season and every
 #: postseason round. Derived from the canonical map rather than written as
 #: ``(0, 2, 3, 4, 5)`` so a round added there is picked up here instead of
@@ -169,6 +175,36 @@ def _season_ids(season: int) -> Select:
         KboSeason.season_year == season,
         KboSeason.league_type_code.in_(_INDEXED_SEASON_TYPE_CODES),
     )
+
+
+def _game_season_codes(session: Session) -> dict[str, int]:
+    """Return ``game_id -> league_type_code`` for every stored game.
+
+    A chunk's ``league_type_code`` is what a search filters on to tell a Korean
+    Series game from a regular-season one. Every game-level generator wrote the
+    regular-season constant instead, so the field was a constant: a postseason
+    chunk could not be told apart from a regular-season one, and
+    ``WHERE league_type_code = 5`` returned nothing at all.
+
+    Keyed on the game because most of these sources only know the game they came
+    from, and one lookup here is cheaper than joining ``kbo_seasons`` into six
+    separate queries.
+
+    Returns:
+        A mapping of game id to its season's league type code. A game missing
+        from the map has no code, and callers must not substitute 0: "I do not
+        know" and "this is the regular season" are different claims.
+
+    """
+    from src.models.game import Game
+    from src.models.season import KboSeason
+
+    rows = (
+        session.query(Game.game_id, KboSeason.league_type_code)
+        .join(KboSeason, Game.season_id == KboSeason.season_id)
+        .all()
+    )
+    return {str(game_id): int(code) for game_id, code in rows}
 
 
 def _season_year_from_id(season_id: int | None) -> int | None:
@@ -816,6 +852,7 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
 
 def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """Game 테이블에서 경기 결과 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game
     from src.utils.game_status import COMPLETED_LIKE_GAME_STATUSES
 
@@ -851,7 +888,7 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "home_team": home,
                 "away_team": away,
@@ -995,6 +1032,7 @@ def _game_minutes_by_id(session: Session) -> dict[str, int]:
 
 def _iter_inning_score_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_inning_scores에서 경기 라인스코어 청크를 생성합니다 (경기당 1청크)."""
+    season_codes = _game_season_codes(session)
     from itertools import groupby
 
     from sqlalchemy import or_
@@ -1074,7 +1112,7 @@ def _iter_inning_score_chunks(session: Session, season: int | None, limit: int |
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game_id)),
             "meta": {
                 "kind": "game_line_score",
                 "game_id": game_id,
@@ -1230,6 +1268,7 @@ def _iter_movement_chunks(session: Session, season: int | None, limit: int | Non
 
 def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_lineups에서 경기 라인업 청크를 생성합니다 (게임+팀별 1청크)."""
+    season_codes = _game_season_codes(session)
     from itertools import groupby
 
     from src.models.game import Game, GameLineup
@@ -1288,7 +1327,7 @@ def _iter_lineup_chunks(session: Session, season: int | None, limit: int | None)
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game_id)),
             "meta": {"game_id": game_id, "team_side": team_side, "team_code": team_code},
         }
         if limit and count >= limit:
@@ -1398,7 +1437,7 @@ def _iter_team_chunks(session: Session, _season: int | None, limit: int | None) 
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": None,
             "meta": {
                 "team_id": team.team_id,
                 "team_name": team.team_name,
@@ -1449,6 +1488,7 @@ def _iter_team_history_chunks(session: Session, season: int | None, limit: int |
 
 def _iter_highlight_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_highlights에서 경기 명장면 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game, GameHighlight
 
     query = (
@@ -1487,7 +1527,7 @@ def _iter_highlight_chunks(session: Session, season: int | None, limit: int | No
             "published_at": None,
             "source_url": None,
             "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "game_id": game.game_id,
                 "highlight_type": highlight.highlight_type,
@@ -1541,6 +1581,7 @@ def _iter_award_chunks(session: Session, season: int | None, limit: int | None) 
 
 def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """game_play_by_play에서 주요 승부처 및 득점 이벤트 청크를 생성합니다."""
+    season_codes = _game_season_codes(session)
     from src.models.game import Game, GamePlayByPlay
 
     query = (
@@ -1606,7 +1647,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
             "published_at": None,
             "source_url": None,
             "language": "ko",
-            "league_type_code": _REGULAR_SEASON_CODE,
+            "league_type_code": season_codes.get(str(game.game_id)),
             "meta": {
                 "game_id": game.game_id,
                 "inning": pbp.inning,
@@ -1620,6 +1661,7 @@ def _iter_pbp_chunks(session: Session, season: int | None, limit: int | None) ->
 
 def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """Stream PBP rows with SQL keyword filtering and an integer keyset."""
+    season_codes = _game_season_codes(session)
     from sqlalchemy import or_
 
     from src.models.game import Game, GamePlayByPlay
@@ -1706,7 +1748,7 @@ def _iter_pbp_chunks_keyset(session: Session, season: int | None, limit: int | N
                 "published_at": None,
                 "source_url": None,
                 "language": _DEFAULT_LANGUAGE,
-                "league_type_code": _REGULAR_SEASON_CODE,
+                "league_type_code": season_codes.get(str(game_id)),
                 "meta": {"game_id": game_id, "inning": inning, "event_type": event_type},
             }
             emitted += 1

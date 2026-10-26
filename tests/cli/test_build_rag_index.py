@@ -12,8 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.cli import build_rag_index
+from src.models.game import Game, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.models.rankings import StatRanking
+from src.models.team import Team
 from src.models.season import KboSeason
 from src.services.rag_index_identity import chunk_content_hash
 from src.utils.season_classification import (
@@ -112,6 +114,159 @@ class TestTheSeasonFilterCoversTheWholeSeasonYear:
 
         assert set(build_rag_index._INDEXED_SEASON_TYPE_CODES) == expected
         assert SEASON_TYPE_TO_LEAGUE_CODE[EXHIBITION] not in build_rag_index._INDEXED_SEASON_TYPE_CODES
+
+
+class TestTheChunkCarriesItsSeasonType:
+    """A chunk's ``league_type_code`` has to come from the season it belongs to.
+
+    The field is what a search filters on to tell a Korean Series game from a
+    regular-season one. Every game-level generator wrote the regular-season
+    constant instead, so the field was a constant: a postseason chunk was
+    indistinguishable from a regular-season one, and ``WHERE league_type_code =
+    5`` returned nothing at all.
+    """
+
+    def _store(self):
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        Game.__table__.create(engine)
+        return engine
+
+    @staticmethod
+    def _seasons() -> list[KboSeason]:
+        return [
+            KboSeason(season_id=2026, season_year=2026, league_type_code=0, league_type_name="정규시즌"),
+            KboSeason(season_id=313, season_year=2026, league_type_code=4, league_type_name="플레이오프"),
+        ]
+
+    @staticmethod
+    def _games() -> list[Game]:
+        return [
+            Game(
+                game_id="20261001AAAA0",
+                game_date=date(2026, 10, 1),
+                season_id=2026,
+                game_status="COMPLETED",
+                home_team="AA",
+                away_team="BB",
+                is_primary=True,
+            ),
+            Game(
+                game_id="20261025HTSS0",
+                game_date=date(2026, 10, 25),
+                season_id=313,
+                game_status="COMPLETED",
+                home_team="SS",
+                away_team="HT",
+                is_primary=True,
+            ),
+        ]
+
+    def test_the_map_reads_the_code_from_the_season(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.commit()
+
+            codes = build_rag_index._game_season_codes(session)
+
+        assert codes == {"20261001AAAA0": 0, "20261025HTSS0": 4}
+
+    def test_a_game_without_a_season_has_no_code(self) -> None:
+        # "I do not know" and "this is the regular season" are different claims,
+        # and a missing entry must not be silently reported as a regular-season
+        # game the way the constant was.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add(
+                Game(
+                    game_id="20261001AAAA0",
+                    game_date=date(2026, 10, 1),
+                    season_id=None,
+                    game_status="COMPLETED",
+                    home_team="AA",
+                    away_team="BB",
+                    is_primary=True,
+                ),
+            )
+            session.commit()
+
+            codes = build_rag_index._game_season_codes(session)
+
+        assert codes == {}
+
+    def test_a_game_without_a_season_gets_no_code_on_its_chunk(self) -> None:
+        # The map has no entry for this game and the chunk must not be labelled
+        # a regular-season game to fill the gap -- filling it with 0 would make
+        # "I do not know" and "this is the regular season" the same answer on the
+        # very field a search filters on.
+        engine = self._store()
+        with Session(engine) as session:
+            session.add(
+                Game(
+                    game_id="20261001AAAA0",
+                    game_date=date(2026, 10, 1),
+                    season_id=None,
+                    game_status="COMPLETED",
+                    home_team="AA",
+                    away_team="BB",
+                    is_primary=True,
+                ),
+            )
+            session.commit()
+
+            chunks = list(build_rag_index._iter_game_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [None]
+
+    def test_a_postseason_lineup_chunk_carries_the_postseason_code(self) -> None:
+        # Every game-level source reads the same map, so one more of them is
+        # checked here: a generator that kept the constant would be invisible to
+        # the game-source test above.
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        Game.__table__.create(engine)
+        GameLineup.__table__.create(engine)
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.add(
+                GameLineup(
+                    game_id="20261025HTSS0",
+                    team_side="away",
+                    player_name="홍길동",
+                    appearance_seq=1,
+                ),
+            )
+            session.commit()
+
+            chunks = list(build_rag_index._iter_lineup_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [4]
+
+    def test_a_team_chunk_claims_no_season_type(self) -> None:
+        # Team identity is not a season-scoped row, so it has no league type to
+        # report. Writing 0 would assert a regular season the row never had.
+        engine = create_engine("sqlite://")
+        Team.__table__.create(engine)
+        with Session(engine) as session:
+            session.add(Team(team_id=1, team_name="한화 이글스", team_short_name="한화", city="대전"))
+            session.commit()
+
+            chunks = list(build_rag_index._iter_team_chunks(session, None, None))
+
+        assert [chunk["league_type_code"] for chunk in chunks] == [None]
+
+    def test_a_postseason_game_chunk_carries_the_postseason_code(self) -> None:
+        engine = self._store()
+        with Session(engine) as session:
+            session.add_all([*self._seasons(), *self._games()])
+            session.commit()
+
+            chunks = list(build_rag_index._iter_game_chunks(session, None, None))
+
+        codes = {chunk["source_row_id"]: chunk["league_type_code"] for chunk in chunks}
+        assert codes["20261025HTSS0"] == 4
+        assert codes["20261001AAAA0"] == 0
 
 
 @pytest.mark.parametrize(
@@ -1114,6 +1269,12 @@ def _lineup_chunks(rows: list[tuple[SimpleNamespace, SimpleNamespace]]) -> list[
     """Run the lineup generator over in-memory rows instead of a live session."""
 
     class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
         def join(self, *args, **kwargs):
             return self
 
@@ -1277,6 +1438,12 @@ def _batting_chunks(rows: list[tuple[SimpleNamespace, SimpleNamespace | None]]) 
     """Run the season-batting generator over in-memory rows instead of a live session."""
 
     class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
         def join(self, *args, **kwargs):
             return self
 
@@ -1329,6 +1496,12 @@ def _player_chunks(monkeypatch, players, *, team_labels=None, duplicated=frozens
     """Run the player generator over in-memory rows instead of a live session."""
 
     class _Query:
+        def all(self):
+            # The generators ask for a game->season-type map; a mock
+            # session cannot answer that, and an empty map leaves every
+            # chunk without a code rather than claiming the regular season.
+            return []
+
         def filter(self, *args, **kwargs):
             return self
 
@@ -1526,6 +1699,10 @@ def _inning_chunks(
     class _Session:
         def query(self, *models):
             owner = models[0] if isinstance(models[0], type) else models[0].class_
+            if owner is Game:
+                # The generator asks for a game -> season-type map; this store
+                # has no seasons, and an empty map is the honest answer.
+                return _Query([])
             if owner is GameInningScore:
                 return _Query([(row, game) for row in inning_rows])
             if owner is GamePlayByPlay:
