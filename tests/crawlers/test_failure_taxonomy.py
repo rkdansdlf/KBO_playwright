@@ -29,14 +29,17 @@ class TestStatusCodeMapping:
             (502, FailureCode.FETCH_HTTP_ERROR),
             (503, FailureCode.FETCH_HTTP_ERROR),
             (504, FailureCode.FETCH_HTTP_ERROR),
-            (404, FailureCode.FETCH_HTTP_ERROR),
+            # 404 is the one status that says the resource is not there. Retrying
+            # it spends five attempts proving the same absence: 155 dead letters
+            # accumulated on 2001~2011 games Naver does not serve.
+            (404, FailureCode.FETCH_NOT_FOUND),
             (400, FailureCode.FETCH_HTTP_ERROR),
         ],
     )
     def test_status_maps_to_a_code(self, status: int, expected: FailureCode) -> None:
         assert failure_code_for_status(status) is expected
 
-    @pytest.mark.parametrize("status", [408, 429, 401, 403, 500, 503])
+    @pytest.mark.parametrize("status", [408, 429, 401, 403, 500, 503, 404])
     def test_exception_path_agrees_with_the_status_path(self, status: int) -> None:
         """The same cause must not get two names depending on whether it arrived
         as a status or as a raised exception.

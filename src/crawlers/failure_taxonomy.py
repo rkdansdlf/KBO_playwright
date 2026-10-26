@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 _HTTP_RATE_LIMIT = 429
 _HTTP_TIMEOUT = 408
 _HTTP_FORBIDDEN = (401, 403)
+_HTTP_NOT_FOUND = 404
 _HTTP_SERVER_ERROR_FLOOR = 400
 
 
@@ -41,6 +42,11 @@ class FailureCode(StrEnum):
 
     FETCH_TIMEOUT = "FETCH_TIMEOUT"
     FETCH_HTTP_ERROR = "FETCH_HTTP_ERROR"
+    #: The resource is not there. Distinct from FETCH_HTTP_ERROR because it is
+    #: the one 4xx that retrying cannot change: Naver answers 404 for the
+    #: game records it never served, and five attempts proved the same absence
+    #: on 155 dead letters.
+    FETCH_NOT_FOUND = "FETCH_NOT_FOUND"
     FETCH_BLOCKED = "FETCH_BLOCKED"
     FETCH_RATE_LIMITED = "FETCH_RATE_LIMITED"
 
@@ -71,6 +77,7 @@ _FETCH_CODES = frozenset(
     {
         FailureCode.FETCH_TIMEOUT,
         FailureCode.FETCH_HTTP_ERROR,
+        FailureCode.FETCH_NOT_FOUND,
         FailureCode.FETCH_BLOCKED,
         FailureCode.FETCH_RATE_LIMITED,
     },
@@ -138,6 +145,8 @@ def failure_code_for_status(status_code: int) -> FailureCode:
         return FailureCode.FETCH_TIMEOUT
     if status_code in _HTTP_FORBIDDEN:
         return FailureCode.FETCH_BLOCKED
+    if status_code == _HTTP_NOT_FOUND:
+        return FailureCode.FETCH_NOT_FOUND
     return FailureCode.FETCH_HTTP_ERROR
 
 

@@ -29,7 +29,13 @@ def test_retryable_codes(error_code: str) -> None:
 
 @pytest.mark.parametrize(
     "error_code",
-    ["FETCH_BLOCKED", "PARSE_SELECTOR_MISSING", "VALIDATION_SCHEMA", "PERSIST_CONSTRAINT"],
+    [
+        "FETCH_BLOCKED",
+        "FETCH_NOT_FOUND",
+        "PARSE_SELECTOR_MISSING",
+        "VALIDATION_SCHEMA",
+        "PERSIST_CONSTRAINT",
+    ],
 )
 def test_non_retryable_codes(error_code: str) -> None:
     decision = decide(error_code, retry_count=0)

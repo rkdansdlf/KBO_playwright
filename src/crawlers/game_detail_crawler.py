@@ -312,6 +312,7 @@ _PRIMARY_REASONS: dict[str, str] = {
     FailureCode.FETCH_TIMEOUT.value: "timeout",
     FailureCode.FETCH_HTTP_ERROR.value: "naver_record_unavailable",
     FailureCode.FETCH_RATE_LIMITED.value: "naver_record_unavailable",
+    FailureCode.FETCH_NOT_FOUND.value: "naver_record_unavailable",
     FailureCode.FETCH_BLOCKED.value: "kbo_robots_blocked",
     FailureCode.PARSE_INVALID_FORMAT.value: "naver_record_unavailable",
 }

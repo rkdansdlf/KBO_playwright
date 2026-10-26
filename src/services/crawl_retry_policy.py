@@ -41,9 +41,19 @@ RETRYABLE_CODES: frozenset[str] = frozenset(
     },
 )
 
+#: Codes that must never be retried, named so the intent is readable and
+#: assertable. Note that ``decide`` reads ``RETRYABLE_CODES`` alone -- anything
+#: absent from that set is already non-retryable -- so this list is a record of
+#: the decision rather than the mechanism that enforces it. A mutation that
+#: removes an entry here changes no behaviour, and the tests that assert on this
+#: set are checking the record.
 NON_RETRYABLE_CODES: frozenset[str] = frozenset(
     {
         "FETCH_BLOCKED",
+        # The resource is not there, so another attempt proves the same thing.
+        # A 404 that turns out to be transient still lands in the ledger and an
+        # operator can requeue it; a permanent one stops costing five attempts.
+        "FETCH_NOT_FOUND",
         "PARSE_SELECTOR_MISSING",
         "PARSE_INVALID_FORMAT",
         "PARSE_EMPTY",
