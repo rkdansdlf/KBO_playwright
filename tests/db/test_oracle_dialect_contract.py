@@ -7,8 +7,9 @@ That catches the dialect-specific breakage the other backends cannot: MERGE
 `USING ... FROM DUAL` shape, `WHEN NOT MATCHED` clauses, CLOB casts, and
 `VECTOR` type rendering.
 
-The live counterpart is `.github/workflows/oci_live_verification.yml`; this
-file is the part that must pass on every pull request.
+The former live counterpart (`oci_live_verification.yml`) is retired; the weekly
+live check now targets PostgreSQL (`live_db_verification.yml`). This file is the part
+that must pass on every pull request.
 """
 
 from __future__ import annotations
