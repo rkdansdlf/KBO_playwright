@@ -87,6 +87,48 @@ class CrawlDeadLetterRepository:
             select(CrawlDeadLetter).where(CrawlDeadLetter.dlq_id == dlq_id),
         ).scalar_one_or_none()
 
+    def find_dlq_ids_by_prefix(self, prefix: str) -> list[str]:
+        """Return the ids starting with ``prefix``.
+
+        The list view prints twelve characters, so an operator copies a prefix
+        rather than the whole id. Resolving it here keeps the two views of the
+        same row usable together instead of forcing a ``--json`` round trip.
+
+        Args:
+            prefix: The leading characters of a ``dlq_id``.
+
+        Returns:
+            The matching ids, in ascending order.
+
+        """
+        return list(
+            self.session.scalars(
+                select(CrawlDeadLetter.dlq_id)
+                .where(CrawlDeadLetter.dlq_id.startswith(prefix))
+                .order_by(CrawlDeadLetter.dlq_id),
+            ),
+        )
+
+    def resolve_dlq_id(self, token: str) -> tuple[str | None, list[str]]:
+        """Resolve an id, or an unambiguous prefix of one.
+
+        Args:
+            token: A full ``dlq_id`` or a leading part of one.
+
+        Returns:
+            ``(id, [])`` when exactly one row matches. ``(None, [])`` when none
+            does and ``(None, candidates)`` when the prefix is ambiguous -- the
+            two failures need different operator responses, so they are not
+            collapsed into a single "not found".
+
+        """
+        if self.get_by_dlq_id(token) is not None:
+            return token, []
+        matches = self.find_dlq_ids_by_prefix(token)
+        if len(matches) == 1:
+            return matches[0], []
+        return None, matches
+
     def find_incident(
         self,
         *,

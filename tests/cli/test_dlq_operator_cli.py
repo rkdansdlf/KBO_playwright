@@ -38,7 +38,10 @@ def _patch_letter(monkeypatch: pytest.MonkeyPatch, letter: object) -> None:
     monkeypatch.setattr("src.cli.dlq_operator.get_db_session", _fake_session)
     monkeypatch.setattr(
         "src.cli.dlq_operator.CrawlDeadLetterRepository",
-        lambda session: SimpleNamespace(get_by_dlq_id=lambda _dlq_id: letter),
+        lambda session: SimpleNamespace(
+            get_by_dlq_id=lambda _dlq_id: letter,
+            resolve_dlq_id=lambda dlq_id: (dlq_id, []),
+        ),
     )
     monkeypatch.setattr("src.cli.dlq_operator.publish_dlq_state_metrics", lambda **_kwargs: None)
 

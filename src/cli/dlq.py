@@ -171,7 +171,19 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 def _cmd_show(args: argparse.Namespace) -> int:
     with get_db_session() as session:
-        letter = CrawlDeadLetterRepository(session).get_by_dlq_id(args.dlq_id)
+        repo = CrawlDeadLetterRepository(session)
+        resolved, candidates = repo.resolve_dlq_id(args.dlq_id)
+        if resolved is None:
+            # The list view prints twelve characters, so a prefix is the normal
+            # input. Separating the two failures says which one to act on.
+            if candidates:
+                _write(f"ambiguous dead letter id: {args.dlq_id} matches {len(candidates)} rows")
+                for candidate in candidates[:5]:
+                    _write(f"  {candidate}")
+                return 2
+            _write(f"dead letter not found: {args.dlq_id}")
+            return 1
+        letter = repo.get_by_dlq_id(resolved)
         if letter is None:
             _write(f"dead letter not found: {args.dlq_id}")
             return 1

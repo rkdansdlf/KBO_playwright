@@ -95,6 +95,61 @@ class TestCreateAndLookup:
         assert found is letter
 
 
+class TestResolvingATruncatedId:
+    """``dlq list`` prints twelve characters, so the prefix has to be usable.
+
+    ``show``/``retry``/``requeue``/``ignore`` all take an id, and requiring the
+    whole thirty-two characters meant an operator had to ask for ``--json`` to
+    read a row the list had just shown them.
+    """
+
+    def test_a_prefix_finds_the_id_it_starts(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        repo.create_dead_letter(_spec(original_run_id="run-1", dlq_id="a3ca6e453a2840ffb84d267a6c9fc195"))
+        repo.create_dead_letter(_spec(original_run_id="run-2", dlq_id="b7f10000000000000000000000000000"))
+        session.commit()
+
+        assert repo.find_dlq_ids_by_prefix("a3ca6e45") == ["a3ca6e453a2840ffb84d267a6c9fc195"]
+
+    def test_an_unambiguous_prefix_resolves(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        repo.create_dead_letter(_spec(original_run_id="run-3", dlq_id="a3ca6e453a2840ffb84d267a6c9fc195"))
+        session.commit()
+
+        assert repo.resolve_dlq_id("a3ca6e45") == ("a3ca6e453a2840ffb84d267a6c9fc195", [])
+
+    def test_a_full_id_resolves_to_itself(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+        repo.create_dead_letter(_spec(original_run_id="run-4", dlq_id="a3ca6e453a2840ffb84d267a6c9fc195"))
+        session.commit()
+
+        assert repo.resolve_dlq_id("a3ca6e453a2840ffb84d267a6c9fc195") == (
+            "a3ca6e453a2840ffb84d267a6c9fc195",
+            [],
+        )
+
+    def test_an_ambiguous_prefix_names_its_candidates(self, session: Session) -> None:
+        # "not found" and "found several" need different responses, so the
+        # candidates come back rather than being collapsed into one failure.
+        repo = CrawlDeadLetterRepository(session)
+        repo.create_dead_letter(_spec(original_run_id="run-5", dlq_id="a3ca0000000000000000000000000001"))
+        repo.create_dead_letter(_spec(original_run_id="run-6", dlq_id="a3ca0000000000000000000000000002"))
+        session.commit()
+
+        resolved, candidates = repo.resolve_dlq_id("a3ca")
+
+        assert resolved is None
+        assert candidates == [
+            "a3ca0000000000000000000000000001",
+            "a3ca0000000000000000000000000002",
+        ]
+
+    def test_an_unknown_prefix_reports_nothing(self, session: Session) -> None:
+        repo = CrawlDeadLetterRepository(session)
+
+        assert repo.resolve_dlq_id("deadbeef") == (None, [])
+
+
 class TestQueries:
     def test_get_pending_orders_by_next_retry(self, session: Session) -> None:
         repo = CrawlDeadLetterRepository(session)

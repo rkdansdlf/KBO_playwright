@@ -86,6 +86,8 @@ def test_list_json_output(capsys) -> None:
 
 def test_show_renders_lineage(capsys) -> None:
     letter_repo = MagicMock()
+    # The id is resolved before it is loaded, so the prefix lookup has to answer.
+    letter_repo.resolve_dlq_id.return_value = ("dlq-1", [])
     letter_repo.get_by_dlq_id.return_value = _letter()
     run_repo = MagicMock()
     run_repo.get_by_run_ids.return_value = {
@@ -125,6 +127,7 @@ def test_show_renders_lineage(capsys) -> None:
 
 def test_show_unknown_returns_not_found(capsys) -> None:
     letter_repo = MagicMock()
+    letter_repo.resolve_dlq_id.return_value = (None, [])
     letter_repo.get_by_dlq_id.return_value = None
     with (
         patch("src.cli.dlq.get_db_session", _fake_session),

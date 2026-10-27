@@ -119,7 +119,11 @@ def _status_names(statuses: frozenset[DlqStatus]) -> str:
 
 def _load_letter(dlq_id: str) -> CrawlDeadLetter | None:
     with get_db_session() as session:
-        letter = CrawlDeadLetterRepository(session).get_by_dlq_id(dlq_id)
+        repo = CrawlDeadLetterRepository(session)
+        resolved, _candidates = repo.resolve_dlq_id(dlq_id)
+        if resolved is None:
+            return None
+        letter = repo.get_by_dlq_id(resolved)
         if letter is None:
             return None
         session.expunge(letter)
