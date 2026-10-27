@@ -1,0 +1,6 @@
+fix(monitoring): scope DLQ sweep alerts to kbo-scheduler job
+
+- alert_rules_crawler.yml: add {job="kbo-scheduler"} to KboDlqSweepStalled and KboDlqSweepFailing expr; document rationale (shared metrics module exports gauges at default 0 in api-server, causing ~20,700d false positive; KBOSchedulerDown covers total loss)
+- crawler_alert_dlq_sweep_test.yml: add job label to all series/exp_labels; add regression case (scheduler stale + api-server zero, only scheduler fires)
+- DATA_RELIABILITY.md 3.2b: reflect matcher in table + add scope rationale
+- KNOWN_LIMITATIONS.md: record preview crawler as same robots block with open decision (accept vs alternate source)

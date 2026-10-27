@@ -1,0 +1,60 @@
+======================================================================
+D4 READ-ONLY CHECK RESULTS (from d4-readonly-check-2026-10-26.sql)
+======================================================================
+Total queries executed: 14
+Mode: READ-ONLY (default_transaction_read_only=on)
+Transaction: ROLLED BACK (no writes)
+
+--- Query 1 ---
+  ERROR: syntax error at or near "reconstructed"
+LINE 1: reconstructed)
+        ^
+
+--- Query 2 ---
+  ERROR: syntax error at or near "aggregate"
+LINE 1: aggregate statistics only
+        ^
+
+--- Query 3 ---
+  ERROR: syntax error at or near "no"
+LINE 1: no player names
+        ^
+
+--- -- Q1. 2025 / 2026 시즌 매핑 (kbo_seasons.season_id <-> game.season_id) ---
+  ERROR: syntax error at or near "no"
+LINE 1: no connection details in output.
+        ^
+
+--- Query 5 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- -- Q2. 2026 KIA 투수 NULL 수 (시즌 필터 game.season_id = 2026 포함) ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- Query 7 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- -- Q3. 2026 팀 코드 분포 (KIA + 상대팀 포함 전체) ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- -- Q4. 취소된 경기(CANCELLED)에 투수 행이 존재하는지 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- Query 10 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- Query 11 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- -- Q5. 2026 game_lifecycle_state 분포 (TODO-3: season repair 확인용) ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- Query 13 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+--- Query 14 ---
+  ERROR: current transaction is aborted, commands ignored until end of transaction block
+
+======================================================================
+END OF RESULTS
+Transaction rolled back. No database modifications.

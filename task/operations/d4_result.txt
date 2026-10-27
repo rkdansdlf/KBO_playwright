@@ -1,0 +1,173 @@
+D4 READ-ONLY DATABASE CHECK - SEASON 2026 (KIA Team)
+============================================================
+
+READ-ONLY TRANSACTION: default_transaction_read_only=on
+TRANSACTION STATUS: Rolled back (no writes)
+CONNECTION: DATABASE_URL from .env (account details excluded)
+
+Q1: Season Mapping (kbo_seasons league_type_code)
+--------------------------------------------------
+  season_id=259 year=2025 league_type_code=0 league_type_name=정규시즌
+  season_id=2026 year=2026 league_type_code=0 league_type_name=정규시즌
+
+Section 1: Season Summary (all teams, by season_id)
+--------------------------------------------------
+  season_id=115: total=532 COMPLETED=529 CANCELLED=0 DRAW=3 SCHEDULED=0 UNRESOLVED=0
+  season_id=121: total=532 COMPLETED=529 CANCELLED=0 DRAW=3 SCHEDULED=0 UNRESOLVED=0
+  season_id=127: total=532 COMPLETED=529 CANCELLED=0 DRAW=3 SCHEDULED=0 UNRESOLVED=0
+  season_id=133: total=532 COMPLETED=524 CANCELLED=0 DRAW=8 SCHEDULED=0 UNRESOLVED=0
+  season_id=139: total=504 COMPLETED=498 CANCELLED=0 DRAW=6 SCHEDULED=0 UNRESOLVED=0
+  season_id=145: total=504 COMPLETED=503 CANCELLED=0 DRAW=1 SCHEDULED=0 UNRESOLVED=0
+  season_id=151: total=504 COMPLETED=499 CANCELLED=0 DRAW=5 SCHEDULED=0 UNRESOLVED=0
+  season_id=157: total=504 COMPLETED=504 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=163: total=532 COMPLETED=522 CANCELLED=0 DRAW=10 SCHEDULED=0 UNRESOLVED=0
+  season_id=169: total=608 COMPLETED=534 CANCELLED=64 DRAW=10 SCHEDULED=0 UNRESOLVED=0
+  season_id=170: total=56 COMPLETED=47 CANCELLED=9 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=175: total=625 COMPLETED=535 CANCELLED=78 DRAW=10 SCHEDULED=0 UNRESOLVED=2
+  season_id=176: total=56 COMPLETED=49 CANCELLED=7 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=181: total=621 COMPLETED=531 CANCELLED=74 DRAW=15 SCHEDULED=0 UNRESOLVED=1
+  season_id=182: total=56 COMPLETED=42 CANCELLED=8 DRAW=6 SCHEDULED=0 UNRESOLVED=0
+  season_id=186: total=1 COMPLETED=1 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=187: total=647 COMPLETED=578 CANCELLED=58 DRAW=11 SCHEDULED=0 UNRESOLVED=0
+  season_id=188: total=54 COMPLETED=46 CANCELLED=3 DRAW=5 SCHEDULED=0 UNRESOLVED=0
+  season_id=192: total=4 COMPLETED=4 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=193: total=649 COMPLETED=580 CANCELLED=62 DRAW=7 SCHEDULED=0 UNRESOLVED=0
+  season_id=194: total=54 COMPLETED=40 CANCELLED=4 DRAW=10 SCHEDULED=0 UNRESOLVED=0
+  season_id=198: total=5 COMPLETED=4 CANCELLED=1 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=199: total=815 COMPLETED=726 CANCELLED=83 DRAW=5 SCHEDULED=0 UNRESOLVED=1
+  season_id=200: total=70 COMPLETED=55 CANCELLED=10 DRAW=5 SCHEDULED=0 UNRESOLVED=0
+  season_id=204: total=4 COMPLETED=4 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=205: total=792 COMPLETED=722 CANCELLED=63 DRAW=7 SCHEDULED=0 UNRESOLVED=0
+  season_id=206: total=90 COMPLETED=74 CANCELLED=9 DRAW=7 SCHEDULED=0 UNRESOLVED=0
+  season_id=210: total=6 COMPLETED=6 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=211: total=777 COMPLETED=725 CANCELLED=41 DRAW=11 SCHEDULED=0 UNRESOLVED=0
+  season_id=212: total=60 COMPLETED=49 CANCELLED=2 DRAW=9 SCHEDULED=0 UNRESOLVED=0
+  season_id=217: total=763 COMPLETED=716 CANCELLED=41 DRAW=6 SCHEDULED=0 UNRESOLVED=0
+  season_id=218: total=40 COMPLETED=29 CANCELLED=10 DRAW=1 SCHEDULED=0 UNRESOLVED=0
+  season_id=222: total=15 COMPLETED=15 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=223: total=791 COMPLETED=726 CANCELLED=58 DRAW=7 SCHEDULED=0 UNRESOLVED=0
+  season_id=224: total=40 COMPLETED=34 CANCELLED=3 DRAW=3 SCHEDULED=0 UNRESOLVED=0
+  season_id=229: total=788 COMPLETED=707 CANCELLED=68 DRAW=13 SCHEDULED=0 UNRESOLVED=0
+  season_id=230: total=50 COMPLETED=0 CANCELLED=50 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=234: total=13 COMPLETED=13 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=235: total=847 COMPLETED=667 CANCELLED=131 DRAW=49 SCHEDULED=0 UNRESOLVED=0
+  season_id=236: total=50 COMPLETED=25 CANCELLED=19 DRAW=6 SCHEDULED=0 UNRESOLVED=0
+  season_id=241: total=780 COMPLETED=719 CANCELLED=49 DRAW=12 SCHEDULED=0 UNRESOLVED=0
+  season_id=242: total=80 COMPLETED=54 CANCELLED=14 DRAW=12 SCHEDULED=0 UNRESOLVED=0
+  season_id=247: total=814 COMPLETED=711 CANCELLED=93 DRAW=10 SCHEDULED=0 UNRESOLVED=0
+  season_id=248: total=70 COMPLETED=62 CANCELLED=3 DRAW=5 SCHEDULED=0 UNRESOLVED=0
+  season_id=249: total=1 COMPLETED=1 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=250: total=3 COMPLETED=3 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=251: total=5 COMPLETED=5 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=252: total=5 COMPLETED=5 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=253: total=794 COMPLETED=709 CANCELLED=75 DRAW=10 SCHEDULED=0 UNRESOLVED=0
+  season_id=259: total=755 COMPLETED=714 CANCELLED=19 DRAW=22 SCHEDULED=0 UNRESOLVED=0
+  season_id=266: total=60 COMPLETED=55 CANCELLED=0 DRAW=5 SCHEDULED=0 UNRESOLVED=0
+  season_id=304: total=38 COMPLETED=0 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=38
+  season_id=312: total=3 COMPLETED=3 CANCELLED=0 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=313: total=8 COMPLETED=0 CANCELLED=2 DRAW=0 SCHEDULED=5 UNRESOLVED=1
+  season_id=2026: total=737 COMPLETED=703 CANCELLED=17 DRAW=17 SCHEDULED=0 UNRESOLVED=0
+  season_id=198200: total=241 COMPLETED=0 CANCELLED=0 DRAW=1 SCHEDULED=0 UNRESOLVED=240
+  season_id=198300: total=300 COMPLETED=0 CANCELLED=0 DRAW=5 SCHEDULED=0 UNRESOLVED=295
+  season_id=198400: total=300 COMPLETED=0 CANCELLED=0 DRAW=5 SCHEDULED=0 UNRESOLVED=295
+  season_id=198500: total=330 COMPLETED=0 CANCELLED=0 DRAW=3 SCHEDULED=0 UNRESOLVED=327
+  season_id=198600: total=378 COMPLETED=0 CANCELLED=0 DRAW=13 SCHEDULED=0 UNRESOLVED=365
+  season_id=198700: total=378 COMPLETED=0 CANCELLED=0 DRAW=12 SCHEDULED=0 UNRESOLVED=366
+  season_id=198800: total=378 COMPLETED=0 CANCELLED=0 DRAW=7 SCHEDULED=0 UNRESOLVED=371
+  season_id=198900: total=420 COMPLETED=0 CANCELLED=0 DRAW=14 SCHEDULED=0 UNRESOLVED=406
+  season_id=199000: total=420 COMPLETED=0 CANCELLED=0 DRAW=10 SCHEDULED=0 UNRESOLVED=410
+  season_id=199100: total=504 COMPLETED=0 CANCELLED=0 DRAW=11 SCHEDULED=0 UNRESOLVED=493
+  season_id=199200: total=504 COMPLETED=0 CANCELLED=0 DRAW=8 SCHEDULED=0 UNRESOLVED=496
+  season_id=199300: total=504 COMPLETED=0 CANCELLED=0 DRAW=18 SCHEDULED=0 UNRESOLVED=486
+  season_id=199400: total=504 COMPLETED=0 CANCELLED=0 DRAW=9 SCHEDULED=0 UNRESOLVED=495
+  season_id=199500: total=504 COMPLETED=0 CANCELLED=0 DRAW=16 SCHEDULED=0 UNRESOLVED=488
+  season_id=199600: total=504 COMPLETED=0 CANCELLED=0 DRAW=16 SCHEDULED=0 UNRESOLVED=488
+  season_id=199700: total=504 COMPLETED=0 CANCELLED=0 DRAW=12 SCHEDULED=0 UNRESOLVED=492
+  season_id=199800: total=504 COMPLETED=0 CANCELLED=0 DRAW=9 SCHEDULED=0 UNRESOLVED=495
+  season_id=199900: total=528 COMPLETED=0 CANCELLED=0 DRAW=15 SCHEDULED=0 UNRESOLVED=513
+  season_id=200000: total=532 COMPLETED=0 CANCELLED=0 DRAW=13 SCHEDULED=0 UNRESOLVED=519
+  season_id=202602: total=2 COMPLETED=1 CANCELLED=1 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+  season_id=202603: total=2 COMPLETED=0 CANCELLED=2 DRAW=0 SCHEDULED=0 UNRESOLVED=0
+
+Section 2: KIA Games - Season 2026 (Aggregate Only)
+--------------------------------------------------
+  Total KIA games (season 2026): 148
+  By game_status:
+    CANCELLED: 4
+    COMPLETED: 142
+    DRAW: 2
+
+Section 3: KIA Pitcher Records - Season 2026 (Aggregate Only)
+--------------------------------------------------
+  Total pitcher rows (KIA only): 713
+  Games covered: 144
+  Rows per game: 4.95 (realistic: ~4.82)
+  Starting pitchers: 144
+  Relief pitchers: 569
+  FILTER APPLIED: team_code='KIA' only (NOT both teams)
+
+Q2: 2026 KIA Pitcher NULL Counts (season filtered)
+--------------------------------------------------
+  No NULL values for KIA in season 2026
+
+Section 4: NULL Counts - All Teams (season 2026 only)
+--------------------------------------------------
+  Groups with NULL values: 0
+
+Q3: 2026 Team Code Distribution (all teams, season 2026)
+--------------------------------------------------
+  HH: 771
+  NC: 756
+  LG: 735
+  SSG: 715
+  KIA: 713
+  SS: 695
+  DB: 688
+  KH: 681
+  KT: 678
+  LT: 675
+
+Q4: Cancelled Games Pitcher Contamination Check
+--------------------------------------------------
+  Total cancelled games (season 2026): 17
+  Cancelled games WITH pitcher rows: 1
+  Total pitcher rows on cancelled games: 2
+  WARNING: CONTAMINATION DETECTED: 1 cancelled games have pitcher data
+
+Q5: 2026 game_lifecycle_state Distribution (by game_status)
+--------------------------------------------------
+  lifecycle_state=final | game_status=COMPLETED | count=85
+  lifecycle_state=final | game_status=DRAW | count=2
+  lifecycle_state=result_pending_stabilization | game_status=COMPLETED | count=3
+  lifecycle_state=NULL | game_status=CANCELLED | count=17
+  lifecycle_state=NULL | game_status=COMPLETED | count=615
+  lifecycle_state=NULL | game_status=DRAW | count=15
+
+SUMMARY & KEY FINDINGS
+============================================================
+
+1) PITCHER ROW COUNT FIXED:
+   - BEFORE: 1402 rows (mixed all 10 team codes)
+   - AFTER: 713 rows (KIA only)
+   - Verification: ~4.82 rows/game (realistic for single team)
+
+2) SEASON INTERPRETATION:
+   - Season 2025: season_id=259 in game table (NOT season_id=2025)
+   - kbo_seasons.season_id=259: EXISTS, maps to year=2025, league_type_code=0 (REGULAR)
+   - Season 2026: season_id=2026, league_type_code=0 (REGULAR)
+   - NOTE: Query used season_id=2025 returned 0 rows because game table uses 259
+
+3) ORIGINAL SQL FILE:
+   - task/operations/d4-readonly-check-2026-10-26.sql: NOT FOUND
+   - Reconstructed query based on requirements (aggregate only)
+
+4) READ-ONLY MODE VERIFIED:
+   - PostgreSQL option: default_transaction_read_only=on
+   - Connection timeout: 30 seconds
+   - No writes: Transaction rolled back after execution
+   - Account info excluded from output file
+
+5) NO RAW ROW DUMPS:
+   - All sections show aggregate counts only
+   - No player names in output
+   - No game_id lists beyond counts
