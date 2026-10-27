@@ -122,6 +122,31 @@ def _clean_test_db(request):
             wal_file.unlink()
 
 
+@pytest.fixture
+def create_symlink():
+    """Create a symlink, skipping only when Windows denies the capability.
+
+    Windows requires Developer Mode or ``SeCreateSymbolicLinkPrivilege`` for
+    ``os.symlink``. The affected security tests still run on platforms with
+    that capability; on a locked-down Windows host, report the specific OS
+    denial instead of failing before the behavior under test can be reached.
+    """
+
+    def _create(link: Path, target: Path, *, target_is_directory: bool = False) -> None:
+        try:
+            link.symlink_to(target, target_is_directory=target_is_directory)
+        except OSError as exc:
+            if os.name == "nt" and getattr(exc, "winerror", None) in {1, 1314}:
+                pytest.skip(
+                    "Windows symlink capability unavailable: creating this fixture requires "
+                    "Developer Mode or SeCreateSymbolicLinkPrivilege "
+                    f"(WinError {exc.winerror}: {exc.strerror})"
+                )
+            raise
+
+    return _create
+
+
 @pytest.fixture(autouse=True)
 def _reset_db_fail_fast_gate():
     """Forget the DB gate's memoised probe between tests.

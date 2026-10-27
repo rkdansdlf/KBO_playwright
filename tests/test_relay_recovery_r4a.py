@@ -612,8 +612,12 @@ def test_path_confinement_violation(tmp_path: Path) -> None:
 
 def test_live_pid_lock_protection(tmp_path: Path) -> None:
     """Verify that ForceProcessLock never steals locks from an active live PID, but clears dead PIDs."""
-    import fcntl
     import os
+
+    try:
+        import fcntl
+    except ImportError as exc:
+        pytest.skip(f"fcntl advisory file locking is unavailable on this platform: {exc}")
 
     lock_dir = tmp_path / "locks"
     lock_dir.mkdir()

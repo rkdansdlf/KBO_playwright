@@ -57,11 +57,11 @@ def test_hardlinked_file_alias_is_denied(tmp_path: Path) -> None:
     assert policy.can_read(linked) is False
 
 
-def test_symlink_escape_is_denied_for_read_write_and_cwd(tmp_path: Path) -> None:
+def test_symlink_escape_is_denied_for_read_write_and_cwd(tmp_path: Path, create_symlink) -> None:
     policy = PermissionPolicy.load()
     link = project_root() / "artifacts" / "agent-harness" / f"p15-read-{tmp_path.name}"
     link.parent.mkdir(parents=True, exist_ok=True)
-    link.symlink_to(tmp_path, target_is_directory=True)
+    create_symlink(link, tmp_path, target_is_directory=True)
     runner = CommandRunner(permissions=policy, root=project_root())
     try:
         assert policy.can_read(link / ".env") is False
@@ -76,7 +76,46 @@ def test_symlink_escape_is_denied_for_read_write_and_cwd(tmp_path: Path) -> None
         link.unlink(missing_ok=True)
 
 
-def test_evidence_store_rejects_traversal_and_symlinked_runs(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows directory junction behavior is platform-specific")
+def test_directory_junction_escape_is_denied_by_resolved_containment(tmp_path: Path) -> None:
+    """Junctions bypass is_symlink(); resolved-path containment must still deny them."""
+    root = tmp_path / "repo"
+    artifacts_root = root / "artifacts" / "agent-harness"
+    artifacts_root.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("outside secret", encoding="utf-8")
+    junction = artifacts_root / "linked-run"
+
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    try:
+        policy = _policy_for_root(root)
+        runner = CommandRunner(permissions=policy, root=root)
+
+        # Windows junctions are reparse points, but pathlib does not report
+        # them as symbolic links. This ensures the test reaches the separate
+        # resolve()-based containment guard rather than the symlink guard.
+        assert junction.is_symlink() is False
+        assert junction.resolve() == outside.resolve()
+        assert (junction / secret.name).read_text(encoding="utf-8") == "outside secret"
+        assert policy.can_read(junction / secret.name) is False
+        assert policy.can_write(junction / "escape.json") is False
+        assert policy.check_cwd(junction).allowed is False
+        with pytest.raises(PermissionDeniedError):
+            runner.run([sys.executable, "-m", "pytest", "-q"], skill_id="harness", cwd=junction)
+    finally:
+        junction.rmdir()
+
+
+def test_evidence_store_rejects_traversal_and_symlinked_runs(tmp_path: Path, create_symlink) -> None:
     root = tmp_path / "repo"
     artifacts_root = root / "artifacts" / "agent-harness"
     policy = _policy_for_root(root)
@@ -86,8 +125,8 @@ def test_evidence_store_rejects_traversal_and_symlinked_runs(tmp_path: Path) -> 
     outside_file = outside / "owned.txt"
     outside_file.write_text("unchanged", encoding="utf-8")
     linked_run = artifacts_root / "linked-run"
-    linked_run.symlink_to(outside, target_is_directory=True)
-    (store.root / "escape.json.tmp").symlink_to(outside_file)
+    create_symlink(linked_run, outside, target_is_directory=True)
+    create_symlink(store.root / "escape.json.tmp", outside_file)
 
     try:
         store.write_json("escape.json", {"escaped": True})
@@ -103,13 +142,13 @@ def test_evidence_store_rejects_traversal_and_symlinked_runs(tmp_path: Path) -> 
     assert outside_file.read_text(encoding="utf-8") == "unchanged"
 
 
-def test_shared_context_ignores_stale_temp_symlink(tmp_path: Path) -> None:
+def test_shared_context_ignores_stale_temp_symlink(tmp_path: Path, create_symlink) -> None:
     root = tmp_path / "repo"
     shared = root / "artifacts" / "agent-harness" / "shared"
     shared.mkdir(parents=True)
     outside = tmp_path / "outside.txt"
     outside.write_text("unchanged", encoding="utf-8")
-    (shared / "context.json.tmp").symlink_to(outside)
+    create_symlink(shared / "context.json.tmp", outside)
     registry = replace(HarnessRegistry.load(), root=root)
     permissions = replace(PermissionPolicy.load(), root=root)
 
@@ -204,6 +243,7 @@ def test_runner_uses_trusted_path_and_ignores_caller_path(
 def test_trusted_root_symlink_cannot_redirect_outside(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    create_symlink,
 ) -> None:
     trusted_bin = tmp_path / "trusted-bin"
     trusted_bin.mkdir()
@@ -211,7 +251,7 @@ def test_trusted_root_symlink_cannot_redirect_outside(
     outside.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     outside.chmod(0o755)
     linked = trusted_bin / "ruff"
-    linked.symlink_to(outside)
+    create_symlink(linked, outside)
     monkeypatch.setattr(
         CommandRunner,
         "_trusted_executable_roots",

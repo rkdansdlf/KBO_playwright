@@ -342,10 +342,10 @@ def test_v1_historical_commands_upgrade_with_legacy_attempt_id(tmp_path: Path) -
     assert all(record["verification_id"] == verification["verification_id"] for record in commands)
 
 
-def test_symlinked_artifact_directory_is_rejected(tmp_path: Path) -> None:
+def test_symlinked_artifact_directory_is_rejected(tmp_path: Path, create_symlink) -> None:
     run, _ = _new_run(tmp_path)
     linked_run = tmp_path / "linked-run"
-    linked_run.symlink_to(run.artifact_dir, target_is_directory=True)
+    create_symlink(linked_run, run.artifact_dir, target_is_directory=True)
 
     report = validate_artifact_bundle(linked_run)
 
@@ -356,13 +356,14 @@ def test_symlinked_artifact_directory_is_rejected(tmp_path: Path) -> None:
 def test_report_command_refuses_symlink_without_leaking_content(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    create_symlink,
 ) -> None:
     run, permissions = _new_run(tmp_path)
     outside = tmp_path / "outside-report.md"
     outside.write_text("secret-report-content", encoding="utf-8")
     report_path = run.artifact_dir / "report.md"
     report_path.unlink()
-    report_path.symlink_to(outside)
+    create_symlink(report_path, outside)
     registry = replace(HarnessRegistry.load(), root=tmp_path / "repo")
 
     exit_code = _handle_report(Namespace(run_id=run.run_id), registry, permissions)

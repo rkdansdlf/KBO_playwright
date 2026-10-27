@@ -10,6 +10,7 @@ out of the script and runs it against a temporary directory with ``stat``/``chow
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -55,9 +56,17 @@ def _run_block(tmp_path: Path, *, current_owner: int, target_uid: int = 1000) ->
 
 
 def test_entrypoint_is_valid_bash() -> None:
-    subprocess.run(["/bin/bash", "-n", str(ENTRYPOINT)], check=True)
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("Bash is unavailable; entrypoint syntax cannot be checked on this host")
+    source = ENTRYPOINT.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    subprocess.run([bash, "-n"], input=source, check=True)
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "getuid") or shutil.which("bash") is None,
+    reason="requires POSIX bash, numeric process UIDs, and chown ownership semantics",
+)
 def test_directory_owned_by_the_old_build_uid_is_handed_to_the_remapped_appuser(tmp_path: Path) -> None:
     output, calls = _run_block(tmp_path, current_owner=999)
 
@@ -68,6 +77,10 @@ def test_directory_owned_by_the_old_build_uid_is_handed_to_the_remapped_appuser(
 
 
 @pytest.mark.parametrize("owner", [1000])
+@pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "getuid") or shutil.which("bash") is None,
+    reason="requires POSIX bash, numeric process UIDs, and chown ownership semantics",
+)
 def test_directory_already_owned_by_the_target_uid_is_left_alone(tmp_path: Path, owner: int) -> None:
     output, calls = _run_block(tmp_path, current_owner=owner)
 

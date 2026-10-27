@@ -7,24 +7,35 @@ and must never grow a path that touches the other projects' launchd jobs.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "restore_scheduler_launchd.sh"
 
 
-def test_script_passes_bash_syntax_check() -> None:
-    result = subprocess.run(["bash", "-n", str(SCRIPT)], capture_output=True, text=True, check=False)
+def _run_bash(args: list[str]) -> subprocess.CompletedProcess[bytes]:
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("Bash is unavailable; shell syntax/help contract cannot run on this host")
+    source = SCRIPT.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return subprocess.run([bash, *args], input=source, capture_output=True, check=False)
 
-    assert result.returncode == 0, result.stderr
+
+def test_script_passes_bash_syntax_check() -> None:
+    result = _run_bash(["-n"])
+
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
 
 
 def test_help_exits_zero_and_names_the_use_case() -> None:
-    result = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True, text=True, check=False)
+    result = _run_bash(["-s", "--", "--help"])
 
     assert result.returncode == 0
-    assert "Restore the KBO scheduler" in result.stdout
+    assert "Restore the KBO scheduler" in result.stdout.decode("utf-8", errors="replace")
 
 
 def test_script_targets_the_scheduler_label_and_reuses_the_installer() -> None:

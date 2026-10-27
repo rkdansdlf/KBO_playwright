@@ -23,17 +23,21 @@ def _usable_bash() -> bool:
 
 def test_crawler_stability_gate_prints_expected_targets():
     if not _usable_bash():
-        pytest.skip("requires a usable bash executable")
+        pytest.skip("Bash is unavailable or cannot start a shell process on this host")
 
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+    source = SCRIPT.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     result = subprocess.run(
-        ["bash", str(SCRIPT), "--print-targets"],
+        [bash_bin, "-s", "--", "--print-targets"],
         cwd=ROOT,
-        check=True,
+        input=source,
+        check=False,
         capture_output=True,
-        text=True,
     )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
 
-    targets = result.stdout.strip().splitlines()
+    targets = result.stdout.decode("utf-8", errors="replace").strip().splitlines()
 
     assert targets == [
         "tests/test_schedule_crawler_stability.py",
@@ -65,17 +69,20 @@ def test_crawler_stability_gate_prints_expected_targets():
 def test_crawler_stability_gate_propagates_test_runner_failure():
     false_bin = shutil.which("false")
     if not false_bin or not _usable_bash():
-        pytest.skip("requires usable bash and false commands")
+        pytest.skip("requires a usable Bash executable and false command in the host PATH")
 
     env = {**os.environ, "CRAWLER_STABILITY_PYTHON": false_bin}
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+    source = SCRIPT.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     result = subprocess.run(
-        ["bash", str(SCRIPT)],
+        [bash_bin, "-s", "--"],
         cwd=ROOT,
         env=env,
+        input=source,
         capture_output=True,
-        text=True,
         check=False,
     )
 
     assert result.returncode != 0
-    assert f"Python: {false_bin}" in result.stdout
+    assert f"Python: {false_bin}".encode() in result.stdout

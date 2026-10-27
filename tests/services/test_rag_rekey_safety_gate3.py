@@ -1008,7 +1008,7 @@ class TestRagRekeySafetyGate3:
         assert receipt_path.exists()
         assert not (tmp_path / "receipts" / f".tmp_{receipt_path.name}").exists()
 
-    def test_26_receipt_symlink_rejected(self, tmp_path: Path) -> None:
+    def test_26_receipt_symlink_rejected(self, tmp_path: Path, create_symlink) -> None:
         """26. Symlinked receipt files are detected and rejected fail-closed."""
         receipt_dir = tmp_path / "receipts"
         receipt_dir.mkdir(parents=True, exist_ok=True)
@@ -1018,7 +1018,7 @@ class TestRagRekeySafetyGate3:
         real_target.write_text('{"manifest_sha256": "fake_sha"}', encoding="utf-8")
 
         symlink_path = receipt_dir / "receipt_fake_tx-symlink-001.json"
-        symlink_path.symlink_to(real_target)
+        create_symlink(symlink_path, real_target)
 
         is_replay, receipt, err = _check_receipt_replay("tx-symlink-001", "fake_sha")
         assert is_replay is False
