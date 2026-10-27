@@ -4,6 +4,13 @@ Historical archive ingestion for seasons 1982 through 2000 requires a JSON
 manifest. The manifest binds the archive file to its source, authorization
 record, season, and SHA-256 digest.
 
+For a season from 2001 onward the same manifest is required, and the box-score
+CSVs an outside source provides are converted into this payload by
+`scripts.maintenance.import_season_boxscores`. See
+[`Docs/runbooks/HISTORICAL_IMPORT.md`](../runbooks/HISTORICAL_IMPORT.md) for the
+CSV columns, the checks that refuse a bad file, and why 2001~2007 cannot be
+crawled from inside the repository.
+
 ## Required Fields
 
 ```json
