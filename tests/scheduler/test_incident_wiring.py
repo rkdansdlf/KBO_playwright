@@ -43,6 +43,31 @@ class TestIntegrityEvent:
 
 
 class TestQualityIncident:
+    def test_a_skipped_stage_says_it_did_not_run(self) -> None:
+        # A SKIPPED stage never ran: something upstream failed and the gate was
+        # passed over. Reporting that as "the quality gate failed" sends an
+        # operator to inspect a gate that is healthy, and hides the stage that
+        # actually broke.
+        stage = _stage("quality_gate", StageExecutionStatus.SKIPPED, error="ingestion failed")
+
+        with patch("src.notifications.bridge.apply_incidents") as mock:
+            _publish_quality_incident(_workflow_report([stage]))
+
+        event = mock.call_args.args[0][0]
+        assert event.title == "데이터 품질 게이트가 실행되지 않음"
+        assert "상류 단계가 실패해" in event.message
+        assert "ingestion failed" in event.message
+
+    def test_a_failed_stage_says_the_gate_failed(self) -> None:
+        stage = _stage("quality_gate", StageExecutionStatus.FAILED, error="audit blew up")
+
+        with patch("src.notifications.bridge.apply_incidents") as mock:
+            _publish_quality_incident(_workflow_report([stage]))
+
+        event = mock.call_args.args[0][0]
+        assert event.title == "데이터 품질 게이트 실행 실패"
+        assert event.message == "audit blew up"
+
     def test_pass_resolves(self) -> None:
         quality_report = SimpleNamespace(overall_status="PASS", quality_score=100, remediation_hints=[])
         stage = _stage(

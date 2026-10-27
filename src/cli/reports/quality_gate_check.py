@@ -74,6 +74,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args(argv)
 
+    # The report goes through ``logger.info``, and nothing else configures
+    # logging in a CLI process -- so without this the whole verdict is dropped
+    # and a passing gate prints zero bytes. That silence is indistinguishable
+    # from "the command did not run", which is how a healthy gate gets reported
+    # as broken.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     if not args.year:
         from datetime import datetime
 

@@ -259,14 +259,21 @@ def _publish_quality_incident(report: object) -> None:
     key = "quality:daily"
     quality_report = (getattr(stage, "artifacts", None) or {}).get("quality_report")
     if quality_report is None:
+        # No report means two different things. A SKIPPED stage never ran --
+        # something upstream failed and the gate was passed over -- while a
+        # FAILED one ran and could not produce a verdict. Reporting both as
+        # "the quality gate failed" sends an operator to inspect a gate that is
+        # healthy, and hides the stage that actually broke.
+        detail = str(getattr(stage, "error_message", None) or "quality gate produced no report")
+        skipped = str(getattr(getattr(stage, "status", None), "value", "") or "") == "SKIPPED"
         apply_incidents(
             [
                 AlertEvent(
                     source=AlertSource.QUALITY,
                     component="daily",
                     severity=AlertSeverity.ERROR,
-                    title="데이터 품질 게이트 실행 실패",
-                    message=str(getattr(stage, "error_message", None) or "quality gate produced no report"),
+                    title="데이터 품질 게이트가 실행되지 않음" if skipped else "데이터 품질 게이트 실행 실패",
+                    message=(f"상류 단계가 실패해 품질 게이트가 실행되지 않았다 ({detail})" if skipped else detail),
                     incident_key=key,
                 ),
             ],
