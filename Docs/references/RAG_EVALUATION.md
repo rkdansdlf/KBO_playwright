@@ -437,12 +437,40 @@ done
 content, version, or vector state is stale. The write guards are not optional —
 without them the builder exits 2 and writes nothing.
 
-**Coverage is not audited.** Neither `audit_rag_index` (index against index) nor
-`rag_identity_census` (retired store against canonical) answers "is what the
-calendar says should be in the index actually in it". The postseason gap
-survived four months without a signal, and was found only by counting games per
-season by hand. Counting source rows per season against indexed chunks is the
-check that would have caught it.
+**Coverage is audited — `audit_rag_coverage`.** Neither `audit_rag_index` (index
+against index) nor `rag_identity_census` (retired store against canonical)
+answers "is what the calendar says should be in the index actually in it". The
+postseason gap survived four months without a signal, and was found only by
+counting games per season by hand. The check now exists and runs daily:
+
+```bash
+# Every season, gaps listed newest first
+python3 -m src.cli.rag.audit_rag_coverage
+python3 -m src.cli.rag.audit_rag_coverage --json --sample 10
+
+# The gate: exit 1 when any of the newest N season years has a gap
+python3 -m src.cli.rag.audit_rag_coverage --require-recent 2
+```
+
+One `game` chunk per completed game is the contract. Highlight and play-by-play
+counts vary with what happened on the field, so counting them would invent gaps
+rather than find them. The season set and the season types come from the build
+(`_season_ids` / `_INDEXED_SEASON_TYPE_CODES`) rather than being copied —
+a copied filter would report spring training as a permanent gap, which is exactly
+what the first version did before it was corrected.
+
+`rag_coverage_sentinel_job` runs `--require-recent 2` daily at 06:20 KST, after
+`rag_audit_sentinel_job` at 06:05. The scope matters: 1982~2017 was only indexed
+on 2026-10-27, and reading that standing backlog as a daily fault would be a red
+light nobody reads. It warns under its own incident key (`rag_coverage_sentinel`)
+because the cause is different from an index-versus-itself mismatch.
+
+**A confirmed historical gap does not stay confirmed.** When the season
+filter was widened, the coverage check had to be widened with it, and when
+`UNRESOLVED_MISSING` was corrected to `COMPLETED` the gap count *rose* from 9,896
+to 12,915 — the 1982~2000 seasons had been hidden behind a status filter the
+check shared with the build. A check that reads the same predicate as the thing
+it checks fails in the same direction.
 
 ### AI Runtime Oracle Cutover Readiness (2026-08-23)
 
