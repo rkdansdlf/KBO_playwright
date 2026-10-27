@@ -37,7 +37,7 @@ from src.scheduler.locks import (
     _with_lock_skip_guard,
     lock_skip_monitor_job,
 )
-from src.utils.lock import ForceProcessLock, ProcessLock, _LockState
+from src.utils.lock import ForceProcessLock, HAS_FCNTL, LockAcquisitionError, ProcessLock, _LockState
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -87,8 +87,15 @@ class TestPhase106FTierIsolation:
         locks = [ForceProcessLock(f"distinct_lock_{i}", lock_dir=tmp_path) for i in range(3)]
         for lock in locks:
             assert lock.acquire() is True
-            assert lock.lock_file_path.exists()
             assert lock.lock_file_path.name.endswith(".lock")
+            if HAS_FCNTL:
+                assert lock.lock_file_path.exists()
+            else:
+                # Without fcntl there is no file lock at all:
+                # _acquire_process_file_lock returns early and writes nothing.
+                # Pin that, so adding a Windows file lock has to revisit this.
+                assert not lock.lock_file_path.exists()
+        assert len({lock.lock_file_path for lock in locks}) == 3
         for lock in locks:
             lock.release()
 
@@ -174,7 +181,11 @@ class TestPhase106FThreadSafety:
             try:
                 for _ in range(10):
                     with lock:
-                        assert lock.file_fd is not None
+                        assert lock.acquire_count == 1
+                        if HAS_FCNTL:
+                            assert lock.file_fd is not None
+                    assert lock.acquire_count == 0
+                    assert lock.thread_lock_acquired is False
                     assert lock.file_fd is None
             except (LockAcquisitionError, OSError, RuntimeError, AssertionError) as e:
                 errors.append(e)
@@ -507,7 +518,12 @@ class TestPhase106FNestedLockPrevention:
         assert lock.acquire() is True
         try:
             assert lock.acquire() is False
-            assert lock.lock_file_path.exists()
+            if HAS_FCNTL:
+                assert lock.lock_file_path.exists()
+            else:
+                # No fcntl, no lock file to preserve; the re-acquire refusal above
+                # is the part of this contract that holds on every platform.
+                assert not lock.lock_file_path.exists()
         finally:
             lock.release()
 
