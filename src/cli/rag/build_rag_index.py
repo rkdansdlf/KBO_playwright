@@ -81,6 +81,8 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from sqlalchemy.sql import Select
 
+    from src.models.game import Game
+
 from src.config.env_loader import load_project_env
 
 logger = logging.getLogger(__name__)
@@ -850,6 +852,36 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
         }
 
 
+def _game_result_text(game: Game) -> str:
+    """Say only what the row supports about the result.
+
+    Three states used to arrive as one string. An empty ``winning_team`` was read
+    as a draw and the literal " 승" was appended, so 2,713 games whose score this
+    database never received (2001~2009; Naver never served those seasons) were
+    described as "무승부 승" -- a draw that won, asserting a result nobody
+    recorded. They are different claims:
+
+    * a missing score is ``결과 미상`` -- the result is not known;
+    * a level score is ``무승부`` -- the result is known and level;
+    * a decided score with no winner named is ``결과 미확인`` -- the score decides
+      it, but the column that names the winner is empty.
+
+    Args:
+        game: The ``Game`` row being rendered.
+
+    Returns:
+        The result phrase for the chunk body.
+
+    """
+    if game.winning_team:
+        return f"{game.winning_team} 승"
+    if game.away_score is None or game.home_score is None:
+        return "결과 미상"
+    if game.away_score == game.home_score:
+        return "무승부"
+    return "결과 미확인"
+
+
 def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """Game 테이블에서 경기 결과 청크를 생성합니다."""
     season_codes = _game_season_codes(session)
@@ -869,10 +901,12 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
         away = game.away_team or "?"
         home_score = game.home_score if game.home_score is not None else "?"
         away_score = game.away_score if game.away_score is not None else "?"
-        winner = game.winning_team or "무승부"
+        result_text = _game_result_text(game)
         stadium = game.stadium or "-"
 
-        content = f"{date_str} KBO 경기: {away} {away_score} - {home} {home_score} (구장: {stadium}, 결과: {winner} 승)"
+        content = (
+            f"{date_str} KBO 경기: {away} {away_score} - {home} {home_score} (구장: {stadium}, 결과: {result_text})"
+        )
         yield {
             "source_table": "game",
             "source_row_id": game.game_id,
@@ -894,7 +928,10 @@ def _iter_game_chunks(session: Session, season: int | None, limit: int | None) -
                 "away_team": away,
                 "home_score": game.home_score,
                 "away_score": game.away_score,
-                "winner": winner,
+                # The column's own value, not the rendered phrase: a caller that
+                # filters on this wants the name the source gave, and None where
+                # it gave none.
+                "winner": game.winning_team,
                 "stadium": stadium,
             },
         }
