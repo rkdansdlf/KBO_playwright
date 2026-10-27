@@ -34,7 +34,7 @@ def test_diagnose_scheduler_and_auto_heal(tmp_path: Path) -> None:
     lock_mgr = SchedulerLockManager(lock_dir=tmp_path)
     pid_file = tmp_path / "scheduler.pid"
     # Write a dead PID (99999999)
-    pid_file.write_text("99999999")
+    pid_file.write_text("99999999", encoding="utf-8")
 
     diag_engine = SystemDiagnosticsEngine(lock_manager=lock_mgr)
     checks = diag_engine.diagnose_scheduler()

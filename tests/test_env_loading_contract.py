@@ -93,7 +93,7 @@ class TestGuardIsHonoured:
         env_file = ROOT / ".env"
         file_values: dict[str, str] = {}
         if env_file.is_file():
-            for raw in env_file.read_text().splitlines():
+            for raw in env_file.read_text(encoding="utf-8").splitlines():
                 line = raw.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue

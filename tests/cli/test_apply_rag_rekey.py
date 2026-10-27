@@ -232,13 +232,13 @@ class TestApplyRekey:
 
     def test_invalid_json_fails(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         bad_file = tmp_path / "bad.json"
-        bad_file.write_text("not json")
+        bad_file.write_text("not json", encoding="utf-8")
         exit_code = main(["--manifest", str(bad_file)])
         assert exit_code == 2
 
     def test_missing_header_fails(self, tmp_path: Path) -> None:
         bad_file = tmp_path / "bad.json"
-        bad_file.write_text(json.dumps({"entries": []}))
+        bad_file.write_text(json.dumps({"entries": []}), encoding="utf-8")
         exit_code = main(["--manifest", str(bad_file)])
         assert exit_code == 2
 
@@ -248,7 +248,7 @@ class TestApplyRekey:
         entries = [_row(100, "1", "2025_골든글러브_투수_원태인")]
         manifest = _make_manifest(entries)
         path = tmp_path / "manifest.json"
-        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
         exit_code = main(["--manifest", str(path), "--apply"])
         assert exit_code == 2
@@ -278,7 +278,7 @@ class TestApplyRekey:
         entries = [_tombstone_row(100, "1", "2025_골든글러브_투수_원태in")]
         manifest = _make_manifest(entries)
         path = tmp_path / "manifest.json"
-        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
         exit_code = main(["--manifest", str(path), "--json"])
         assert exit_code == 0
@@ -329,7 +329,7 @@ class TestApplyRekey:
             entries = [_tombstone_row(100, "1", "2025_골든글러브_투수_원태in")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code == 0
@@ -360,7 +360,7 @@ class TestApplyRekey:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -391,7 +391,7 @@ class TestApplyRekey:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in", content_hash="old_hash")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -420,7 +420,7 @@ class TestApplyRekey:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in", status="DELETED")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -449,7 +449,7 @@ class TestApplyRekey:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in", index_version="rag-v1")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -466,7 +466,7 @@ class TestApplyRekey:
         # Tamper with the manifest SHA
         manifest["manifest_header"]["manifest_sha256"] = "tampered"
         path = tmp_path / "manifest.json"
-        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
         exit_code = main(["--manifest", str(path)])
         assert exit_code == 2
@@ -478,7 +478,7 @@ class TestApplyRekey:
         # Tamper with git SHA
         manifest["manifest_header"]["git_commit_sha"] = "different_sha"
         path = tmp_path / "manifest.json"
-        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
         exit_code = main(["--manifest", str(path)])
         assert exit_code == 2
@@ -501,7 +501,7 @@ class TestApplyRekey:
             # Tamper with db fingerprint
             manifest["manifest_header"]["database_fingerprint"] = "different_fp"
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply"])
             assert exit_code == 2
@@ -582,7 +582,7 @@ class TestApplyRekey:
             ]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -612,7 +612,7 @@ class TestApplyRekey:
             entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
             manifest = _make_manifest(entries)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code in (0, 1)
@@ -651,7 +651,7 @@ class TestApplyRekey:
             manifest["manifest_header"]["expected_entry_count"] = 3
             manifest["manifest_header"]["manifest_sha256"] = _compute_manifest_sha(manifest)
             path = tmp_path / "manifest.json"
-            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
             exit_code = main(["--manifest", str(path), "--apply", "--json"])
             assert exit_code == 0
