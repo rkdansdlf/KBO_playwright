@@ -66,7 +66,7 @@ def test_plan_and_run_flags_propagate_files(capsys: pytest.CaptureFixture[str]) 
     )
     run_id = str(json.loads(capsys.readouterr().out)["run_id"])
     try:
-        task = json.loads((Path("artifacts") / "agent-harness" / run_id / "task.json").read_text())
+        task = json.loads((Path("artifacts") / "agent-harness" / run_id / "task.json").read_text(encoding="utf-8"))
         assert task["profile"] == "analytics"
     finally:
         shutil.rmtree(Path("artifacts") / "agent-harness" / run_id, ignore_errors=True)

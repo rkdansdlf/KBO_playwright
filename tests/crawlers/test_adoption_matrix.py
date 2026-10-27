@@ -61,7 +61,7 @@ from src.crawlers.adoption_matrix import (
 
 def _module_source(module: str) -> str:
     """Read a crawler module the way the matrix reads it."""
-    return (SRC_CRAWLERS / f"{module}.py").read_text()
+    return (SRC_CRAWLERS / f"{module}.py").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")

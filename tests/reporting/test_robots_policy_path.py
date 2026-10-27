@@ -52,8 +52,14 @@ def test_the_constant_matches_the_tracked_directory() -> None:
     from src.reporting.source_inventory import ROBOTS_DIR
 
     tracked = _git_tracked_robots_dir()
-    assert str(ROBOTS_DIR) == tracked, (
-        f"ROBOTS_DIR is {str(ROBOTS_DIR)!r} but git tracks {tracked!r}; "
+    # Compare in git's spelling. ``str(Path)`` uses the host separator, so on
+    # Windows ``Path("Docs/robots")`` stringifies as ``Docs\\robots`` and this
+    # assertion failed over a separator rather than over the case it exists to
+    # check. ``as_posix()`` normalises only a *real* separator: on POSIX a
+    # backslash is an ordinary character, so a ``Path("Docs\\robots")`` literal
+    # still fails there -- the platform the container runs on.
+    assert ROBOTS_DIR.as_posix() == tracked, (
+        f"ROBOTS_DIR is {ROBOTS_DIR.as_posix()!r} but git tracks {tracked!r}; "
         "the name is case-sensitive on Linux and the container has no such directory"
     )
 
@@ -62,7 +68,7 @@ def test_the_host_policy_directory_matches_the_tracked_directory() -> None:
     from src.utils.host_policy import POLICY_DIR
 
     tracked = _git_tracked_robots_dir()
-    assert str(POLICY_DIR) == tracked, f"POLICY_DIR is {str(POLICY_DIR)!r} but git tracks {tracked!r}"
+    assert POLICY_DIR.as_posix() == tracked, f"POLICY_DIR is {POLICY_DIR.as_posix()!r} but git tracks {tracked!r}"
 
 
 def test_the_compliance_snapshot_directory_matches_the_tracked_directory() -> None:
