@@ -17,6 +17,7 @@ from src.scheduler import locks
 from src.scheduler.jobs.sentinel import (
     AUDIT_EXIT_STORE_UNREACHABLE,
     rag_audit_sentinel_job,
+    rag_coverage_sentinel_job,
 )
 
 if TYPE_CHECKING:
@@ -169,3 +170,64 @@ class TestTheGateRunsFirst:
 
         assert called == [], "the audit ran while the database was unreachable"
         warn.assert_not_called()
+
+
+class TestTheCoverageSentinel:
+    """The coverage gate asks the question the index audit cannot.
+
+    ``rag_audit_sentinel_job`` compares the index against itself. This one asks
+    whether what each season holds is in the index at all, which is how every
+    postseason game from 2018 to 2026 went missing with both gates green.
+    """
+
+    def _run(self, exit_code: int | None, exc: Exception | None = None) -> dict[str, Any]:
+        captured: dict[str, Any] = {"warnings": [], "successes": [], "argv": None}
+
+        def fake_main(argv: list[str]) -> int:
+            captured["argv"] = list(argv)
+            if exc is not None:
+                raise exc
+            return exit_code or 0
+
+        with (
+            patch("src.cli.rag.audit_rag_coverage.main", side_effect=fake_main),
+            patch(
+                "src.scheduler.jobs.sentinel.alert_warning",
+                side_effect=lambda n, d=None: captured["warnings"].append((n, d)),
+            ),
+            patch(
+                "src.scheduler.jobs.sentinel.alert_success",
+                side_effect=lambda n, d=None: captured["successes"].append((n, d)),
+            ),
+        ):
+            rag_coverage_sentinel_job()
+        return captured
+
+    def test_the_gate_asks_only_about_recent_seasons(self) -> None:
+        # The 1982~2017 seasons were only indexed on 2026-10-27. Reading that
+        # standing backlog as a daily fault is the red light nobody reads.
+        captured = self._run(0)
+
+        assert captured["argv"] == ["--require-recent", "2", "--json"]
+
+    def test_a_gap_warns(self) -> None:
+        captured = self._run(1)
+
+        assert captured["warnings"]
+        assert captured["warnings"][0][0] == "rag_coverage_sentinel"
+        assert "audit_rag_coverage" in captured["warnings"][0][1]
+
+    def test_a_pass_clears_the_warning(self) -> None:
+        # Nothing else owns this key, so a recovered check has to say so or the
+        # incident outlives the failure.
+        captured = self._run(0)
+
+        assert captured["successes"]
+        assert captured["successes"][0][0] == "rag_coverage_sentinel"
+        assert not captured["warnings"]
+
+    def test_a_crash_warns_without_claiming_a_gap(self) -> None:
+        captured = self._run(0, exc=RuntimeError("boom"))
+
+        assert captured["warnings"]
+        assert "crashed" in captured["warnings"][0][1]

@@ -79,7 +79,11 @@ from src.scheduler.jobs.maintenance import (
     verify_stadiums_places_job,
     weekly_sla_report_job,
 )
-from src.scheduler.jobs.sentinel import rag_audit_sentinel_job, selector_drift_sentinel_job
+from src.scheduler.jobs.sentinel import (
+    rag_audit_sentinel_job,
+    rag_coverage_sentinel_job,
+    selector_drift_sentinel_job,
+)
 from src.scheduler.jobs.stadium import (
     crawl_congestion_job,
     crawl_operation_notices_job,
@@ -442,6 +446,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
         (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
+        (rag_coverage_sentinel_job, trigger_cls(hour=6, minute=20), "rag_coverage_sentinel", 3600),
         (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
         (schema_drift_check_job, trigger_cls(hour=6, minute=35), "schema_drift_check", 3600),
         (snapshot_drift_check_job, trigger_cls(hour=6, minute=45), "snapshot_drift_check", 3600),
