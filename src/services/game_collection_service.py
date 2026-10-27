@@ -73,6 +73,11 @@ DETAIL_IMPOSSIBLE_STATUSES = (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED)
 ROW_FIELD_COUNT = 2
 
 DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
+    # The three primary-source outcomes the crawler distinguishes. Without them
+    # here `_normalize_detail_failure_reason` falls back to the caller's default
+    # and the cause is erased: 429, 404 and a malformed body would all read as
+    # "no payload".
+    "naver_rate_limited",
     "no_detail_payload",
     "incomplete_detail",
     "navigation_error",
@@ -84,6 +89,10 @@ DETAIL_COLLECTION_FAILURE_REASONS_RETRYABLE = {
     "inning_score_mismatch",
 }
 DETAIL_COLLECTION_FAILURE_REASONS_NON_RETRYABLE = {
+    # The resource is not there, so another attempt proves the same absence.
+    "naver_record_unavailable",
+    # A body that does not parse does not fix itself either.
+    "naver_record_malformed",
     "filtered",
     "save_failed",
     "detail_payload_filtered",

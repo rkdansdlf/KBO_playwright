@@ -631,3 +631,48 @@ class TestCancelledGamesAreNotCrawlTargets:
             compiled = self._compiled_filter_args(mock_session)
         for status in ("COMPLETED", "DRAW", "UNRESOLVED_MISSING"):
             assert status not in compiled, f"{status} 가 제외 목록에 들어갔다: {compiled}"
+
+
+class TestThePrimaryReasonsSurviveNormalization:
+    """The crawler's three outcomes must not collapse into one sentence.
+
+    ``_normalize_detail_failure_reason`` returns the caller's default for a
+    reason it does not know, so an unregistered vocabulary erases the cause: a
+    429, a 404 and a body that does not parse all read as "no payload", which is
+    why the log could not say what went wrong.
+    """
+
+    def test_a_rate_limit_stays_a_rate_limit(self) -> None:
+        assert (
+            _normalize_detail_failure_reason("naver_rate_limited", default="no_detail_payload") == "naver_rate_limited"
+        )
+
+    def test_a_missing_record_stays_a_missing_record(self) -> None:
+        assert (
+            _normalize_detail_failure_reason("naver_record_unavailable", default="no_detail_payload")
+            == "naver_record_unavailable"
+        )
+
+    def test_a_malformed_body_stays_malformed(self) -> None:
+        assert (
+            _normalize_detail_failure_reason("naver_record_malformed", default="no_detail_payload")
+            == "naver_record_malformed"
+        )
+
+    def test_a_not_found_and_a_rate_limit_are_not_the_same_reason(self) -> None:
+        from src.crawlers.failure_taxonomy import FailureCode
+        from src.crawlers.game_detail_crawler import _PRIMARY_REASONS
+
+        assert (
+            _PRIMARY_REASONS[FailureCode.FETCH_NOT_FOUND.value]
+            != _PRIMARY_REASONS[FailureCode.FETCH_RATE_LIMITED.value]
+        )
+
+    def test_a_parse_failure_is_not_a_missing_record(self) -> None:
+        from src.crawlers.failure_taxonomy import FailureCode
+        from src.crawlers.game_detail_crawler import _PRIMARY_REASONS
+
+        assert (
+            _PRIMARY_REASONS[FailureCode.PARSE_INVALID_FORMAT.value]
+            != _PRIMARY_REASONS[FailureCode.FETCH_NOT_FOUND.value]
+        )
