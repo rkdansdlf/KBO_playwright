@@ -1182,7 +1182,16 @@ class TestRagRekeySafetyGate3:
                 rollback_path=None,
             )
             assert receipt_path.exists()
-            assert mock_fsync.call_count >= 2  # 1 for file fd, 1 for directory fd
+            # The publisher syncs the file descriptor and then the parent
+            # directory entry -- but only where os.O_DIRECTORY exists. On
+            # Windows that attribute is absent and the source deliberately
+            # swallows the AttributeError, so exactly one fsync happens. Pin
+            # both numbers instead of skipping: a Windows run must not look
+            # like a POSIX run that forgot to sync the directory.
+            if hasattr(os, "O_DIRECTORY"):
+                assert mock_fsync.call_count >= 2  # file fd + parent directory fd
+            else:
+                assert mock_fsync.call_count == 1  # directory sync is POSIX-only
 
     def test_31_subprocess_hard_crash_exit137_recovery(
         self, ephemeral_db: dict[str, Any], tmp_path: Path, monkeypatch
@@ -1230,15 +1239,20 @@ class TestRagRekeySafetyGate3:
         manifest_path = tmp_path / "manifest_hard_crash.json"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-        # Child script that abruptly terminates via os._exit(137) during receipt publication
+        # Child script that abruptly terminates via os._exit(137) during receipt publication.
+        # Paths are interpolated with ``!r``: a Windows path contains backslashes and
+        # ``'...\Users\...'`` inside a single-quoted literal is a ``\U`` unicode escape,
+        # so the child used to die with SyntaxError before doing any work -- which the
+        # exit-code assertion below accepted as "it crashed".
+        db_url = f"sqlite:///{db_file}"
         child_script = f"""
 import os
 import sys
 from unittest.mock import patch
 from src.cli.rag.apply_rag_rekey import main as apply_rekey_main
 
-os.environ['DATABASE_URL'] = 'sqlite:///{db_file}'
-os.environ['R2_REKEY_RECEIPT_DIR'] = '{receipt_dir}'
+os.environ['DATABASE_URL'] = {db_url!r}
+os.environ['R2_REKEY_RECEIPT_DIR'] = {str(receipt_dir)!r}
 os.environ['RAG_INDEX_ALLOW_WRITE'] = '1'
 os.environ['RAG_TARGET_ENV'] = 'local'
 
@@ -1246,13 +1260,17 @@ def _crash_exit(**kwargs):
     os._exit(137)
 
 with patch('src.cli.rag.apply_rag_rekey._publish_immutable_receipt', side_effect=_crash_exit):
-    apply_rekey_main(['--manifest', '{manifest_path}', '--apply', '--transaction-id', 'tx-hard-crash-001'])
+    apply_rekey_main(['--manifest', {str(manifest_path)!r}, '--apply', '--transaction-id', 'tx-hard-crash-001'])
 """
         env = dict(os.environ)
         env["PYTHONPATH"] = "."
         env["RAG_INDEX_ALLOW_WRITE"] = "1"
         res = subprocess.run([sys.executable, "-c", child_script], env=env, capture_output=True, check=False)
-        assert res.returncode != 0
+        # ``os._exit(137)`` is the intended crash point. Any other non-zero exit
+        # means the child died before reaching it -- e.g. on import or on a
+        # write path -- and then the assertions below would be inspecting a run
+        # that never attempted the rekey at all. ``!= 0`` accepts both.
+        assert res.returncode == 137, res.stderr.decode("utf-8", errors="replace")
 
         # Verify DB is in committed post-state
         session = ephemeral_db["session_factory"]()
