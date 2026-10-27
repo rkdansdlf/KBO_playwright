@@ -88,9 +88,15 @@ class TestValidateTransitionExtended:
         valid, err = validate_transition("result_pending_stabilization", "before")
         assert valid is False
 
-    def test_result_pending_to_cancelled_invalid(self):
+    def test_result_pending_can_be_cancelled(self):
+        # A rain-out after the result window used to have no edge out of the
+        # wait. `_apply_relay_lifecycle_state` gates its write on this table, so
+        # it refused the transition and the game stayed in RELAY_ACTIVE_STATES:
+        # polled every cycle and failing every time (20261026HTSS0 was recorded
+        # CANCELLED at 18:01 and was still being fetched at 20:00).
         valid, err = validate_transition("result_pending_stabilization", "cancelled")
-        assert valid is False
+        assert valid is True
+        assert err is None
 
     def test_all_allowed_transitions_valid(self):
         for from_s, to_s in ALLOWED_TRANSITIONS:

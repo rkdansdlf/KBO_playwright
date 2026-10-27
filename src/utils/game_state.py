@@ -56,6 +56,7 @@ ALLOWED_TRANSITIONS: set[tuple[str, str]] = {
     ("suspended", "cancelled"),
     ("suspended", "result_pending_stabilization"),
     ("result_pending_stabilization", "final"),
+    ("result_pending_stabilization", "cancelled"),
     ("result_pending_stabilization", "running"),
     ("result_pending_stabilization", "delayed"),
     ("result_pending_stabilization", "suspended"),

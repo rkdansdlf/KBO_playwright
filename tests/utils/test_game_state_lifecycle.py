@@ -24,6 +24,33 @@ class TestIsTerminal:
         assert is_terminal("before") is False
 
 
+class TestACancelledGameCanLeaveTheResultWait:
+    """A game cancelled while its result was pending has to be able to say so.
+
+    ``result_pending_stabilization`` is in ``RELAY_ACTIVE_STATES``, so a game
+    sitting there is polled again on every live cycle. The table had no edge
+    from it to ``cancelled``, so a rain-out after the result window left the
+    game retrying indefinitely: 20261026HTSS0 was recorded CANCELLED at 18:01
+    and was still being fetched at 20:00, adding a failed run each time.
+    """
+
+    def test_the_result_wait_can_be_cancelled(self) -> None:
+        valid, err = validate_transition("result_pending_stabilization", "cancelled")
+
+        assert valid is True
+        assert err is None
+
+    def test_the_result_wait_can_still_finish(self) -> None:
+        valid, _ = validate_transition("result_pending_stabilization", "final")
+
+        assert valid is True
+
+    def test_a_cancelled_game_stops_being_a_relay_target(self) -> None:
+        # The transition only helps if the state it lands in is not itself
+        # polled; ``cancelled`` is terminal.
+        assert is_terminal("cancelled") is True
+
+
 class TestValidateTransition:
     def test_valid_before_to_running(self):
         valid, err = validate_transition(None, "running")
