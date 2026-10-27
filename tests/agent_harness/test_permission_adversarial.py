@@ -192,7 +192,11 @@ def test_runner_uses_trusted_path_and_ignores_caller_path(
     result = runner.run(["ruff", "--version"], skill_id="harness", env={"PATH": str(fake_bin)})
 
     assert result.exit_code == 0
-    assert Path(observed_argv[0]).name == "ruff"
+    # The runner may append a Windows executable suffix to the allowlisted name
+    # (``_resolve_program`` accepts .exe/.cmd/.bat there), so the question here
+    # is which *program*, not which spelling. ``stem`` answers that on both
+    # platforms without pinning a host-specific filename.
+    assert Path(observed_argv[0]).stem == "ruff"
     assert Path(observed_argv[0]).resolve() != fake_ruff.resolve()
     assert observed_env["PATH"] != str(fake_bin)
 
@@ -219,8 +223,18 @@ def test_trusted_root_symlink_cannot_redirect_outside(
         runner.run(["ruff", "--version"], skill_id="harness")
 
 
-def test_windows_executable_suffix_is_supported(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_windows_executable_suffix_is_supported(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     observed: list[str] = []
+    # A POSIX literal such as ``/trusted`` has no drive on Windows, so
+    # ``Path("/trusted/ruff.exe").resolve()`` and the approved root never match
+    # and the runner is denied for the wrong reason. Use real paths so the
+    # subject stays the .exe suffix.
+    trusted_root = tmp_path / "trusted"
+    trusted_root.mkdir()
+    resolved = trusted_root / "ruff.exe"
 
     def _fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         observed.extend(argv)
@@ -232,12 +246,14 @@ def test_windows_executable_suffix_is_supported(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("tools.agent_harness.command_runner.IS_WINDOWS", True)
     monkeypatch.setattr(
         "tools.agent_harness.command_runner.shutil.which",
-        lambda _program, *, path: "/trusted/ruff.exe",
+        lambda _program, *, path: str(resolved),
     )
+    # Production resolves its roots (``_trusted_executable_targets``), so the
+    # stub does too; otherwise a symlinked tmp_path on macOS would diverge.
     monkeypatch.setattr(
         CommandRunner,
         "_trusted_executable_targets",
-        classmethod(lambda cls: (Path("/trusted"),)),
+        classmethod(lambda cls: (trusted_root.resolve(),)),
     )
     monkeypatch.setattr("tools.agent_harness.command_runner.subprocess.run", _fake_run)
 

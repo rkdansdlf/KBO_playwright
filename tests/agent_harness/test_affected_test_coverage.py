@@ -42,11 +42,16 @@ def _source_files() -> list[Path]:
 
 def test_every_source_file_resolves_to_an_affected_target() -> None:
     """The gate is only meaningful if a change always reaches a real test suite."""
-    unmapped = {
-        str(path.relative_to(ROOT)): ADAPTER.pytest_targets([str(path.relative_to(ROOT))])
-        for path in _source_files()
-        if len(ADAPTER.pytest_targets([str(path.relative_to(ROOT))])) == 1
-    }
+    # git spells paths with forward slashes and the adapter's patterns are
+    # written that way. ``str(Path)`` produces backslashes on Windows, so the
+    # dict comparison failed over the separator rather than over the coverage
+    # gap this test exists to find.
+    unmapped: dict[str, list[str]] = {}
+    for path in _source_files():
+        relative = path.relative_to(ROOT).as_posix()
+        targets = ADAPTER.pytest_targets([relative])
+        if len(targets) == 1:
+            unmapped[relative] = targets
 
     assert unmapped == {path: ["tests/agent_harness"] for path in UNMAPPED_SOURCE_FILES}
 
