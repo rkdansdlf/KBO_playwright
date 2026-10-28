@@ -311,6 +311,31 @@ class TestBoxscoreVerification:
         assert is_valid is True
         assert len(discrepancies) == 0
 
+    def test_verify_boxscore_extra_innings_walkoff(self) -> None:
+        # 연장 10회말 끝내기 상황: KBO 테이블 기본 12이닝 셀 중 11, 12회는 None이며, 29아웃(9.2이닝) 정상 통과
+        game_data = {
+            "game_id": "20180911KTSK0",
+            "teams": {
+                "away": {"code": "KT", "score": 3, "hits": 7, "line_score": [0] * 10 + [None, None]},
+                "home": {"code": "SK", "score": 4, "hits": 9, "line_score": [0] * 10 + [None, None]},
+            },
+            "hitters": {
+                "away": [{"player_id": 2001, "stats": {"at_bats": 4, "hits": 7, "runs": 3}}],
+                "home": [{"player_id": 2002, "stats": {"at_bats": 4, "hits": 9, "runs": 4}}],
+            },
+            "pitchers": {
+                "away": [
+                    {"player_id": 2003, "stats": {"innings_outs": 29, "runs_allowed": 4}}
+                ],  # 10회말 2사 끝내기 (29아웃)
+                "home": [
+                    {"player_id": 2004, "stats": {"innings_outs": 30, "runs_allowed": 3}}
+                ],  # 10회초까지 10이닝 (30아웃)
+            },
+        }
+        is_valid, discrepancies = verify_boxscore_sums(game_data)
+        assert is_valid is True
+        assert len(discrepancies) == 0
+
     def test_verify_boxscore_away_win_requires_full_outs(self) -> None:
         # 원정팀 승리(원정 5 : 홈 3)인데 원정 투수가 24아웃만 기록한 경우 -> 불일치 에러 발생해야 함
         game_data = {

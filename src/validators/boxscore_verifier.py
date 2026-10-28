@@ -152,17 +152,19 @@ def _verify_pitching_cross_checks(
         pitching_totals, away_pitchers, home_pitchers, discrepancies
     )
 
-    # 2. 박스스코어 합계 행이 없는 경우: 9회말 미진행(24아웃) 및 끝내기(24~26아웃) 승패 상황 예외 처리
+    # 2. 박스스코어 합계 행이 없는 경우: 9회말 미진행(24아웃) 및 끝내기(24~26아웃, 연장 끝내기) 승패 상황 예외 처리
     has_score = away_score is not None and home_score is not None
     if not verified_with_team_totals and has_score and away_pitchers and home_pitchers:
         away_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in away_pitchers)
         home_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in home_pitchers)
+        pitcher_inferred_innings = max((home_outs + 2) // 3, (away_outs + 2) // 3)
+        effective_num_innings = max(num_innings, pitcher_inferred_innings)
         errors = _check_pitching_innings_outs_plausibility(
             away_outs=away_outs,
             home_outs=home_outs,
             away_score=int(away_score),
             home_score=int(home_score),
-            num_innings=num_innings,
+            num_innings=effective_num_innings,
         )
         discrepancies.extend(errors)
 
@@ -190,7 +192,23 @@ def verify_boxscore_sums(
 
     scoreboard = game_data.get("scoreboard") or {}
     innings_list = scoreboard.get("innings") or game_data.get("innings") or []
-    num_innings = len(innings_list) if isinstance(innings_list, list) and innings_list else 9
+    away_line = (teams.get("away") or {}).get("line_score") or []
+    home_line = (teams.get("home") or {}).get("line_score") or []
+
+    # line_score often contains trailing None values for unplayed innings (up to 12)
+    line_innings = max(
+        max((idx for idx, runs in enumerate(away_line, start=1) if runs is not None), default=0),
+        max((idx for idx, runs in enumerate(home_line, start=1) if runs is not None), default=0),
+    )
+    if isinstance(innings_list, list) and innings_list:
+        if all(isinstance(r, dict) and "inning" in r for r in innings_list):
+            innings_from_list = max((int(r["inning"]) for r in innings_list if r.get("runs") is not None), default=0)
+        else:
+            innings_from_list = len(innings_list)
+    else:
+        innings_from_list = 0
+
+    num_innings = max(line_innings, innings_from_list, 9)
 
     for side in ("away", "home"):
         _verify_team_batting_sums(
@@ -283,13 +301,15 @@ def verify_game_db_boxscore_integrity(
     if game.home_score is not None and game.away_score is not None and away_pitchers and home_pitchers:
         away_outs = sum(r.innings_outs or 0 for r in away_pitchers)
         home_outs = sum(r.innings_outs or 0 for r in home_pitchers)
+        pitcher_inferred_innings = max((home_outs + 2) // 3, (away_outs + 2) // 3)
+        effective_num_innings = max(num_innings, pitcher_inferred_innings)
         errors.extend(
             _check_pitching_innings_outs_plausibility(
                 away_outs=away_outs,
                 home_outs=home_outs,
                 away_score=game.away_score,
                 home_score=game.home_score,
-                num_innings=num_innings,
+                num_innings=effective_num_innings,
             )
         )
 
