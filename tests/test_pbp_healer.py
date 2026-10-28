@@ -8,7 +8,7 @@ to avoid FK resolution errors from unrelated models.
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -34,7 +34,7 @@ def _make_game(game_id: str, status: str, game_date=None) -> Game:
     return Game(
         game_id=game_id,
         game_status=status,
-        game_date=game_date or (datetime.date.today() - datetime.timedelta(days=1)),
+        game_date=game_date or (dt.date.today() - dt.timedelta(days=1)),
     )
 
 
@@ -126,7 +126,7 @@ class TestFindUnverifiedPBPGames:
 
     def test_lookback_days_filters_old_games(self):
         """Games older than lookback_days should be excluded."""
-        old_date = datetime.date.today() - datetime.timedelta(days=10)
+        old_date = dt.date.today() - dt.timedelta(days=10)
         session = _new_session()
         session.add(_make_game("2025052001", "COMPLETED", game_date=old_date))
         session.add(_make_metadata("2025052001", "unverified", "missing_innings_[2]"))

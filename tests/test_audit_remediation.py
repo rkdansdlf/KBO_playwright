@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-import datetime
+import datetime as dt
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -59,7 +59,7 @@ def test_audit_batting_remediation_within_threshold(tmp_path):
         session.add(player)
 
         # Seed Game
-        game = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
+        game = Game(game_id="20250401OBWO0", season_id=1, game_date=dt.date(2025, 4, 1))
         session.add(game)
 
         # Seed Game Batting Stat (calculated should be: games=1, hits=2, at_bats=4)
@@ -154,7 +154,7 @@ def test_audit_batting_remediation_aborted_by_max_mismatches(tmp_path):
             player = PlayerBasic(player_id=pid, name=name)
             session.add(player)
 
-            game = Game(game_id=f"20250401OBWO{pid}", season_id=1, game_date=datetime.date(2025, 4, 1))
+            game = Game(game_id=f"20250401OBWO{pid}", season_id=1, game_date=dt.date(2025, 4, 1))
             session.add(game)
 
             game_bat = GameBattingStat(
@@ -239,7 +239,7 @@ def test_audit_batting_remediation_aborted_by_max_game_diff(tmp_path):
         player = PlayerBasic(player_id=1001, name="홍길동")
         session.add(player)
 
-        game = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
+        game = Game(game_id="20250401OBWO0", season_id=1, game_date=dt.date(2025, 4, 1))
         session.add(game)
 
         # calculated games = 1
@@ -317,7 +317,7 @@ def test_audit_pitching_remediation_within_threshold(tmp_path):
         player = PlayerBasic(player_id=5001, name="김투수")
         session.add(player)
 
-        game = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
+        game = Game(game_id="20250401OBWO0", season_id=1, game_date=dt.date(2025, 4, 1))
         session.add(game)
 
         # Seed game-level pitching stat (source of truth for "calculated" values)
@@ -404,7 +404,7 @@ def test_audit_pitching_remediation_aborted_by_max_innings_outs_diff(tmp_path):
         player = PlayerBasic(player_id=6001, name="박투수")
         session.add(player)
 
-        game = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
+        game = Game(game_id="20250401OBWO0", season_id=1, game_date=dt.date(2025, 4, 1))
         session.add(game)
 
         # Seed game-level pitching stat with 27 innings outs
