@@ -26,6 +26,10 @@ KBO_MID_90S_ERA_END = 1995
 KBO_90S_ERA_END = 1999
 KBO_MILLENNIUM_ERA_END = 2000
 KBO_2000S_ERA_END = 2001
+#: First season whose game bodies (boxscores, play-by-play) were collected.
+#: Seasons before it hold a score and no body, so anything that needs per-game
+#: counts for them must read the schedule instead.
+KBO_COLLECTED_START_YEAR = 2001
 KBO_PLAYOFF_ERA_END = 2006
 KBO_SEMI_PLAYOFF_ERA_END = 2014
 KBO_QUALITY_AUDIT_START_YEAR = 2020

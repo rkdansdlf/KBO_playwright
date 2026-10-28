@@ -125,5 +125,5 @@ class TestAllowedTransitions:
         # ``cancelled`` belongs here: a rain-out after the result window has no
         # other way out of the wait, and the state is in RELAY_ACTIVE_STATES, so
         # a game stuck there is polled every cycle (20261026HTSS0 was recorded
-        # CANCELLED at 18:01 and still fetched at 20:00).
+        # CANCELLED at 18:01 and still fetched at 20:00). d878890f.
         assert result_targets == {"final", "cancelled", "running", "delayed", "suspended"}
