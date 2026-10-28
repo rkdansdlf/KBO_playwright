@@ -86,12 +86,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"{'-' * 60}")
 
     for outcome in report.outcomes:
-        status_symbol = "✅" if outcome.status == "repaired" else "❌"
+        if outcome.status == "repaired":
+            status_symbol = "✅"
+        elif outcome.status == "pending_repair":
+            status_symbol = "🔍"
+        else:
+            status_symbol = "❌"
         print(f" {status_symbol} {outcome.game_id} ({outcome.game_date}): {outcome.status}")
         for err in outcome.errors:
             print(f"    - {err}")
 
     print(f"{'=' * 60}\n")
+    if not args.apply:
+        return 0
     return 0 if (report.failed == 0 and report.discrepancies == 0) else 1
 
 

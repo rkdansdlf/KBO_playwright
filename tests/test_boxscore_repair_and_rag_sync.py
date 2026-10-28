@@ -180,9 +180,11 @@ class TestBoxscoreRepairExecution:
             report = await repair_games_async([candidate], dry_run=True, session=sqlite_test_db)
 
             assert report.total_candidates == 1
-            assert report.repaired == 1
             assert report.dry_run is True
+            assert report.outcomes[0].status == "pending_repair"
+            assert report.outcomes[0].persisted is False
             mock_save.assert_not_called()
+            mock_crawl.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_repair_apply_and_dlq_resolution(self, sqlite_test_db: Session) -> None:

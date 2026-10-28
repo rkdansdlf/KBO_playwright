@@ -18,7 +18,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.db.engine import SessionLocal
 from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
@@ -101,28 +101,59 @@ def _date_from_game_id(game_id: str) -> str:
 def discover_candidates_from_integrity(
     session: Session,
     target_date: str | date | None = None,
+    limit: int = 100,
 ) -> list[RepairCandidate]:
     """Find games with boxscore discrepancies in DB using integrity verification."""
     candidates: list[RepairCandidate] = []
-    query = session.query(Game)
 
     if target_date is not None:
         parsed_date = parse_date_str(str(target_date).replace("-", "")) if isinstance(target_date, str) else target_date
-        query = query.filter(Game.game_date == parsed_date)
+        games = session.query(Game).filter(Game.game_date == parsed_date).all()
+        for game in games:
+            is_valid, errors = verify_game_db_boxscore_integrity(session, game.game_id)
+            if not is_valid:
+                game_date_str = (
+                    game.game_date.strftime("%Y-%m-%d") if game.game_date else _date_from_game_id(game.game_id)
+                )
+                candidates.append(
+                    RepairCandidate(
+                        game_id=game.game_id,
+                        game_date=game_date_str,
+                        source="integrity_checker",
+                        reasons=errors,
+                    )
+                )
+        return candidates
 
-    games = query.all()
-    for game in games:
-        is_valid, errors = verify_game_db_boxscore_integrity(session, game.game_id)
+    discrepancy_sql = text("""
+        SELECT g.game_id
+        FROM game g
+        JOIN game_batting_stats b ON g.game_id = b.game_id
+        WHERE g.game_status IN ('COMPLETED', 'FINAL', '종료')
+        GROUP BY g.game_id, g.game_date, g.away_score, g.home_score
+        HAVING (g.away_score IS NOT NULL AND g.away_score != SUM(CASE WHEN b.team_side = 'away' THEN b.runs ELSE 0 END))
+            OR (g.home_score IS NOT NULL AND g.home_score != SUM(CASE WHEN b.team_side = 'home' THEN b.runs ELSE 0 END))
+        ORDER BY g.game_date DESC
+        LIMIT :limit
+    """)
+    try:
+        candidate_ids = [row[0] for row in session.execute(discrepancy_sql, {"limit": limit}).all()]
+    except Exception:
+        logger.warning("Fast SQL discrepancy query failed; returning empty candidates list", exc_info=True)
+        candidate_ids = []
+
+    for gid in candidate_ids:
+        is_valid, errors = verify_game_db_boxscore_integrity(session, gid)
         if not is_valid:
-            game_date_str = game.game_date.strftime("%Y-%m-%d") if game.game_date else _date_from_game_id(game.game_id)
             candidates.append(
                 RepairCandidate(
-                    game_id=game.game_id,
-                    game_date=game_date_str,
+                    game_id=gid,
+                    game_date=_date_from_game_id(gid),
                     source="integrity_checker",
                     reasons=errors,
                 )
             )
+
     return candidates
 
 
@@ -237,13 +268,23 @@ async def _crawl_and_repair_single(
     session: Session | None = None,
 ) -> RepairOutcome:
     """Crawl a single game, verify boxscore, and save if not dry-run."""
+    game_id = candidate.game_id
+    game_date = candidate.game_date
+
+    if dry_run:
+        return RepairOutcome(
+            game_id=game_id,
+            game_date=game_date,
+            status="pending_repair",
+            errors=candidate.reasons,
+            persisted=False,
+        )
+
     from src.crawlers.game_detail_crawler import GameDetailCrawler
     from src.repositories.crawl_dead_letter_repository import CrawlDeadLetterRepository
     from src.repositories.game_save import save_game_detail
 
     crawler = GameDetailCrawler()
-    game_id = candidate.game_id
-    game_date = candidate.game_date
 
     logger.info("🔧 [REPAIR] Crawling game %s (%s)...", game_id, game_date)
     try:
@@ -268,15 +309,6 @@ async def _crawl_and_repair_single(
         )
 
     is_valid, discrepancies = verify_boxscore_sums(payload)
-    if dry_run:
-        status = "repaired" if is_valid else "discrepancy_remaining"
-        return RepairOutcome(
-            game_id=game_id,
-            game_date=game_date,
-            status=status,
-            errors=discrepancies,
-            persisted=False,
-        )
 
     # Persist via UPSERT
     owns_session = session is None
@@ -348,7 +380,7 @@ async def repair_games_async(
             report.repaired += 1
         elif outcome.status in {"crawl_failed", "save_failed"}:
             report.failed += 1
-        elif outcome.status == "discrepancy_remaining":
+        elif outcome.status in {"discrepancy_remaining", "pending_repair"}:
             report.discrepancies += 1
 
     return report
