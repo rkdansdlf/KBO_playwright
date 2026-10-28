@@ -46,7 +46,16 @@ PRESERVED_TABLES = ("crawl_execution_runs", "correction_audit_trail")
 
 
 def _snapshot(alias_game_id: str) -> dict[str, list[dict]]:
-    tables = ("game", *MOVED_TABLES, *REPLACED_TABLES, *PRESERVED_TABLES)
+    tables = (
+        "game",
+        "game_batting_stats",
+        "game_pitching_stats",
+        "game_inning_scores",
+        "game_lineups",
+        *MOVED_TABLES,
+        *REPLACED_TABLES,
+        *PRESERVED_TABLES,
+    )
     snapshot: dict[str, list[dict]] = {}
     with Engine.connect() as conn:
         for table in tables:

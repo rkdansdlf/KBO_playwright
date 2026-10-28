@@ -359,6 +359,34 @@ class TestBoxscoreVerification:
         assert is_valid is False
         assert any("원정 투수 아웃카운트 부족" in d for d in discrepancies)
 
+    def test_verify_boxscore_2011_exhibition_tiebreaker(self) -> None:
+        # 2011년 3월 시범경기 10회 승부치기: 정규 9이닝(27아웃) 개인 기록과 10회 이닝 스코어가 결합된 특수 규정 정상 통과
+        game_data = {
+            "game_id": "20110327OBLG0",
+            "game_date": "2011-03-27",
+            "teams": {
+                "away": {"code": "OB", "score": 5, "hits": 8, "line_score": [0, 1, 0, 0, 1, 0, 0, 0, 0, 3]},
+                "home": {"code": "LG", "score": 4, "hits": 7, "line_score": [0, 0, 1, 0, 0, 0, 0, 1, 0, 2]},
+            },
+            "hitters": {
+                "away": [{"player_id": 3001, "stats": {"at_bats": 4, "hits": 8, "runs": 2}}],  # 9회까지 2득점
+                "home": [{"player_id": 3002, "stats": {"at_bats": 4, "hits": 7, "runs": 2}}],  # 9회까지 2득점
+            },
+            "pitchers": {
+                "away": [{"player_id": 3003, "stats": {"innings_outs": 27, "runs_allowed": 2}}],  # 9회까지 2실점
+                "home": [{"player_id": 3004, "stats": {"innings_outs": 27, "runs_allowed": 2}}],  # 9회까지 2실점
+            },
+            "scoreboard": {
+                "innings": [
+                    {"inning": 10, "team_side": "away", "runs": 3},
+                    {"inning": 10, "team_side": "home", "runs": 2},
+                ]
+            },
+        }
+        is_valid, discrepancies = verify_boxscore_sums(game_data)
+        assert is_valid is True
+        assert len(discrepancies) == 0
+
     def test_verify_daily_game_count(self, sqlite_session) -> None:
         # Target date 2026-05-05 has 1 game in sqlite_session fixture
         is_match, count, expected, notes = verify_daily_game_count("2026-05-05", sqlite_session, expected_count=1)

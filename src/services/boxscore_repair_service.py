@@ -364,11 +364,22 @@ async def _crawl_and_repair_single(
             active_session.close()
 
 
+def _record_outcome(report: RepairBatchReport, outcome: RepairOutcome) -> None:
+    report.outcomes.append(outcome)
+    if outcome.status == "repaired":
+        report.repaired += 1
+    elif outcome.status in {"crawl_failed", "save_failed"}:
+        report.failed += 1
+    elif outcome.status in {"discrepancy_remaining", "pending_repair"}:
+        report.discrepancies += 1
+
+
 async def repair_games_async(
     candidates: list[RepairCandidate],
     *,
     dry_run: bool = True,
     session: Session | None = None,
+    concurrency: int = 1,
 ) -> RepairBatchReport:
     """Asynchronously execute repair workflow across candidates."""
     report = RepairBatchReport(
@@ -376,15 +387,21 @@ async def repair_games_async(
         dry_run=dry_run,
     )
 
-    for candidate in candidates:
-        outcome = await _crawl_and_repair_single(candidate, dry_run=dry_run, session=session)
-        report.outcomes.append(outcome)
-        if outcome.status == "repaired":
-            report.repaired += 1
-        elif outcome.status in {"crawl_failed", "save_failed"}:
-            report.failed += 1
-        elif outcome.status in {"discrepancy_remaining", "pending_repair"}:
-            report.discrepancies += 1
+    if concurrency <= 1 or session is not None:
+        for candidate in candidates:
+            outcome = await _crawl_and_repair_single(candidate, dry_run=dry_run, session=session)
+            _record_outcome(report, outcome)
+        return report
+
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _worker(candidate: RepairCandidate) -> RepairOutcome:
+        async with sem:
+            return await _crawl_and_repair_single(candidate, dry_run=dry_run, session=None)
+
+    outcomes = await asyncio.gather(*[_worker(c) for c in candidates])
+    for outcome in outcomes:
+        _record_outcome(report, outcome)
 
     return report
 
