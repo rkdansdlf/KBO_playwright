@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, text
 
-from src.constants import KST
+from src.constants import FINAL_PBP_MARKER, KST
 from src.utils.team_history import iter_team_history
 
 if TYPE_CHECKING:
@@ -1378,13 +1378,27 @@ _CHECKS: tuple[_SqlCheck, ...] = (
     # stored result. The status column is what every gate reads, so a game whose
     # only surviving evidence is the relay is invisible to all of them, which is
     # precisely the evidence that says it was played.
+    #
+    # Graded `informational` for the reason 2015-10-16 and the four 2021-05-08
+    # games give: they carry the same shape and the historical write policy
+    # refuses to let anything correct them without a reviewer's approval, so
+    # ``fail`` would leave the daily gate red on the day it was added and every
+    # day after -- a gate nobody reads. The count and the sample ids are still
+    # reported, and the current-season case is actionable: the repair that writes
+    # it is `scripts/maintenance/recover_game_result_from_relay.py`, whose own
+    # dry run names every row it would write and every row it will not.
     _SqlCheck(
         check_id="game_cancelled_with_finished_relay",
         description="Cancelled games whose relay feed reached the closing marker",
         table="game",
         required_columns=("game_id", "game_status", "is_primary"),
         referenced_tables=("game_play_by_play",),
-        count_sql="""
+        informational=True,
+        # The marker is interpolated rather than typed out. A check that spells the
+        # literal itself keeps passing after the feed stops writing it -- the SQL
+        # looks for a row that no longer exists and reports a clean database. One
+        # definition, and a test that holds the SQL to it.
+        count_sql=f"""
             SELECT COUNT(*)
             FROM game
             WHERE is_primary
@@ -1393,10 +1407,10 @@ _CHECKS: tuple[_SqlCheck, ...] = (
                   SELECT 1
                   FROM game_play_by_play p
                   WHERE p.game_id = game.game_id
-                    AND p.play_description LIKE '%=====================================%'
+                    AND p.play_description LIKE '%{FINAL_PBP_MARKER}%'
               )
-        """,
-        sample_sql="""
+        """,  # noqa: S608
+        sample_sql=f"""
             SELECT COALESCE(CAST(game_id AS TEXT), '')
             FROM game
             WHERE is_primary
@@ -1405,10 +1419,10 @@ _CHECKS: tuple[_SqlCheck, ...] = (
                   SELECT 1
                   FROM game_play_by_play p
                   WHERE p.game_id = game.game_id
-                    AND p.play_description LIKE '%=====================================%'
+                    AND p.play_description LIKE '%{FINAL_PBP_MARKER}%'
               )
             LIMIT 5
-        """,
+        """,  # noqa: S608
     ),
     # The result is known but the boxscore body was never collected, so lineups,
     # innings and boxscore rows are all 0. This is a property of the source, not
