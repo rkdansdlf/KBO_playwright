@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import contextlib
 from collections import Counter
-import datetime
+import datetime as dt
 import hashlib
 import json
 import os
@@ -111,7 +111,7 @@ def _make_safe_manifest(entries: list[dict[str, Any]]) -> dict[str, Any]:
     manifest["manifest_header"] = {
         "manifest_schema_version": "r2-rekey-manifest-v1",
         "identity_schema_version": "r2",
-        "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "database_fingerprint": db_fingerprint,
         "git_commit_sha": git_sha,
         "manifest_sha256": manifest_sha,
