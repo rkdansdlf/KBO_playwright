@@ -54,6 +54,9 @@ NAVER_HEADERS = {
 }
 
 
+SCHEDULE_FAILURE_RATIO_LIMIT = 0.5
+
+
 class ScheduleSourceUnavailableError(RuntimeError):
     """Every schedule lookup failed, so "no games" cannot be told from "no answer".
 
@@ -161,7 +164,7 @@ async def _fetch_schedule_game_ids_from_naver(season: int, month: int | None) ->
         Sorted unique KBO game ids.
 
     Raises:
-        ScheduleSourceUnavailableError: When every date lookup failed.
+        ScheduleSourceUnavailableError: When more than half of the date lookups failed.
 
     """
     months = [month] if month else list(range(3, 11))
@@ -183,8 +186,11 @@ async def _fetch_schedule_game_ids_from_naver(season: int, month: int | None) ->
                     game_id = _kbo_game_id_from_naver(game)
                     if game_id:
                         game_ids.add(game_id)
-    if attempted and failed == attempted:
-        msg = f"Naver schedule lookup failed for all {attempted} dates of {season}/{month or '*'}"
+    if attempted and failed / attempted > SCHEDULE_FAILURE_RATIO_LIMIT:
+        msg = (
+            f"Naver schedule lookup failed for {failed}/{attempted} dates of {season}/{month or '*'} "
+            f"(limit {SCHEDULE_FAILURE_RATIO_LIMIT:.0%})"
+        )
         raise ScheduleSourceUnavailableError(msg)
     if failed:
         logger.warning("[NAVER] Schedule lookup failed for %d/%d dates; results may be partial", failed, attempted)
@@ -403,7 +409,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Returns:
         Exit code: 0 on success (including a window with no games), 1 when the
-        schedule source could not be read at all.
+        schedule source could not be read or when games were found but every
+        relay crawl failed.
 
     """
     parser = build_arg_parser()
@@ -416,6 +423,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(f"{json.dumps({'error': 'schedule_source_unavailable', 'detail': str(exc)})}\n")
         return 1
     sys.stdout.write(f"{json.dumps(result, ensure_ascii=False)}\n")
+    if isinstance(result, dict) and result.get("total", 0) > 0 and result.get("success", 0) == 0:
+        logger.error("All %s relay crawls failed", result.get("total"))
+        return 1
     return 0
 
 
