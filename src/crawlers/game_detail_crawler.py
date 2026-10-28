@@ -57,6 +57,7 @@ from src.utils.team_codes import (
     resolve_team_code,
     season_team_code,
     team_code_from_game_id_segment,
+    to_kbo_site_game_id,
 )
 from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
@@ -476,15 +477,13 @@ class GameDetailCrawler:
             game_id: Game ID.
             game_date: Game Date.
             section: Section.
-            game_id: Game ID.
-            game_date: Game Date.
-            section: Section.
 
         Returns:
             String result.
 
         """
-        return f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+        site_game_id = to_kbo_site_game_id(game_id)
+        return f"{self.base_url}?gameDate={game_date}&gameId={site_game_id}&section={section}"
 
     @staticmethod
     def _empty_metadata() -> dict[str, Any]:
@@ -814,7 +813,7 @@ class GameDetailCrawler:
         """
         from src.crawlers.relay_crawler import RelayCrawler
 
-        naver_id = RelayCrawler._map_to_naver_id(game_id)  # noqa: SLF001
+        naver_id = RelayCrawler._map_to_naver_id(to_kbo_site_game_id(game_id))  # noqa: SLF001
         url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
         # The primary attempt starts here, so this is where a fresh record
         # begins. Recording before the fetch instead of after it is deliberate:

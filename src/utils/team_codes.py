@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, or_
 
-from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN
+from src.constants import DATE_STR_LEN, GAME_ID_FULL_LEN, GAME_ID_MIN_LEN
 from src.models.franchise import Franchise
 from src.utils.team_history import franchise_id_for_team_code, resolve_team_code_for_season
 
@@ -450,12 +450,40 @@ def _split_game_id_team_part(team_part: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+KBO_SITE_GAME_ID_MAPPINGS: dict[str, str] = {
+    "NX": "WO",
+    "KH": "WO",
+    "HU": "HD",
+    "SSG": "SK",
+    "DB": "OB",
+    "KIA": "HT",
+}
+
+
+def to_kbo_site_game_id(game_id: str) -> str:
+    """Map any game_id (with brand or modern codes) to the KBO site's GameCenter URL gameId."""
+    if not game_id or len(game_id) < GAME_ID_MIN_LEN:
+        return game_id
+    raw = str(game_id).strip().upper()
+    match = re.match(r"^(\d{8})([A-Z]+)(\d)$", raw)
+    if not match:
+        return game_id
+    date_part, team_part, dh = match.groups()
+    away_code, home_code = _split_game_id_team_part(team_part)
+    if not away_code or not home_code:
+        return game_id
+    away_site = KBO_SITE_GAME_ID_MAPPINGS.get(away_code, away_code)
+    home_site = KBO_SITE_GAME_ID_MAPPINGS.get(home_code, home_code)
+    return f"{date_part}{away_site}{home_site}{dh}"
+
+
 # Standard codes for the 10 current franchises
 STANDARD_TEAM_CODES = {"HH", "KIA", "KT", "LG", "LT", "NC", "DB", "SSG", "SS", "KH"}
 # All valid historical and modern team codes
 VALID_TEAM_CODES = STANDARD_TEAM_CODES | set(KBO_GAME_ID_TEAM_CODES) | set(TEAM_NAME_TO_CODE.values())
 
 __all__ = [
+    "KBO_SITE_GAME_ID_MAPPINGS",
     "KBO_TECHNICAL_TEAM_CODES",
     "STANDARD_TEAM_CODES",
     "TEAM_NAME_TO_CODE",
@@ -467,4 +495,5 @@ __all__ = [
     "resolve_team_code",
     "season_team_code",
     "team_code_from_game_id_segment",
+    "to_kbo_site_game_id",
 ]
