@@ -54,6 +54,15 @@ NAVER_HEADERS = {
 }
 
 
+class ScheduleSourceUnavailableError(RuntimeError):
+    """Every schedule lookup failed, so "no games" cannot be told from "no answer".
+
+    A day without games returns an empty schedule with HTTP 200. A timeout or a
+    non-200 is not an answer, and when every date in the window ends that way the
+    collector must fail instead of reporting ``total: 0`` as a quiet success.
+    """
+
+
 def _load_game_ids_from_db(season: int, month: int | None) -> list[str]:
     """Load KBO game ids from the local game table.
 
@@ -90,7 +99,7 @@ async def _fetch_naver_schedule_games(
     client: httpx.AsyncClient,
     season: int,
     date_str: str,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | None:
     """Fetch the Naver schedule payload for a single date.
 
     Args:
@@ -99,7 +108,8 @@ async def _fetch_naver_schedule_games(
         date_str: ISO date string (YYYY-MM-DD).
 
     Returns:
-        List of game objects.
+        List of game objects (empty on a day without games), or ``None`` when
+        the lookup itself failed (transport error, non-200, unparsable body).
 
     """
     params = {
@@ -112,12 +122,12 @@ async def _fetch_naver_schedule_games(
         response = await client.get(NAVER_SCHEDULE_API, params=params, timeout=10.0)
         if response.status_code != HTTPStatus.OK:
             logger.warning("[NAVER] Schedule fetch failed with status %s for %s", response.status_code, date_str)
-            return []
+            return None
         payload = response.json()
         return list((payload.get("result") or {}).get("games") or [])
     except httpx.HTTPError, ValueError, TypeError, KeyError:
         logger.exception("[NAVER] Schedule fetch/parse failed for %s", date_str)
-        return []
+        return None
 
 
 def _kbo_game_id_from_naver(game: dict[str, Any]) -> str | None:
@@ -150,20 +160,34 @@ async def _fetch_schedule_game_ids_from_naver(season: int, month: int | None) ->
     Returns:
         Sorted unique KBO game ids.
 
+    Raises:
+        ScheduleSourceUnavailableError: When every date lookup failed.
+
     """
     months = [month] if month else list(range(3, 11))
     game_ids: set[str] = set()
+    attempted = 0
+    failed = 0
     async with httpx.AsyncClient(headers=NAVER_HEADERS) as client:
         for m in months:
             end = date(season, _DECEMBER, 31) if m == _DECEMBER else date(season, m + 1, 1) - timedelta(days=1)
             cursor = date(season, m, 1)
             while cursor <= end:
                 games = await _fetch_naver_schedule_games(client, season, cursor.isoformat())
+                attempted += 1
+                cursor += timedelta(days=1)
+                if games is None:
+                    failed += 1
+                    continue
                 for game in games:
                     game_id = _kbo_game_id_from_naver(game)
                     if game_id:
                         game_ids.add(game_id)
-                cursor += timedelta(days=1)
+    if attempted and failed == attempted:
+        msg = f"Naver schedule lookup failed for all {attempted} dates of {season}/{month or '*'}"
+        raise ScheduleSourceUnavailableError(msg)
+    if failed:
+        logger.warning("[NAVER] Schedule lookup failed for %d/%d dates; results may be partial", failed, attempted)
     return sorted(game_ids)
 
 
@@ -378,13 +402,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv: Argv.
 
     Returns:
-        Exit code (0).
+        Exit code: 0 on success (including a window with no games), 1 when the
+        schedule source could not be read at all.
 
     """
     parser = build_arg_parser()
 
     args = parser.parse_args(argv)
-    result = asyncio.run(run_from_args(args))
+    try:
+        result = asyncio.run(run_from_args(args))
+    except ScheduleSourceUnavailableError as exc:
+        logger.exception("Schedule source unavailable")
+        sys.stdout.write(f"{json.dumps({'error': 'schedule_source_unavailable', 'detail': str(exc)})}\n")
+        return 1
     sys.stdout.write(f"{json.dumps(result, ensure_ascii=False)}\n")
     return 0
 

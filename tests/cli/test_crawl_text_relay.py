@@ -252,3 +252,56 @@ class TestCrawlerExecution:
         csv_files = list(tmp_path.glob("*_text_relay.csv"))
         assert len(csv_files) == 1
         assert csv_files[0].name == "20260819HTHH0_text_relay.csv"
+
+
+class TestScheduleSourceFailureHandling:
+    """A schedule timeout must not be reported as a quiet "0 games" success."""
+
+    @pytest.mark.asyncio
+    async def test_all_dates_failing_raises(self):
+        from src.cli.crawl_text_relay import ScheduleSourceUnavailableError, _fetch_schedule_game_ids_from_naver
+
+        with (
+            patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", new_callable=AsyncMock, return_value=None),
+            pytest.raises(ScheduleSourceUnavailableError),
+        ):
+            await _fetch_schedule_game_ids_from_naver(2026, 10)
+
+    @pytest.mark.asyncio
+    async def test_genuine_no_game_month_returns_empty(self):
+        from src.cli.crawl_text_relay import _fetch_schedule_game_ids_from_naver
+
+        with patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", new_callable=AsyncMock, return_value=[]):
+            assert await _fetch_schedule_game_ids_from_naver(2026, 12) == []
+
+    @pytest.mark.asyncio
+    async def test_partial_failure_keeps_found_games(self):
+        from src.cli.crawl_text_relay import _fetch_schedule_game_ids_from_naver
+
+        game = {"gameId": "20261026LGSS02026", "gameDate": "2026-10-26"}
+        calls = {"n": 0}
+
+        async def fake(_client, _season, _date):
+            calls["n"] += 1
+            return None if calls["n"] % 2 else [game]
+
+        with (
+            patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", side_effect=fake),
+            patch("src.cli.crawl_text_relay._kbo_game_id_from_naver", return_value="20261026LGSS0"),
+        ):
+            assert await _fetch_schedule_game_ids_from_naver(2026, 10) == ["20261026LGSS0"]
+
+    def test_main_returns_nonzero_when_schedule_unavailable(self):
+        from src.cli.crawl_text_relay import ScheduleSourceUnavailableError
+
+        with patch(
+            "src.cli.crawl_text_relay.run_season",
+            new_callable=AsyncMock,
+            side_effect=ScheduleSourceUnavailableError("down"),
+        ):
+            assert main(["--season", "2026", "--month", "10"]) == 1
+
+    def test_main_returns_zero_for_no_game_window(self):
+        with patch("src.cli.crawl_text_relay.run_season", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"total": 0, "success": 0, "failed": 0}
+            assert main(["--season", "2026", "--month", "12"]) == 0
