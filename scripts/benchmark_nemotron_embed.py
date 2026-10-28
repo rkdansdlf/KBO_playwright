@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
 
-load_dotenv()
+from src.config.env_loader import load_project_env
+
+load_project_env()
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,10 @@ TEST_DOCS = [
     ("team_standings_daily", "2025년 KIA 타이거즈는 정규시즌 1위로 한국시리즈 직행했습니다. 88승 56패 승률 0.611."),
     ("player_movements", "2025년 7월 트레이드 마감일: SSG 랜더스가 투수 김택연을 키움 히어로즈로 보냈습니다."),
     ("team_events", "두산 베어스 2025시즌 공식 이벤트: 홈 개막전 팬 페스티벌, 어린이날 특별 이벤트 등 12개 행사 진행."),
-    ("team_standings_daily", "2025시즌 승률 1위 구단은 KIA 타이거즈(0.611), 2위 삼성 라이온즈(0.583), 3위 LG 트윈스(0.569)."),
+    (
+        "team_standings_daily",
+        "2025시즌 승률 1위 구단은 KIA 타이거즈(0.611), 2위 삼성 라이온즈(0.583), 3위 LG 트윈스(0.569).",
+    ),
     ("stat_rankings", "2025년 KBO 투수 평균자책점 1위는 원태인(삼성)입니다. ERA 2.34로 1위를 기록했습니다."),
 ]
 
@@ -120,7 +124,7 @@ def _cosine_scores(query_vec: list[float], doc_vecs: list[list[float]]) -> list[
     scores = []
     for doc in doc_vecs:
         d_norm = sum(x * x for x in doc) ** 0.5 or 1.0
-        dot = sum(a * b for a, b in zip(query_vec, doc))
+        dot = sum(a * b for a, b in zip(query_vec, doc, strict=False))
         scores.append(dot / (q_norm * d_norm))
     return scores
 
@@ -134,7 +138,7 @@ def evaluate_model(model_key: str, model_id: str, api_key: str) -> BenchResult:
     url = "https://openrouter.ai/api/v1/embeddings"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    query_texts = [q for q in TEST_QUERIES]
+    query_texts = list(TEST_QUERIES)
 
     result = BenchResult(model_key=model_key, model_id=model_id)
 
@@ -195,12 +199,14 @@ def evaluate_retrieval(result: BenchResult, doc_sources: list[str], k: int = 5) 
         if rank == 1:
             top1_hits += 1
 
-        per_query.append({
-            "query": query,
-            "expected_source": expected,
-            "top_sources": ranked_sources,
-            "rank": rank,
-        })
+        per_query.append(
+            {
+                "query": query,
+                "expected_source": expected,
+                "top_sources": ranked_sources,
+                "rank": rank,
+            }
+        )
 
     return {
         "recall_at_k": round(hits / len(TEST_QUERIES), 4),
@@ -236,9 +242,9 @@ def main():
             logger.info("[dry-run] %s -> %s", key, mid)
         return 0
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("Nemotron 3.5 Embed 비교 테스트")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"모델: {', '.join(selected_models.values())}")
     print(f"쿼리: {len(TEST_QUERIES)}개, 문서: {len(TEST_DOCS)}개")
     print()
@@ -273,16 +279,26 @@ def main():
         keys = list(all_results.keys())
         r1, r2 = all_results[keys[0]], all_results[keys[1]]
         if "error" not in r1 and "error" not in r2:
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print("비교 요약")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
             print(f"{'지표':<25} {keys[0]:<15} {keys[1]:<15} {'차이'}")
             print("-" * 70)
-            print(f"{'임베딩 차원':<25} {r1['native_dim']:<15} {r2['native_dim']:<15} {r1['native_dim'] - r2['native_dim']:+d}")
-            print(f"{'총 지연시간(ms)':<25} {r1['total_latency_ms']:<15.1f} {r2['total_latency_ms']:<15.1f} {r1['total_latency_ms'] - r2['total_latency_ms']:+.1f}")
-            print(f"{'Recall@5':<25} {r1['retrieval']['recall_at_k']:<15.3f} {r2['retrieval']['recall_at_k']:<15.3f} {r1['retrieval']['recall_at_k'] - r2['retrieval']['recall_at_k']:+.3f}")
-            print(f"{'MRR':<25} {r1['retrieval']['mrr']:<15.3f} {r2['retrieval']['mrr']:<15.3f} {r1['retrieval']['mrr'] - r2['retrieval']['mrr']:+.3f}")
-            print(f"{'Top-1 적중':<25} {r1['retrieval']['top1_hits']:<15} {r2['retrieval']['top1_hits']:<15} {r1['retrieval']['top1_hits'] - r2['retrieval']['top1_hits']:+d}")
+            print(
+                f"{'임베딩 차원':<25} {r1['native_dim']:<15} {r2['native_dim']:<15} {r1['native_dim'] - r2['native_dim']:+d}"
+            )
+            print(
+                f"{'총 지연시간(ms)':<25} {r1['total_latency_ms']:<15.1f} {r2['total_latency_ms']:<15.1f} {r1['total_latency_ms'] - r2['total_latency_ms']:+.1f}"
+            )
+            print(
+                f"{'Recall@5':<25} {r1['retrieval']['recall_at_k']:<15.3f} {r2['retrieval']['recall_at_k']:<15.3f} {r1['retrieval']['recall_at_k'] - r2['retrieval']['recall_at_k']:+.3f}"
+            )
+            print(
+                f"{'MRR':<25} {r1['retrieval']['mrr']:<15.3f} {r2['retrieval']['mrr']:<15.3f} {r1['retrieval']['mrr'] - r2['retrieval']['mrr']:+.3f}"
+            )
+            print(
+                f"{'Top-1 적중':<25} {r1['retrieval']['top1_hits']:<15} {r2['retrieval']['top1_hits']:<15} {r1['retrieval']['top1_hits'] - r2['retrieval']['top1_hits']:+d}"
+            )
 
     # 결과 저장
     if args.output:
