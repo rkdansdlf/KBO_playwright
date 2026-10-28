@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-08-23
+Last updated: 2026-10-28
 
 This document tracks known data quality issues and their current status.
 
