@@ -7,9 +7,10 @@ import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import extract, func, select
+from sqlalchemy import extract, func, select, union_all
 
 from src.aggregators.ranking_aggregator import RankingAggregator, RankingGenerationRequest
+from src.constants import KBO_COLLECTED_START_YEAR
 from src.db.engine import SessionLocal
 from src.models.game import Game
 from src.models.player import (
@@ -70,6 +71,58 @@ def _games_played_in_season(session: Session, season: int) -> int:
     return int(row[0]) if row and row[0] else 0
 
 
+def _is_source_limited_season(season: int) -> bool:
+    """Return True when the season's game bodies were never collected.
+
+    Args:
+        season: Season year.
+
+    """
+    return season < KBO_COLLECTED_START_YEAR
+
+
+def _scheduled_games_per_team(session: Session, season: int) -> int:
+    """Return the season length per team, read from the schedule rows.
+
+    Each game row names two teams, so a team's games are ``rows * 2 / teams``.
+    Unlike ``_games_played_in_season`` this does not depend on ``game_status``,
+    which a crawl sweep rewrote for the source-limited seasons.
+
+    Args:
+        session: Session.
+        season: Season year.
+
+    """
+    season_filter = extract("year", Game.game_date) == season
+    game_rows = session.execute(select(func.count(Game.game_id)).where(season_filter)).scalar_one()
+    if not game_rows:
+        return 0
+
+    home = select(Game.home_team.label("team")).where(season_filter)
+    away = select(Game.away_team.label("team")).where(season_filter)
+    participants = union_all(home, away).subquery()
+    teams = session.execute(select(func.count(func.distinct(participants.c.team)))).scalar_one()
+    if not teams:
+        return 0
+    return round(game_rows * 2 / teams)
+
+
+def _qualification_games_played(session: Session, season: int) -> int:
+    """Return the games per team that the qualification threshold scales with.
+
+    A source-limited season takes its length from the schedule; a collected
+    season counts its completed game dates.
+
+    Args:
+        session: Session.
+        season: Season year.
+
+    """
+    if _is_source_limited_season(season):
+        return _scheduled_games_per_team(session, season)
+    return _games_played_in_season(session, season)
+
+
 _KBO_FULL_SEASON_GAMES = 144  # 정규 시즌 팀당 총 경기 수
 _MIN_PA_PER_GAME = 3.1  # KBO 타율왕 자격 기준 PA/경기
 _MIN_IP_PER_GAME = 3.0  # KBO 평균자책점 자격 기준 이닝/경기 (1이닝 = 3아웃)
@@ -88,7 +141,7 @@ def _compute_min_pa(session: Session, season: int) -> int:
         season: Season year.
 
     """
-    games_played = _games_played_in_season(session, season)
+    games_played = _qualification_games_played(session, season)
 
     if games_played >= _KBO_FULL_SEASON_GAMES:
         return int(_KBO_FULL_SEASON_GAMES * _MIN_PA_PER_GAME)
@@ -106,7 +159,7 @@ def _compute_min_ip_outs(session: Session, season: int) -> int:
         season: Season year.
 
     """
-    games_played = _games_played_in_season(session, season)
+    games_played = _qualification_games_played(session, season)
 
     if games_played >= _KBO_FULL_SEASON_GAMES:
         return int(_KBO_FULL_SEASON_GAMES * _MIN_IP_PER_GAME)

@@ -44,6 +44,7 @@ from src.db.engine import SessionLocal
 from src.repositories.crawl_execution_repository import MAX_SOURCE_URLS
 from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
+from src.utils.inning_cells import classify_base_hit_token, derive_hitter_stats_from_inning_cells
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -884,6 +885,31 @@ class GameDetailCrawler:
             return frozenset()
         return frozenset({raw, KBO_TO_NAVER_TEAM_CODE.get(raw, raw)})
 
+    async def _resolve_record_naver_id(self, relay_cls: type, game_id: str) -> str:
+        """Return the Naver record id for a game, preferring the schedule's answer.
+
+        The schedule lookup is authoritative when it knows the game. A miss
+        (``None``) or a raising lookup falls back to the computed id, so the
+        record fetch is still attempted; a raising lookup is logged, never
+        propagated, because the record fetch can still succeed without it.
+
+        Args:
+            relay_cls: Relay crawler class that owns the schedule lookup and the
+                computed-id mapping. Injected so tests can supply a double.
+            game_id: KBO game ID.
+
+        Returns:
+            The Naver ``gameId`` to build the record URL from.
+
+        """
+        computed_id = relay_cls._map_to_naver_id(game_id)  # noqa: SLF001
+        try:
+            resolved = await relay_cls()._resolve_naver_game_id(game_id)  # noqa: SLF001
+        except Exception:
+            logger.exception("Schedule lookup raised for %s; using the computed id", game_id)
+            return computed_id
+        return resolved or computed_id
+
     async def _resolve_naver_game_id(self, game_id: str, game_date: str) -> str | None:
         """Resolve the Naver ``gameId`` for a KBO game via the schedule API.
 
@@ -1099,6 +1125,9 @@ class GameDetailCrawler:
                 "at_bats": at_bats,
                 "runs": _as_int(raw.get("run")),
                 "hits": hits,
+                # Naver reports hits only as a total; the split lives in the inning cells.
+                "doubles": derived["doubles"],
+                "triples": derived["triples"],
                 "home_runs": _as_int(raw.get("hr")),
                 "rbi": _as_int(raw.get("rbi")),
                 "walks": walks,
@@ -3054,29 +3083,24 @@ class GameDetailCrawler:
             logger.info("   - name=%s, team_code=%s, uniform_no=%s", name, team_code or "N/A", uniform_no or "N/A")
 
     @staticmethod
+    def _classify_base_hit_token(token: str) -> str | None:
+        """Classify one inning cell token as doubles, triples, or home runs.
+
+        Args:
+            token: One cell result.
+
+        """
+        return classify_base_hit_token(token)
+
+    @staticmethod
     def _derive_hitter_stats_from_inning_cells(cells: dict[str, str]) -> dict[str, int]:
-        """Count stats from inning breakdown cells (e.g. '삼진', '4구').
+        """Count stats from inning breakdown cells (e.g. '삼진', '4구', '좌2').
 
         Args:
             cells: Cells.
 
         """
-        derived = {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
-
-        for val in cells.values():
-            if not val or val == "&nbsp;":
-                continue
-            if "삼진" in val or "스낫" in val or "루낫" in val or "낫아웃" in val:
-                derived["strikeouts"] += 1
-            if "4구" in val or "볼넷" in val or "고의4구" in val:
-                derived["walks"] += 1
-            if "사구" in val or "몸에 맞는 볼" in val:
-                derived["hbp"] += 1
-            if "희타" in val or "희번" in val or "희생번트" in val:
-                derived["sacrifice_hits"] += 1
-            if "희비" in val or "희생플라이" in val:
-                derived["sacrifice_flies"] += 1
-        return derived
+        return derive_hitter_stats_from_inning_cells(cells)
 
     @staticmethod
     def _populate_hitter_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:

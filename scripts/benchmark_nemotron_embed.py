@@ -124,6 +124,10 @@ def _cosine_scores(query_vec: list[float], doc_vecs: list[list[float]]) -> list[
     scores = []
     for doc in doc_vecs:
         d_norm = sum(x * x for x in doc) ** 0.5 or 1.0
+        # strict=False: nothing here guarantees the query and document vectors
+        # have the same length (both come from the same model, but this helper
+        # does not check it), so strict=True could not be relied on. A mismatch
+        # therefore truncates silently; callers must embed both sides with one model.
         dot = sum(a * b for a, b in zip(query_vec, doc, strict=False))
         scores.append(dot / (q_norm * d_norm))
     return scores
@@ -217,6 +221,7 @@ def evaluate_retrieval(result: BenchResult, doc_sources: list[str], k: int = 5) 
 
 
 def main():
+    load_project_env()
     parser = argparse.ArgumentParser(description="Nemotron 3.5 Embed 8B vs 1B 비교")
     parser.add_argument("--output", type=str, default=None, help="결과 JSON 저장 경로")
     parser.add_argument("--models", type=str, default="nemotron-8b,nemotron-1b", help="테스트할 모델 (콤마 구분)")
