@@ -9,10 +9,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sqlalchemy import or_
+from sqlalchemy import exists, or_
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import DATE_STR_LEN
+from src.constants import DATE_STR_LEN, FINAL_PBP_MARKER
 from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure, stage_for_code
 from src.crawlers.game_detail_outcome import (
     PARTIAL_DETAIL_REASON,
@@ -69,6 +69,11 @@ GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, TimeoutError, OSError, RuntimeError, Va
 LAST_MONTH_OF_YEAR = 12
 #: 경기가 열리지 않아 상세(boxscore)가 존재할 수 없는 상태. 범위 조회의 크롤 대상에서
 #: 빼지 않으면 크롤이 FETCH_HTTP_ERROR 로 실패해 DLQ 에 pending 으로 쌓인다(2026-10-19).
+#:
+#: 예외가 하나 있다: 릴레이가 종료 마커를 쓴 경기는 상태가 CANCELLED 라도 경기가 실제로
+#: 치러졌다는 뜻이므로 제외하지 않는다. 그렇지 않으면 20261026HTSS0 처럼 잘못 취소된 경기가
+#: 다시는 수집되지 않는다 -- 상세를 못 받아서 취소로 남고, 취소라서 다시 시도하지 않는
+#: 순환이 된다. 그 경기는 릴레이 582행과 9회 종료 마커를 갖고 있었다.
 DETAIL_IMPOSSIBLE_STATUSES = (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED)
 ROW_FIELD_COUNT = 2
 
@@ -300,6 +305,14 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
 
     """
     start_id, end_id = build_game_id_range(year, month)
+    # A relay that reached its closing marker outranks the status column: the feed
+    # saw the game end. Asking the status alone is what made a wrongly cancelled
+    # game unrecoverable -- the reason it was cancelled is that its detail never
+    # arrived, and the exclusion then guaranteed it never would.
+    finished_relay = exists().where(
+        GamePlayByPlay.game_id == Game.game_id,
+        GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+    )
 
     with SessionLocal() as session:
         rows = (
@@ -310,6 +323,7 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
                 or_(
                     Game.game_status.is_(None),
                     Game.game_status.notin_(DETAIL_IMPOSSIBLE_STATUSES),
+                    finished_relay,
                 ),
             )
             .order_by(Game.game_id.asc())

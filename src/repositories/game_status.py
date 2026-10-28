@@ -20,6 +20,7 @@ from src.config.historical_backfill_policy import (
     HistoricalBackfillPolicy,
     load_historical_backfill_policy,
 )
+from src.constants import FINAL_PBP_MARKER
 from src.db.engine import get_db_session
 from src.models.game import (
     Game,
@@ -28,6 +29,7 @@ from src.models.game import (
     GameLineup,
     GameMetadata,
     GamePitchingStat,
+    GamePlayByPlay,
 )
 from src.repositories.game_helpers import (
     _canonicalize_game_id,
@@ -52,6 +54,7 @@ _EVIDENCE_KEYS = (
     "has_lineups",
     "has_batting",
     "has_pitching",
+    "has_finished_relay",
 )
 
 
@@ -231,6 +234,38 @@ def _fill_scores_from_innings(session: Session, game: Game) -> None:
     game.home_score = int(inning_totals["home"] or 0)
 
 
+def _has_finished_relay(session: Session, game_id: str) -> bool:
+    """Return whether the relay feed closed this game.
+
+    Only the feed's own marker counts. ``pbp_complete_game_ids`` also accepts
+    "the stored play-by-play reached the last stored inning", which is the right
+    reading when the question is whether a *finished* game's feed was fully
+    captured, but the wrong one here: an in-progress game's relay reaches the
+    inning it is playing, and this flag feeds a terminal-status decision.
+
+    Args:
+        session: Session the game's rows are read from.
+        game_id: Game whose play-by-play is inspected.
+
+    Returns:
+        True when the stored play-by-play carries the closing marker.
+
+    """
+    try:
+        marker_row = (
+            session.query(GamePlayByPlay.game_id)
+            .filter(
+                GamePlayByPlay.game_id == game_id,
+                GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+            )
+            .first()
+        )
+    except SQLAlchemyError:
+        return False
+    else:
+        return marker_row is not None
+
+
 @dataclass(frozen=True)
 class _EvaluationContext:
     """Per-run facts every game evaluation needs."""
@@ -269,6 +304,7 @@ def _evaluate_game(session: Session, game: Game, context: _EvaluationContext) ->
     has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
     has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
     has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
+    has_finished_relay = _has_finished_relay(session, game.game_id)
     if (
         context.write
         and game.game_date < context.today
@@ -286,12 +322,13 @@ def _evaluate_game(session: Session, game: Game, context: _EvaluationContext) ->
         has_lineups=has_lineup,
         has_batting=has_batting,
         has_pitching=has_pitching,
+        has_finished_relay=has_finished_relay,
         today=context.today,
     )
     evidence = dict(
         zip(
             _EVIDENCE_KEYS,
-            (has_metadata, has_inning, has_lineup, has_batting, has_pitching),
+            (has_metadata, has_inning, has_lineup, has_batting, has_pitching, has_finished_relay),
             strict=True,
         ),
         home_score=game.home_score,

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy import func, inspect
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.constants import FINAL_PBP_MARKER
 from src.db.engine import SessionLocal
 from src.models.game import Game, GameEvent, GameInningScore, GamePlayByPlay
 from src.models.season import KboSeason
@@ -268,14 +269,6 @@ def load_game_ids_from_file(path: str | Path | None) -> list[str]:
             seen.add(token)
             game_ids.append(token)
     return game_ids
-
-
-#: The row the relay feed writes to close a finished game. It is what separates
-#: a game that stopped early from one whose ``game_inning_scores`` carry trailing
-#: zero innings: every 2025-03-22 game is recorded to the 12th inning while its
-#: play-by-play ends at the 9th with this marker, so an inning-count test alone
-#: calls 736 healthy 2025 games incomplete.
-FINAL_PBP_MARKER = "====================================="
 
 
 def pbp_complete_game_ids(session: Session, game_ids: Sequence[str]) -> set[str]:

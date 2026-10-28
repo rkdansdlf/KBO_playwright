@@ -1366,6 +1366,50 @@ _CHECKS: tuple[_SqlCheck, ...] = (
             LIMIT 5
         """,
     ),
+    # The relay feed closed the game and the row still says it was cancelled.
+    # Two days of 20261026HTSS0 carry this shape: the feed finished a 9-inning
+    # game (KIA 5:1, closing marker written twice) while `game_status` read
+    # CANCELLED, and the boxscore never landed because the cancellation had
+    # already removed the game from the detail targets.
+    #
+    # Neither neighbour above could see it. `game_cancelled_with_scores` needs
+    # both scores, and this game has none -- the score only ever reached the
+    # relay's events. `game_result_without_body` reads a result, and there is no
+    # stored result. The status column is what every gate reads, so a game whose
+    # only surviving evidence is the relay is invisible to all of them, which is
+    # precisely the evidence that says it was played.
+    _SqlCheck(
+        check_id="game_cancelled_with_finished_relay",
+        description="Cancelled games whose relay feed reached the closing marker",
+        table="game",
+        required_columns=("game_id", "game_status", "is_primary"),
+        referenced_tables=("game_play_by_play",),
+        count_sql="""
+            SELECT COUNT(*)
+            FROM game
+            WHERE is_primary
+              AND game_status = 'CANCELLED'
+              AND EXISTS (
+                  SELECT 1
+                  FROM game_play_by_play p
+                  WHERE p.game_id = game.game_id
+                    AND p.play_description LIKE '%=====================================%'
+              )
+        """,
+        sample_sql="""
+            SELECT COALESCE(CAST(game_id AS TEXT), '')
+            FROM game
+            WHERE is_primary
+              AND game_status = 'CANCELLED'
+              AND EXISTS (
+                  SELECT 1
+                  FROM game_play_by_play p
+                  WHERE p.game_id = game.game_id
+                    AND p.play_description LIKE '%=====================================%'
+              )
+            LIMIT 5
+        """,
+    ),
     # The result is known but the boxscore body was never collected, so lineups,
     # innings and boxscore rows are all 0. This is a property of the source, not
     # a regression, and it is exactly the gap that let a 09-23 status sweep reach

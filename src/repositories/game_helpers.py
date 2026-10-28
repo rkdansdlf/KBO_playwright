@@ -114,6 +114,10 @@ class DerivedGameStatusInput:
     has_batting: bool
     has_pitching: bool
     today: date
+    #: The relay feed wrote its closing marker for this game, so it was played to
+    #: the end. Defaults to False so every caller that predates the evidence
+    #: keeps the answer it had; a caller that knows better says so.
+    has_finished_relay: bool = False
 
 
 @dataclass(frozen=True)
@@ -822,6 +826,7 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
         and (
             status_input.has_batting
             or status_input.has_pitching
+            or status_input.has_finished_relay
             or (
                 status_input.game_date
                 and status_input.game_date < status_input.today
@@ -829,6 +834,12 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
             )
         )
     ):
+        # A finished relay counts as a body even when no boxscore row landed. The
+        # three tests above it all read collected detail, so a game whose only
+        # surviving evidence is the relay fell past this branch -- and the
+        # metadata heuristic below then called it CANCELLED. 20261026HTSS0 is
+        # that case: the feed closed a 9-inning game (KIA 5:1) while the row read
+        # cancelled, and every later re-derivation read the same rows and agreed.
         return _resolve_terminal_status(status_input.home_score, status_input.away_score)
     if status_input.game_date and status_input.game_date > status_input.today:
         return GAME_STATUS_SCHEDULED
@@ -836,11 +847,17 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
 
 
 def _derive_in_progress_status(status_input: DerivedGameStatusInput) -> str:
+    # Play-by-play belongs here. Leaving it out made "has no detail" true for a
+    # game the relay had carried to its closing marker, which is not an absence
+    # of detail -- it is the detail of a game that finished. The two branches
+    # that read this flag then did the rest: the stored CANCELLED was preserved,
+    # and the metadata heuristic would have re-derived it anyway.
     has_any_detail = (
         status_input.has_inning_scores
         or status_input.has_lineups
         or status_input.has_batting
         or status_input.has_pitching
+        or status_input.has_finished_relay
     )
     if status_input.current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
         return status_input.current_status
