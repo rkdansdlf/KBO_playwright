@@ -441,6 +441,29 @@ def _add_cert_and_lineage_subparsers(subparsers: argparse._SubParsersAction[argp
     p_form.add_argument("--json", action="store_true", help="Output result in JSON format.")
 
 
+def _add_repair_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add boxscore repair subparser."""
+    p_repair = subparsers.add_parser(
+        "repair-boxscore",
+        aliases=["repair_boxscore"],
+        help="Auto-discover and repair missing or inconsistent KBO games.",
+    )
+    p_repair.add_argument(
+        "--source",
+        choices=["all", "integrity", "dlq", "log"],
+        default="all",
+        help="Source to discover repair candidates from (default: all).",
+    )
+    p_repair.add_argument("--date", type=str, default=None, help="Target game date (YYYYMMDD or YYYY-MM-DD).")
+    p_repair.add_argument("--game-id", type=str, default=None, help="Target specific KBO game_id.")
+    p_repair.add_argument(
+        "--apply",
+        action="store_true",
+        help="Persist repaired game details and resolve DLQ entries (default: dry-run).",
+    )
+    p_repair.add_argument("--json", action="store_true", help="Output results in JSON format.")
+
+
 def build_master_parser() -> argparse.ArgumentParser:
     """Build root command-line parser with all platform subcommands."""
     parser = argparse.ArgumentParser(
@@ -455,6 +478,7 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_crawl_and_snapshot_subparsers(subparsers)
     _add_advanced_subparsers(subparsers)
     _add_cert_and_lineage_subparsers(subparsers)
+    _add_repair_subparser(subparsers)
 
     return parser
 
@@ -570,6 +594,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.formula import main as form_main
     from src.cli.generate_reports import main as rep_main
     from src.cli.predict_matchups import main as pred_main
+    from src.cli.repair_boxscore_failures import main as repair_boxscore_main
     from src.cli.run_maintenance import main as maint_main
     from src.cli.run_workflow import main as wf_main
     from src.cli.seed_synthetic_data import main as seed_main
@@ -607,6 +632,8 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "crawl": _lazy_crawl,
         "snapshot": _lazy_snapshot,
         "formula": form_main,
+        "repair-boxscore": repair_boxscore_main,
+        "repair_boxscore": repair_boxscore_main,
     }
 
 
