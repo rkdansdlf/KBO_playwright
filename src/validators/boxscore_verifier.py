@@ -53,16 +53,88 @@ def _verify_team_batting_sums(
         discrepancies.append(f"{side.upper()} 안타-스코어 불일치: 선수합({sum_hits}) != 스코어보드({sb_hits})")
 
 
+def _extract_pitching_total_outs(total_row: dict[str, Any]) -> int | None:
+    """Extract total pitching outs from a team totals row if present."""
+    if not total_row:
+        return None
+    if total_row.get("innings_outs") is not None:
+        try:
+            return int(total_row["innings_outs"])
+        except ValueError, TypeError:
+            pass
+    if total_row.get("innings_pitched") is not None:
+        from src.utils.type_helpers import parse_innings_to_outs
+
+        return parse_innings_to_outs(total_row["innings_pitched"])
+    return None
+
+
+def _check_pitching_innings_outs_plausibility(
+    away_outs: int,
+    home_outs: int,
+    away_score: int,
+    home_score: int,
+    num_innings: int,
+) -> list[str]:
+    """Check outs plausibility handling 9th inning bottom unplayed and walk-offs."""
+    errors: list[str] = []
+    if away_outs < MIN_OFFICIAL_GAME_OUTS:
+        errors.append(f"원정 투수 총 이닝 부족: {away_outs}아웃 (최소 {MIN_OFFICIAL_GAME_OUTS}아웃 필요)")
+    if home_outs < MIN_OFFICIAL_GAME_OUTS:
+        errors.append(f"홈 투수 총 이닝 부족: {home_outs}아웃 (최소 {MIN_OFFICIAL_GAME_OUTS}아웃 필요)")
+
+    if home_score > away_score:
+        # 홈팀 승리 시: 원정팀 투수는 9회말 미진행(24아웃) 또는 끝내기 상황(24~26아웃, 연장시 (N-1)*3 ~ N*3)
+        min_away_outs = (num_innings - 1) * 3
+        max_away_outs = num_innings * 3
+        if not (min_away_outs <= away_outs <= max_away_outs):
+            errors.append(
+                f"홈 승리 시 원정 투수 아웃카운트 비정상: {away_outs}아웃 "
+                f"(정상 범위: {min_away_outs}~{max_away_outs}아웃, 9회말 미진행 또는 끝내기)"
+            )
+    elif away_score > home_score:
+        if away_outs < num_innings * 3 and away_outs >= MIN_OFFICIAL_GAME_OUTS:
+            errors.append(f"원정 투수 아웃카운트 부족: {away_outs}아웃 (예상: {num_innings * 3}아웃)")
+    return errors
+
+
+def _verify_pitching_team_totals(
+    pitching_totals: dict[str, Any],
+    away_pitchers: list[dict[str, Any]],
+    home_pitchers: list[dict[str, Any]],
+    discrepancies: list[str],
+) -> bool:
+    verified = False
+    for side, plist in [("away", away_pitchers), ("home", home_pitchers)]:
+        total_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in plist)
+        side_total_row = pitching_totals.get(side) or {}
+        exp_outs = _extract_pitching_total_outs(side_total_row)
+        if exp_outs is not None:
+            verified = True
+            if total_outs != exp_outs:
+                discrepancies.append(
+                    f"{side.upper()} 투수 이닝 불일치: 선수합({total_outs}아웃) != 팀합계행({exp_outs}아웃)"
+                )
+        elif plist and total_outs < MIN_OFFICIAL_GAME_OUTS:
+            discrepancies.append(
+                f"{side.upper()} 투구 이닝 부족: {total_outs}아웃 (최소 {MIN_OFFICIAL_GAME_OUTS}아웃 필요)"
+            )
+    return verified
+
+
 def _verify_pitching_cross_checks(
     teams: dict[str, Any],
     pitchers: dict[str, Any],
     discrepancies: list[str],
+    team_totals: dict[str, dict[str, Any]] | None = None,
+    num_innings: int = 9,
 ) -> None:
-    """Verify pitcher runs allowed against opponent score and minimum outs."""
+    """Verify pitcher runs allowed against opponent score and innings outs plausibility."""
     away_score = teams.get("away", {}).get("score")
     home_score = teams.get("home", {}).get("score")
     away_pitchers = pitchers.get("away") or []
     home_pitchers = pitchers.get("home") or []
+    team_totals = team_totals or {}
 
     if home_score is not None and away_pitchers:
         away_runs = sum(int(p.get("stats", {}).get("runs_allowed") or 0) for p in away_pitchers)
@@ -74,12 +146,25 @@ def _verify_pitching_cross_checks(
         if home_runs != int(away_score):
             discrepancies.append(f"홈 투수 실점합({home_runs}) != 원정팀 점수({away_score})")
 
-    for side, plist in [("away", away_pitchers), ("home", home_pitchers)]:
-        total_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in plist)
-        if plist and total_outs < MIN_OFFICIAL_GAME_OUTS:
-            discrepancies.append(
-                f"{side.upper()} 투구 이닝 부족: {total_outs}아웃 (최소 {MIN_OFFICIAL_GAME_OUTS}아웃 필요)"
-            )
+    # 1. 박스스코어 팀 투수 합계 행이 존재하면 개별 투수 아웃카운트 합계와 우선 대조
+    pitching_totals = team_totals.get("pitching") if isinstance(team_totals.get("pitching"), dict) else team_totals
+    verified_with_team_totals = _verify_pitching_team_totals(
+        pitching_totals, away_pitchers, home_pitchers, discrepancies
+    )
+
+    # 2. 박스스코어 합계 행이 없는 경우: 9회말 미진행(24아웃) 및 끝내기(24~26아웃) 승패 상황 예외 처리
+    has_score = away_score is not None and home_score is not None
+    if not verified_with_team_totals and has_score and away_pitchers and home_pitchers:
+        away_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in away_pitchers)
+        home_outs = sum(int(p.get("stats", {}).get("innings_outs") or 0) for p in home_pitchers)
+        errors = _check_pitching_innings_outs_plausibility(
+            away_outs=away_outs,
+            home_outs=home_outs,
+            away_score=int(away_score),
+            home_score=int(home_score),
+            num_innings=num_innings,
+        )
+        discrepancies.extend(errors)
 
 
 def verify_boxscore_sums(
@@ -103,6 +188,10 @@ def verify_boxscore_sums(
     pitchers = game_data.get("pitchers") or {}
     team_totals = team_totals or {}
 
+    scoreboard = game_data.get("scoreboard") or {}
+    innings_list = scoreboard.get("innings") or game_data.get("innings") or []
+    num_innings = len(innings_list) if isinstance(innings_list, list) and innings_list else 9
+
     for side in ("away", "home"):
         _verify_team_batting_sums(
             side=side,
@@ -112,7 +201,13 @@ def verify_boxscore_sums(
             discrepancies=discrepancies,
         )
 
-    _verify_pitching_cross_checks(teams, pitchers, discrepancies)
+    _verify_pitching_cross_checks(
+        teams=teams,
+        pitchers=pitchers,
+        discrepancies=discrepancies,
+        team_totals=team_totals,
+        num_innings=num_innings,
+    )
 
     is_valid = len(discrepancies) == 0
     if not is_valid:
@@ -183,6 +278,20 @@ def verify_game_db_boxscore_integrity(
 
     if innings and game.home_score is not None and home_inning_runs != game.home_score:
         errors.append(f"홈 이닝스코어 합계({home_inning_runs}) != 경기 홈 점수({game.home_score})")
+
+    num_innings = max((i.inning for i in innings), default=9) if innings else 9
+    if game.home_score is not None and game.away_score is not None and away_pitchers and home_pitchers:
+        away_outs = sum(r.innings_outs or 0 for r in away_pitchers)
+        home_outs = sum(r.innings_outs or 0 for r in home_pitchers)
+        errors.extend(
+            _check_pitching_innings_outs_plausibility(
+                away_outs=away_outs,
+                home_outs=home_outs,
+                away_score=game.away_score,
+                home_score=game.home_score,
+                num_innings=num_innings,
+            )
+        )
 
     return len(errors) == 0, errors
 

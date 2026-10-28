@@ -1319,12 +1319,27 @@ class GameDetailCrawler:
                     if payload is None:
                         fail_reason = self._last_failure_reason.get(game_id, "crawl_failed")
                         fail_url = self._section_url(game_id, game_date, "REVIEW")
-                        record_crawl_failure("game", game_id, fail_url, fail_reason, retry_count=3)
+                        record_crawl_failure(
+                            "game",
+                            game_id,
+                            fail_url,
+                            fail_reason,
+                            retry_count=3,
+                            crawler="GameDetailCrawler",
+                        )
                 except DETAIL_CRAWLER_EXCEPTIONS as e:  # pragma: no cover - resilience path
                     self._last_failure_reason[game_id] = "exception"
                     logger.exception("❌ Error crawling %s", game_id)
                     fail_url = self._section_url(game_id, game_date, "REVIEW")
-                    record_crawl_failure("game", game_id, fail_url, "exception", retry_count=3, error=e)
+                    record_crawl_failure(
+                        "game",
+                        game_id,
+                        fail_url,
+                        "exception",
+                        retry_count=3,
+                        error=e,
+                        crawler="GameDetailCrawler",
+                    )
                 finally:
                     queue.task_done()
         finally:

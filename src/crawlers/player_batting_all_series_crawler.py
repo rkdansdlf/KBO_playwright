@@ -65,13 +65,26 @@ DEBUG_ROW_LIMIT = 3
 TEAM_FILTER_REFRESH_WAIT_MS = 3000
 BATTING_TEAM_SELECTOR = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
 BATTING_TEAM_REFRESH_SCRIPT = """
-    ({ value, label }) => {
+    ({ value, label, prevPlayer }) => {
         const selector = document.querySelector(
             'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
         );
         if (!selector || selector.value !== value) return false;
+        const row = document.querySelector('table.tData01 tbody tr');
+        if (!row) return true;
+        const link = row.querySelector('a');
+        let currPlayer = '';
+        if (link) {
+            currPlayer = link.getAttribute('href') || link.textContent.trim();
+        } else {
+            const cell = row.querySelector('td:nth-child(2)');
+            currPlayer = cell ? (cell.textContent || '').trim() : '';
+        }
+        if (prevPlayer && currPlayer && currPlayer === prevPlayer) {
+            return false;
+        }
         const rows = Array.from(document.querySelectorAll('table.tData01 tbody tr'));
-        return rows.length > 0 && rows.every(row => row.textContent.includes(label));
+        return rows.length > 0 && rows.some(r => r.textContent.includes(label));
     }
 """
 
@@ -504,7 +517,7 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         if policy:
             policy.delay()
 
-        # 이전 페이지의 첫 번째 행 데이터와 현재 활성 페이지 번호 캡처
+        # 이전 페이지의 첫 번째 행 데이터 캡처
         prev_first_player = page.evaluate("""() => {
             const row = document.querySelector('table.tData01 tbody tr');
             if (!row) return '';
@@ -513,18 +526,14 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
             const cell = row.querySelector('td:nth-child(2)');
             return cell ? (cell.textContent || '').trim() : '';
         }""")
-        prev_active_page = page.evaluate("""() => {
-            const active = document.querySelector('.paging .on, .paging span.active, .paging strong, .paging a.on');
-            return active ? active.textContent.trim() : '';
-        }""")
 
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
-        # 다음 페이지 번호 클릭 후 표 첫 번째 행의 선수 데이터(또는 페이지 활성 번호)가 달라질 때까지 Explicit Wait
+        # 다음 페이지 번호 클릭 후 표 첫 번째 행의 선수 데이터가 달라질 때까지 Explicit Wait (행 갱신 필수 검증)
         try:
             page.wait_for_function(
-                """({ prevPlayer, prevPage }) => {
+                """({ prevPlayer }) => {
                     const row = document.querySelector('table.tData01 tbody tr');
                     if (!row) return false;
                     const link = row.querySelector('a');
@@ -535,13 +544,10 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
                         const cell = row.querySelector('td:nth-child(2)');
                         currPlayer = cell ? (cell.textContent || '').trim() : '';
                     }
-                    const active = document.querySelector(
-                        '.paging .on, .paging span.active, .paging strong, .paging a.on'
-                    );
-                    const currPage = active ? active.textContent.trim() : '';
-                    return (currPlayer && currPlayer !== prevPlayer) || (currPage && currPage !== prevPage);
+                    if (!currPlayer) return false;
+                    return prevPlayer ? currPlayer !== prevPlayer : true;
                 }""",
-                arg={"prevPlayer": prev_first_player, "prevPage": prev_active_page},
+                arg={"prevPlayer": prev_first_player},
                 timeout=SEL_TIMEOUT,
             )
         except PlaywrightTimeoutError:
@@ -1124,6 +1130,14 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
     if by_team and tm["value"]:
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
+            prev_first_player = page.evaluate("""() => {
+                const row = document.querySelector('table.tData01 tbody tr');
+                if (!row) return '';
+                const link = row.querySelector('a');
+                if (link) return link.getAttribute('href') || link.textContent.trim();
+                const cell = row.querySelector('td:nth-child(2)');
+                return cell ? (cell.textContent || '').trim() : '';
+            }""")
             page.select_option(
                 BATTING_TEAM_SELECTOR,
                 tm["value"],
@@ -1132,7 +1146,7 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
             page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
             page.wait_for_function(
                 BATTING_TEAM_REFRESH_SCRIPT,
-                arg={"value": tm["value"], "label": tm["text"].strip()},
+                arg={"value": tm["value"], "label": tm["text"].strip(), "prevPlayer": prev_first_player},
                 timeout=NAV_TIMEOUT,
             )
             policy.delay()

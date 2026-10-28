@@ -288,6 +288,52 @@ class TestBoxscoreVerification:
         assert is_valid is False
         assert len(discrepancies) > 0
 
+    def test_verify_boxscore_walkoff_and_home_win(self) -> None:
+        # 끝내기 상황: 홈팀 승리 시 원정팀 투수는 25아웃(8.1이닝)만 투구하고 종료될 수 있음 -> 정상 통과
+        game_data = {
+            "game_id": "20260505SSLG0",
+            "teams": {
+                "away": {"code": "SS", "score": 3, "hits": 5},
+                "home": {"code": "LG", "score": 4, "hits": 7},
+            },
+            "hitters": {
+                "away": [{"player_id": 1002, "stats": {"at_bats": 4, "hits": 5, "runs": 3}}],
+                "home": [{"player_id": 1001, "stats": {"at_bats": 4, "hits": 7, "runs": 4}}],
+            },
+            "pitchers": {
+                "away": [
+                    {"player_id": 1005, "stats": {"innings_outs": 25, "runs_allowed": 4}}
+                ],  # 끝내기 1사 득점 (25아웃)
+                "home": [{"player_id": 1006, "stats": {"innings_outs": 27, "runs_allowed": 3}}],
+            },
+        }
+        is_valid, discrepancies = verify_boxscore_sums(game_data)
+        assert is_valid is True
+        assert len(discrepancies) == 0
+
+    def test_verify_boxscore_away_win_requires_full_outs(self) -> None:
+        # 원정팀 승리(원정 5 : 홈 3)인데 원정 투수가 24아웃만 기록한 경우 -> 불일치 에러 발생해야 함
+        game_data = {
+            "game_id": "20260505SSLG0",
+            "teams": {
+                "away": {"code": "SS", "score": 5, "hits": 8},
+                "home": {"code": "LG", "score": 3, "hits": 6},
+            },
+            "hitters": {
+                "away": [{"player_id": 1002, "stats": {"at_bats": 4, "hits": 8, "runs": 5}}],
+                "home": [{"player_id": 1001, "stats": {"at_bats": 4, "hits": 6, "runs": 3}}],
+            },
+            "pitchers": {
+                "away": [
+                    {"player_id": 1005, "stats": {"innings_outs": 24, "runs_allowed": 3}}
+                ],  # 24아웃 부족! (27아웃 필요)
+                "home": [{"player_id": 1006, "stats": {"innings_outs": 27, "runs_allowed": 5}}],
+            },
+        }
+        is_valid, discrepancies = verify_boxscore_sums(game_data)
+        assert is_valid is False
+        assert any("원정 투수 아웃카운트 부족" in d for d in discrepancies)
+
     def test_verify_daily_game_count(self, sqlite_session) -> None:
         # Target date 2026-05-05 has 1 game in sqlite_session fixture
         is_match, count, expected, notes = verify_daily_game_count("2026-05-05", sqlite_session, expected_count=1)
