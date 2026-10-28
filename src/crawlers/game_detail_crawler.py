@@ -24,6 +24,8 @@ DURATION_PART_COUNT = 2
 PARK_JUNYOUNG_RESOLUTION_ROW_THRESHOLD = 4
 PARK_JUNYOUNG_ERA_THRESHOLD = 3.0
 PARK_JUNYOUNG_SPECIAL_SEASON = 2026
+LG_LEE_BYUNGKYU_VET_ID = 97109
+LG_LEE_BYUNGKYU_JR_ID = 76100
 
 import contextlib
 from datetime import date, datetime, timedelta
@@ -2632,6 +2634,8 @@ class GameDetailCrawler:
             if not p_id:
                 p_id, uniform_no = self._resolve_from_roster_map(roster_map, player_name, uniform_no)
 
+            p_id = self._disambiguate_lg_lee_byungkyu(results, player_name, team_code, p_id)
+
             payload = self._build_hitter_payload(
                 HitterPayloadContext(
                     row=row,
@@ -2682,6 +2686,28 @@ class GameDetailCrawler:
         except ValueError:
             pass
         return 56709 if era_val < PARK_JUNYOUNG_ERA_THRESHOLD else 52731
+
+    @staticmethod
+    def _disambiguate_lg_lee_byungkyu(
+        results: list[dict[str, Any]],
+        player_name: str,
+        team_code: str | None,
+        p_id: int | None,
+    ) -> int | None:
+        """Disambiguate LG Lee Byung-kyu (76100 vs 97109) when multiple appear in one game."""
+        if player_name != "이병규" or team_code != "LG":
+            return p_id
+        assigned = {
+            h.get("player_id")
+            for h in results
+            if h.get("player_name") == "이병규"
+            and h.get("player_id") in (LG_LEE_BYUNGKYU_JR_ID, LG_LEE_BYUNGKYU_VET_ID)
+        }
+        if LG_LEE_BYUNGKYU_VET_ID in assigned:
+            return LG_LEE_BYUNGKYU_JR_ID
+        if LG_LEE_BYUNGKYU_JR_ID in assigned:
+            return LG_LEE_BYUNGKYU_VET_ID
+        return p_id
 
     def _resolve_pitcher_from_resolver(
         self,

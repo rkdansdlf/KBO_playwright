@@ -579,6 +579,33 @@ class PlayerIdResolver:
                 return 51302
         return None
 
+    def _resolve_lg_lee_byungkyu(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,  # noqa: ARG002
+        uniform_no: str | None,
+        *,
+        position: str | None = None,
+    ) -> int | None:
+        if not (player_name == "이병규" and team_code == "LG"):
+            return None
+        if uniform_no:
+            u_clean = str(uniform_no).strip().lstrip("0")
+            if u_clean == "7":
+                return 76100
+            if u_clean == "9":
+                return 97109
+        if position:
+            pos = position.strip()
+            # 76100 ('작뱅'): 주전 외야수 (좌익수/우익수/중견수/외야수/1루수)
+            if any(k in pos for k in ("좌", "우", "중", "외", "1루", "一", "LF", "RF", "CF", "1B")):
+                return 76100
+            # 97109 ('적토마'): 2014~2016 베테랑 지명타자
+            if any(k in pos for k in ("지", "DH", "지타", "타지")):
+                return 97109
+        return None
+
     def _candidate_models(self, *, is_pitcher: bool | None) -> list[Any]:
         if is_pitcher is True:
             return [PlayerSeasonPitching]
@@ -785,6 +812,7 @@ class PlayerIdResolver:
             self._resolve_samsung_lee_seunghyun(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
             or self._resolve_hanwha_park_junyoung(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
             or self._resolve_kiwoom_lee_juhyung(player_name, team_code, season, uniform_no, position=position)
+            or self._resolve_lg_lee_byungkyu(player_name, team_code, season, uniform_no, position=position)
         )
 
     def resolve_id(  # noqa: PLR0913
