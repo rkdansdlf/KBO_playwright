@@ -269,6 +269,67 @@ class TestTheChunkCarriesItsSeasonType:
         assert codes["20261001AAAA0"] == 0
 
 
+class TestTheGameChunkSaysWhatItKnowsAboutTheResult:
+    """A missing score is not a draw, and the chunk must not call it one.
+
+    The line was ``winner = game.winning_team or "무승부"`` followed by a literal
+    ``" 승"``, so every game without a winning team was labelled "무승부 승" --
+    a draw that won. 2,713 games from 2001~2009 have no score in this database
+    (Naver never served those seasons), and a chunk that asserts a draw for all
+    of them states a result nobody recorded.
+    """
+
+    def _store(self):
+        engine = create_engine("sqlite://")
+        KboSeason.__table__.create(engine)
+        Game.__table__.create(engine)
+        return engine
+
+    def _chunk_for(self, **overrides):
+        engine = self._store()
+        defaults = {
+            "game_id": "20261001AAAA0",
+            "game_date": date(2026, 10, 1),
+            "season_id": 2026,
+            "game_status": "COMPLETED",
+            "home_team": "AA",
+            "away_team": "BB",
+            "is_primary": True,
+        }
+        defaults.update(overrides)
+        with Session(engine) as session:
+            session.add(KboSeason(season_id=2026, season_year=2026, league_type_code=0, league_type_name="정규시즌"))
+            session.add(Game(**defaults))
+            session.commit()
+            return list(build_rag_index._iter_game_chunks(session, None, None))[0]
+
+    def test_a_game_without_a_score_claims_no_result(self) -> None:
+        chunk = self._chunk_for()
+
+        assert "결과 미상" in chunk["content"]
+        assert "무승부" not in chunk["content"]
+
+    def test_equal_scores_without_a_winner_are_a_draw(self) -> None:
+        chunk = self._chunk_for(away_score=3, home_score=3)
+
+        assert "무승부" in chunk["content"]
+        assert "무승부 승" not in chunk["content"]
+
+    def test_a_named_winner_is_reported_with_its_score(self) -> None:
+        chunk = self._chunk_for(away_score=2, home_score=5, winning_team="AA")
+
+        assert "AA 승" in chunk["content"]
+        assert "2 - AA 5" in chunk["content"]
+
+    def test_a_decided_score_without_a_winner_does_not_claim_one(self) -> None:
+        """The score decides the game, but this column is who the source named."""
+        chunk = self._chunk_for(away_score=2, home_score=5)
+
+        assert "결과 미확인" in chunk["content"]
+        assert "무승부" not in chunk["content"]
+        assert "승" not in chunk["content"].split("결과:")[1]
+
+
 @pytest.mark.parametrize(
     ("season_id", "expected"),
     [(None, None), (1988, 1988), (198800, 1988), (202500, 2025)],

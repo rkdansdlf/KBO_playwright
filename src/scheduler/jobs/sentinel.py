@@ -131,6 +131,43 @@ def rag_audit_sentinel_job() -> None:
     alert_warning("rag_audit_sentinel", _audit_failure_message(exit_code))
 
 
+@_with_db_fail_fast_guard
+def rag_coverage_sentinel_job() -> None:
+    """Daily season-coverage gate after the index audit.
+
+    ``rag_audit_sentinel_job`` compares the index against itself -- do the sparse
+    and vector stores agree about the same identity -- and ``rag_identity_census``
+    compares it against the retired store. Neither asks whether what a season
+    holds is actually in the index, which is why every postseason game from 2018
+    to 2026 was missing while both gates stayed green.
+
+    ``--require-recent 2`` keeps a historical backlog out of the verdict. The
+    1982~2017 seasons were only indexed on 2026-10-27; reading that standing gap
+    as a daily fault would be a red light nobody reads, which is the failure mode
+    this repository keeps rediscovering.
+    """
+    try:
+        from src.cli.rag.audit_rag_coverage import main as coverage_main
+
+        exit_code = coverage_main(["--require-recent", "2", "--json"])
+    except SCHEDULER_JOB_EXCEPTIONS:
+        logger.exception("[Sentinel] RAG coverage audit crashed")
+        alert_warning("rag_coverage_sentinel", "RAG coverage audit crashed; see scheduler logs")
+        return
+
+    if exit_code == 0:
+        logger.info("[Sentinel] RAG coverage audit passed (recent seasons fully indexed).")
+        # Same contract as the index audit: nothing else clears this key, so a
+        # recovered check has to say so or the incident outlives the failure.
+        alert_success("rag_coverage_sentinel", "RAG coverage audit passed")
+        return
+
+    alert_warning(
+        "rag_coverage_sentinel",
+        "RAG coverage gap in a recent season; run `python3 -m src.cli.rag.audit_rag_coverage`",
+    )
+
+
 def _audit_failure_message(exit_code: int) -> str:
     """Describe an audit failure without blaming the index for a dead store.
 
