@@ -396,6 +396,42 @@ an explicit completeness predicate and an alternate historical source.
 
 **Reference**: `team_code_map` table (459 entries, complete since 2026-06-28)
 
+### `game` rows carry both era and current codes in 2011~2020 (accepted 2026-10-28)
+
+**Status**: Accepted — deliberately left as it is
+
+**What it is**: inside one `game` row the team columns can disagree on spelling
+while naming the same franchise. Measured for 2018:
+
+| Column | Era codes | Current codes |
+| --- | --- | --- |
+| `away_team` / `home_team` | `SK` 146, `KH` 142 | `SSG` 27, `NX` 24 |
+| `winning_team` | `SK` 89, `NX` 83 | 0 |
+
+So `20181112SKOB0` reads `away=SSG, home=DB, winning_team=SK`. 638 decided games
+over 2011~2020 (71~89 per season) have a `winning_team` that does not equal the
+winner's `away_team`/`home_team` string.
+
+**`season_team_code` does not settle it**: the function rewrites only the
+technical tokens (`HT`/`OB`/`SK`/`WO`) and returns any other code untouched, so
+`season_team_code("SSG", 2018)` is `SSG`, not `SK`. Neither spelling is
+normalised to the other automatically.
+
+**Why it is accepted**: franchise identity is already resolved in
+`away_franchise_id` / `home_franchise_id` / `winning_franchise_id`, so anything
+that groups by franchise is unaffected. Only paths that group or filter on the
+code *string* see the difference. Rewriting either side would touch 4,253 rows
+in the 2011~2020 range that standings and the rankings snapshot read, for no
+gain in the aggregate paths.
+
+**If you need to compare codes**: resolve through `team_code_map` or the
+franchise id rather than comparing strings.
+
+**Related**: `winning_team` was backfilled from the final score for 418 games
+that had none (2026-10-28, `data/repair_backups/winning_team_derived_20261028T132911.csv`).
+Those rows copy the winner's own `away_team`/`home_team` value, so they stay
+consistent with the rest of their row.
+
 ---
 
 ## game_metadata stadium_code
