@@ -2415,6 +2415,8 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         uniform_no: str | None,
+        *,
+        position: str | None = None,
     ) -> int | None:
         """Resolve hitter id.
 
@@ -2423,10 +2425,7 @@ class GameDetailCrawler:
             team_code: Team Code.
             season_year: Season Year.
             uniform_no: Uniform No.
-            player_name: Player Name.
-            team_code: Team code identifier.
-            season_year: Season Year.
-            uniform_no: Uniform No.
+            position: Defensive position name or code.
 
         Returns:
             The result of the operation.
@@ -2440,9 +2439,10 @@ class GameDetailCrawler:
             season_year,
             uniform_no=uniform_no,
             is_pitcher=False,
+            position=position,
         )
         if p_id:
-            logger.info("   [RESOLVED] %s (%s) -> %s", player_name, team_code, p_id)
+            logger.info("   [RESOLVED] %s (%s, pos=%s) -> %s", player_name, team_code, position, p_id)
         return p_id
 
     @staticmethod
@@ -2612,8 +2612,9 @@ class GameDetailCrawler:
 
             self._apply_hitter_inning_derivatives(stats, inning_rows, idx)
 
+            position = self._parse_position(row["cells"])
             if p_id is None:
-                p_id = self._resolve_hitter_id(player_name, team_code, season_year, uniform_no)
+                p_id = self._resolve_hitter_id(player_name, team_code, season_year, uniform_no, position=position)
 
             extra_row = self._select_hitter_extra_row(
                 extra_has_names=extra_has_names,

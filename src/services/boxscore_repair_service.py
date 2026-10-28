@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
 from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
@@ -138,7 +139,7 @@ def discover_candidates_from_integrity(
     """)
     try:
         candidate_ids = [row[0] for row in session.execute(discrepancy_sql, {"limit": limit}).all()]
-    except Exception:
+    except SQLAlchemyError, RuntimeError, ValueError:
         logger.warning("Fast SQL discrepancy query failed; returning empty candidates list", exc_info=True)
         candidate_ids = []
 
@@ -326,7 +327,9 @@ async def _crawl_and_repair_single(
             dlq_repo = CrawlDeadLetterRepository(active_session)
             stmt = select(CrawlDeadLetter).where(
                 (CrawlDeadLetter.game_id == game_id) | (CrawlDeadLetter.target_id == game_id),
-                CrawlDeadLetter.status.in_([DlqStatus.PENDING.value, DlqStatus.RETRYING.value]),
+                CrawlDeadLetter.status.in_(
+                    [DlqStatus.PENDING.value, DlqStatus.RETRYING.value, DlqStatus.IGNORED.value]
+                ),
             )
             for letter in active_session.scalars(stmt).all():
                 dlq_repo.mark_resolved(letter)

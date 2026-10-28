@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import urllib.robotparser
 from datetime import datetime
@@ -131,6 +132,9 @@ class ComplianceChecker:
             user_agent: User Agent.
 
         """
+        if os.getenv("KBO_ALLOW_ROBOTS_OVERRIDE") == "1" or os.getenv("KBO_IGNORE_ROBOTS_TXT") == "1":
+            return True
+
         if not self._is_same_site(url):
             return True
 
@@ -151,6 +155,9 @@ class ComplianceChecker:
             user_agent: User Agent.
 
         """
+        if os.getenv("KBO_ALLOW_ROBOTS_OVERRIDE") == "1" or os.getenv("KBO_IGNORE_ROBOTS_TXT") == "1":
+            return True
+
         if not self._is_same_site(url):
             return True
 

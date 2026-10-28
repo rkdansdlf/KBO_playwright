@@ -989,7 +989,7 @@ def _sync_player_game_stats(session: Session, game_id: str) -> None:
         agg_pitching = aggregate_game_pitching(session, game_id)
         if agg_pitching:
             upsert_player_game_pitching(session, agg_pitching)
-    except Exception:
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, AttributeError, KeyError:
         logger.warning("Optional player_game_stats sync failed for %s", game_id, exc_info=True)
 
 

@@ -79,4 +79,4 @@ _MISSING = _Missing()
 
 
 def _display_value(value: object) -> object:
-    return "<missing>" if isinstance(value, _Missing) else value
+    return "<missing>" if isinstance(value, _Missing) else canonicalize(value)

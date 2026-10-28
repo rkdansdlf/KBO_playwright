@@ -355,7 +355,7 @@ class PlayerIdResolver:
             else:
                 self._cache[cache_key] = None
 
-    def _cache_key(
+    def _cache_key(  # noqa: PLR0913
         self,
         player_name: str,
         team_code: str | None,
@@ -363,6 +363,7 @@ class PlayerIdResolver:
         uniform_no: str | None,
         *,
         is_pitcher: bool | None,
+        position: str | None = None,
     ) -> str:
         if is_pitcher is True:
             role = "P"
@@ -370,7 +371,8 @@ class PlayerIdResolver:
             role = "B"
         else:
             role = "A"
-        return f"{player_name}_{team_code}_{season}_{uniform_no or ''}_{role}"
+        base_key = f"{player_name}_{team_code}_{season}_{uniform_no or ''}_{role}"
+        return f"{base_key}_{position}" if position else base_key
 
     def _canonical_team_code(self, team_code: str | None) -> str | None:
         if team_code is None:
@@ -554,6 +556,27 @@ class PlayerIdResolver:
             return 56709  # 68번 박준영 (2002년생)
         if uniform_no == "96":
             return 52731  # 96번 박준영 (2003년생)
+        return None
+
+    def _resolve_kiwoom_lee_juhyung(
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,  # noqa: ARG002
+        uniform_no: str | None,
+        *,
+        position: str | None = None,
+    ) -> int | None:
+        if not (player_name == "이주형" and team_code == "KH"):
+            return None
+        if uniform_no == "2":
+            return 50167
+        if position:
+            pos = position.strip()
+            if pos in ("중", "외", "중견수", "외야수", "CF", "LF", "RF"):
+                return 50167
+            if pos in ("지", "지명타자", "DH"):
+                return 51302
         return None
 
     def _candidate_models(self, *, is_pitcher: bool | None) -> list[Any]:
@@ -748,7 +771,23 @@ class PlayerIdResolver:
 
         return self._resolve_unknown_registration(player_name, team_code, season, uniform_no, cache_key)
 
-    def resolve_id(
+    def _resolve_special_teammates(  # noqa: PLR0913
+        self,
+        player_name: str,
+        team_code: str,
+        season: int,
+        uniform_no: str | None,
+        *,
+        is_pitcher: bool | None,
+        position: str | None,
+    ) -> int | None:
+        return (
+            self._resolve_samsung_lee_seunghyun(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
+            or self._resolve_hanwha_park_junyoung(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
+            or self._resolve_kiwoom_lee_juhyung(player_name, team_code, season, uniform_no, position=position)
+        )
+
+    def resolve_id(  # noqa: PLR0913
         self,
         player_name: str,
         team_code: str | None,
@@ -756,6 +795,7 @@ class PlayerIdResolver:
         uniform_no: str | None = None,
         *,
         is_pitcher: bool | None = None,
+        position: str | None = None,
     ) -> int | None:
         """Resolve id.
 
@@ -765,15 +805,7 @@ class PlayerIdResolver:
             season: Season year.
             uniform_no: Uniform No.
             is_pitcher: Is Pitcher.
-            player_name: Player Name.
-            team_code: Team Code.
-            season: Season year.
-            uniform_no: Uniform No.
-            is_pitcher: Is Pitcher.
-            player_name: Player Name.
-            team_code: Team Code.
-            season: Season year.
-            uniform_no: Uniform No.
+            position: Defensive position name or code.
 
         Returns:
             The result of the operation.
@@ -788,27 +820,21 @@ class PlayerIdResolver:
         override_id = self._resolve_static_override(player_name, team_code, season, is_pitcher=is_pitcher)
         if override_id:
             return override_id
-        samsung_id = self._resolve_samsung_lee_seunghyun(
+        special_id = self._resolve_special_teammates(
             player_name,
             team_code,
             season,
             uniform_no,
             is_pitcher=is_pitcher,
+            position=position,
         )
-        if samsung_id:
-            return samsung_id
-        hanwha_id = self._resolve_hanwha_park_junyoung(
-            player_name,
-            team_code,
-            season,
-            uniform_no,
-            is_pitcher=is_pitcher,
+        if special_id:
+            return special_id
+        return self._resolve_player_id(
+            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher, position=position
         )
-        if hanwha_id:
-            return hanwha_id
-        return self._resolve_player_id(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
 
-    def _resolve_player_id(
+    def _resolve_player_id(  # noqa: PLR0913
         self,
         player_name: str,
         team_code: str,
@@ -816,10 +842,13 @@ class PlayerIdResolver:
         uniform_no: str | None,
         *,
         is_pitcher: bool | None,
+        position: str | None = None,
     ) -> int | None:
         if player_name in self.NAME_ALIASES:
             player_name = self.NAME_ALIASES[player_name]
-        cache_key = self._cache_key(player_name, team_code, season, uniform_no, is_pitcher=is_pitcher)
+        cache_key = self._cache_key(
+            player_name, team_code, season, uniform_no, is_pitcher=is_pitcher, position=position
+        )
         cached = self._cache.get(cache_key)
         if cache_key in self._cache:
             return cached
