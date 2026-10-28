@@ -974,6 +974,25 @@ def _execute_realtime_quality_gate(
     return True
 
 
+def _sync_player_game_stats(session: Session, game_id: str) -> None:
+    try:
+        from src.repositories.player_game_stats import (
+            aggregate_game_batting,
+            aggregate_game_pitching,
+            upsert_player_game_batting,
+            upsert_player_game_pitching,
+        )
+
+        agg_batting = aggregate_game_batting(session, game_id)
+        if agg_batting:
+            upsert_player_game_batting(session, agg_batting)
+        agg_pitching = aggregate_game_pitching(session, game_id)
+        if agg_pitching:
+            upsert_player_game_pitching(session, agg_pitching)
+    except Exception:
+        logger.warning("Optional player_game_stats sync failed for %s", game_id, exc_info=True)
+
+
 def save_game_detail(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
@@ -1136,6 +1155,8 @@ def save_game_detail(  # noqa: PLR0913
             source_crawler=source_crawler,
         ),
     )
+
+    _sync_player_game_stats(session, game_id)
 
     session.flush()
     return True

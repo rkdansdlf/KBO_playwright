@@ -44,6 +44,7 @@ from src.db.engine import SessionLocal
 from src.repositories.crawl_execution_repository import MAX_SOURCE_URLS
 from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
+from src.utils.crawler_failure_logger import record_crawl_failure
 from src.utils.inning_cells import classify_base_hit_token, derive_hitter_stats_from_inning_cells
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
@@ -1305,12 +1306,25 @@ class GameDetailCrawler:
                     if payload is None and await self._kbo_fallback_allowed(game_id, game_date):
                         # The KBO page writes its own reason while it works. It is
                         # cleared below so the canonical cause can replace it.
-                        payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
+                        max_retries = 3
+                        for attempt in range(1, max_retries + 1):
+                            payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
+                            if payload is not None:
+                                break
+                            if attempt < max_retries:
+                                logger.warning("⚠️ 재시도 중 (%s/%s회): %s", attempt, max_retries, game_id)
+                                await asyncio.sleep(1.0 * attempt)
                     results[idx] = payload
                     self._attribute_final_outcome(game_id, payload, naver)
-                except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
+                    if payload is None:
+                        fail_reason = self._last_failure_reason.get(game_id, "crawl_failed")
+                        fail_url = self._section_url(game_id, game_date, "REVIEW")
+                        record_crawl_failure("game", game_id, fail_url, fail_reason, retry_count=3)
+                except DETAIL_CRAWLER_EXCEPTIONS as e:  # pragma: no cover - resilience path
                     self._last_failure_reason[game_id] = "exception"
                     logger.exception("❌ Error crawling %s", game_id)
+                    fail_url = self._section_url(game_id, game_date, "REVIEW")
+                    record_crawl_failure("game", game_id, fail_url, "exception", retry_count=3, error=e)
                 finally:
                     queue.task_done()
         finally:
@@ -1908,6 +1922,21 @@ class GameDetailCrawler:
 
         try:
             await page.wait_for_selector(", ".join(selectors), timeout=SEL_TIMEOUT)
+            # 동적 로딩(JS)으로 인해 표가 덜 그려진 상태에서 수집되지 않도록 테이블 행 렌더링 대기
+            if not lightweight:
+                try:
+                    await page.wait_for_function(
+                        """() => {
+                            const sel = '#tblAwayHitter1 tbody tr, #tblHomeHitter1 tbody tr, ' +
+                                        'table.tData01 tbody tr, #tblScordboard1 tbody tr';
+                            const rows = document.querySelectorAll(sel);
+                            return rows.length > 0 &&
+                                Array.from(rows).some(r => r.querySelectorAll('td, th').length > 1);
+                        }""",
+                        timeout=SEL_TIMEOUT,
+                    )
+                except PlaywrightError:
+                    logger.debug("Table rows dynamic wait timed out (proceeding with selector presence)")
         except PlaywrightError:
             logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
 

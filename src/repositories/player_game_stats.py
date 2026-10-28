@@ -397,29 +397,53 @@ def _upsert_bulk(
 ) -> int:
     if not records:
         return 0
-    dialect = session.get_bind().dialect.name
-
-    if dialect == "oracle":
-        keys = tuple(conflict_keys or ["game_id", "player_id"])
-        for record in records:
-            upsert_model_by_unique_keys(session, model, record, keys)
-        return len(records)
-
-    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
     if conflict_keys is None:
         conflict_keys = ["game_id", "player_id"]
 
-    cols = list(records[0].keys())
+    # Deduplicate in-memory by conflict_keys, keeping the latest record to avoid batch ON CONFLICT errors
+    deduped_map: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for r in records:
+        key = tuple(r.get(k) for k in conflict_keys)
+        deduped_map[key] = r
+    deduped_records = list(deduped_map.values())
+
+    dialect = session.get_bind().dialect.name
+
+    if dialect == "oracle":
+        keys = tuple(conflict_keys)
+        for record in deduped_records:
+            upsert_model_by_unique_keys(session, model, record, keys)
+        return len(deduped_records)
+
+    cols = list(deduped_records[0].keys())
     total = 0
-    for start in range(0, len(records), chunk_size):
-        chunk = records[start : start + chunk_size]
-        stmt = sqlite_insert(model).values(chunk)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=conflict_keys,
-            set_={k: stmt.excluded[k] for k in cols if k not in conflict_keys},
-        )
-        session.execute(stmt)
+    for start in range(0, len(deduped_records), chunk_size):
+        chunk = deduped_records[start : start + chunk_size]
+        if dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            stmt = pg_insert(model).values(chunk)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=conflict_keys,
+                set_={k: stmt.excluded[k] for k in cols if k not in conflict_keys},
+            )
+            session.execute(stmt)
+        elif dialect == "mysql":
+            from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+            stmt = mysql_insert(model).values(chunk)
+            stmt = stmt.on_duplicate_key_update({k: stmt.inserted[k] for k in cols if k not in conflict_keys})
+            session.execute(stmt)
+        else:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+            stmt = sqlite_insert(model).values(chunk)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=conflict_keys,
+                set_={k: stmt.excluded[k] for k in cols if k not in conflict_keys},
+            )
+            session.execute(stmt)
         total += len(chunk)
     return total
 

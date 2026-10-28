@@ -62,6 +62,7 @@ from src.utils.team_codes import (
     team_code_from_game_id_segment,
 )
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
+from src.utils.type_helpers import safe_float_or_none, safe_int_or_none
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -1100,6 +1101,47 @@ def _ensure_player_basic_stubs(session: Session, mappings: Iterable[dict[str, An
     return True
 
 
+def _deduplicate_mappings(model: type[Any], mappings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate records by unique key keeping the latest entry to prevent duplicate writes."""
+    if not mappings:
+        return []
+    if model in (GameBattingStat, GamePitchingStat):
+        seen: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for m in mappings:
+            pid = m.get("player_id")
+            if pid is not None:
+                seen[(m.get("game_id"), pid)] = m
+            else:
+                seen[(m.get("game_id"), m.get("player_name"), m.get("appearance_seq"))] = m
+        return list(seen.values())
+    if model == GameInningScore:
+        seen_inn = {(m.get("game_id"), m.get("team_side"), m.get("inning")): m for m in mappings}
+        return list(seen_inn.values())
+    if model == GameLineup:
+        seen_lineup = {(m.get("game_id"), m.get("team_side"), m.get("appearance_seq")): m for m in mappings}
+        return list(seen_lineup.values())
+    return mappings
+
+
+def _insert_mappings_with_timestamps(
+    session: Session,
+    model: type[Any],
+    mappings: list[dict[str, Any]],
+) -> None:
+    if not mappings:
+        return
+    now = datetime.now(UTC).replace(tzinfo=None)
+    has_created_at = "created_at" in model.__table__.columns
+    has_updated_at = "updated_at" in model.__table__.columns
+    if has_created_at or has_updated_at:
+        for mapping in mappings:
+            if has_created_at and not mapping.get("created_at"):
+                mapping["created_at"] = now
+            if has_updated_at and not mapping.get("updated_at"):
+                mapping["updated_at"] = now
+    session.execute(model.__table__.insert(), mappings)
+
+
 def _replace_records(
     session: Session,
     model: type[Any],
@@ -1107,6 +1149,7 @@ def _replace_records(
     mappings: list[dict[str, Any]],
     ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    mappings = _deduplicate_mappings(model, mappings)
     source = ctx.source if ctx else None
     write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
@@ -1119,17 +1162,7 @@ def _replace_records(
 
     if existing_rows:
         _delete_records(session, model, model.game_id == game_id)
-    if mappings:
-        now = datetime.now(UTC).replace(tzinfo=None)
-        has_created_at = "created_at" in model.__table__.columns
-        has_updated_at = "updated_at" in model.__table__.columns
-        if has_created_at or has_updated_at:
-            for mapping in mappings:
-                if has_created_at and not mapping.get("created_at"):
-                    mapping["created_at"] = now
-                if has_updated_at and not mapping.get("updated_at"):
-                    mapping["updated_at"] = now
-        session.execute(model.__table__.insert(), mappings)
+    _insert_mappings_with_timestamps(session, model, mappings)
     if source and write_contract:
         write_contract.dataset_replaced(game_id, source, dataset, len(mappings))
     return True
@@ -1141,6 +1174,7 @@ def _replace_records_for_side(
     mappings: list[dict[str, Any]],
     ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    mappings = _deduplicate_mappings(record_key.model, mappings)
     source = ctx.source if ctx else None
     write_contract = ctx.write_contract if ctx else None
     dataset = f"{record_key.model.__tablename__}.{record_key.team_side}"
@@ -1161,17 +1195,7 @@ def _replace_records_for_side(
             record_key.model.game_id == record_key.game_id,
             record_key.model.team_side == record_key.team_side,
         )
-    if mappings:
-        now = datetime.now(UTC).replace(tzinfo=None)
-        has_created_at = "created_at" in record_key.model.__table__.columns
-        has_updated_at = "updated_at" in record_key.model.__table__.columns
-        if has_created_at or has_updated_at:
-            for mapping in mappings:
-                if has_created_at and not mapping.get("created_at"):
-                    mapping["created_at"] = now
-                if has_updated_at and not mapping.get("updated_at"):
-                    mapping["updated_at"] = now
-        session.execute(record_key.model.__table__.insert(), mappings)
+    _insert_mappings_with_timestamps(session, record_key.model, mappings)
     if source and write_contract:
         write_contract.dataset_replaced(record_key.game_id, source, dataset, len(mappings))
     return True
@@ -1268,23 +1292,12 @@ def _normalize_record_for_compare(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _stat_int(stats: dict[str, Any], key: str) -> int:
-    value = stats.get(key)
-    if value in (None, ""):
-        return 0
-    try:
-        return int(value)
-    except TypeError, ValueError:
-        return 0
+    val = safe_int_or_none(stats.get(key))
+    return val if val is not None else 0
 
 
 def _stat_float(stats: dict[str, Any], key: str) -> float | None:
-    value = stats.get(key)
-    if value in (None, ""):
-        return None
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        return None
+    return safe_float_or_none(stats.get(key))
 
 
 def _normalize_player_id(value: object) -> int | None:

@@ -34,12 +34,11 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import InstrumentedAttribute
 
-    from src.models.game import Game
-
 from sqlalchemy import func
 
 from src.constants import DATE_STR_LEN, KST
 from src.db.engine import SessionLocal
+from src.models.game import Game
 from src.utils.date_helpers import parse_date_str
 from src.utils.game_status import (
     GAME_STATUS_CANCELLED,
@@ -997,6 +996,44 @@ def check_season_classification(session: Session, target: date) -> CheckResult:
     )
 
 
+def check_boxscore_totals_consistency(session: Session, target: date) -> CheckResult:
+    """Verify that player stat totals match team and scoreboard totals for each game."""
+    from src.validators.boxscore_verifier import verify_game_db_boxscore_integrity
+
+    games = session.query(Game).filter(Game.game_date == target).all()
+    if not games:
+        return CheckResult(
+            name="boxscore_totals_consistency",
+            passed=True,
+            message=f"No games found for date {target}",
+            details={"games_checked": 0},
+        )
+
+    discrepancies: dict[str, list[str]] = {}
+    for game in games:
+        if game.game_status in (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED, GAME_STATUS_UNRESOLVED):
+            continue
+        is_valid, errors = verify_game_db_boxscore_integrity(session, game.game_id)
+        if not is_valid:
+            discrepancies[game.game_id] = errors
+
+    if discrepancies:
+        total_failed = len(discrepancies)
+        return CheckResult(
+            name="boxscore_totals_consistency",
+            passed=False,
+            message=f"{total_failed} game(s) on {target} have boxscore sum mismatches with team/scoreboard totals",
+            details={"discrepancies": discrepancies},
+        )
+
+    return CheckResult(
+        name="boxscore_totals_consistency",
+        passed=True,
+        message=f"All {len(games)} game(s) on {target} have consistent player and team boxscore totals",
+        details={"games_checked": len(games)},
+    )
+
+
 CHECKS = [
     check_games_exist,
     check_game_status_populated,
@@ -1010,6 +1047,7 @@ CHECKS = [
     check_pa_formula_integrity,
     check_game_season_id,
     check_season_classification,
+    check_boxscore_totals_consistency,
 ]
 
 
