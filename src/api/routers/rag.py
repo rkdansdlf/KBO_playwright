@@ -19,6 +19,7 @@ from src.services.query_router import QueryRouter, RetrievalRoute
 from src.services.structured_retriever import StructuredRetriever
 
 if TYPE_CHECKING:
+    from src.services.rag_answer_service import RagAnswerService
     from src.services.rag_service import RagService
 
 logger = logging.getLogger(__name__)
@@ -115,18 +116,44 @@ def rag_hybrid_search(request: RagSearchRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="하이브리드 RAG 검색 오류") from e
 
 
+def _get_answer_service() -> RagAnswerService | None:
+    """Return the chat-answer service, or None when it cannot be built.
+
+    Kept as a seam: the tests patch this to keep the suite off the network, and
+    a deployment without a chat key gets None here so the endpoint falls back to
+    listing the chunks instead of failing.
+    """
+    from src.services.rag_answer_service import RagAnswerService
+
+    return RagAnswerService()
+
+
 def _build_rag_answer(
     query: str,
     results: list[Any],
     *,
     analysis: dict[str, Any] | None = None,
     retrieval: dict[str, Any] | None = None,
+    answer_service: RagAnswerService | None = None,
 ) -> dict[str, Any]:
-    """Build a grounded answer and structured source metadata from hybrid hits."""
+    """Build a grounded answer and structured source metadata from hybrid hits.
+
+    The ``answer`` field is a natural-language answer made from the retrieved
+    chunks by ``RagAnswerService``. That service refuses to answer without
+    evidence, so an empty retrieval and an unanswerable question come back
+    differently -- the first never reaches a model, the second reaches one that
+    has been told to say it cannot tell.
+    """
+    service = answer_service if answer_service is not None else _get_answer_service()
+
     if not results:
         return {
             "query": query,
-            "answer": f"'{query}'에 관한 검색 결과를 찾지 못했습니다.",
+            "answer": (
+                service.answer(query, []).answer
+                if service is not None
+                else f"'{query}'에 관한 검색 결과를 찾지 못했습니다."
+            ),
             "sources": [],
             "chunks": [],
             "chunk_count": 0,
@@ -151,10 +178,15 @@ def _build_rag_answer(
             }
         )
 
-    summaries = [f"- {source['title'] or 'KBO 문서'}: {source['snippet']}" for source in sources[:3]]
+    if service is not None:
+        answer_text = service.answer(query, results).answer
+    else:
+        summaries = [f"- {source['title'] or 'KBO 문서'}: {source['snippet']}" for source in sources[:3]]
+        answer_text = f"검색된 주요 KBO 정보 ({len(results)}건):\n" + "\n".join(summaries)
+
     return {
         "query": query,
-        "answer": f"검색된 주요 KBO 정보 ({len(results)}건):\n" + "\n".join(summaries),
+        "answer": answer_text,
         "sources": sources,
         "chunks": [result.to_dict() for result in results],
         "chunk_count": len(results),

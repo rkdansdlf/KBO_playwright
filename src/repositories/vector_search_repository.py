@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+from datetime import date as dt_date
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select, text
@@ -36,6 +37,40 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 _DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
+
+
+def _coerce_game_date(value: object) -> dt_date | None:
+    """Turn a ``game_date`` filter value into the date the column stores.
+
+    The parameter is documented and typed as a ``YYYY-MM-DD`` string, but the
+    column is ``DATE`` -- so binding the string straight into the comparison
+    produced ``operator does not exist: date = character varying`` and every
+    search failed, exactly as the missing-column error had before it. The
+    string form is kept at the API boundary because that is what callers pass;
+    the conversion belongs here, next to the column.
+
+    An unusable value returns ``None`` so the caller can drop the filter rather
+    than fail the whole search: a mistyped date should narrow the results, not
+    turn a working query into an error. The caller warns when it drops one.
+
+    Args:
+        value: A ``date``, a ``YYYY-MM-DD`` string (optionally with a time), or None.
+
+    Returns:
+        The date, or None when it cannot be read as one.
+
+    """
+    if value is None:
+        return None
+    if isinstance(value, dt_date):
+        return value
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+    try:
+        return dt_date.fromisoformat(text_value[:10])
+    except ValueError:
+        return None
 
 
 def _has_tombstone_marker(existing: RagChunkVector | None) -> bool:
@@ -237,7 +272,13 @@ class VectorSearchRepository:
         if document_type:
             stmt = stmt.where(RagChunkVector.document_type == document_type)
         if game_date:
-            stmt = stmt.where(RagChunkVector.game_date == game_date)
+            parsed_game_date = _coerce_game_date(game_date)
+            if parsed_game_date is None:
+                # Drop the filter rather than fail the search: a mistyped date
+                # should narrow results, not turn a working query into an error.
+                logger.warning("Ignoring unusable game_date filter: %r", game_date)
+            else:
+                stmt = stmt.where(RagChunkVector.game_date == parsed_game_date)
         if index_version:
             stmt = stmt.where(RagChunkVector.index_version == index_version)
 
