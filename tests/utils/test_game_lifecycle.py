@@ -122,4 +122,8 @@ class TestAllowedTransitions:
 
     def test_result_transitions(self):
         result_targets = {t[1] for t in ALLOWED_TRANSITIONS if t[0] == "result_pending_stabilization"}
-        assert result_targets == {"final", "running", "delayed", "suspended"}
+        # ``cancelled`` belongs here: a rain-out after the result window has no
+        # other way out of the wait, and the state is in RELAY_ACTIVE_STATES, so
+        # a game stuck there is polled every cycle (20261026HTSS0 was recorded
+        # CANCELLED at 18:01 and still fetched at 20:00).
+        assert result_targets == {"final", "cancelled", "running", "delayed", "suspended"}
