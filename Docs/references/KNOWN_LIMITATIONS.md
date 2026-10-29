@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-10-28
+Last updated: 2026-10-30
 
 This document tracks known data quality issues and their current status.
 
@@ -346,6 +346,40 @@ archive payload `src.cli.collection.ingest_historical_archive` reads; see
 `Docs/runbooks/HISTORICAL_IMPORT.md`. Until then the `game` chunks render these as
 **"결과 미상"** (result unknown) rather than inventing a score, and the answer layer
 returns "제공된 기록에서 확인할 수 없습니다".
+
+#### The window closed on 2026-08-05 (measured 2026-10-30)
+
+The scores were reachable and were not collected. `www.koreabaseball.com/robots.txt`
+as recorded in `Docs/robots/`:
+
+| Snapshot | `User-agent: *` |
+| --- | --- |
+| 2026-06-26 | `Disallow: /Manager` — the GameCenter pages were **allowed** |
+| **2026-08-05 21:48** | **`Disallow: /`** — everything is refused |
+| 2026-10-29 | `Disallow: /` (unchanged) |
+
+During the allowed window (2026-06-29 ~ 07-18) the crawler visited those pages and
+stored what it was asked for: `game_metadata.source_payload` holds `stadium`,
+`attendance`, `start_time`, `end_time`, `game_time`. **It holds no score field** —
+the score was never part of what that pass collected. So the data was available for
+about seven weeks and the pass that ran then did not ask for it.
+
+Nothing in the repository may collect it now. `compliance.is_allowed` refuses the
+whole host, and `KBO_ALLOW_ROBOTS_OVERRIDE` / `KBO_IGNORE_ROBOTS_TXT` are **not** set
+in `.env` — turning them on would be a policy decision, not a bug fix.
+
+**Open question (not a licence to proceed)**: `crawl_execution_runs` records
+**1,737 `GetKboGameList` calls between 2026-10-09 and 10-29**, i.e. after the host was
+refused. `preview_crawler` does call `compliance.is_allowed(self.GAME_LIST_URL)`
+before fetching, so either some path skips that check or a scheduled process held a
+cached policy across the change (`_ensure_loaded` refreshes every 24h and on failure
+retries, so a long-lived process should have picked it up). Either way the calls
+happened, and that is worth its own investigation — **do not treat this as an
+existing sanctioned route to the data.**
+
+**Remaining options**: a KBO data permission, or an outside dataset (yearbook OCR,
+Sports2i licence, news box scores). A robots change on KBO's side would reopen the
+crawler path as-is.
 
 **Result**: The 2026-07-19 schedule backfill increased parent game rows from 1,430 to
 4,688 across 2001-2009. Annual counts are now 504-544, with no duplicate game IDs and
