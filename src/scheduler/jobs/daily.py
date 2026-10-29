@@ -1023,6 +1023,15 @@ def db_reachability_check_job() -> None:
     _update_job_status("db_reachability_check_job", JobStatus.SUCCESS, "Passed")
 
 
+#: Set to ``0`` to hold the nightly vector gap backfill.
+#:
+#: A brake belongs in the environment, not in a commented-out registry entry. The
+#: entry was held that way on the deployment host, where it was invisible to git:
+#: one ``git checkout -- .`` would have resumed the job silently, and nothing in
+#: the repository would have said whether that was intended.
+RAG_VECTOR_BACKFILL_ENABLED_ENV = "RAG_VECTOR_BACKFILL_ENABLED"
+
+
 def rag_vector_backfill_job() -> None:
     """Embed sparse identities missing from the vector store (bounded nightly)."""
     _register_job("rag_vector_backfill_job", dependencies=[])
@@ -1031,6 +1040,16 @@ def rag_vector_backfill_job() -> None:
     if not can_run:
         _update_job_status("rag_vector_backfill_job", JobStatus.SKIPPED, f"Skipped: {reason}")
         logger.warning("Skipping rag_vector_backfill_job: %s", reason)
+        return
+
+    if os.getenv(RAG_VECTOR_BACKFILL_ENABLED_ENV, "1") == "0":
+        # A job that is held has to say so. Nothing else owns this key, so a job
+        # that returns silently leaves its incident OPEN for good, and a warning
+        # no run can clear is one nobody reads. Said here rather than left to the
+        # alert's own suppression, which only quiets repeats of the same text.
+        logger.info("rag_vector_backfill_job is held by %s=0", RAG_VECTOR_BACKFILL_ENABLED_ENV)
+        alert_success("rag_vector_backfill", f"held by {RAG_VECTOR_BACKFILL_ENABLED_ENV}=0")
+        _update_job_status("rag_vector_backfill_job", JobStatus.SKIPPED, "Held by env flag")
         return
 
     logger.info("=== Starting RAG Vector Gap Backfill ===")
