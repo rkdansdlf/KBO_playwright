@@ -72,8 +72,6 @@ NAVER_SPORTS_HEADERS = {
 }
 NAVER_BATTER_STARTER_MAX_ORDER = 9
 NAVER_SCHEDULE_API_URL = "https://api-gw.sports.naver.com/schedule/today-games"
-#: Minimum season year supported by Naver's schedule record API.
-NAVER_RECORD_API_MIN_YEAR = 2024
 #: How many days around the game date to scan when the direct Naver ID fails.
 #: Postseason games are occasionally rescheduled ±2 days; 3 covers that safely.
 SCHEDULE_RESOLUTION_WINDOW_DAYS = 3
@@ -813,10 +811,6 @@ class GameDetailCrawler:
             no record for the game.
 
         """
-        year_str = game_id[:4]
-        if year_str.isdigit() and int(year_str) < NAVER_RECORD_API_MIN_YEAR:
-            return CrawlResult.empty()
-
         from src.crawlers.relay_crawler import RelayCrawler
 
         naver_id = RelayCrawler._map_to_naver_id(to_kbo_site_game_id(game_id))  # noqa: SLF001
