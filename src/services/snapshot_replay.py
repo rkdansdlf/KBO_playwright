@@ -13,6 +13,7 @@ that).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -165,12 +166,97 @@ class _ParserResult:
     error: str | None
 
 
+def _anchored_on_root(raw_path: str, root: Path) -> Path | None:
+    r"""Return the artifact inside ``root`` for a path recorded against another one.
+
+    Snapshots captured before 2026-10-29 store an absolute path, so one artifact
+    is recorded as ``D:\\server-data\\...\\crawl_evidence\\raw\\<hash>`` by the
+    Windows host and as ``/app/data/crawl_evidence/raw/<hash>`` by the container.
+    Only one of those is readable from any given process, and the snapshot drift
+    check reported the unreadable ones as parse failures -- 21 rows whose only
+    defect was where the path had been written from.
+
+    The recovery re-anchors on the part that is the same everywhere: everything
+    below the evidence directory, which is content-addressed. The candidate is
+    then held to the same containment rule as a path that already pointed inside
+    the root, so a ``..`` in the stored value still cannot reach outside it.
+
+    Args:
+        raw_path: The stored path, in whatever form it was recorded.
+        root: The evidence root this process resolves against.
+
+    Returns:
+        The resolved path when it exists inside ``root``, otherwise None.
+
+    Raises:
+        SnapshotReplayError: The path names something outside ``root``. That is
+            the traversal the guard exists for, and it is reported as such rather
+            than as a missing file.
+
+    """
+    segments = [segment for segment in re.split(r"[\\/]+", raw_path) if segment]
+    positions = [index for index, segment in enumerate(segments) if segment == root.name]
+    if not positions:
+        return None
+    tail = segments[positions[-1] + 1 :]
+    if not tail:
+        return None
+    candidate = root.joinpath(*tail).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        msg = f"snapshot artifact is outside the evidence root: {candidate}"
+        raise SnapshotReplayError(msg) from exc
+    return candidate if candidate.is_file() else None
+
+
+def _resolve_stored_path(raw_path: str, root: Path) -> Path:
+    """Return the readable artifact a stored path names, or say why it cannot be read.
+
+    Args:
+        raw_path: The stored path.
+        root: The evidence root this process resolves against.
+
+    Returns:
+        The artifact's path.
+
+    Raises:
+        SnapshotReplayError: The file is missing, or points outside the root and
+            cannot be re-anchored inside it.
+
+    """
+    stored = Path(raw_path).expanduser()
+    if not stored.is_absolute():
+        # What this repository writes now: relative to the root, so the row means
+        # the same thing to every process that reads it.
+        stored = root / stored
+    resolved = stored.resolve()
+    if resolved.is_file():
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            anchored = _anchored_on_root(raw_path, root)
+            if anchored is None:
+                msg = f"snapshot artifact is outside the evidence root: {resolved}"
+                raise SnapshotReplayError(msg) from exc
+            return anchored
+        return resolved
+    anchored = _anchored_on_root(raw_path, root)
+    if anchored is None:
+        msg = f"stored snapshot artifact not found: {resolved}"
+        raise SnapshotReplayError(msg)
+    return anchored
+
+
 def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None) -> str:
     """Load the stored snapshot artifact as text.
 
     Rejects URL-style paths and, by default, any file outside the configured
     evidence root so a corrupted ``raw_html_or_json_path`` cannot turn replay
-    into an arbitrary local file read.
+    into an arbitrary local file read. A path recorded against a different root
+    is re-anchored inside this one when the artifact is there (see
+    ``_anchored_on_root``), which is what makes a row captured on another host
+    measurable instead of permanently failed.
     """
     if not raw_path:
         msg = "snapshot has no stored artifact path"
@@ -179,16 +265,8 @@ def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None
     if lowered.startswith((*_URL_PREFIXES, "file://")):
         msg = f"snapshot artifact is a URL, not a replayable file: {raw_path}"
         raise SnapshotReplayError(msg)
-    resolved = Path(raw_path).expanduser().resolve()
-    if not resolved.is_file():
-        msg = f"stored snapshot artifact not found: {resolved}"
-        raise SnapshotReplayError(msg)
     root = (allowed_root or evidence_root()).expanduser().resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        msg = f"snapshot artifact is outside the evidence root: {resolved}"
-        raise SnapshotReplayError(msg) from exc
+    resolved = _resolve_stored_path(raw_path, root)
     return resolved.read_text(encoding="utf-8", errors="replace")
 
 

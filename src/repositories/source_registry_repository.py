@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
@@ -13,6 +12,8 @@ from src.repositories.crawl_evidence_repository import evidence_root
 from src.utils.data_lineage import canonical_json, sha256_bytes
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sqlalchemy.orm import Session
 
 _HEADERS = {
@@ -365,6 +366,34 @@ class RawSourceSnapshotRepository:
                 record.error_message = error_message
 
 
+def _artifact_path_for_storage(path: Path) -> str:
+    r"""Return the path to record for a captured artifact.
+
+    Relative to the evidence root, because the artifact is content-addressed and
+    the absolute path is not the part that matters. It used to be stored absolute,
+    which made each row readable by exactly one process: rows captured on the
+    Windows host (`D:\\...\\crawl_evidence\\raw\\<hash>`) and on the Mac
+    (`/Users/.../crawl_evidence/raw/<hash>`) are both unresolvable inside the
+    container, which mounts its own root at `/app/data`. The snapshot drift check
+    reads those rows and counted 21 of them as parse failures when the only thing
+    wrong was where the path was recorded from.
+
+    A path that is not under the root keeps the absolute form rather than being
+    rewritten into a lie about where the file is.
+
+    Args:
+        path: Absolute path of the artifact that was written.
+
+    Returns:
+        ``raw/<hash>.bin`` style path, or the absolute path when it is outside.
+
+    """
+    try:
+        return path.relative_to(evidence_root()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
     """Save a list of raw page dicts as RawSourceSnapshot records.
 
@@ -403,7 +432,7 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
             snap_repo.save(
                 {
                     "data_source_id": ds.id,
-                    "raw_html_or_json_path": str(Path(artifact_path)),
+                    "raw_html_or_json_path": _artifact_path_for_storage(artifact_path),
                     "source_url": page.get("url"),
                     "content_type": page.get("content_type"),
                     "raw_size": len(raw_content),
