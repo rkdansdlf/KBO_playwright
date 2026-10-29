@@ -381,13 +381,64 @@ So the repository does respect the refusal, and `source_url` on a ledger row mea
 `compliance.is_allowed` returns False for both `GetKboGameList` and the GameCenter
 page, and logs the block.
 
-**One thing remains unexplained (2 days, not 20)**: 690 rows on **10-09 ~ 10-10** are
-`failed` / `FETCH_HTTP_ERROR` with `checkpoint={'game_date': ..., 'previews': 0}` —
-i.e. **no `source_limited` marker**, while robots said `Disallow: /` on both 10-01 and
-10-12 as well. Those runs either made a request (the refusal was not detected, which
-would be a compliance bug) or failed before it. `records_read` is 0, so no data was
-collected either way, and the state today is correct. Worth a look if the robots path
-is touched again.
+#### The 690 rows: a fixed defect, measured (2026-10-30)
+
+The note that used to sit here called these rows unexplained. They are explained, and
+the explanation is **not** "the refusal went undetected".
+
+**They are the pre-fix classification of a block.** `fe612367` (2026-10-10 17:37 KST)
+is titled "record a policy refusal as a policy refusal, not a fetch error", and its
+diff shows the pre-fix `_fetch_api_json` **already** checked
+`compliance.is_allowed(url)` and returned `None` before touching the transport. The
+defect was that the refusal left no marker, so the caller read `None` as "no preview
+data", `_date_is_confirmed_empty` returned False, and `track_crawl_run` recorded
+`FETCH_HTTP_ERROR` with a retryable dead letter.
+
+**No request was made — 689 of 690 runs took under 5 seconds.** Measured on the same
+period:
+
+| Group | Runs | p50 | max |
+| --- | --- | --- | --- |
+| `failed` (the 690) | 690 | **0.01 s** | 23.05 s |
+| `source_limited` (post-fix) | 1,048 | 0.04 s | 11.17 s |
+| `schedule` (a crawler that really fetches) | 564 | — | avg **32.93 s** |
+
+A blocked call is an in-memory `can_fetch` after the policy is loaded; a real request
+against this host costs tens of seconds. 689 runs sit in the 0–5 s bucket.
+
+**One run cannot be resolved from the ledger** (`id=1155`, 23.05 s, 2026-10-09
+14:15:10 UTC). Its immediate neighbour took 3.75 s while every other run took
+hundredths of a second, which is the shape of a cold start (first `robots.txt` fetch,
+10 s timeout, plus pool/DB setup) rather than of a completed request — a completed
+request would have produced previews, and the checkpoint says `previews: 0`. The
+scheduler's own log would settle it; that log lives on the scheduler host, not here.
+
+**It was three dates, retried.** The 690 runs cover only **20261010, 20261011 and
+20261012** — the same three dates every five minutes for two days, all of which hold
+games. 115 preview dead letters were produced and are now `ignored`.
+
+**The fix was deployed between 16:50 and 18:37 UTC on 2026-10-10.** Last `failed` row
+is 16:50:00 UTC; first `source_limited` row is 18:37:39 UTC. Since then: **1,048
+`source_limited` runs, 0 failures, for 20 days.** The defect is historical, not
+reproducible.
+
+**No bypass path exists today.** 26 crawler modules reference `koreabaseball.com` and
+all 26 consult the policy (`is_allowed` / `is_allowed_sync`) before their first fetch;
+the three modules without a check are not crawlers (`http_client.py`,
+`run_vocabulary.py`, `selectors.py`). The policy fails closed: Python 3.14's
+`RobotFileParser.can_fetch` returns **False** on an unparsed file, and `_ensure_loaded`
+parses `Disallow: /` when the fetch returns a non-200 or raises.
+
+**What is structural rather than guaranteed**: the check lives in each crawler, not in
+`CrawlerHttpClient`. The shared transport validates the URL and redirect targets but
+never asks the policy, so a new crawler that forgets the guard would fetch. Nothing is
+violating that today; it is the reason the per-crawler check has to be part of review
+rather than assumed from the transport.
+
+**The 1,737 → 1,738 difference was a new run, not a counting change.** Row `id=9794`
+(`target 20261030`, 2026-10-29 18:13:15 UTC) was written between two measurements taken
+minutes apart. Every row for this URL is after 2026-08-05, so the earlier "1,737 since
+08-05" figure was simply a snapshot taken one run earlier.
 
 **Remaining options**: a KBO data permission, or an outside dataset (yearbook OCR,
 Sports2i licence, news box scores). A robots change on KBO's side would reopen the
