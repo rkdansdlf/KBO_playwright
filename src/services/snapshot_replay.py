@@ -56,6 +56,17 @@ class SnapshotNotFoundError(SnapshotReplayError):
         super().__init__(f"Snapshot not found: {snapshot_id}")
 
 
+class SnapshotNotReplayableError(SnapshotReplayError):
+    """Raised when this repository cannot replay the snapshot, not that it failed.
+
+    The distinction is the one the audit keeps rediscovering: a check that cannot
+    be run and a check that ran and failed are different findings. ``snapshot
+    drift`` counted both, so two seat sources with no registered parser -- a source
+    this repository has never supported -- appeared as two parse failures on every
+    run. They are not: nothing was parsed and nothing was expected to be.
+    """
+
+
 @dataclass(frozen=True)
 class SnapshotParseResult:
     """Result of re-parsing one stored snapshot (records included).
@@ -104,6 +115,10 @@ class SnapshotValidationResult:
     drifted: bool
     success: bool
     error: str | None = None
+    #: True when this repository has no way to replay the snapshot at all -- no
+    #: registered parser, no linked data source. It is not a parse failure: nothing
+    #: ran. The drift gate reports it and does not count it against ``fail_max``.
+    unmeasurable: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +131,10 @@ class SnapshotDriftSummary:
     matched: int = 0
     unknown_baseline: int = 0
     failed: int = 0
+    #: Snapshots this repository cannot replay (no parser, no data source). Counted
+    #: apart from ``failed`` because a gate that mixes them reports its own missing
+    #: coverage as a parser defect, and the two need different responses.
+    unmeasurable: int = 0
     drifted_ids: tuple[int, ...] = ()
     failed_ids: tuple[int, ...] = ()
     ok: bool = True
@@ -129,6 +148,7 @@ class SnapshotDriftSummary:
             "matched": self.matched,
             "unknown_baseline": self.unknown_baseline,
             "failed": self.failed,
+            "unmeasurable": self.unmeasurable,
             "drifted_ids": list(self.drifted_ids),
             "failed_ids": list(self.failed_ids),
             "ok": self.ok,
@@ -315,11 +335,11 @@ def _load_view(session: Session, snapshot_id: int) -> _SnapshotView:
 def _resolve_parser(view: _SnapshotView) -> Callable[..., list[dict]]:
     if view.source_key is None:
         msg = f"snapshot {view.snapshot_id} has no linked data source"
-        raise SnapshotReplayError(msg)
+        raise SnapshotNotReplayableError(msg)
     parser = get_parser(view.source_key)
     if parser is None:
         msg = f"no parser registered for source_key={view.source_key}"
-        raise SnapshotReplayError(msg)
+        raise SnapshotNotReplayableError(msg)
     return parser
 
 
@@ -433,6 +453,22 @@ def validate_recent_snapshots(
     for snapshot_id in snapshot_ids:
         try:
             results.append(validate_snapshot(snapshot_id, session_factory=factory))
+        except SnapshotNotReplayableError as exc:
+            # Caught before its parent: this is the repository saying it has no way
+            # to replay the snapshot, which is reported and not counted as failure.
+            results.append(
+                SnapshotValidationResult(
+                    snapshot_id=snapshot_id,
+                    source_key=None,
+                    baseline_count=None,
+                    replayed_count=0,
+                    delta=None,
+                    drifted=False,
+                    success=False,
+                    error=str(exc),
+                    unmeasurable=True,
+                ),
+            )
         except SnapshotReplayError as exc:
             results.append(
                 SnapshotValidationResult(
@@ -459,16 +495,23 @@ def summarize_snapshot_drift(
     """Summarize validation results into a gate-friendly drift report.
 
     ``unknown_baseline`` snapshots are reported but never counted as drift, since
-    they simply predate ``parsed_records`` capture. Both ``drifted_ids`` and
-    ``failed_ids`` are capped at ``sample_size`` so an alert stays readable.
+    they simply predate ``parsed_records`` capture. ``unmeasurable`` snapshots --
+    those this repository has no parser for -- are reported the same way: they are
+    not parse failures, and counting them made the gate carry a permanent backstop
+    of its own unsupported sources. Both ``drifted_ids`` and ``failed_ids`` are
+    capped at ``sample_size`` so an alert stays readable.
     """
     failed = 0
     with_baseline = 0
     drifted = 0
     unknown_baseline = 0
+    unmeasurable = 0
     drifted_ids: list[int] = []
     failed_ids: list[int] = []
     for result in results:
+        if result.unmeasurable:
+            unmeasurable += 1
+            continue
         if not result.success:
             failed += 1
             if len(failed_ids) < sample_size:
@@ -490,6 +533,7 @@ def summarize_snapshot_drift(
         matched=matched,
         unknown_baseline=unknown_baseline,
         failed=failed,
+        unmeasurable=unmeasurable,
         drifted_ids=tuple(drifted_ids),
         failed_ids=tuple(failed_ids),
         ok=drifted <= drift_max and failed <= fail_max,
