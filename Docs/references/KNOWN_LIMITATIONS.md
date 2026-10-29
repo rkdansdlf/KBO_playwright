@@ -317,7 +317,35 @@ collection.
 
 ## Historical Data Coverage (2001-2009)
 
-**Status**: Schedule coverage backfilled; detail/stat completeness remains unverified
+**Status**: Schedule coverage backfilled; scores and detail are source-limited (see below)
+
+### 2001~2010 game scores are absent, and no reachable source has them (confirmed 2026-10-30)
+
+2,712 completed games from 2001~2010 have `away_score`/`home_score` NULL. They also
+have **no inning rows and no events** — so the score cannot be derived from what is
+stored (a game id is all there is). The 126~248 games per season that do carry detail
+are a different set; they have scores already.
+
+Sources checked for the missing scores, and why each fails:
+
+| Source | Result |
+| --- | --- |
+| KBO GameCenter | Has the scores; `robots.txt` is `User-agent: * / Disallow: /` |
+| Naver record / schedule / relay | 404 / `games=0` / empty — those seasons were never served |
+| 나무위키 team season docs | Season page holds a month-by-month fixture list but **no scores** (measured: `KIA 타이거즈/2005년`, 0 date strings, 2 score patterns) |
+| 위키백과 (`2005년 한국 프로 야구`) | 92KB, 4 tables, **9 score-like patterns** — standings and finals, not game results |
+| Wayback Machine | 48 game pages total (2003: 3, 2004: 45) |
+| LOPES `KBO_light.csv` | Repository covers **2008~2022** only; the HUF `lopes.hufs.ac.kr` host is unreachable |
+| 야구나라 | Game pages exist from **2025-05-01** onward |
+| 스태티즈 | `Allow: /` and `Disallow: /` both present for `*`; RFC 9309 takes the more restrictive rule, and AI crawlers are named and refused |
+
+**Consequence**: a score for these games requires an outside source — the printed
+yearbook (library reading room), a Sports2i licence, or news box scores (BigKinds).
+`scripts/maintenance/import_season_boxscores.py` converts such a source into the
+archive payload `src.cli.collection.ingest_historical_archive` reads; see
+`Docs/runbooks/HISTORICAL_IMPORT.md`. Until then the `game` chunks render these as
+**"결과 미상"** (result unknown) rather than inventing a score, and the answer layer
+returns "제공된 기록에서 확인할 수 없습니다".
 
 **Result**: The 2026-07-19 schedule backfill increased parent game rows from 1,430 to
 4,688 across 2001-2009. Annual counts are now 504-544, with no duplicate game IDs and
