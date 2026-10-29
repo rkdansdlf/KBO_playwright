@@ -18,7 +18,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
@@ -29,6 +29,8 @@ from src.utils.date_helpers import parse_date_str
 from src.validators.boxscore_verifier import verify_boxscore_sums, verify_game_db_boxscore_integrity
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -242,24 +244,90 @@ def gather_repair_candidates(
     candidate_map: dict[str, RepairCandidate] = {}
 
     if source in ("all", "integrity"):
-        for c in discover_candidates_from_integrity(session, target_date=target_date):
-            candidate_map[c.game_id] = c
+        _merge_candidates(candidate_map, discover_candidates_from_integrity(session, target_date=target_date))
 
     if source in ("all", "dlq"):
-        for c in discover_candidates_from_dlq(session):
-            if c.game_id in candidate_map:
-                candidate_map[c.game_id].reasons.extend(c.reasons)
-            else:
-                candidate_map[c.game_id] = c
+        _merge_candidates(candidate_map, discover_candidates_from_dlq(session))
 
     if source in ("all", "log"):
-        for c in discover_candidates_from_log(log_path=log_path):
-            if c.game_id in candidate_map:
-                candidate_map[c.game_id].reasons.extend(c.reasons)
-            else:
-                candidate_map[c.game_id] = c
+        _merge_candidates(candidate_map, discover_candidates_from_log(log_path=log_path))
 
-    return list(candidate_map.values())
+    settled = _settled_game_ids(session, candidate_map)
+    for game_id in sorted(settled):
+        reason = candidate_map[game_id].reasons
+        logger.info("[REPAIR] Skipping %s: its dead letter is already settled (%s)", game_id, "; ".join(reason[:1]))
+    return [c for c in candidate_map.values() if c.game_id not in settled]
+
+
+def _merge_candidates(candidate_map: dict[str, RepairCandidate], found: Iterable[RepairCandidate]) -> None:
+    """Add candidates to the map, keeping the reasons of games seen twice.
+
+    A game can be named by more than one source -- the integrity check and the
+    failure log both know it, for different reasons -- and the reasons are what a
+    reader has to judge the candidate by.
+
+    Args:
+        candidate_map: Candidates collected so far, keyed by game id.
+        found: Candidates from one discovery source.
+
+    """
+    for candidate in found:
+        existing = candidate_map.get(candidate.game_id)
+        if existing is None:
+            candidate_map[candidate.game_id] = candidate
+        else:
+            existing.reasons.extend(candidate.reasons)
+
+
+#: Dead-letter states that mean the question is answered. ``exhausted`` spent its
+#: retry budget and ``ignored`` was an operator's decision to stop; re-selecting
+#: either spends the budget again and refills the queue it just emptied.
+SETTLED_DLQ_STATUSES = (DlqStatus.EXHAUSTED.value, DlqStatus.IGNORED.value)
+
+
+def _settled_game_ids(session: Session, candidates: dict[str, RepairCandidate]) -> set[str]:
+    """Return the candidate games whose dead letter is already settled.
+
+    The failure log has no memory: a game that failed five times is still in it,
+    so every later run re-selects it and fails five more times. The dead letter
+    is the memory -- a terminal state says the source could not supply this game,
+    and that is a fact about the source rather than about the attempt. Without
+    this filter the repair refills ``dlq:exhausted`` on every run; one run on
+    2026-10-28 did it 87 times, 76 of them Premier12 games Naver has no record
+    for at all (the ``game_result_without_body`` class the pack already grades as
+    a source limit).
+
+    ``requeue`` is the way back in: it returns a letter to ``pending``, which this
+    filter deliberately does not match, so an operator who knows the source has
+    recovered can put the game back in front of the repair.
+
+    Args:
+        session: Session the dead letters are read from.
+        candidates: Candidates keyed by game id.
+
+    Returns:
+        The game ids whose dead letter is exhausted or ignored.
+
+    """
+    if not candidates:
+        return set()
+    rows = session.execute(
+        select(CrawlDeadLetter.game_id, CrawlDeadLetter.target_id)
+        .where(
+            CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+            or_(
+                CrawlDeadLetter.game_id.in_(list(candidates)),
+                CrawlDeadLetter.target_id.in_(list(candidates)),
+            ),
+        )
+        .distinct(),
+    ).all()
+    settled: set[str] = set()
+    for game_id, target_id in rows:
+        for value in (game_id, target_id):
+            if value in candidates:
+                settled.add(value)
+    return settled
 
 
 async def _crawl_and_repair_single(
