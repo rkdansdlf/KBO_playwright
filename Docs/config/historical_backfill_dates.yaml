@@ -18,9 +18,21 @@
 # what the 03:00 KST finalize needs when it rolls over a new year.
 current_season_grace_seasons: 1
 
-# Dates approved for one status rewrite, as YYYYMMDD. Empty on purpose: no
-# historical date is currently approved.
-approved_dates: []
+# Dates approved for one status rewrite, as YYYYMMDD.
+#
+# 2026-10-30: two dates approved for a relay-backed result recovery. Both were
+# stored CANCELLED although the feed ran to its closing marker, so the status
+# records a fact the feed contradicts:
+#
+#   20151016NXOB0  NX@OB  600 PBP rows, closing marker present
+#   20210508*      four games, 617/707/691/645 PBP rows, 24~30 batting rows
+#
+# Approval is per date because that is the unit the refusal names, and it is
+# deliberately narrow: the recovery script rewrites only rows whose relay
+# reached the closing marker, and it writes no boxscore it did not receive.
+approved_dates:
+  - "20151016"
+  - "20210508"
 
 # Ceiling on how many approved dates a single run may consume.
 max_dates_per_run: 10

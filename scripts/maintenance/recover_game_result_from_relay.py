@@ -18,8 +18,12 @@ collection that could have corrected it was the one the cancellation prevented.
 What this script reads, and why each condition is one
 -----------------------------------------------------
 * the relay feed's closing marker -- the feed says the game ended;
-* the last at-bat that carries a score -- the result, taken from the row the feed
-  wrote rather than inferred from innings or from the status column;
+* the last at-bat that carries a score, and a score that moved -- the result,
+  taken from the row the feed wrote rather than inferred from innings or from the
+  status column. A feed whose every at-bat repeats one score (``20151016NXOB0``:
+  145 at-bats, all 0-0, with a winning pitcher on the last line) never filled its
+  running score in; the status is still recovered and the score is left NULL,
+  because a repeated value is not a result;
 * the game date is in the past -- the result is not still being finalised;
 * ``is_primary`` -- retired duplicate rows are not what a reader sees;
 * the date is inside the writable window -- a season the historical policy
@@ -45,7 +49,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, func, or_, select
 
 from src.config.historical_backfill_policy import load_historical_backfill_policy
 from src.constants import FINAL_PBP_MARKER, KST
@@ -81,6 +85,14 @@ REASON_STATUS = (
     "produced no result, which removed it from the detail targets that could have "
     "corrected it; the result is restored from the relay row that recorded it."
 )
+REASON_STATUS_WITHOUT_SCORE = (
+    "the relay feed wrote its closing marker for this game -- it ran to its final out and "
+    "records a winning pitcher -- so the game was played to the end, even though every "
+    "at-bat in that feed repeats one score and the running score was therefore never "
+    "filled in. The row said the game was cancelled, which removed it from the detail "
+    "targets that could have corrected it; the status is restored and the score columns "
+    "are left NULL rather than filled with the repeated value."
+)
 REASON_SCORE = (
     "the score was never stored because the boxscore collection failed before the game "
     "ended and was never retried afterwards. The relay's last at-bat carries the running "
@@ -105,11 +117,13 @@ class Recovery:
     #: What the row holds now. The backup writes these, so a reader can restore it.
     stored_away_score: int | None
     stored_home_score: int | None
-    #: What the relay's last at-bat says, which is what a write would store.
+    #: What the relay's last at-bat says, which is what a write would store. Both
+    #: are None when the feed never moved its running score: the status is still
+    #: recoverable, but the score columns are left as they are rather than guessed.
     recovered_away_score: int | None
     recovered_home_score: int | None
-    #: False when the row cannot be written -- the policy refuses the season, or no
-    #: at-bat carries a score and there is nothing to restore from.
+    #: False when the row cannot be written -- the policy refuses the season, or the
+    #: stored score is half written and the disagreement is left for review.
     writable: bool
     skipped_because: str | None = None
 
@@ -172,25 +186,40 @@ def _relay_final_score(session: Session, game_id: str) -> tuple[int, int] | None
     columns are the running score and the game's last at-bat is the last one
     written. ``20261026HTSS0`` ends on a fly out in the bottom of the 9th.
 
+    A score that never moved does not describe a game. ``20151016NXOB0`` ran to
+    its closing marker and records a winning pitcher, so someone won, yet all 145
+    of its at-bats carry 0-0: the running score was never filled in for that feed.
+    Writing that pair would replace one false statement (a cancelled game) with a
+    worse one (a 0-0 draw the same feed contradicts), so a single-valued score is
+    returned as unread. This is deliberately conservative in the other direction
+    too: a genuine 0-0 draw is left alone rather than claimed, which costs a
+    follow-up and invents nothing.
+
     Args:
         session: Read-only session.
         game_id: Game whose at-bats are read.
 
     Returns:
-        ``(away_score, home_score)``, or None when no at-bat states a score.
+        ``(away_score, home_score)``, or None when no at-bat states a score or the
+        score never changed across the feed.
 
     """
+    conditions = (
+        GameEvent.game_id == game_id,
+        GameEvent.away_score.isnot(None),
+        GameEvent.home_score.isnot(None),
+    )
     row = session.execute(
         select(GameEvent.away_score, GameEvent.home_score)
-        .where(
-            GameEvent.game_id == game_id,
-            GameEvent.away_score.isnot(None),
-            GameEvent.home_score.isnot(None),
-        )
+        .where(*conditions)
         .order_by(GameEvent.event_seq.desc())
         .limit(1),
     ).first()
     if row is None:
+        return None
+    pairs = select(GameEvent.away_score, GameEvent.home_score).where(*conditions).distinct().subquery()
+    distinct_pairs = session.execute(select(func.count()).select_from(pairs)).scalar()
+    if not distinct_pairs or distinct_pairs < 2:
         return None
     return int(row[0]), int(row[1])
 
@@ -241,10 +270,12 @@ def survey(session: Session, *, today: date, policy_approved: bool = False) -> l
         allowed, skip_reason = policy.status_write_allowed(game.game_date, today)
         score = _relay_final_score(session, game.game_id)
         half_scored = (game.away_score is None) != (game.home_score is None)
-        writable = (allowed or policy_approved) and score is not None and not half_scored
-        if score is None:
-            because = "no at-bat row carries a score to restore from"
-        elif half_scored:
+        # A score is not required to recover the status. The closing marker is what
+        # says the game finished, and it says so whether or not the feed also filled
+        # in its running score -- the two are separate claims, and refusing both
+        # because one is missing leaves a finished game stored as cancelled.
+        writable = (allowed or policy_approved) and not half_scored
+        if half_scored:
             because = "only one side of the stored score is missing; the halves are left for review"
         elif not allowed and not policy_approved:
             because = f"outside the writable window ({skip_reason})"
@@ -397,7 +428,7 @@ def recover(*, apply: bool = False, session: Session | None = None, today: date 
             db.close()
 
 
-def _apply_one(session: Session, *, game: Game, score: tuple[int, int]) -> None:
+def _apply_one(session: Session, *, game: Game, score: tuple[int, int] | None) -> None:
     """Write one game's recovered result, auditing every field that changes.
 
     Only a fully absent score is written. A row that already carries one side is
@@ -405,13 +436,18 @@ def _apply_one(session: Session, *, game: Game, score: tuple[int, int]) -> None:
     paper over a disagreement between them, and a disagreement is the thing a
     reader needs to see.
 
+    ``score`` is None when the feed never moved its running score. The status is
+    still written in that case, because the closing marker and the score are
+    separate claims and only the second one is missing. The score columns are left
+    NULL rather than filled with the value the feed happened to repeat.
+
     Args:
         session: Session the changes are added to.
         game: Game being corrected.
-        score: ``(away_score, home_score)`` read from the relay.
+        score: ``(away_score, home_score)`` read from the relay, or None.
 
     """
-    if game.away_score is None and game.home_score is None:
+    if score is not None and game.away_score is None and game.home_score is None:
         for field_name, corrected in (("away_score", score[0]), ("home_score", score[1])):
             _audit(
                 session,
@@ -424,7 +460,8 @@ def _apply_one(session: Session, *, game: Game, score: tuple[int, int]) -> None:
             )
             setattr(game, field_name, corrected)
 
-    next_status = _resolve_terminal_status(score[1], score[0])
+    away, home = score if score is not None else (None, None)
+    next_status = _resolve_terminal_status(home, away)
     if game.game_status != next_status:
         _audit(
             session,
@@ -433,7 +470,7 @@ def _apply_one(session: Session, *, game: Game, score: tuple[int, int]) -> None:
             raw_value=game.game_status,
             raw_source=RAW_SOURCE,
             corrected_value=next_status,
-            reason=REASON_STATUS,
+            reason=REASON_STATUS if score is not None else REASON_STATUS_WITHOUT_SCORE,
         )
         game.game_status = next_status
 
@@ -477,19 +514,35 @@ def _recover(session: Session, *, apply: bool, today: date) -> list[str]:
         game = session.execute(select(Game).where(Game.game_id == item.game_id)).scalars().first()
         if game is None:  # pragma: no cover - the row was selected from this session
             continue
-        score = (item.recovered_away_score, item.recovered_home_score)
-        logger.info(
-            "%s (%s): %s %s-%s -> %s %s-%s%s",
-            game.game_id,
-            game.game_date,
-            game.game_status,
-            game.away_score,
-            game.home_score,
-            _resolve_terminal_status(score[1], score[0]),
-            score[0],
-            score[1],
-            "" if apply else " (dry run, not written)",
+        score = (
+            (item.recovered_away_score, item.recovered_home_score)
+            if item.recovered_away_score is not None and item.recovered_home_score is not None
+            else None
         )
+        if score is None:
+            logger.info(
+                "%s (%s): %s %s-%s -> %s (score unread; left NULL)%s",
+                game.game_id,
+                game.game_date,
+                game.game_status,
+                game.away_score,
+                game.home_score,
+                _resolve_terminal_status(None, None),
+                "" if apply else " (dry run, not written)",
+            )
+        else:
+            logger.info(
+                "%s (%s): %s %s-%s -> %s %s-%s%s",
+                game.game_id,
+                game.game_date,
+                game.game_status,
+                game.away_score,
+                game.home_score,
+                _resolve_terminal_status(score[1], score[0]),
+                score[0],
+                score[1],
+                "" if apply else " (dry run, not written)",
+            )
         recovered.append(game.game_id)
         if apply:
             _apply_one(session, game=game, score=score)

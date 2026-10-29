@@ -122,12 +122,46 @@ class TestReadingTheResultFromTheRelay:
 
         assert _recover(session, apply=False) == []
 
-    def test_at_bats_that_state_no_score_leave_nothing_to_recover(self, session) -> None:
-        """The script restores a result; it does not manufacture one."""
+    def test_a_relay_without_any_score_row_still_recovers_the_status(self, session) -> None:
+        """The closing marker and the score are separate claims; only one is missing."""
         _game(session)
         _relay(session, scores=[])
 
-        assert _recover(session, apply=False) == []
+        assert _recover(session, apply=False) == [GAME_ID]
+
+        game = session.query(Game).filter(Game.game_id == GAME_ID).one()
+        assert game.away_score is None
+        assert game.home_score is None
+
+    def test_a_score_that_never_moved_is_not_written(self, session) -> None:
+        """``20151016NXOB0`` repeats 0-0 across 145 at-bats and still has a winning pitcher.
+
+        Writing that pair would swap one false statement (a cancelled game) for a
+        worse one (a 0-0 draw the same feed contradicts), so the status is recovered
+        and the score is left alone.
+        """
+        _game(session)
+        _relay(session, scores=[(1, 0, 0), (77, 0, 0)])
+
+        assert _recover(session, apply=True) == [GAME_ID]
+
+        game = session.query(Game).filter(Game.game_id == GAME_ID).one()
+        assert game.away_score is None
+        assert game.home_score is None
+        assert game.game_status == GAME_STATUS_COMPLETED
+
+    def test_the_audit_says_the_score_was_unread_rather_than_read(self, session) -> None:
+        """A reason that claims a score would be the wrong record of the same run."""
+        from scripts.maintenance.recover_game_result_from_relay import REASON_STATUS_WITHOUT_SCORE
+
+        _game(session)
+        _relay(session, scores=[(1, 0, 0), (77, 0, 0)])
+
+        _recover(session, apply=True)
+
+        audit = _audit(session)
+        assert set(audit) == {"game_status", "game_lifecycle_state"}
+        assert audit["game_status"].correction_reason == REASON_STATUS_WITHOUT_SCORE
 
     def test_a_retired_duplicate_is_not_touched(self, session) -> None:
         _game(session, primary=False)
@@ -208,14 +242,27 @@ class TestWritingTheRecovery:
 
 class TestTheWritableWindow:
     def test_a_season_outside_the_window_is_reported_and_left_alone(self, session) -> None:
-        """The same policy the status refresh obeys, obeyed here too."""
-        _game(session, game_id="20210508HHLG0", game_date=date(2021, 5, 8))
-        _relay(session, game_id="20210508HHLG0")
+        """The same policy the status refresh obeys, obeyed here too.
+
+        The date is one the committed policy does not list. An approved date would
+        pass, which is why the refusal case must not reuse one -- adding an approval
+        to ``historical_backfill_dates.yaml`` is what made this test fail once, and
+        the failure was correct.
+        """
+        _game(session, game_id="20150601XXXX0", game_date=date(2015, 6, 1))
+        _relay(session, game_id="20150601XXXX0")
 
         assert _recover(session, apply=False) == []
 
-        game = session.query(Game).filter(Game.game_id == "20210508HHLG0").one()
+        game = session.query(Game).filter(Game.game_id == "20150601XXXX0").one()
         assert game.game_status == GAME_STATUS_CANCELLED
+
+    def test_an_approved_date_is_writable(self, session) -> None:
+        """The approval is data, so the script has to read the file the reviewer edited."""
+        _game(session, game_id="20151016NXOB0", game_date=date(2015, 10, 16))
+        _relay(session, game_id="20151016NXOB0")
+
+        assert _recover(session, apply=True) == ["20151016NXOB0"]
 
 
 class TestTheLifecyclePath:
