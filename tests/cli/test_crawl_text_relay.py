@@ -252,3 +252,117 @@ class TestCrawlerExecution:
         csv_files = list(tmp_path.glob("*_text_relay.csv"))
         assert len(csv_files) == 1
         assert csv_files[0].name == "20260819HTHH0_text_relay.csv"
+
+
+class TestScheduleSourceFailureHandling:
+    """A schedule timeout must not be reported as a quiet "0 games" success."""
+
+    @pytest.mark.asyncio
+    async def test_all_dates_failing_raises(self):
+        from src.cli.crawl_text_relay import ScheduleSourceUnavailableError, _fetch_schedule_game_ids_from_naver
+
+        with (
+            patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", new_callable=AsyncMock, return_value=None),
+            pytest.raises(ScheduleSourceUnavailableError),
+        ):
+            await _fetch_schedule_game_ids_from_naver(2026, 10)
+
+    @pytest.mark.asyncio
+    async def test_genuine_no_game_month_returns_empty(self):
+        from src.cli.crawl_text_relay import _fetch_schedule_game_ids_from_naver
+
+        with patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", new_callable=AsyncMock, return_value=[]):
+            assert await _fetch_schedule_game_ids_from_naver(2026, 12) == []
+
+    @pytest.mark.asyncio
+    async def test_partial_failure_keeps_found_games(self):
+        from src.cli.crawl_text_relay import _fetch_schedule_game_ids_from_naver
+
+        game = {"gameId": "20261026LGSS02026", "gameDate": "2026-10-26"}
+        calls = {"n": 0}
+
+        async def fake(_client, _season, _date):
+            calls["n"] += 1
+            return None if calls["n"] % 3 == 0 else [game]
+
+        with (
+            patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", side_effect=fake),
+            patch("src.cli.crawl_text_relay._kbo_game_id_from_naver", return_value="20261026LGSS0"),
+        ):
+            assert await _fetch_schedule_game_ids_from_naver(2026, 10) == ["20261026LGSS0"]
+
+    def test_main_returns_nonzero_when_schedule_unavailable(self):
+        from src.cli.crawl_text_relay import ScheduleSourceUnavailableError
+
+        with patch(
+            "src.cli.crawl_text_relay.run_season",
+            new_callable=AsyncMock,
+            side_effect=ScheduleSourceUnavailableError("down"),
+        ):
+            assert main(["--season", "2026", "--month", "10"]) == 1
+
+    def test_main_returns_zero_for_no_game_window(self):
+        with patch("src.cli.crawl_text_relay.run_season", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"total": 0, "success": 0, "failed": 0}
+            assert main(["--season", "2026", "--month", "12"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_majority_failure_raises(self):
+        from src.cli.crawl_text_relay import ScheduleSourceUnavailableError, _fetch_schedule_game_ids_from_naver
+
+        calls = {"n": 0}
+
+        async def fake(_client, _season, _date):
+            calls["n"] += 1
+            return [] if calls["n"] <= 10 else None  # 21/31 failed
+
+        with (
+            patch("src.cli.crawl_text_relay._fetch_naver_schedule_games", side_effect=fake),
+            pytest.raises(ScheduleSourceUnavailableError),
+        ):
+            await _fetch_schedule_game_ids_from_naver(2026, 10)
+
+    def test_main_returns_nonzero_when_every_crawl_failed(self):
+        with patch("src.cli.crawl_text_relay.run_season", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"total": 3, "success": 0, "failed": 3}
+            assert main(["--season", "2026", "--month", "10"]) == 1
+
+
+class TestFetchNaverScheduleGames:
+    @staticmethod
+    def _client(response=None, exc=None):
+        client = MagicMock()
+        client.get = AsyncMock(return_value=response, side_effect=exc)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_read_timeout_returns_none(self):
+        import httpx
+
+        from src.cli.crawl_text_relay import _fetch_naver_schedule_games
+
+        client = self._client(exc=httpx.ReadTimeout("t"))
+        assert await _fetch_naver_schedule_games(client, 2026, "2026-10-26") is None
+
+    @pytest.mark.asyncio
+    async def test_non_200_returns_none(self):
+        from src.cli.crawl_text_relay import _fetch_naver_schedule_games
+
+        client = self._client(response=MagicMock(status_code=503))
+        assert await _fetch_naver_schedule_games(client, 2026, "2026-10-26") is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_returns_none(self):
+        from src.cli.crawl_text_relay import _fetch_naver_schedule_games
+
+        response = MagicMock(status_code=200)
+        response.json.side_effect = ValueError("bad json")
+        assert await _fetch_naver_schedule_games(self._client(response=response), 2026, "2026-10-26") is None
+
+    @pytest.mark.asyncio
+    async def test_empty_games_returns_empty_list(self):
+        from src.cli.crawl_text_relay import _fetch_naver_schedule_games
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"result": {"games": []}}
+        assert await _fetch_naver_schedule_games(self._client(response=response), 2026, "2026-12-01") == []
