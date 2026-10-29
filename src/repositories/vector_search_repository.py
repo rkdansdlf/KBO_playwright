@@ -38,6 +38,35 @@ logger = logging.getLogger(__name__)
 _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
 _DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
 
+#: How many IVF lists a search visits. pgvector's default is 1 -- one list out of
+#: the 100 the index is built with. Measured against the live index (377k rows,
+#: lists=100) on 2026-10-29: probes=1 returned the wrong chunks and missed the
+#: season-stat row entirely at 1,684ms, while probes=5 found it in the top 3 at
+#: 1,663ms -- the same cost. probes=10 and 20 cost 6-7x more for one place of
+#: ranking. Recall is the point of a search; the default was sampling.
+ANN_PROBES = 5
+
+
+def _configure_ann_probes(session: Session) -> None:
+    """Raise the IVF probe count for this transaction.
+
+    ``SET`` is only accepted once the vector extension is loaded in the session,
+    so the first statement on a fresh connection can be rejected. That is not
+    fatal -- the query still runs with the server default -- but it must be
+    visible, because the fallback silently lowers recall to one list.
+
+    Args:
+        session: The session the search will run on.
+
+    """
+    try:
+        session.execute(text(f"SET LOCAL ivfflat.probes = {ANN_PROBES}"))
+    except SQLAlchemyError:
+        logger.warning(
+            "ivfflat.probes not applied (extension not loaded yet?); "
+            "the search will use the server default, which visits one list",
+        )
+
 
 def _coerce_game_date(value: object) -> dt_date | None:
     """Turn a ``game_date`` filter value into the date the column stores.
@@ -253,6 +282,8 @@ class VectorSearchRepository:
         player_id: str | None,
         index_version: str | None,
     ) -> list[dict[str, Any]]:
+        _configure_ann_probes(session)
+
         # cosine_distance: 0 = 동일, 2 = 반대 → score = 1 - distance
         distance_expr = RagChunkVector.embedding.cosine_distance(query_vector)
         score_expr = (1 - distance_expr).label("score")

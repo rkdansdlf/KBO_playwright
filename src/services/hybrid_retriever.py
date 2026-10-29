@@ -8,6 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.db.vector_engine import is_oracle_vector_backend, is_pgvector_available
 from src.services.kbo_entity_resolver import resolve_kbo_entities
 from src.services.rag_search_engine import RagSearchEngine
@@ -183,6 +186,40 @@ def _matches_dense_filters(item: dict[str, Any], filters: dict[str, Any]) -> boo
     return True
 
 
+def _document_type_exists(session: Session, document_type: str | None) -> bool:
+    """Return whether any chunk in the index carries this document type.
+
+    The type is guessed from the question's words (``CATEGORY_KEYWORDS``), and a
+    guess no row matches makes the whole search empty: measured 2026-10-29,
+    "2024년 김도영 홈런은 몇 개였나?" produced ``document_type="milestone"``
+    where the index has none, so vector and BM25 both returned nothing and the
+    zero-result fallback scanned the table for 130s. Every filter is a claim
+    about the data, so it is checked before it is applied.
+
+    A failed check keeps the filter: widening a search on a database error is
+    the more dangerous direction, and the caller can see the warning.
+
+    Args:
+        session: Read session for the lookup.
+        document_type: The guessed type, or None when there is no filter.
+
+    Returns:
+        True when the filter may be applied (including "there is no filter").
+
+    """
+    if document_type is None:
+        return True
+    try:
+        found = session.execute(
+            text("SELECT 1 FROM rag_chunks WHERE document_type = :document_type LIMIT 1"),
+            {"document_type": document_type},
+        ).fetchone()
+    except SQLAlchemyError:
+        logger.warning("could not verify document_type=%r; keeping the filter", document_type)
+        return True
+    return found is not None
+
+
 def _merge_retrieval_filters(extracted_filters: dict[str, Any], explicit_filters: dict[str, Any]) -> dict[str, Any]:
     """Merge query entities without applying unreliable source-specific filters."""
     merged = dict(extracted_filters)
@@ -242,6 +279,16 @@ class HybridRetriever:
             merged_filters = _merge_retrieval_filters(extracted.to_filters(), filters or {})
         resolver_ms = round((time.perf_counter() - resolve_started) * 1000, 3)
         target_category = category if category is not None else merged_filters.get("document_type")
+        if not _document_type_exists(self.session, target_category):
+            logger.warning(
+                "document_type=%r has no chunks; dropping the filter instead of returning nothing",
+                target_category,
+            )
+            # 필터는 merged_filters에도 들어 있다. 그쪽을 남기면 dense 검색이
+            # 거기서 다시 읽어 같은 0건을 만들고, 폴백이 전체 스캔을 돈다
+            # (실측: document_type='milestone'이 남아 vector 244초).
+            merged_filters.pop("document_type", None)
+            target_category = None
 
         # Dense owns a separate repository session, so overlap it with BM25.
         with ThreadPoolExecutor(max_workers=1) as executor:
