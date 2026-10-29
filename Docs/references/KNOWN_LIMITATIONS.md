@@ -368,14 +368,26 @@ Nothing in the repository may collect it now. `compliance.is_allowed` refuses th
 whole host, and `KBO_ALLOW_ROBOTS_OVERRIDE` / `KBO_IGNORE_ROBOTS_TXT` are **not** set
 in `.env` — turning them on would be a policy decision, not a bug fix.
 
-**Open question (not a licence to proceed)**: `crawl_execution_runs` records
-**1,737 `GetKboGameList` calls between 2026-10-09 and 10-29**, i.e. after the host was
-refused. `preview_crawler` does call `compliance.is_allowed(self.GAME_LIST_URL)`
-before fetching, so either some path skips that check or a scheduled process held a
-cached policy across the change (`_ensure_loaded` refreshes every 24h and on failure
-retries, so a long-lived process should have picked it up). Either way the calls
-happened, and that is worth its own investigation — **do not treat this as an
-existing sanctioned route to the data.**
+**Corrected 2026-10-30 — the ledger's 1,737 rows are not 1,737 calls.** An earlier
+note in this file said the repository "called the refused host 1,737 times". That
+reading was of `source_url`, and it was wrong. Measured:
+
+| Rows | `checkpoint.outcome` | `records_read` | Reality |
+| --- | --- | --- | --- |
+| 1,048 (10-10 ~ 10-29) | **`source_limited`**, reason `kbo_robots_blocked` | 0 | **Never fetched.** `preview_crawler` checks `compliance.is_allowed` before fetching, records the refusal as a checkpoint and returns without a request — "A policy refusal is not a data outcome and not a failure: the source was never consulted." That wording is in the code because this used to land as `FETCH_HTTP_ERROR` with a retryable dead letter (BUG-015, 77 exhausted letters that could never succeed). |
+
+So the repository does respect the refusal, and `source_url` on a ledger row means
+"the URL this run was about", not "a request that was made". Re-confirmed live:
+`compliance.is_allowed` returns False for both `GetKboGameList` and the GameCenter
+page, and logs the block.
+
+**One thing remains unexplained (2 days, not 20)**: 690 rows on **10-09 ~ 10-10** are
+`failed` / `FETCH_HTTP_ERROR` with `checkpoint={'game_date': ..., 'previews': 0}` —
+i.e. **no `source_limited` marker**, while robots said `Disallow: /` on both 10-01 and
+10-12 as well. Those runs either made a request (the refusal was not detected, which
+would be a compliance bug) or failed before it. `records_read` is 0, so no data was
+collected either way, and the state today is correct. Worth a look if the robots path
+is touched again.
 
 **Remaining options**: a KBO data permission, or an outside dataset (yearbook OCR,
 Sports2i licence, news box scores). A robots change on KBO's side would reopen the
