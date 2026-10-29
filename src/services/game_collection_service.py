@@ -25,6 +25,7 @@ from src.crawlers.game_detail_outcome import (
 )
 from src.crawlers.relay_outcome import RelayAttempt, RelayStatus
 from src.db.engine import SessionLocal
+from src.models.crawl_dead_letter import SETTLED_DLQ_STATUSES, CrawlDeadLetter
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.monitoring.crawler_metrics import (
     LEDGER_OPERATION_FINALIZE,
@@ -313,6 +314,22 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
         GamePlayByPlay.game_id == Game.game_id,
         GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
     )
+    # A dead letter that reached ``exhausted`` or ``ignored`` is the record of an
+    # answered question: the source could not supply this game. Selecting it again
+    # re-spends the retry budget and refills the queue -- on 2026-10-30 the four
+    # 2024 Premier12 games that had been settled the day before were back in
+    # ``exhausted`` with five more attempts each, because the repair path filtered on
+    # this tuple and the collection path did not. ``requeue`` is the way back in: it
+    # returns a letter to ``pending``, which this does not match.
+    settled_dead_letter = exists().where(
+        CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
+        CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
+        or_(
+            CrawlDeadLetter.game_id == Game.game_id,
+            CrawlDeadLetter.target_id == Game.game_id,
+        ),
+        CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+    )
 
     with SessionLocal() as session:
         rows = (
@@ -325,6 +342,11 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
                     Game.game_status.notin_(DETAIL_IMPOSSIBLE_STATUSES),
                     finished_relay,
                 ),
+                # The relay exception outranks the dead letter for the same reason it
+                # outranks the status: a feed that ran to its closing marker says the
+                # game happened and its boxscore is still wanted, whether or not an
+                # earlier attempt gave up on it (``20261026HTSS0``).
+                or_(~settled_dead_letter, finished_relay),
             )
             .order_by(Game.game_id.asc())
             .all()

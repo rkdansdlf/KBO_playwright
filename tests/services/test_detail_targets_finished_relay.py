@@ -21,6 +21,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.constants import FINAL_PBP_MARKER
+from src.models.crawl_dead_letter import CrawlDeadLetter
 from src.models.game import Game, GamePlayByPlay
 from src.services import game_collection_service
 from src.services.game_collection_service import load_game_targets_from_db
@@ -30,7 +31,10 @@ from src.utils.game_status import GAME_STATUS_CANCELLED
 @pytest.fixture
 def session_factory(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
-    for table in (Game.__table__, GamePlayByPlay.__table__):
+    # ``crawl_dead_letters`` is read by the target query since 2026-10-30 (a settled
+    # letter keeps a game out of collection), so the schema has to be here even
+    # though these tests write no letters: the query names the table either way.
+    for table in (Game.__table__, GamePlayByPlay.__table__, CrawlDeadLetter.__table__):
         table.create(engine)
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(game_collection_service, "SessionLocal", factory)

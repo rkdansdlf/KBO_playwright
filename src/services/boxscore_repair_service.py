@@ -22,7 +22,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import SessionLocal
-from src.models.crawl_dead_letter import CrawlDeadLetter, DlqStatus
+from src.models.crawl_dead_letter import SETTLED_DLQ_STATUSES, CrawlDeadLetter, DlqStatus
 from src.models.game import Game
 from src.utils.crawler_failure_logger import DEFAULT_FAILURE_LOG_PATH
 from src.utils.date_helpers import parse_date_str
@@ -279,10 +279,9 @@ def _merge_candidates(candidate_map: dict[str, RepairCandidate], found: Iterable
             existing.reasons.extend(candidate.reasons)
 
 
-#: Dead-letter states that mean the question is answered. ``exhausted`` spent its
-#: retry budget and ``ignored`` was an operator's decision to stop; re-selecting
-#: either spends the budget again and refills the queue it just emptied.
-SETTLED_DLQ_STATUSES = (DlqStatus.EXHAUSTED.value, DlqStatus.IGNORED.value)
+# The settled statuses are defined beside ``DlqStatus`` because the collection path
+# filters on the same tuple; see ``src.models.crawl_dead_letter``. Kept as a module
+# name here so existing importers of this module keep working.
 
 
 def _settled_game_ids(session: Session, candidates: dict[str, RepairCandidate]) -> set[str]:
