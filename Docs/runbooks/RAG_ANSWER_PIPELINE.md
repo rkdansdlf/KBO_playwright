@@ -202,4 +202,32 @@ single matching keyword `순위`, and the answer row carries no other query term
 Its chunk title is `2026-07-17 HH 순위`: the query says 한화, the chunk says
 `HH`. Measured MRR over the golden set went **0.6278 → 0.6111** with Recall@5
 unchanged at 0.70; the difference is one query crossing that boundary, not a
-scoring regression. A deterministic tie-break is the fix; it is not applied yet.
+scoring regression.
+
+### Two tempting fixes that measurement rejected
+
+Both were measured against the same 30 golden queries before being written off,
+and neither is applied.
+
+**A deterministic tie-break** (`(-score, source_table, source_row_id)`) buys
+reproducibility, not quality: Recall@5 **0.7000 → 0.7333** (that one standings
+query recovers to rank 2) while MRR **0.6111 → 0.6000** — four queries that were
+rank 1 only because the scan happened to return them first drop to rank 2. The
+tie group has no correct order to discover, because every member scores
+identically on the one keyword it matches.
+
+**Giving BM25 the hybrid path's entity filters** is worse: Recall@5 **0.6667**,
+MRR **0.5778**. It does fix `prod_rank_013` (rank 1 via `team_id=HH`), but
+`prod_game_025` and `prod_game_026` — "한화와 KIA 경기 결과" — lose their answer
+entirely, because a game chunk carries two teams and a single `team_id` filter
+excludes it. `_resolved_search_filters` deliberately resolves only date and
+season; that is not an oversight to correct.
+
+The remaining gap is in the data, not the ranking: the standings chunk is titled
+`2026-07-17 HH 순위`, so a query saying 한화 shares only `순위` with it and with
+the other nine teams for that date. Making those chunks carry the Korean team
+name would give the scorer something to discriminate on, but it means
+re-indexing, so it belongs with the next re-embedding — not before it.
+
+Three golden queries (`prod_rule_020`–`022`, all `document_type=markdown_doc`)
+still miss answers that *are* in the store; that is a separate investigation.
