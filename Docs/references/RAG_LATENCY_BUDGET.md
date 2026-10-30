@@ -3,17 +3,38 @@
 읽기 전용 측정이다. 코드·인덱스·운영 설정을 바꾸지 않았고, 아래 수치는 실행한 그대로다.
 측정 환경은 Mac(원격 `bega_prod`, Tailscale), 커밋 `07de7866` 기준.
 
+## 0. 정정 — BM25 병목은 측정 하루 전에 이미 발견·수정됐다
+
+이 문서를 쓰기 **전날** 병행 세션이 BM25의 진짜 원인을 찾아 고쳤다
+(`68d61a6d`, `Docs/runbooks/RAG_ANSWER_PIPELINE.md` §8). 정리하면:
+
+* `053_rag_search_text_index.sql`의 표현식 인덱스가 **2026-09-22에 "적용됨"으로
+  기록됐지만 실제로는 존재하지 않았다.** 그래서 모든 키워드가 3.1GB 힙에
+  `Parallel Seq Scan`을 돌았고 `한국시리즈`는 **116초**(384,067 buffer reads)가
+  걸렸다. `pg_stat_user_tables`: `seq_scan=21,050`, `seq_tup_read=101,545,298`
+  — 377k행 테이블 기준 약 269회 전체 스캔.
+* 두 검사가 이것을 볼 수 없었다: `apply_postgres_migrations --check`는 **이력
+  테이블만** 비교하고(`053`이 이력에 있으므로 pending 0), `audit_rag_index`는
+  **두 저장소를 서로** 비교한다(물리 인덱스는 계약 밖).
+* 10-30에 인덱스를 만들었다(13초, 21MB). 그들의 측정: **p50 526 → 140ms,
+  p95 2,673 → 501ms**(30 golden queries, `--variant bm25`).
+
+**따라서 이 문서의 BM25 수치는 수정 이후 시점의 값이다.** 아래 §1의 "BM25는
+병목이 아니다"는 **지금** 그렇다는 뜻이며, 인덱스가 없던 5주 동안은 BM25가
+가장 큰 병목이었다. 같은 결론을 두 세션이 다른 시점에 낸 것이므로 어느 쪽도
+철회되지 않는다.
+
 ## 1. 결론 먼저
 
-**BM25는 병목이 아니다.** 지연을 지배하는 것은 **ivfflat ANN(dense)** 이고, 그 다음이
-OpenRouter 임베딩 호출이다. 실측:
+**남은 병목은 ivfflat ANN(dense)이다.** BM25는 위 수정으로 140ms(p50)가 됐고,
+지연을 지배하는 것은 dense와 OpenRouter 임베딩 호출이다. 실측:
 
-| 구성 요소 | warm p50 | 첫 실행 / cold |
-| --- | --- | --- |
-| **vector (ivfflat)** | **513 ms** | **1,728 ~ 27,052 ms** |
-| bm25 | 267 ms | 502 ~ 914 ms |
-| embedding (OpenRouter) | 64 ms | 94 ~ 1,867 ms |
-| **total** | **514 ms** | **1.5 ~ 20.2 s** |
+| 구성 요소 | warm p50 | 첫 실행 / cold | 비고 |
+| --- | --- | --- | --- |
+| **vector (ivfflat)** | **513 ms** | **1,728 ~ 27,052 ms** | 5,008 MB 인덱스 |
+| bm25 | 267 ms | 502 ~ 914 ms | 인덱스 생성 후(§0). 그들 측정 p50 140 ms |
+| embedding (OpenRouter) | 64 ms | 94 ~ 1,867 ms | 외부 API |
+| **total** | **514 ms** | **1.5 ~ 20.2 s** | |
 
 "3.2초"는 **warm 상태의 상한 근처**이거나 **첫 실행**이다. 같은 쿼리를 5회 반복하면
 `total p50=514ms, max=1,552ms`로 수렴한다. 즉 3.2초는 상시가 아니라 **초기 실행 비용**을
@@ -53,6 +74,15 @@ pgvector 0.8.6, `embedding` 375,509행 / 1536차원. 그런데 실행 계획은 
 **대조**: 같은 데이터를 `game_date` B-tree로 찾으면 **0.049 ms**다(§4 F행).
 즉 문제는 차원이나 데이터가 아니라 **인덱스 종류**다.
 
+**`ANALYZE`는 원인이 아니다 — 확인했고 배제한다.** `pg_stat_user_tables`는
+`last_analyze=NULL`, `n_live_tup=595,395`(실제 377,365)로 부정확하지만,
+**인덱스 자신의 통계는 정확하다**(`reltuples=375,486`, 실제 임베딩 보유 행과
+일치). planner는 `rows=25,381`(team_id 필터)처럼 합리적인 추정을 하고 있고,
+그 추정 위에서 `cost=2,629,089`짜리 ivfflat 스캔을 **선택**한다. 즉 통계를
+고쳐도 선택은 바뀌지 않는다 — 필터를 인덱스 스캔 **후에** 적용하는 ivfflat의
+구조가 원인이다. (BM25 인덱스 쪽도 같은 부정확 통계를 쓰지만 GIN은 21MB로
+정상 동작한다.)
+
 ## 4. 치명적 경로: `enable_indexscan = off`
 
 `vector_search_repository._load_filtered_search_results`는 날짜 스코프 소스에서
@@ -89,7 +119,7 @@ if source_table in _DATE_SCOPED_SOURCE_TABLES and game_date:
 | --- | --- | --- | --- | --- |
 | **P1** | **HNSW 인덱스 추가** (`vector_cosine_ops`) | ivfflat 2,046 ms → 수십 ms 기대. §3의 A(27 s)도 함께 해소 | **중간** — 빌드가 수 분, 디스크 증가, 빌드 중 부하 | pgvector 0.8.6 지원. ivfflat을 **지우지 않고** 공존시켜 planner가 고르게 함 |
 | **P2** | **`enable_indexscan=off` 분기 수정** | G의 300 s → 날짜 필터 유지 시 0.05 ms 급 | 낮음 | 정확도 목적을 버리지 않는 방법: `enable_indexscan` 대신 **날짜로 ID를 먼저 뽑아 `IN`** 으로 거리 계산 |
-| **P3** | **BM25 로딩 축소** (`load_only`) | 267 ms → ~100 ms 추정 | 낮음 | 이미 `defer(embedding)`만 적용. `content`·`meta`가 행당 수 KB |
+| **P3** | BM25 로딩 축소 (`load_only`) | 267 ms → ~150 ms 추정. **효과가 줄었다** — §0의 인덱스 수정이 이미 526→140 ms를 했다 | 낮음 | 이미 `defer(embedding)` 적용(그들 커밋). `content`·`meta`가 행당 수 KB |
 | **P4** | **쿼리 임베딩 캐시** | embedding 64 ms → 0(히트 시) | 낮음 | 같은 쿼리 반복이 잦은 평가·CLI 경로 |
 | **P5** | ivfflat `lists`/`probes` 재조정 | 제한적 — §3 주석의 기존 측정과 같은 결론 | 낮음 | P1이 되면 불필요 |
 
@@ -106,7 +136,12 @@ P1이 나머지를 압도한다. P2는 **별개 결함**이라 P1과 무관하�
    실패로 보고 사람이 판단하게 한다(무단 변경 금지).
 2. **golden set 회귀** — 기존 `Docs/references/rag_golden_queries.json` +
    `rag_configured_evaluation.json`의 Recall@5·MRR이 **떨어지지 않을 것**.
-   현재 기준선: Recall@5 0.9485 / MRR 0.8306(Phase 86).
+   **기준선은 변형별로 다르므로 섞으면 안 된다**:
+   * hybrid(운영 경로): Recall@5 **0.9485** / MRR **0.8306**(Phase 86)
+   * `--variant bm25`(sparse 단독): Recall@5 **0.7000** / MRR **0.6111**(2026-10-30,
+     30 golden queries)
+   dense를 바꾸는 P1은 **hybrid** 기준선으로, sparse를 바꾸는 변경은 **bm25**
+   기준선으로 판정한다. 하나의 숫자로 둘 다 재면 어느 쪽이 움직였는지 알 수 없다.
 3. **지연 예산 게이트** — warm p95 `total < 1,000 ms`. 현재 514 ms(p50)이므로
    여유가 있고, P1 후에는 250 ms 이하를 기대한다. 게이트는 **warm**으로 측정
    (cold를 게이트로 삼으면 임베딩 API 상태가 테스트를 좌우한다).
@@ -127,3 +162,7 @@ P1이 나머지를 압도한다. P2는 **별개 결함**이라 P1과 무관하�
 
 - 인덱스 생성·재생성, 임베딩 재생성, 운영 설정 변경 — 지시된 제약.
 - 코드 수정 — 구현 전 보고가 요구사항이므로 이 문서는 측정과 계획만 담는다.
+- **BM25 인덱스 생성은 이 문서의 작업이 아니다.** 그것은 같은 날 병행 세션이
+  발견·수정했다(§0). `seq_scan`/`seq_tup_read`가 BM25 인덱스 이전 누적값을
+  포함하므로, BM25 쪽 통계로 무언가를 판정할 때는 **그 커밋을 기준선으로**
+  삼아야 한다.
