@@ -268,6 +268,12 @@ class RagSearchEngine:
         for ts_query in ts_queries:
             stmt = (
                 select(RagChunk)
+                # 1536차원 벡터는 행당 6KB다. 후보 1,000행이면 6MB를 원격에서
+                # 끌어오고, 그 전송이 후보 조회 자체보다 오래 걸린다(실측:
+                # 전체 엔티티 2.2~3.4초 vs embedding 지연 0.2~0.3초). 스코어링은
+                # title/content/meta만 읽으므로 embedding을 지연시킨다 —
+                # `_oracle_candidates`가 같은 이유로 이미 그렇게 한다.
+                .options(defer(RagChunk.embedding))
                 .where(search_vector.op("@@")(ts_query))
                 .where(
                     or_(
@@ -299,7 +305,7 @@ class RagSearchEngine:
             )
             for keyword in keywords
         ]
-        stmt = select(RagChunk).where(or_(*conditions))
+        stmt = select(RagChunk).options(defer(RagChunk.embedding)).where(or_(*conditions))
         if filters and filters.get("source_table"):
             stmt = stmt.where(RagChunk.source_table == filters["source_table"])
         if candidate_limit is not None:

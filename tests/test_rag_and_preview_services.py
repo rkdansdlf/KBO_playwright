@@ -179,6 +179,54 @@ def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
     assert "LIMIT" in compiled
 
 
+def test_postgresql_search_does_not_transfer_embeddings() -> None:
+    """Skip the 1536-dimension vector when loading lexical candidates.
+
+    The vector is ~6KB per row, so a 1,000-candidate fetch moves ~6MB from the
+    remote store. Measured on the production index: 2.2-3.4s as a full entity
+    against 0.2-0.3s with the column deferred. Scoring reads only
+    title/content/meta, so the dense column has no part in this path — the
+    Oracle path already deferred it for the same reason.
+    """
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = [
+        RagChunk(
+            id=1,
+            source_table="press_release",
+            source_row_id="1",
+            title="올스타전",
+            content="올스타전 개최",
+        )
+    ]
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "to_tsvector" in compiled
+    assert "embedding" not in compiled
+
+
+def test_legacy_substring_fallback_also_skips_embeddings() -> None:
+    """Keep the substring fallback as lean as the indexed candidate query.
+
+    The fallback runs exactly when the tsvector step finds nothing, which is
+    also when a common keyword would otherwise pull its full 1,000-row limit.
+    """
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    assert session.execute.call_count == 2, "expected tsvector step plus substring fallback"
+    fallback = session.execute.call_args_list[1].args[0]
+    compiled = str(fallback.compile(dialect=postgresql.dialect()))
+    assert "embedding" not in compiled
+    assert "LIKE" in compiled.upper()
+
+
 def test_oracle_search_uses_bounded_candidates_without_vectors(monkeypatch) -> None:
     """Bound Oracle sparse candidates and avoid transferring dense embeddings."""
     monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "legacy")

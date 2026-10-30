@@ -99,7 +99,9 @@ model — they are different contracts.
   time — measure recall with `python3 -m src.cli.rag.evaluate_rag_retrieval`
   before raising it.
 * **BM25** was the larger half of a typical search (3.2 s of 3.2 s total in one
-  trace) — worth looking at first when a search feels slow.
+  trace), and the cause turned out to be a missing index rather than the scoring
+  itself — see §8. Measured on the production index (30 golden queries,
+  `--variant bm25`): p50 **526 ms → 140 ms**, p95 **2,673 ms → 501 ms**.
 * **Occasionally far slower** (145 s, 395 s observed). `_load_filtered_search_results`
   runs `SET LOCAL enable_indexscan = off` and rescans exactly when a filtered
   search returns nothing, which disables the vector index for that statement.
@@ -127,3 +129,77 @@ Two things learned the hard way:
   connection** mid-build (`server closed the connection unexpectedly`, uptime
   resetting to 1:47). 128 MB completed the build. Treat a large `work_mem`
   bump on this host as a risk, not a free speedup.
+
+## 8. The lexical (BM25) index, and the migration-history trap
+
+`053_rag_search_text_index.sql` declares the expression index the BM25 path needs:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_search_tsvector
+    ON rag_chunks USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || content));
+```
+
+**It was recorded as applied on 2026-09-22 and did not exist.** Measured
+2026-10-30: every keyword ran a `Parallel Seq Scan` over the whole 3.1 GB heap —
+`한국시리즈` took **116 s** (384,067 buffer reads) where the same predicate
+against `content_tsv` took **255 ms** with the GIN index. `pg_stat_user_tables`
+agrees with the ledger's own history: `seq_scan = 21,050`,
+`seq_tup_read = 101,545,298` — roughly 269 full scans of a 377 k-row table.
+
+Two things made this survive unnoticed for five weeks:
+
+* **`apply_postgres_migrations --check` only compares the history table to the
+  files on disk.** `053` is *in* the history, so nothing is pending for it and
+  the runner reports success. A missing index is invisible to a runner that
+  never reads `pg_index`. (The same day, `--check` did exit 1 — but only for
+  `068`, which was genuinely pending.) Re-applying migrations does not repair
+  this either: `CREATE INDEX IF NOT EXISTS` is a no-op when the *name* exists,
+  and here it does not even reach that.
+* **`audit_rag_index` compares the two stores to each other**, not to the
+  schema. Its contract is identity consistency, so a physical index is outside
+  what it asks about.
+
+Building it (2026-10-30, ~13 s wall, 21 MB index, 377,365 rows) — low-traffic
+window, one scan, writes wait on the `SHARE` lock:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_search_tsvector
+    ON rag_chunks USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || content));
+```
+
+* **`CONCURRENTLY` was not usable on this host.** A long-lived
+  `idle in transaction` session holding `pg_try_advisory_lock` (the scheduler's
+  process lock) can stall concurrent builds at the snapshot-wait phase. The
+  plain build takes one scan and a `SHARE` lock; set `lock_timeout` and retry if
+  a writer is in the way.
+* **`content_tsv` is not a substitute.** It is a generated column on *this*
+  table — `GENERATED ALWAYS AS to_tsvector('simple', COALESCE(content, ''))`,
+  owned outside this repository — and **it omits `title`**. Measured per
+  keyword, the share of matches that only `title` produces: `순위` **11,246 of
+  12,821 (88%)**, `2004년` 270, `삼성` 233, `롯데` 169. Switching to
+  `content_tsv` would delete most candidates for title-heavy terms.
+
+### Candidate rows carry a 6 KB vector unless it is deferred
+
+`_postgresql_candidates` loads candidates as full `RagChunk` entities, and
+`embedding` is 1,536 floats — **6,148 bytes per row**, 2.2 GB of the table. A
+1,000-candidate fetch moves ~6 MB over Tailscale for a column the scoring never
+reads. Measured per query: **2.2–3.4 s with the entity, 0.19–0.29 s with
+`defer(RagChunk.embedding)`**. The Oracle path had deferred it all along; the
+PostgreSQL path had not. Both PostgreSQL paths (`_postgresql_candidates` and the
+`_legacy_candidates` substring fallback) now defer it.
+
+### Ranking ties are decided by whatever order the database returns rows
+
+Worth knowing before touching any plan or index: **21 of the 30 golden queries
+have ties at the top-5 boundary** (16 have eight tied scores), and the sort is
+stable, so the tie group keeps the order the database handed it. Three repeated
+runs are identical (`Recall@5 0.7000`, `MRR 0.6111`), so this is reproducible —
+but reproducible *for one plan*. Adding the index moved `prod_rank_013`
+(`2026년 7월 17일 한화 순위를 알려줘`) from rank 2 to rank 6, because all 14
+candidates — the whole league's standings for that date — score `0.04` on the
+single matching keyword `순위`, and the answer row carries no other query term.
+Its chunk title is `2026-07-17 HH 순위`: the query says 한화, the chunk says
+`HH`. Measured MRR over the golden set went **0.6278 → 0.6111** with Recall@5
+unchanged at 0.70; the difference is one query crossing that boundary, not a
+scoring regression. A deterministic tie-break is the fix; it is not applied yet.
