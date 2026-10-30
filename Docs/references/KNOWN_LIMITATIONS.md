@@ -418,22 +418,44 @@ scheduler's own log would settle it; that log lives on the scheduler host, not h
 games. 115 preview dead letters were produced and are now `ignored`.
 
 **The fix was deployed between 16:50 and 18:37 UTC on 2026-10-10.** Last `failed` row
-is 16:50:00 UTC; first `source_limited` row is 18:37:39 UTC. Since then: **1,048
-`source_limited` runs, 0 failures, for 20 days.** The defect is historical, not
+is 16:50:00 UTC; first `source_limited` row is 18:37:39 UTC. Since then: **1,055
+`source_limited` runs, 0 failures, for 20 days** (re-measured 2026-10-30 09:30 KST; the
+count grows by roughly one run per 30-minute cycle). The defect is historical, not
 reproducible.
 
-**No bypass path exists today.** 26 crawler modules reference `koreabaseball.com` and
-all 26 consult the policy (`is_allowed` / `is_allowed_sync`) before their first fetch;
-the three modules without a check are not crawlers (`http_client.py`,
-`run_vocabulary.py`, `selectors.py`). The policy fails closed: Python 3.14's
-`RobotFileParser.can_fetch` returns **False** on an unparsed file, and `_ensure_loaded`
-parses `Disallow: /` when the fetch returns a non-200 or raises.
+**No bypass path exists today, re-verified independently (2026-10-30).** `src/crawlers/`
+holds 32 modules that name `koreabaseball.com`; 29 of them call the policy
+(`is_allowed` / `is_allowed_sync`), and the three that do not are not crawlers
+(`http_client.py` is the transport, `selectors.py` and `run_vocabulary.py` are
+constant tables). Checked the other way round, against the ledger: five crawlers
+other than `preview` have run with a KBO URL as their target since the fix
+(`game_detail` 37 runs, `schedule` 35, `roster_transactions` 23, `player_movement` 20,
+`team_history` 1) and **all five consult the policy** before fetching
+(`game_detail_crawler.py:588,1376`, `schedule_crawler.py:439,453`,
+`roster_transaction_crawler.py:184,591`, `player_movement_crawler.py:104`,
+`team_history_crawler.py:110`). A row's `source_url` names the run's target, not a
+request that was made -- that is the same reading error the 1,737 figure came from.
+
+The policy fails closed: Python 3.14's `RobotFileParser.can_fetch` returns **False** on
+an unparsed file, and `_ensure_loaded` parses `Disallow: /` when the fetch returns a
+non-200 or raises.
 
 **What is structural rather than guaranteed**: the check lives in each crawler, not in
 `CrawlerHttpClient`. The shared transport validates the URL and redirect targets but
-never asks the policy, so a new crawler that forgets the guard would fetch. Nothing is
-violating that today; it is the reason the per-crawler check has to be part of review
-rather than assumed from the transport.
+never asks the policy (`grep compliance src/crawlers/http_client.py` returns nothing), so
+a new crawler that forgets the guard would fetch. Nothing is violating that today; it is
+the reason the per-crawler check has to be part of review rather than assumed from the
+transport. **A regression test could close this specific gap** -- assert that every module
+under `src/crawlers/` naming a KBO host also calls `is_allowed`/`is_allowed_sync`, the way
+`tests/monitoring/test_selector_gate_follows_the_crawlers.py` binds selectors to code.
+Not added here: the measured state is correct and the constraint was no further changes.
+
+**The scope limit is a separate, deliberate gap**: `compliance.is_allowed` answers only
+for `koreabaseball.com`. `_is_same_site` returns False for every other host and the method
+then returns `True`, so a club site or a stadium page is treated as allowed because
+nothing looked (`src/utils/host_policy.py` records those policies and says so in its own
+docstring: "That is an assumption reported as a fact"). Enforcing the recorded policies is
+a policy decision with its own consequences, not part of this finding.
 
 **The 1,737 → 1,738 difference was a new run, not a counting change.** Row `id=9794`
 (`target 20261030`, 2026-10-29 18:13:15 UTC) was written between two measurements taken
