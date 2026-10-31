@@ -229,5 +229,42 @@ the other nine teams for that date. Making those chunks carry the Korean team
 name would give the scorer something to discriminate on, but it means
 re-indexing, so it belongs with the next re-embedding — not before it.
 
-Three golden queries (`prod_rule_020`–`022`, all `document_type=markdown_doc`)
-still miss answers that *are* in the store; that is a separate investigation.
+### The `document_type` filter read the wrong field (fixed 2026-10-31)
+
+`_matches_category` read `meta.category` first. On this table that field holds
+the document's own grouping (`kbo_knowledge`, `rulebook`, `game_rules`) while the
+`document_type` **column** holds the chunk kind (`markdown_doc`, `highlight`,
+`award`), so a chunk carrying a category failed every `document_type` filter and
+the column backfill (78% of rows) had no effect on this path at all. 20 of the 30
+golden queries use that filter and **9 found no answer** — `prod_rule_020`–`022`
+were three of them. Accepting either label (column first, metadata as fallback)
+recovers all three and drops nothing that used to pass: Recall@5 0.700 → 0.800,
+MRR 0.611 → 0.684.
+
+### The `game_date` filter had no index (fixed 2026-10-31)
+
+`_apply_postgresql_filters` compares `meta->>'game_date'` and nothing indexed
+that expression. `prod_pbp_028` ("2015년 10월 19일 …") therefore collected
+**325,953** candidates for the keyword 경기 to return **9** — 59,214 heap blocks,
+440 MB read from disk per cold run (warm 218 ms, cold up to 922 s).
+`idx_rag_chunks_meta_game_date` (2.8 MB) turns it into a `BitmapAnd` touching
+**5** heap blocks.
+
+The `game_date` column exists and is indexed, but holds values for only **4%** of
+rows (15,262 of 377,381; `game_play_by_play` has 0 of 158,857), so the metadata
+path is the one that answers and this expression index is what makes it fast.
+Backfilling the column belongs with the next re-index.
+
+### The audit now asks what was built (2026-10-31)
+
+`audit_rag_index` reads `pg_index` and fails — **without any flag** — when a
+required search expression has no valid index. The contract lives in
+`src/services/rag_search_index_contract.py` and matches on **definitions**, not
+names: a renamed index still covers, while a same-named index over `content_tsv`
+does not. A store whose `pg_index` cannot be read reports `None` (unmeasurable)
+rather than a failure.
+
+With all three changes the golden set moved from Recall@5 0.700 / MRR 0.611 /
+p50 526 ms / p95 2,673 ms to **Recall@5 0.813 / MRR 0.718 / p50 146 ms /
+p95 1,071 ms**. The five remaining misses are Phase B re-keys (4) and one tie at
+the top-5 boundary (`prod_rank_013`).
