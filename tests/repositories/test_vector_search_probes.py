@@ -27,20 +27,29 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 
 from src.repositories.vector_search_repository import (
+    ANN_EF_SEARCH,
     ANN_PROBES,
     _configure_ann_probes,
 )
 
 
 class _FakeSession:
-    def __init__(self, *, raises: bool = False) -> None:
+    """Record statements and fail the ones the test names.
+
+    Two failure modes have to be separable now: the extension may not load at all
+    (every statement fails), or it may load while a GUC is still rejected. They are
+    different problems and the log has to say which one happened.
+    """
+
+    def __init__(self, *, raises: bool = False, raises_on: str | None = None) -> None:
         self.statements: list[str] = []
         self._raises = raises
+        self._raises_on = raises_on
 
     def execute(self, statement: object) -> None:
         sql = str(statement)
         self.statements.append(sql)
-        if self._raises:
+        if self._raises or (self._raises_on and self._raises_on in sql):
             raise ProgrammingError("unrecognized configuration parameter", None, None)
 
 
@@ -66,7 +75,61 @@ class TestTheProbeCountIsRaised:
 
         _configure_ann_probes(session)
 
-        assert all("SET LOCAL" in statement for statement in session.statements)
+        setters = [statement for statement in session.statements if statement.startswith("SET")]
+        assert setters
+        assert all("SET LOCAL" in statement for statement in setters)
+
+
+class TestTheGraphSearchEffortIsRaised:
+    """HNSW has its own knob, and its default is as damaging as IVF's.
+
+    Measured 2026-10-31 against the index built that day (m=8, ef_construction=32,
+    2.9 GB, 375k rows) on a real query:
+
+    | `hnsw.ef_search` | exact top-15 recovered | time |
+    | --- | --- | --- |
+    | 40 (pgvector default) | **0 / 15** | 66 ms |
+    | 100 | 0 / 15 | -- |
+    | **200** | **15 / 15** | 88 ms |
+    | 400 | 15 / 15 | -- |
+
+    So a search that leaves this at the default returns the wrong rows quickly. The
+    planner picks between IVF and HNSW, which is why both parameters are set from
+    the same function rather than only the one whose index happened to be present.
+    """
+
+    def test_a_value_above_the_default_is_used(self) -> None:
+        assert ANN_EF_SEARCH > 40
+
+    def test_the_measured_value_is_two_hundred(self) -> None:
+        """Anchored to the measurement: 200 recovered every exact row."""
+        assert ANN_EF_SEARCH == 200
+
+    def test_the_setting_is_applied_to_the_session(self) -> None:
+        session = _FakeSession()
+
+        _configure_ann_probes(session)
+
+        assert any(f"hnsw.ef_search = {ANN_EF_SEARCH}" in statement for statement in session.statements)
+
+    def test_both_index_kinds_are_configured(self) -> None:
+        """Setting only one leaves whichever index the planner picks untuned."""
+        session = _FakeSession()
+
+        _configure_ann_probes(session)
+
+        joined = " ".join(session.statements)
+        assert "ivfflat.probes" in joined
+        assert "hnsw.ef_search" in joined
+
+    def test_the_extension_is_loaded_before_the_settings(self) -> None:
+        """The GUCs do not exist until something vector-typed has been evaluated."""
+        session = _FakeSession()
+
+        _configure_ann_probes(session)
+
+        first_setter = next(i for i, s in enumerate(session.statements) if s.startswith("SET"))
+        assert any("::vector" in s for s in session.statements[:first_setter])
 
 
 class TestWhenTheExtensionIsNotLoadedYet:
@@ -80,13 +143,23 @@ class TestWhenTheExtensionIsNotLoadedYet:
         assert session.statements, "the attempt must still be made"
 
     def test_a_failure_is_logged_rather_than_swallowed(self, caplog: pytest.LogCaptureFixture) -> None:
-        """A silent fallback to probes=1 lowers recall with nothing in the logs."""
+        """A silent fallback lowers recall with nothing in the logs."""
         session = _FakeSession(raises=True)
 
         with caplog.at_level(logging.WARNING):
             _configure_ann_probes(session)
 
-        assert any("probes" in record.message.lower() for record in caplog.records)
+        assert any("not loadable" in record.message for record in caplog.records)
+
+    def test_a_rejected_setting_names_the_setting(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The extension may load while a GUC is still refused -- say which one."""
+        session = _FakeSession(raises_on="hnsw.ef_search")
+
+        with caplog.at_level(logging.WARNING):
+            _configure_ann_probes(session)
+
+        assert any("hnsw.ef_search" in record.message for record in caplog.records)
+        assert any("ivfflat.probes" in statement for statement in session.statements)
 
     def test_the_caller_does_not_see_the_error(self) -> None:
         """The probe count is an optimisation; search must not fail over it."""

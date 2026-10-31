@@ -50,26 +50,42 @@ _MAX_EXACT_ID_FILTER = 20_000
 #: ranking. Recall is the point of a search; the default was sampling.
 ANN_PROBES = 5
 
+#: How many candidates the HNSW graph search explores. This is the HNSW equivalent of
+#: ``ANN_PROBES`` and it has to be set for the same reason: pgvector's default is 40,
+#: and on the index built 2026-10-31 (m=8, ef_construction=32, 2.9 GB) that default
+#: returned **0 of the exact top 15** for a real query. Measured on the same query:
+#: default 40 -> 0/15 at 66 ms; 100 -> 0/15; **200 -> 15/15 at 88 ms**; 400 -> 15/15.
+#: The two index kinds are chosen by the planner, so both parameters are set -- a
+#: search that silently runs on HNSW's default is a search that returns the wrong
+#: rows quickly, which is worse than the slow one it replaced.
+ANN_EF_SEARCH = 200
+
 
 def _configure_ann_probes(session: Session) -> None:
-    """Raise the IVF probe count for this transaction.
+    """Raise this transaction's ANN search effort for whichever index is used.
 
-    ``SET`` is only accepted once the vector extension is loaded in the session,
-    so the first statement on a fresh connection can be rejected. That is not
-    fatal -- the query still runs with the server default -- but it must be
-    visible, because the fallback silently lowers recall to one list.
+    ``SET`` is only accepted once the vector extension is loaded in the session, so
+    the first statement on a fresh connection can be rejected. That is not fatal --
+    the query still runs with the server default -- but the server default is *not*
+    a safe fallback: ``ivfflat.probes=1`` visits one list out of a hundred, and
+    ``hnsw.ef_search=40`` returned none of the correct rows in the measurement above.
+    Loading a value first registers the GUCs, and then both settings apply to the
+    query that follows.
 
     Args:
         session: The session the search will run on.
 
     """
     try:
-        session.execute(text(f"SET LOCAL ivfflat.probes = {ANN_PROBES}"))
+        session.execute(text("SELECT NULL::vector"))
     except SQLAlchemyError:
-        logger.warning(
-            "ivfflat.probes not applied (extension not loaded yet?); "
-            "the search will use the server default, which visits one list",
-        )
+        logger.warning("vector extension not loadable in this session; ANN settings not applied")
+        return
+    for setting, value in (("ivfflat.probes", ANN_PROBES), ("hnsw.ef_search", ANN_EF_SEARCH)):
+        try:
+            session.execute(text(f"SET LOCAL {setting} = {value}"))
+        except SQLAlchemyError:
+            logger.warning("%s not applied; the search will use pgvector's default", setting)
 
 
 def _scalar_filter_conditions(source_table: str | None, game_date: str | None) -> list[object] | None:
