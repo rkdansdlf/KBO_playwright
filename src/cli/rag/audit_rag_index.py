@@ -20,6 +20,7 @@ from src.services.rag_index_consistency import (
     audit_index_sessions,
     audit_single_store_session,
 )
+from src.services.rag_search_index_contract import missing_search_indexes
 
 #: Exit codes, named because the scheduler job that runs this must tell them
 #: apart. ``EXIT_STORE_UNREACHABLE`` means no vector backend answered and the
@@ -34,6 +35,31 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy.orm import Session
+
+
+def _read_valid_index_definitions(session: Session) -> list[tuple[str, str]] | None:
+    """Read the ``rag_chunks`` index definitions, or None when unmeasurable.
+
+    None is not an empty list. A non-PostgreSQL store has no ``pg_index`` to
+    read, so the question cannot be asked there; a store that answers with no
+    indexes has answered, and the answer is that the search paths are unindexed.
+    """
+    from sqlalchemy import text
+
+    if session.get_bind().dialect.name != "postgresql":
+        return None
+    rows = session.execute(
+        text(
+            """
+            SELECT c.relname, pg_get_indexdef(c.oid)
+            FROM pg_class c
+            JOIN pg_index i ON i.indexrelid = c.oid
+            WHERE i.indrelid = 'rag_chunks'::regclass AND i.indisvalid
+            ORDER BY c.relname
+            """
+        )
+    ).fetchall()
+    return [(str(name), str(definition)) for name, definition in rows]
 
 
 def _count_missing_postings(session: Session) -> int:
@@ -70,6 +96,7 @@ def _gate_verdict(
     *,
     nonempty: bool,
     postings_missing: int | None,
+    missing_indexes: Sequence[str] | None = None,
 ) -> tuple[bool, str | None]:
     """Decide whether the audit passes, and name the first reason it does not.
 
@@ -80,11 +107,19 @@ def _gate_verdict(
     otherwise a draining crawl backlog raises a warning every single day, and a
     warning that is always on is one nobody reads.
 
+    A required search index that is absent is damage, not incompleteness. The
+    search paths are written against those expressions; without the index a
+    query still answers, it just answers after scanning the table. Nothing
+    drains into place the way a missing embedding does, so waiting cannot be the
+    remedy and no flag has to be passed for it to count.
+
     Args:
         report: The consistency report to judge.
         requirements: The flags the caller passed.
         nonempty: Whether both sides hold at least one row.
         postings_missing: Chunks lacking sparse postings, when that was measured.
+        missing_indexes: Required expressions no index covers, when the catalog
+            could be read at all. ``None`` means the question did not apply.
 
     Returns:
         Whether the gate passes, and the reason when it does not.
@@ -92,6 +127,8 @@ def _gate_verdict(
     """
     damage = report.damage_keys
     incomplete = report.incomplete_keys
+    if missing_indexes:
+        return False, f"required search indexes are missing: {', '.join(missing_indexes)}"
     if requirements.postings and postings_missing:
         return False, f"{postings_missing} active chunks missing sparse postings"
     if damage:
@@ -136,23 +173,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_STORE_UNREACHABLE
 
     postings_missing = None
+    index_definitions: list[tuple[str, str]] | None = None
     if is_oracle_vector_backend():
         with get_rag_index_session() as primary_session:
             report = audit_single_store_session(primary_session)
             postings_missing = _count_missing_postings(primary_session)
+            index_definitions = _read_valid_index_definitions(primary_session)
     elif shares_operational_database():
         # One database holding one ``rag_chunks`` table: load it once. The
-        # postings gate stays Oracle-only -- PostgreSQL retrieves through
-        # ``content_tsv``, and counting missing terms in the 27.8M-row
-        # ``rag_chunk_terms`` table exceeds the scheduler window.
+        # postings gate stays Oracle-only -- PostgreSQL candidate retrieval goes
+        # through the expression index over ``to_tsvector('simple', ...)``, not
+        # through the ``content_tsv`` column (nothing in this repository reads
+        # it; its GIN index had been scanned twice in a day), and counting
+        # missing terms in the 27.8M-row ``rag_chunk_terms`` table exceeds the
+        # scheduler window.
         with get_rag_index_session() as primary_session:
             report = audit_single_store_session(primary_session)
+            index_definitions = _read_valid_index_definitions(primary_session)
     else:
         with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
             report = audit_index_sessions(primary_session, vector_session)
+            index_definitions = _read_valid_index_definitions(primary_session)
+    missing_indexes = missing_search_indexes(index_definitions) if index_definitions is not None else None
     payload = report.to_dict()
     if postings_missing is not None:
         payload["postings_missing"] = postings_missing
+    if missing_indexes is not None:
+        payload["missing_search_indexes"] = missing_indexes
     consistent, error = _gate_verdict(
         report,
         GateRequirements(
@@ -162,6 +209,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         nonempty=report.primary_count > 0 and report.vector_count > 0,
         postings_missing=postings_missing,
+        missing_indexes=missing_indexes,
     )
     if error is not None:
         payload["error"] = error
@@ -178,6 +226,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         for finding in report.findings:
             sys.stdout.write(f"{finding.issue}: {finding.source_key}\n")
+        if missing_indexes:
+            sys.stdout.write(f"missing search indexes: {', '.join(missing_indexes)}\n")
     return EXIT_INCONSISTENT if not consistent else EXIT_OK
 
 

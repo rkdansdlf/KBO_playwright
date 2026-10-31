@@ -264,3 +264,86 @@ class TestWorkInProgressIsNotDamage:
         payload = json.loads(capsys.readouterr().out)
         assert payload["consistent"] is True
         assert payload["fully_consistent"] is True
+
+
+_LEXICAL_DEF = (
+    "CREATE INDEX idx_rag_chunks_search_tsvector ON public.rag_chunks USING gin "
+    "(to_tsvector('simple'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || content)))"
+)
+_GAME_DATE_DEF = (
+    "CREATE INDEX idx_rag_chunks_meta_game_date ON public.rag_chunks USING btree (((meta ->> 'game_date'::text)))"
+)
+_DENSE_DEF = (
+    "CREATE INDEX idx_rag_chunks_embedding_ivfflat ON public.rag_chunks USING ivfflat "
+    "(embedding vector_cosine_ops) WITH (lists='100')"
+)
+_SOURCE_DEF = "CREATE UNIQUE INDEX idx_rag_chunks_source ON public.rag_chunks USING btree (source_table, source_row_id)"
+_FULL_CATALOG = [
+    ("idx_rag_chunks_search_tsvector", _LEXICAL_DEF),
+    ("idx_rag_chunks_meta_game_date", _GAME_DATE_DEF),
+    ("idx_rag_chunks_embedding_ivfflat", _DENSE_DEF),
+    ("idx_rag_chunks_source", _SOURCE_DEF),
+]
+
+
+def _run_audit_with_catalog(
+    report: IndexConsistencyReport,
+    argv: list[str],
+    index_definitions: list[tuple[str, str]],
+) -> int:
+    """Run the audit against a PostgreSQL catalog that answers the index question."""
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "postgresql"
+    session.execute.return_value.fetchall.return_value = index_definitions
+    with (
+        patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
+        patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
+        patch("src.cli.audit_rag_index.get_vector_session") as vector,
+        patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
+    ):
+        primary.return_value.__enter__.return_value = session
+        vector.return_value.__enter__.return_value = MagicMock()
+        return main(argv)
+
+
+class TestAMissingSearchIndexIsDamage:
+    """053 was recorded as applied while its index did not exist.
+
+    From 2026-09-22 to 2026-10-30 every BM25 candidate query scanned 3.1 GB and
+    nothing said so: the migration check compared the history to the files, and
+    the index audit compared the two stores to each other. A query still
+    answered, which is why this is damage rather than incompleteness -- waiting
+    never repairs it, so it fails without a flag.
+    """
+
+    def test_a_missing_lexical_index_fails_without_any_flag(self, capsys) -> None:
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+        catalog = [entry for entry in _FULL_CATALOG if entry[0] != "idx_rag_chunks_search_tsvector"]
+
+        assert _run_audit_with_catalog(report, ["--json"], catalog) == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["missing_search_indexes"] == ["lexical candidate index (RagSearchEngine._postgresql_candidates)"]
+        assert "lexical candidate index" in payload["error"]
+
+    def test_a_complete_catalog_leaves_the_gate_open(self, capsys) -> None:
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+
+        assert _run_audit_with_catalog(report, ["--json"], _FULL_CATALOG) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["missing_search_indexes"] == []
+        assert payload["consistent"] is True
+
+    def test_an_unanswerable_catalog_is_not_a_finding(self, capsys) -> None:
+        """A session that cannot read pg_index has not reported a missing index."""
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+
+        assert _run_audit(report, ["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert "missing_search_indexes" not in payload
+
+    def test_the_text_output_names_the_missing_index(self, capsys) -> None:
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+        catalog = [entry for entry in _FULL_CATALOG if entry[0] != "idx_rag_chunks_meta_game_date"]
+
+        assert _run_audit_with_catalog(report, [], catalog) == 1
+        assert "missing search indexes: game_date filter index" in capsys.readouterr().out
