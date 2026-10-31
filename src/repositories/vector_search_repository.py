@@ -12,7 +12,7 @@ import logging
 from datetime import date as dt_date
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.vector_engine import get_vector_session, is_pgvector_available
@@ -36,7 +36,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
-_DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
+
+#: How many ids an ``IN`` narrowing may carry. Above this the scalar filter is not
+#: selective enough for the list to help: the approximate index has plenty of
+#: candidates that satisfy it, and a 20k-element ``IN`` costs more than it saves.
+_MAX_EXACT_ID_FILTER = 20_000
 
 #: How many IVF lists a search visits. pgvector's default is 1 -- one list out of
 #: the 100 the index is built with. Measured against the live index (377k rows,
@@ -66,6 +70,50 @@ def _configure_ann_probes(session: Session) -> None:
             "ivfflat.probes not applied (extension not loaded yet?); "
             "the search will use the server default, which visits one list",
         )
+
+
+def _scalar_filter_conditions(source_table: str | None, game_date: str | None) -> list[object] | None:
+    """Return the conditions an ``IN`` narrowing would read ids through, or None.
+
+    ``None`` means there is no scalar filter, so there is nothing to narrow by and
+    the caller should run its statement unchanged.
+
+    Args:
+        source_table: Source-table filter, if the search carried one.
+        game_date: Game-date filter, if the search carried one.
+
+    Returns:
+        Bound conditions for ``select(RagChunkVector.id)``, or None.
+
+    """
+    if source_table is None:
+        return None
+    conditions: list[object] = [
+        RagChunkVector.source_table == source_table,
+        RagChunkVector.embedding.is_not(None),
+    ]
+    if game_date:
+        parsed = _coerce_game_date(game_date)
+        if parsed is not None:
+            conditions.append(RagChunkVector.game_date == parsed)
+    return conditions
+
+
+def _filtered_ids(session: Session, conditions: list[object]) -> list[int] | None:
+    """Return the ids the conditions select, or None when they select too many.
+
+    Args:
+        session: Session the ids are read from.
+        conditions: Conditions built by :func:`_scalar_filter_conditions`.
+
+    Returns:
+        The matching ids, or None when the filter is not selective enough.
+
+    """
+    total = session.execute(select(func.count()).select_from(RagChunkVector).where(*conditions)).scalar()
+    if not total or total > _MAX_EXACT_ID_FILTER:
+        return None
+    return list(session.execute(select(RagChunkVector.id).where(*conditions)).scalars().all())
 
 
 def _coerce_game_date(value: object) -> dt_date | None:
@@ -365,21 +413,37 @@ class VectorSearchRepository:
         source_table: str | None,
         game_date: str | None,
     ) -> list[dict[str, Any]]:
-        """Load filtered rows with exact fallback for pgvector ANN gaps."""
-        if source_table in _DATE_SCOPED_SOURCE_TABLES and game_date:
-            # Date-scoped game rows are small enough for an exact filtered scan
-            # and avoid approximate HNSW candidate loss within one day.
-            session.execute(text("SET LOCAL enable_indexscan = off"))
-            return cls._load_search_results(session, stmt)
+        """Load the rows a filtered vector search selects, without disabling indexes.
 
-        results = cls._load_search_results(session, stmt)
-        if not results and source_table:
-            # Older pgvector HNSW builds can discard all filtered candidates
-            # before applying the source predicate. Prefer correctness for the
-            # rare empty filtered result over returning no relevant document.
-            session.execute(text("SET LOCAL enable_indexscan = off"))
-            results = cls._load_search_results(session, stmt)
-        return results
+        This used to run ``SET LOCAL enable_indexscan = off`` when the filter was a
+        date-scoped source with a ``game_date``, so that the day's rows were scanned
+        exactly instead of approximately. Measured 2026-10-30, that trade was worse
+        than the approximation it avoided:
+
+        * the same predicate through ``idx_rag_chunks_game_date`` costs **0.049 ms**
+          with index scans on and **91.7 ms** with them off -- ``enable_indexscan``
+          does not stop a bitmap scan, so the day still came through
+          ``idx_rag_chunks_game_date``, just through the slower path;
+        * when the filter carried no ``game_date``, nothing could be bitmapped and
+          the scan became a sequential read of the whole 3.1 GB heap: measured
+          **300 s timeout** on the production table.
+
+        The exactness it was buying is available by a cheaper route: read the ids the
+        scalar predicate selects (through the same B-tree, ~0.05 ms), then hand them
+        to the distance query as an ``IN`` list. The planner keeps every index, the
+        distance is computed only for rows the filter actually admits, and no
+        approximation is involved -- so the fallback retry is gone with it.
+
+        A filter that admits more rows than ``_MAX_EXACT_ID_FILTER`` is not selective
+        enough for an ``IN`` list to help; the statement runs unchanged and the
+        approximate index chooses among enough candidates for that to be fine.
+        """
+        conditions = _scalar_filter_conditions(source_table, game_date)
+        if conditions is not None:
+            ids = _filtered_ids(session, conditions)
+            if ids is not None:
+                stmt = stmt.where(RagChunkVector.id.in_(ids))
+        return cls._load_search_results(session, stmt)
 
     def upsert_chunk(self, session: Session, chunk_data: dict[str, Any]) -> None:
         """단일 RAG 청크를 upsert합니다 (source_table + source_row_id 기준).
