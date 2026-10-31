@@ -1,4 +1,4 @@
--- 067_rag_chunks_embedding_index.sql
+-- 068_rag_chunks_embedding_index.sql
 -- rag_chunks.embedding에 근사 코사인 인덱스를 만든다.
 --
 -- 왜 필요한가: 인덱스가 없으면 `ORDER BY embedding <=> query`가 37만 행 ×
@@ -18,6 +18,30 @@
 --
 -- 일반 CREATE INDEX로 만든다(러너가 트랜잭션 안에서 실행하므로 CONCURRENTLY를
 -- 쓸 수 없다). 빌드 동안 쓰기가 잠기므로 **저트래픽 시간에 적용할 것**.
+
+-- 2026-11-01: this file cannot deliver its own ``lists`` parameter, and the
+-- statement below is what makes that invisible.
+--
+-- ``idx_rag_chunks_embedding_ivfflat`` already exists with ``lists = 100``
+-- (built outside this chain), and ``IF NOT EXISTS`` matches on the **name**.
+-- Applying this file therefore records "applied" in ``schema_migrations`` and
+-- changes nothing about the index. ``apply_postgres_migrations --check`` compares
+-- the history to the files, so it reports this file as pending until that
+-- happens and as satisfied afterwards -- either way the parameter is 100, not
+-- 400. Measured 2026-11-01: the file was the only pending migration while the
+-- live index read ``lists='100'``.
+--
+-- The parameter is no longer worth chasing. The ANN fast path moved to
+-- ``idx_rag_chunks_embedding_hnsw`` (2.9 GB, built 2026-10-31), because this
+-- ivfflat index applies filters *after* its scan and picked plans costing 27 s
+-- on an unfiltered query (see ``RAG_LATENCY_BUDGET.md`` §3). Both indexes are
+-- kept on purpose so the planner may choose between them, and ``ANN_EF_SEARCH``
+-- / ``ANN_PROBES`` are set for whichever it picks. Reaching ``lists = 400``
+-- would mean dropping and rebuilding 5 GB for an index that is no longer the
+-- fast path.
+--
+-- So this file claims exactly one thing: an ivfflat index over ``embedding``
+-- exists. It does not claim the list count.
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_ivfflat
     ON rag_chunks
