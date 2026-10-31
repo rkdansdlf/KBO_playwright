@@ -338,22 +338,28 @@ class RawSourceSnapshotRepository:
         status: str,
         parser_version: str | None = None,
         error_message: str | None = None,
+        capture_metadata: dict | None = None,
     ) -> None:
-        """Update status.
+        """Update status, and the parser outcome that came with it.
+
+        ``capture_metadata`` is merged rather than replaced, and that is the point of
+        the parameter existing. A snapshot whose content is crawled twice has one row:
+        the artifact is content-addressed, so the second crawl finds the existing row
+        and lands here instead of inserting. Before this parameter the parser outcome
+        from that second (now parsed) crawl was dropped on the floor, so a snapshot
+        captured before its parser ran could never acquire the ``parsed_records``
+        baseline that ``validate_snapshot`` compares against -- which is why the drift
+        check reported ``with_baseline: 0`` for the most recent 100 snapshots.
+
+        Merging rather than replacing keeps keys written by other callers: nothing
+        guarantees this dictionary has one producer.
 
         Args:
             snapshot_id: Snapshot ID.
             status: Status.
             parser_version: Parser Version.
             error_message: Error Message.
-            snapshot_id: Snapshot ID.
-            status: Status.
-            parser_version: Parser Version.
-            error_message: Error Message.
-            snapshot_id: Snapshot ID.
-            status: Status.
-            parser_version: Parser Version.
-            error_message: Error Message.
+            capture_metadata: Parser outcome metadata to merge into the row.
 
         """
         record = self.session.get(RawSourceSnapshot, snapshot_id)
@@ -364,6 +370,11 @@ class RawSourceSnapshotRepository:
                 record.parser_version = parser_version
             if error_message:
                 record.error_message = error_message
+            if capture_metadata is not None:
+                # A new dict, not an in-place update: SQLAlchemy compares the attribute
+                # by identity for JSON columns, so mutating what is already there would
+                # leave the change undetected and silently unflushed.
+                record.capture_metadata = {**(record.capture_metadata or {}), **capture_metadata}
 
 
 def _artifact_path_for_storage(path: Path) -> str:
@@ -446,11 +457,21 @@ def save_raw_snapshots(session: Session, raw_pages: list[dict]) -> int:
                 },
             )
             saved += 1
-        elif page.get("parse_status") or page.get("parser_version") or page.get("error_message"):
+        elif (
+            page.get("parse_status")
+            or page.get("parser_version")
+            or page.get("error_message")
+            or page.get("capture_metadata")
+        ):
+            # ``capture_metadata`` is in this condition because the parser outcome is
+            # part of a re-crawl's result. Without it a second crawl of the same
+            # artifact that produced ``parsed_records`` updated nothing, and the drift
+            # check kept reporting the snapshot as having no baseline.
             snap_repo.update_parse_status(
                 existing_snapshot.id,
                 page.get("parse_status", existing_snapshot.parse_status),
                 parser_version=page.get("parser_version"),
                 error_message=page.get("error_message"),
+                capture_metadata=page.get("capture_metadata"),
             )
     return saved

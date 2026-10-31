@@ -338,3 +338,148 @@ class TestSaveRawSnapshots:
 
         saved = save_raw_snapshots(session, raw_pages)
         assert saved == 0
+
+
+class TestARecrawledArtifactKeepsItsParserOutcome:
+    """``capture_metadata`` has to survive the path a re-crawl takes.
+
+    The artifact is content-addressed, so crawling the same bytes twice leaves one
+    row: the second crawl finds it by hash and lands in ``update_parse_status``
+    rather than inserting. That path used to carry only ``parse_status``,
+    ``parser_version`` and ``error_message`` -- so when its parser had produced
+    ``parsed_records``, the baseline was dropped. ``validate_snapshot`` compares a
+    re-parse against exactly that value, which is why the drift check reported
+    ``with_baseline: 0`` for the most recent 100 snapshots: the number existed at
+    crawl time and never reached the row.
+
+    Three edges are pinned here: the value arrives, a crawl that has no metadata
+    does not erase what is stored, and a merge keeps keys another producer wrote.
+    """
+
+    def _source(self, session, key: str = "lg_twins_events"):
+        DataSourceRepository(session).save(
+            {
+                "source_key": key,
+                "source_type": "club_site",
+                "target_domain": "events",
+                "reliability": "medium",
+            },
+        )
+        session.commit()
+
+    def _page(self, **extra):
+        return {
+            "source_key": "lg_twins_events",
+            "url": "https://example.test/events",
+            "html": "<html>같은 내용</html>",
+            "status_code": 200,
+            **extra,
+        }
+
+    @pytest.fixture(autouse=True)
+    def _artifacts_in_a_temp_dir(self, tmp_path, monkeypatch):
+        """Keep the captured artifacts out of the repository's data directory."""
+        monkeypatch.setattr("src.repositories.source_registry_repository.evidence_root", lambda: tmp_path)
+        return tmp_path
+
+    def test_the_baseline_from_a_recrawl_reaches_the_row(self, session):
+        self._source(session)
+        save_raw_snapshots(session, [self._page()])
+        session.commit()
+
+        save_raw_snapshots(
+            session,
+            [self._page(parse_status="done", capture_metadata={"parsed_records": 5})],
+        )
+        session.commit()
+
+        stored = session.query(RawSourceSnapshot).one()
+        assert stored.capture_metadata == {"parsed_records": 5}
+
+    def test_metadata_alone_is_enough_to_reach_the_row(self, session):
+        """A crawler that records only the parser outcome must still be stored.
+
+        Every producer today sets ``parse_status`` alongside it, so a condition that
+        omits ``capture_metadata`` passes all of these tests -- measured: dropping it
+        from the branch left 21/21 green. The branch names it because the next
+        producer may not, and a silently ignored baseline is invisible: the drift
+        check would just keep saying ``with_baseline: 0``.
+        """
+        self._source(session)
+        save_raw_snapshots(session, [self._page()])
+        session.commit()
+
+        save_raw_snapshots(session, [self._page(capture_metadata={"parsed_records": 7})])
+        session.commit()
+
+        stored = session.query(RawSourceSnapshot).one()
+        assert stored.capture_metadata == {"parsed_records": 7}
+
+    def test_a_recrawl_without_metadata_does_not_erase_it(self, session):
+        """A crawl that only renews the status must not clear the baseline."""
+        self._source(session)
+        save_raw_snapshots(
+            session,
+            [self._page(parse_status="done", capture_metadata={"parsed_records": 5})],
+        )
+        session.commit()
+
+        save_raw_snapshots(session, [self._page(parse_status="failed", error_message="selector moved")])
+        session.commit()
+
+        stored = session.query(RawSourceSnapshot).one()
+        assert stored.capture_metadata == {"parsed_records": 5}
+        assert stored.parse_status == "failed"
+
+    def test_metadata_is_merged_rather_than_replaced(self, session):
+        """Nothing guarantees this dictionary has a single producer."""
+        self._source(session)
+        save_raw_snapshots(session, [self._page(parse_status="done", capture_metadata={"a": 1})])
+        session.commit()
+
+        save_raw_snapshots(session, [self._page(parse_status="done", capture_metadata={"b": 2})])
+        session.commit()
+
+        stored = session.query(RawSourceSnapshot).one()
+        assert stored.capture_metadata == {"a": 1, "b": 2}
+
+    def test_update_parse_status_merges_into_what_is_there(self, session):
+        self._source(session)
+        DataSourceRepository(session).get_by_key("lg_twins_events")
+        repo = RawSourceSnapshotRepository(session)
+        snapshot = repo.save(
+            {
+                "data_source_id": session.query(DataSource).one().id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "h",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "capture_metadata": {"kept": True},
+            },
+        )
+        session.flush()
+
+        repo.update_parse_status(snapshot.id, "done", capture_metadata={"parsed_records": 3})
+        session.flush()
+
+        stored = session.get(RawSourceSnapshot, snapshot.id)
+        assert stored.capture_metadata == {"kept": True, "parsed_records": 3}
+
+    def test_update_parse_status_without_metadata_leaves_it_alone(self, session):
+        self._source(session)
+        repo = RawSourceSnapshotRepository(session)
+        snapshot = repo.save(
+            {
+                "data_source_id": session.query(DataSource).one().id,
+                "raw_html_or_json_path": "u",
+                "content_hash": "h",
+                "fetched_at": datetime.now(UTC).replace(tzinfo=None),
+                "capture_metadata": {"kept": True},
+            },
+        )
+        session.flush()
+
+        repo.update_parse_status(snapshot.id, "failed", error_message="boom")
+        session.flush()
+
+        stored = session.get(RawSourceSnapshot, snapshot.id)
+        assert stored.capture_metadata == {"kept": True}

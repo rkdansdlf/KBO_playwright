@@ -50,10 +50,21 @@ SLOW_STRIKES = 3
 #: Give up rather than let the build run into the nightly jobs at 05:00 KST.
 DEFAULT_MAX_MINUTES = 90
 PROBE_SQL = "SELECT count(*) FROM rag_chunks WHERE game_date = '2026-10-26'"
-CREATE_SQL = (
-    f"CREATE INDEX {INDEX_NAME} ON rag_chunks USING hnsw (embedding vector_cosine_ops) "
-    "WITH (m = 16, ef_construction = 64)"
-)
+#: Defaults for the two build-time parameters. Measured on this host, the standard
+#: ``m=16 ef_construction=64`` advanced at 0.55%/min once the graph grew, which put
+#: completion past the watchdog's limit; ``m`` halves the graph's edges and ``ef``
+#: halves the search done per insert, so both the memory held and the work done fall.
+#: Recall is slightly lower and still far better than the ivfflat scan it replaces.
+DEFAULT_M = 8
+DEFAULT_EF_CONSTRUCTION = 32
+
+
+def _create_sql(m: int, ef_construction: int) -> str:
+    """Return the CREATE INDEX statement for the given build parameters."""
+    return (
+        f"CREATE INDEX {INDEX_NAME} ON rag_chunks USING hnsw (embedding vector_cosine_ops) "
+        f"WITH (m = {m}, ef_construction = {ef_construction})"
+    )
 
 
 def _connection_url() -> str:
@@ -150,10 +161,10 @@ def _report_index(conn) -> None:
         print(f"   {label:28s} {ms:>9.1f} ms  index={idx}")
 
 
-def _run_build(build_conn, result: dict[str, str]) -> None:
+def _run_build(build_conn, result: dict[str, str], sql: str) -> None:
     """Run the CREATE INDEX on the build connection and record the outcome."""
     try:
-        build_conn.execute(text(CREATE_SQL))
+        build_conn.execute(text(sql))
         result["outcome"] = "ok"
     except Exception as exc:
         result["outcome"] = f"{type(exc).__name__}: {str(exc)[:160]}"
@@ -163,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--mem", default="512MB", help="Session maintenance_work_mem")
     parser.add_argument("--max-minutes", type=int, default=DEFAULT_MAX_MINUTES)
+    parser.add_argument("--m", type=int, default=DEFAULT_M, help="HNSW m (edges per node)")
+    parser.add_argument("--ef", type=int, default=DEFAULT_EF_CONSTRUCTION, help="HNSW ef_construction")
     args = parser.parse_args(argv)
 
     url = _connection_url()
@@ -184,7 +197,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         sys.stdout.flush()
 
-        build_thread = threading.Thread(target=_run_build, args=(build_conn, result), daemon=True)
+        build_thread = threading.Thread(
+            target=_run_build,
+            args=(build_conn, result, _create_sql(args.m, args.ef)),
+            daemon=True,
+        )
         build_thread.start()
 
         with watch_engine.connect() as watch_conn:
