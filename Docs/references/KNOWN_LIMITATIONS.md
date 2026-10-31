@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-10-30
+Last updated: 2026-11-01
 
 This document tracks known data quality issues and their current status.
 
@@ -687,6 +687,41 @@ but whether the block is *acceptable* has not been decided:
 
 Until one of those is recorded, treat the alert as unresolved rather than as
 noise.
+
+### The 2026 postseason is missing two pieces, and both sources are closed (2026-11-01)
+
+**Status**: Blocked on sources. The Korean Series schedule is absent and one
+playoff game has no data; neither can be fetched today.
+
+`api-gw.sports.naver.com` — the host `ScheduleCrawler` tries first — has answered
+nothing since roughly 2026-10-27. Measured 2026-11-01: **HTTP 000** (20 s
+timeout, zero bytes received) on three attempts over ten minutes, and a month
+sweep failed **31 of 31 days for October and 30 of 30 for November** with
+`FETCH_TIMEOUT`. KBO's endpoint is the fallback and it is behind `Disallow: /`
+(latest snapshot 2026-10-30). Naver's mobile pages are not an alternative either:
+`m.sports.naver.com/robots.txt` is `Disallow: /` with only `/$` and `/index`
+allowed. Three paths, all closed.
+
+**What is missing**
+
+* **`20261031HTSS0`** (KIA @ SS) sits at `SCHEDULED` with zero child rows. This is
+  a **defect, not a postponement**: the playoff stands at **2–2** (10-26 KIA 5:1,
+  10-27 SS 3:8, 10-29 SS 6:4, 10-30 KIA 2:4), so a fifth game was required, and
+  10-31 is it. Its result also decides which team reached the Korean Series.
+* **The Korean Series (2026-11-02 ~ 11-10) has no `game` rows at all.** Only
+  `kbo_seasons` knows the window exists.
+
+**The five `CANCELLED` games in the same window are not defects.**
+`20261015OBLG0`, `20261021HTLG0`, `20261023LGHT0`, `20261025HTSS0` and
+`20261028SSHT0` all have zero child rows and null scores, and the series that
+continued past them are consistent with postponements: the wild card finished
+10-14, the semi-playoff ran 10-17/18/20 and then stopped, and the playoff began
+10-26 after 10-25 was lost. Nothing in the ledger claims they were played.
+
+**Reopening**: the nightly `schedule` job keeps polling and records `success`
+with `records_read=0`; the moment `api-gw` answers, the October and November
+sweeps fill both gaps without intervention. Every other route is closed by
+robots rather than by failure.
 
 ### Measured impact by crawler (2026-10-11)
 
