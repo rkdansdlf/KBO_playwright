@@ -266,5 +266,10 @@ rather than a failure.
 
 With all three changes the golden set moved from Recall@5 0.700 / MRR 0.611 /
 p50 526 ms / p95 2,673 ms to **Recall@5 0.813 / MRR 0.718 / p50 146 ms /
-p95 1,071 ms**. The five remaining misses are Phase B re-keys (4) and one tie at
-the top-5 boundary (`prod_rank_013`).
+p95 1,071 ms**. The remaining misses are Phase B re-keys (4) and one tie at the
+top-5 boundary (`prod_rank_013`).
+
+Phase B — the identity normalization that would clear the four — is planned in
+`Docs/references/RAG_IDENTITY_PHASE_B_PLAN.md`: which sources can be re-keyed
+without touching a vector, which need re-indexing, and why 68,829 `game_summary`
+rows must stay out of it.
