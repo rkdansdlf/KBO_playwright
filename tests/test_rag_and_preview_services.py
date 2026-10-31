@@ -227,6 +227,45 @@ def test_legacy_substring_fallback_also_skips_embeddings() -> None:
     assert "LIKE" in compiled.upper()
 
 
+def test_document_type_filter_matches_the_indexed_column() -> None:
+    """Match a document_type filter against the column, not only the metadata label.
+
+    On this table the two disagree: ``meta.category`` carries the document's own
+    grouping (``kbo_knowledge``, ``rulebook``, ``game_rules``) while the column
+    carries the chunk kind. Reading ``meta`` first rejected every chunk that had
+    a category, so filtering ``markdown_doc`` matched almost nothing.
+    """
+    chunk = RagChunk(
+        id=1,
+        source_table="kbo_regulations",
+        source_row_id="kbo_rulebook/baseball_rules/README.md_5",
+        title="KBO 야구 규칙 (Part 6)",
+        content="ABS 판정 기준은 3차원 스트라이크 존 통과 여부다.",
+        document_type="markdown_doc",
+    )
+    chunk.meta = {"category": "game_rules"}
+
+    assert RagSearchEngine._matches_category(chunk, "markdown_doc") is True
+    # The metadata label keeps working too — this is a superset, not a swap.
+    assert RagSearchEngine._matches_category(chunk, "game_rules") is True
+    assert RagSearchEngine._matches_category(chunk, "award") is False
+
+
+def test_meta_only_labels_still_match_when_the_column_is_empty() -> None:
+    """Keep metadata-labelled chunks retrievable where the column was never backfilled."""
+    chunk = RagChunk(
+        id=2,
+        source_table="press_release",
+        source_row_id="9641",
+        title="공지",
+        content="내용",
+    )
+    chunk.meta = {"document_type": "press_release"}
+
+    assert RagSearchEngine._matches_category(chunk, "press_release") is True
+    assert RagSearchEngine._matches_category(chunk, "highlight") is False
+
+
 def test_oracle_search_uses_bounded_candidates_without_vectors(monkeypatch) -> None:
     """Bound Oracle sparse candidates and avoid transferring dense embeddings."""
     monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "legacy")
