@@ -298,15 +298,18 @@ class ParkingCrawler(BaseHttpCrawler):
             return []
 
         html = result.data
-        self._raw_pages.append(
-            {
-                "source_key": info["source_key"],
-                "url": info["url"],
-                "html": html,
-                "status_code": result.http_status,
-            },
-        )
+        snapshot = {
+            "source_key": info["source_key"],
+            "url": info["url"],
+            "html": html,
+            "status_code": result.http_status,
+        }
+        self._raw_pages.append(snapshot)
         lots = self._parse_parking_page(html, info)
+        # The count the drift check re-parses against. Without it the row is reported
+        # as ``unknown_baseline`` and nothing is measured; a parse that raises writes
+        # nothing, which is the honest record.
+        snapshot["capture_metadata"] = {"parsed_records": len(lots)}
         if not any(entry.get("fee_rules") for entry in lots):
             # The lot row is kept on purpose -- a stadium that publishes its
             # hours but not its prices is still a real parking lot, and
