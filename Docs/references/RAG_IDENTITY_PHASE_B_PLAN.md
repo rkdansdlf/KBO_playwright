@@ -132,8 +132,8 @@ and adds the verdict each pairing produces (measured 2026-11-02, read-only):
 
 | Source | Legacy | Matched | Verdict |
 | --- | --- | --- | --- |
-| `player_movements` | 4,503 | 4,502 | **DUPLICATE 4,502** |
-| `awards` | 486 | 403 | **REKEY 403** |
+| `player_movements` | 4,503 | **4,503 (100%)** | **DUPLICATE 4,503** |
+| `awards` | 486 | 410 | **REKEY 410** |
 | `team_history` | 385 | 385 | REKEY 375 · DUPLICATE 10 |
 
 `team_history` reached **385/385** once the source column's embedded newline
@@ -142,16 +142,26 @@ a data gap.
 
 **What the verdicts mean**
 
-* **`REKEY` 778** (awards 403 + team_history 375): the natural key is free, so
+* **`REKEY` 785** (awards 410 + team_history 375): the natural key is free, so
   the identity can move onto it. This is the population `apply_rag_rekey` may be
-  pointed at, and it is a fifth of what the census claimed.
-* **`DUPLICATE` 4,512** (movements 4,502 + team_history 10): the natural key
+  pointed at, and it is under a tenth of what the census claimed.
+* **`DUPLICATE` 4,513** (movements 4,503 + team_history 10): the natural key
   already exists, so the legacy chunk is a second copy of an indexed row.
   Re-keying would merge two identities and is refused. Whether to delete them is
   the `[TL;DR]` question in §2-A, unchanged.
 
-**Still unexamined**: one movement chunk that does not parse, and 83 awards that
-match no row.
+Two matching gaps closed on 2026-11-02: one movement chunk was written without a
+team field (the field is now optional, since the team only splits twins), and the
+bulk of the awards misses were shortened foreign names (`로하스` for
+`멜 로하스 주니어`), which a same-year, same-award substring fallback resolves
+when exactly one row contains the name.
+
+**Still unexamined — 76 awards.** These are not name shortenings:
+`(2021, 골든글러브, 구자욱)` has the right year and award, and the source table has
+no such winner. Either the source table is incomplete or those chunks came from a
+different snapshot. This does not block the 785 re-keys (they matched exactly),
+but it does mean **no count here should be described as covering the whole
+awards population**.
 
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
