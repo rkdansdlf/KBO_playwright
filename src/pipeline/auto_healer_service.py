@@ -59,7 +59,12 @@ class AutoHealerService:
         if game.home_score is None and game.away_score is None:
             new_status = GAME_STATUS_UNRESOLVED
 
-        success = update_game_status(game_id, new_status, session=self.session)
+        success = update_game_status(
+            game_id,
+            new_status,
+            session=self.session,
+            reason=f"auto_healer_service: 점수 없이 도출된 상태({new_status})",
+        )
         self.session.flush()
 
         return HealingActionSummary(

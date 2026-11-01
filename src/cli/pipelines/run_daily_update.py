@@ -671,7 +671,11 @@ def _apply_detail_failure_fallback(ctx: _RunContext, game_id: str, reason: str |
                 game_id,
             )
         else:
-            update_game_status(game_id, fallback)
+            update_game_status(
+                game_id,
+                fallback,
+                reason=f"daily_update: 상세 수집 실패 폴백({reason or 'unknown'})",
+            )
 
 
 def _record_detail_result_status(ctx: _RunContext, game_id: str, item: GameCollectionItemResult | None) -> None:

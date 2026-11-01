@@ -13,6 +13,8 @@ from src.services.rag_index_identity import (
     PbpSourceIdentity,
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
+    stable_player_season_batting_source_row_id,
+    stable_player_season_pitching_source_row_id,
     stable_splits_source_row_id,
     stable_team_event_source_row_id,
     stable_team_history_source_row_id,
@@ -140,6 +142,35 @@ def test_stable_splits_source_row_id() -> None:
     """Splits natural key combines season, player_id, split_type, and split_key."""
     key = stable_splits_source_row_id(2026, 50001, "RISP", "득점권")
     assert key == "2026_50001_RISP_득점권"
+
+
+def test_player_season_batting_key_matches_the_generator_formula() -> None:
+    """Recompute the exact key the generator has always written.
+
+    The generator wrote it inline for its whole life. A re-key swaps legacy keys
+    only if this function is byte-identical to that expression, so the expected
+    value here is taken from the live index rather than invented: the golden set
+    carries ``player_season_batting:52605_2026_KIA_REGULAR``.
+    """
+    assert stable_player_season_batting_source_row_id(52605, 2026, "KIA", "REGULAR") == "52605_2026_KIA_REGULAR"
+
+
+def test_player_season_pitching_key_shares_the_same_formula() -> None:
+    """Both season aggregates compose their key the same way."""
+    assert stable_player_season_pitching_source_row_id(
+        50662, 2026, "KIA", "REGULAR"
+    ) == stable_player_season_batting_source_row_id(50662, 2026, "KIA", "REGULAR")
+
+
+def test_player_season_key_falls_back_for_missing_team_and_league() -> None:
+    """``NA`` and ``UNKNOWN`` are part of the formula, empty string included.
+
+    The fallback is ``or``, not ``is None``: a stored empty string takes the
+    placeholder too. Normalising instead would move every key rather than swap
+    the legacy ones.
+    """
+    assert stable_player_season_batting_source_row_id(7, 2020, None, None) == "7_2020_NA_UNKNOWN"
+    assert stable_player_season_batting_source_row_id(7, 2020, "", "") == "7_2020_NA_UNKNOWN"
 
 
 def test_normalize_chunk_text_and_hash() -> None:

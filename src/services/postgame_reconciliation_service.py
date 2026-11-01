@@ -268,7 +268,11 @@ async def reconcile_postgame_range(
         before_snapshot = before.get(target.game_id)
         if item and not item.detail_saved:
             if item.failure_reason == "cancelled":
-                update_game_status(target.game_id, GAME_STATUS_CANCELLED)
+                update_game_status(
+                    target.game_id,
+                    GAME_STATUS_CANCELLED,
+                    reason="postgame_reconciliation: 경기 취소 확인",
+                )
             if before_snapshot and before_snapshot.game_status == GAME_STATUS_CANCELLED:
                 continue
         if item and item.detail_saved and _has_final_detail_rows(target.game_id):
