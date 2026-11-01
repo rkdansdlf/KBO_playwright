@@ -140,6 +140,56 @@ def _gate_verdict(
     return True, None
 
 
+def _combine_index_definitions(
+    primary: list[tuple[str, str]] | None,
+    vector: list[tuple[str, str]] | None,
+) -> list[tuple[str, str]] | None:
+    """Combine index definitions from primary and vector stores, preserving order without duplicates."""
+    if primary is None:
+        # The primary store answers the lexical and game_date requirements; when
+        # its catalog cannot be read the verdict is unmeasurable, not a failure.
+        return None
+    seen: set[tuple[str, str]] = set()
+    combined: list[tuple[str, str]] = []
+    for item in [*(primary or []), *(vector or [])]:
+        if item not in seen:
+            seen.add(item)
+            combined.append(item)
+    return combined
+
+
+def _audit_stores() -> tuple[IndexConsistencyReport, int | None, list[tuple[str, str]] | None]:
+    """Query stores according to backend topology."""
+    if is_oracle_vector_backend():
+        with get_rag_index_session() as primary_session:
+            return (
+                audit_single_store_session(primary_session),
+                _count_missing_postings(primary_session),
+                _read_valid_index_definitions(primary_session),
+            )
+    if shares_operational_database():
+        # One database holding one ``rag_chunks`` table: load it once. The
+        # postings gate stays Oracle-only -- PostgreSQL candidate retrieval goes
+        # through the expression index over ``to_tsvector('simple', ...)``, not
+        # through the ``content_tsv`` column (nothing in this repository reads
+        # it; its GIN index had been scanned twice in a day), and counting
+        # missing terms in the 27.8M-row ``rag_chunk_terms`` table exceeds the
+        # scheduler window.
+        with get_rag_index_session() as primary_session:
+            return (
+                audit_single_store_session(primary_session),
+                None,
+                _read_valid_index_definitions(primary_session),
+            )
+    with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
+        report = audit_index_sessions(primary_session, vector_session)
+        index_definitions = _combine_index_definitions(
+            _read_valid_index_definitions(primary_session),
+            _read_valid_index_definitions(vector_session),
+        )
+        return report, None, index_definitions
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Audit sparse and vector indexes without modifying either database."""
     parser = argparse.ArgumentParser(description="Audit sparse/vector RAG index consistency")
@@ -172,28 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(rendered + "\n")
         return EXIT_STORE_UNREACHABLE
 
-    postings_missing = None
-    index_definitions: list[tuple[str, str]] | None = None
-    if is_oracle_vector_backend():
-        with get_rag_index_session() as primary_session:
-            report = audit_single_store_session(primary_session)
-            postings_missing = _count_missing_postings(primary_session)
-            index_definitions = _read_valid_index_definitions(primary_session)
-    elif shares_operational_database():
-        # One database holding one ``rag_chunks`` table: load it once. The
-        # postings gate stays Oracle-only -- PostgreSQL candidate retrieval goes
-        # through the expression index over ``to_tsvector('simple', ...)``, not
-        # through the ``content_tsv`` column (nothing in this repository reads
-        # it; its GIN index had been scanned twice in a day), and counting
-        # missing terms in the 27.8M-row ``rag_chunk_terms`` table exceeds the
-        # scheduler window.
-        with get_rag_index_session() as primary_session:
-            report = audit_single_store_session(primary_session)
-            index_definitions = _read_valid_index_definitions(primary_session)
-    else:
-        with get_rag_index_session() as primary_session, get_vector_session() as vector_session:
-            report = audit_index_sessions(primary_session, vector_session)
-            index_definitions = _read_valid_index_definitions(primary_session)
+    report, postings_missing, index_definitions = _audit_stores()
     missing_indexes = missing_search_indexes(index_definitions) if index_definitions is not None else None
     payload = report.to_dict()
     if postings_missing is not None:

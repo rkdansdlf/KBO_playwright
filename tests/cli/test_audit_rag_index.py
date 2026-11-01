@@ -347,3 +347,38 @@ class TestAMissingSearchIndexIsDamage:
 
         assert _run_audit_with_catalog(report, [], catalog) == 1
         assert "missing search indexes: game_date filter index" in capsys.readouterr().out
+
+    def test_split_mode_dense_index_on_vector_store_satisfies_audit(self, capsys) -> None:
+        """In split mode, dense vector index on the vector database satisfies the contract."""
+        report = IndexConsistencyReport(10, 10, (), total_keys=10)
+        primary_catalog = [entry for entry in _FULL_CATALOG if entry[0] != "idx_rag_chunks_embedding_ivfflat"]
+        vector_catalog = [entry for entry in _FULL_CATALOG if entry[0] == "idx_rag_chunks_embedding_ivfflat"]
+
+        primary_session = MagicMock()
+        primary_session.get_bind.return_value.dialect.name = "postgresql"
+        primary_session.execute.return_value.fetchall.return_value = primary_catalog
+
+        vector_session = MagicMock()
+        vector_session.get_bind.return_value.dialect.name = "postgresql"
+        vector_session.execute.return_value.fetchall.return_value = vector_catalog
+
+        with (
+            patch("src.cli.audit_rag_index.is_pgvector_available", return_value=True),
+            patch("src.cli.audit_rag_index.get_rag_index_session") as primary,
+            patch("src.cli.audit_rag_index.get_vector_session") as vector,
+            patch("src.cli.audit_rag_index.audit_index_sessions", return_value=report),
+        ):
+            primary.return_value.__enter__.return_value = primary_session
+            vector.return_value.__enter__.return_value = vector_session
+            assert main(["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["missing_search_indexes"] == []
+        assert payload["consistent"] is True
+
+
+def test_split_mode_unreadable_primary_catalog_is_unmeasurable_not_missing():
+    from src.cli.rag.audit_rag_index import _combine_index_definitions
+
+    vector_only = [("idx_rag_chunks_embedding_ivfflat", "CREATE INDEX ... USING ivfflat (embedding vector_cosine_ops)")]
+    assert _combine_index_definitions(None, vector_only) is None
+    assert _combine_index_definitions([], None) == []

@@ -553,12 +553,14 @@ def test_test_suite_runs_lint_and_test_matrix():
     assert "image: pgvector/pgvector:pg16" in workflow
     assert "image: postgres:16" not in workflow
     assert "matrix:" in workflow
-    assert 'python-version: ["3.14"]' in workflow
+    assert 'python-version: ["3.14", "3.15"]' in workflow
     assert "cancel-in-progress: false" in workflow
     assert "concurrency:" in workflow
     assert "timeout-minutes: 3" in workflow
     assert "--exit-zero" not in workflow
-    assert "continue-on-error" not in workflow
+    # Only the experimental 3.15 leg may fail without failing the suite.
+    assert workflow.count("continue-on-error") == 1
+    assert "continue-on-error: ${{ matrix.python-version == '3.15' }}" in workflow
     assert "|| true" not in workflow
 
     pytest_config = _read(ROOT / "pytest.ini")
@@ -784,3 +786,13 @@ def test_daily_sync_has_no_legacy_oracle_step_or_wallet_secrets():
     assert "sync_sqlite_to_oci" not in workflow
     assert "ORACLE_WALLET_B64" not in workflow
     assert "OCI_WALLET_PASSWORD" not in workflow
+
+
+def test_docker_build_check_builds_without_pushing_on_pull_requests():
+    workflow = _read(ROOT / ".github" / "workflows" / "docker_build_check.yml")
+
+    assert "pull_request:" in workflow
+    assert "docker build -f Dockerfile" in workflow
+    assert "push: true" not in workflow
+    assert "docker push" not in workflow
+    assert "login-action" not in workflow
