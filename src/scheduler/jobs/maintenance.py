@@ -1189,6 +1189,42 @@ SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
+def _warn_when_drift_is_unmeasurable(summary: object) -> None:
+    """Say so when the check ran but had nothing to compare against.
+
+    ``ok`` is true when nothing drifted and nothing failed, which is also what a
+    check with no baselines reports: ``validate_snapshot`` cannot judge a re-parse
+    against a record count that was never stored, so it reports ``unknown_baseline``
+    and moves on. Measured 2026-11-01: **0 of the most recent 100 snapshots carried
+    a baseline**, so every run for as long as that has been true has been reporting
+    a clean gate for a drift it was not measuring.
+
+    This is a warning and not an incident on purpose. The incident key belongs to
+    real drift, and a condition no run can clear is the kind of alert this repository
+    has already learned to stop reading -- ``rag_coverage_sentinel`` needed
+    ``--require-recent`` for exactly this reason. The fix for this one is in the
+    crawlers (they now record ``capture_metadata['parsed_records']``), not in an
+    operator's hands, so it is reported where a maintainer will see it and nowhere
+    else.
+
+    Args:
+        summary: The ``SnapshotDriftSummary`` the run just produced.
+
+    """
+    total = getattr(summary, "total", 0)
+    with_baseline = getattr(summary, "with_baseline", 0)
+    if not total or with_baseline:
+        return
+    logger.warning(
+        "Snapshot drift is unmeasurable: %d of %d sampled snapshots carry no "
+        "parsed_records baseline, so a clean result means nothing was compared. "
+        "The crawlers that capture these sources must record "
+        "capture_metadata['parsed_records'] alongside parse_status.",
+        getattr(summary, "unknown_baseline", 0),
+        total,
+    )
+
+
 def snapshot_drift_check_job() -> None:
     """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
@@ -1206,6 +1242,7 @@ def snapshot_drift_check_job() -> None:
                 fail_max=fail_max,
             )
             logger.info("=== Snapshot Drift Summary: %s ===", summary.to_dict())
+            _warn_when_drift_is_unmeasurable(summary)
 
             if summary.ok:
                 apply_incidents([], resolve_keys=[SNAPSHOT_DRIFT_INCIDENT_KEY])
