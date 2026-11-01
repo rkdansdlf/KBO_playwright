@@ -87,17 +87,25 @@ def _movement_index(session: Session) -> dict:
 
 
 def _award_index(session: Session) -> dict:
-    """Index award rows by ``(year, award_type, player_name)``."""
+    """Return ``(exact, by_year_type)`` — the second backs the shortened-name fallback.
+
+    The legacy generator wrote ``로하스`` where the table holds ``멜 로하스 주니어``. A
+    fallback that searched the whole table by substring would be one typo away
+    from pairing the wrong player, so it is scoped to the same year and award.
+    """
     from sqlalchemy import select
 
     from src.models.award import Award
 
-    index: dict[tuple[int, str, str], list[LegacySourceRow]] = {}
+    exact: dict[tuple[int, str, str], list[LegacySourceRow]] = {}
+    by_year_type: dict[tuple[int, str], list[LegacySourceRow]] = {}
     statement = select(Award.id, Award.year, Award.award_type, Award.category, Award.player_name)
     for row in session.execute(statement).yield_per(1_000):
         identity = stable_award_source_row_id(row[1], row[2], row[3], row[4])
-        index.setdefault((int(row[1]), row[2], row[4]), []).append(LegacySourceRow(int(row[0]), identity))
-    return index
+        item = LegacySourceRow(int(row[0]), identity, player_name=row[4])
+        exact.setdefault((int(row[1]), row[2], row[4]), []).append(item)
+        by_year_type.setdefault((int(row[1]), row[2]), []).append(item)
+    return exact, by_year_type
 
 
 def _team_history_index(session: Session) -> dict:
@@ -151,7 +159,8 @@ def _match_one(source_table: str, content: str, indexes: dict) -> LegacyMatchOut
     if source_table == "player_movements":
         return match_movement(content, indexes["player_movements"], TEAM_NAME_TO_CODE)
     if source_table == "awards":
-        return match_award(content, indexes["awards"])
+        exact, by_year_type = indexes["awards"]
+        return match_award(content, exact, by_year_type)
     return match_team_history(content, indexes["team_history"])
 
 

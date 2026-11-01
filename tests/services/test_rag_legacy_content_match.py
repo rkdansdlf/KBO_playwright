@@ -19,6 +19,7 @@ from src.services.rag_legacy_content_match import (
     normalize_source_team_name,
     parse_fields,
     MOVEMENT_FIELDS,
+    MOVEMENT_TEAM_FIELD,
 )
 
 MOVEMENT_BODY = (
@@ -52,8 +53,13 @@ class TestParseFields:
             "date": "2022-05-04",
             "section": "부상자 명단",
             "player": "구자욱(외야수)",
-            "team": "삼성",
         }
+
+    def test_the_team_is_read_separately_because_it_is_optional(self) -> None:
+        """One live chunk carries no team, so it cannot be a required field."""
+        team = MOVEMENT_TEAM_FIELD.search(MOVEMENT_BODY)
+        assert team is not None
+        assert team.group(1).strip() == "삼성"
 
     def test_a_missing_field_returns_none_rather_than_the_rest(self) -> None:
         """A partial dict would invite matching on a subset."""
@@ -133,6 +139,27 @@ class TestMatchMovement:
         assert outcome.reason == PARSE_FAILED
         assert outcome.source_row_id is None
 
+    def test_a_body_without_a_team_still_matches_when_the_rest_is_unique(self) -> None:
+        """One live chunk (id=4549, 서준원) was written without ``팀``.
+
+        Requiring the field made that chunk a parse failure, which reads as "the
+        text is unusable" — but the team is only needed to split twins.
+        """
+        body = (
+            "선수 이동 기록 (FA, 트레이드, 드래프트)\n"
+            "날짜: 2023-03-30\n"
+            "이동 유형: 자유계약선수 - 참가활동정지\n"
+            "선수: 서준원(투수)"
+        )
+        by_key = {
+            ("2023-03-30", "서준원(투수)", "자유계약선수 - 참가활동정지"): [
+                LegacySourceRow(4549, "2023-03-30_LT_서준원(투수)_정지_a")
+            ]
+        }
+        outcome = match_movement(body, by_key, {})
+        assert outcome.reason == MATCHED
+        assert outcome.source_row_id == 4549
+
 
 class TestMatchAward:
     def test_the_english_award_name_matches_the_korean_column(self) -> None:
@@ -145,6 +172,45 @@ class TestMatchAward:
 
     def test_a_year_with_no_such_award_is_unmatched(self) -> None:
         outcome = match_award(AWARD_BODY, {(1987, "골든글러브", "강민호"): [LegacySourceRow(1, "x")]})
+        assert outcome.reason == UNMATCHED
+
+    def test_a_shortened_foreign_name_matches_the_full_one(self) -> None:
+        """The legacy generator wrote 로하스 where the table holds 멜 로하스 주니어."""
+        body = "KBO 수상 기록\n시즌: 2020\n수상 종류: MVP\n선수: 로하스\n팀: KT"
+        exact: dict = {}
+        by_year_type = {
+            (2020, "MVP"): [LegacySourceRow(11, "2020_MVP_NONE_멜 로하스 주니어", player_name="멜 로하스 주니어")]
+        }
+        outcome = match_award(body, exact, by_year_type)
+        assert outcome.reason == MATCHED
+        assert outcome.source_row_id == 11
+
+    def test_a_short_name_fitting_two_rows_stays_ambiguous(self) -> None:
+        """A substring fallback that picks one of two is worse than saying so."""
+        body = "KBO 수상 기록\n시즌: 2020\n수상 종류: MVP\n선수: 김\n팀: KT"
+        by_year_type = {
+            (2020, "MVP"): [
+                LegacySourceRow(1, "a", player_name="김하성"),
+                LegacySourceRow(2, "b", player_name="김현수"),
+            ]
+        }
+        outcome = match_award(body, {}, by_year_type)
+        assert outcome.reason == AMBIGUOUS
+        assert outcome.candidates == (1, 2)
+
+    def test_the_exact_name_wins_over_the_fallback_pool(self) -> None:
+        body = "KBO 수상 기록\n시즌: 2020\n수상 종류: MVP\n선수: 김하성\n팀: KT"
+        exact = {(2020, "MVP", "김하성"): [LegacySourceRow(7, "exact")]}
+        by_year_type = {(2020, "MVP"): [LegacySourceRow(7, "exact", player_name="김하성")]}
+        outcome = match_award(body, exact, by_year_type)
+        assert outcome.reason == MATCHED
+        assert outcome.source_row_id == 7
+
+    def test_the_fallback_does_not_cross_years(self) -> None:
+        """Scoping to the same year and award is what keeps a short name safe."""
+        body = "KBO 수상 기록\n시즌: 2020\n수상 종류: MVP\n선수: 로하스\n팀: KT"
+        by_year_type = {(2019, "MVP"): [LegacySourceRow(9, "old", player_name="멜 로하스 주니어")]}
+        outcome = match_award(body, {}, by_year_type)
         assert outcome.reason == UNMATCHED
 
 
