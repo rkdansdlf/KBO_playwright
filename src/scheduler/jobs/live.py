@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import datetime as dt_module
+import datetime as dt
 import json
 import logging
 import os
@@ -412,7 +412,7 @@ def _interval_from_analysis(  # noqa: PLR0913
 
 def _get_live_poll_interval_seconds() -> int:
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
-    dt_cls = getattr(mod, "datetime", dt_module.datetime) if mod else dt_module.datetime
+    dt_cls = getattr(mod, "datetime", dt.datetime) if mod else dt.datetime
     session_factory = getattr(mod, "SessionLocal", SessionLocal) if mod else SessionLocal
 
     now = dt_cls.now(KST) if hasattr(dt_cls, "now") else datetime.now(KST)

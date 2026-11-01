@@ -24,9 +24,9 @@ class TestCrawlTransitTimeCLI:
             MockCrawler.assert_called_once_with(origins=JAMSIL_ORIGINS)
             call_kwargs = mock_instance.run.call_args.kwargs
             assert call_kwargs["save"] is True
-            import datetime
+            import datetime as dt
 
-            assert call_kwargs["game_date"] == datetime.date(2026, 6, 3)
+            assert call_kwargs["game_date"] == dt.date(2026, 6, 3)
 
     def test_main_with_origin_filter(self):
         with patch("src.cli.crawl_transit_time.TransitTimeCrawler") as MockCrawler:

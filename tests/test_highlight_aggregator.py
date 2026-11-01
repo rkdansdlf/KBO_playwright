@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import datetime
+import datetime as dt
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -28,7 +28,7 @@ def _make_game(game_id: str) -> Game:
     return Game(
         game_id=game_id,
         game_status="COMPLETED",
-        game_date=datetime.date(2024, 3, 23),
+        game_date=dt.date(2024, 3, 23),
         home_team="SSG",
         away_team="HH",
         home_score=5,
