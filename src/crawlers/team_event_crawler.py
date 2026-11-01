@@ -177,20 +177,27 @@ class TeamEventCrawler:
 
             html = result.data
             source_key = TEAM_TO_SOURCE_KEY[team_code]
-            self._raw_pages.append(
-                {
-                    "source_key": source_key,
-                    "url": url,
-                    "html": html,
-                    "status_code": result.http_status,
-                },
-            )
+            snapshot = {
+                "source_key": source_key,
+                "url": url,
+                "html": html,
+                "status_code": result.http_status,
+            }
+            self._raw_pages.append(snapshot)
             metadata = {
                 "url": url,
                 "cutoff_days": self.days_back,
                 "fetched_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             }
             page_events = parse_team_events(html, source_key, metadata)
+            # How many records this page's parse produced, recorded on the row the
+            # artifact was captured into. ``snapshot_drift_check`` re-parses the
+            # stored bytes and compares the count against this number; without it
+            # the row has no baseline and is reported as ``unknown_baseline`` --
+            # measured 2026-11-01: 0 of the most recent 100 snapshots carried one,
+            # and 76 of those 100 came from this crawler. A parse that raises
+            # writes nothing, which is the honest record: there was no count.
+            snapshot["capture_metadata"] = {"parsed_records": len(page_events)}
             new_events = []
             for event in page_events:
                 event_key = (event.get("team_id"), event.get("title"), event.get("source_url"))
