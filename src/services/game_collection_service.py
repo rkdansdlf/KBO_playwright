@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sqlalchemy import exists, or_
+from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.constants import DATE_STR_LEN, FINAL_PBP_MARKER
@@ -290,6 +290,70 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
+def _settled_dead_letter_exists() -> object:
+    """Return the correlated ``EXISTS`` identifying a game whose letter is settled.
+
+    A dead letter that reached ``exhausted`` or ``ignored`` is the record of an
+    answered question: the source could not supply this game. Selecting it again
+    re-spends the retry budget and refills the queue -- on 2026-10-30 the four 2024
+    Premier12 games that had been settled the day before were back in ``exhausted``
+    with five more attempts each, because the repair path filtered on this tuple and
+    the collection path did not. ``requeue`` is the way back in: it returns a letter
+    to ``pending``, which this does not match.
+
+    Returns:
+        A SQLAlchemy ``EXISTS`` correlated with the enclosing ``game`` row.
+
+    """
+    return exists().where(
+        CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
+        CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
+        or_(
+            CrawlDeadLetter.game_id == Game.game_id,
+            CrawlDeadLetter.target_id == Game.game_id,
+        ),
+        CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+    )
+
+
+def settled_game_ids(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the subset of ``game_ids`` whose game_detail dead letter is settled.
+
+    The same rule as :func:`_settled_dead_letter_exists`, for callers that already
+    hold a list of ids rather than a query over ``game``. The detail-recovery queue
+    is one of those: it is a file and knows nothing about dead letters, so a game an
+    operator settled on one day was re-queued on the next -- measured 2026-11-02,
+    ``20241110PRUS0`` and four others came back for another five attempts each while
+    their ``ignored`` rows sat in ``crawl_dead_letters``. The queue is right not to
+    read this table; the caller that drains it is the right place for the rule.
+
+    Args:
+        session: Session the dead letters are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids whose letter is ``exhausted`` or ``ignored``.
+
+    """
+    wanted = {gid for gid in game_ids if gid}
+    if not wanted:
+        return set()
+    rows = session.execute(
+        select(CrawlDeadLetter.game_id, CrawlDeadLetter.target_id)
+        .where(
+            CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
+            CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
+            CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+            or_(
+                CrawlDeadLetter.game_id.in_(list(wanted)),
+                CrawlDeadLetter.target_id.in_(list(wanted)),
+            ),
+        )
+        .distinct(),
+    ).all()
+    return {gid for row in rows for gid in row if gid in wanted}
+
+
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
     """Load game targets from db.
 
@@ -314,22 +378,7 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
         GamePlayByPlay.game_id == Game.game_id,
         GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
     )
-    # A dead letter that reached ``exhausted`` or ``ignored`` is the record of an
-    # answered question: the source could not supply this game. Selecting it again
-    # re-spends the retry budget and refills the queue -- on 2026-10-30 the four
-    # 2024 Premier12 games that had been settled the day before were back in
-    # ``exhausted`` with five more attempts each, because the repair path filtered on
-    # this tuple and the collection path did not. ``requeue`` is the way back in: it
-    # returns a letter to ``pending``, which this does not match.
-    settled_dead_letter = exists().where(
-        CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
-        CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
-        or_(
-            CrawlDeadLetter.game_id == Game.game_id,
-            CrawlDeadLetter.target_id == Game.game_id,
-        ),
-        CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
-    )
+    settled_dead_letter = _settled_dead_letter_exists()
 
     with SessionLocal() as session:
         rows = (

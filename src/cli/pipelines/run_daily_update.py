@@ -60,6 +60,7 @@ from src.services.game_collection_service import (
     GameCollectionConfig,
     GameCollectionItemResult,
     crawl_and_save_game_details,
+    settled_game_ids,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
@@ -396,6 +397,39 @@ def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
     subprocess.run([sys.executable, *argv], check=True)
+
+
+def _without_settled_detail_games(game_ids: set[str]) -> set[str]:
+    """Drop the ids whose game_detail dead letter is already settled.
+
+    The detail-recovery queue is a file and knows nothing about dead letters, so a
+    game an operator settled came back on the next run. Measured 2026-11-02: five of
+    them (``20241110PRUS0``, ``20111025SKSS7``, ``20150708HTWO0`` and two more) were
+    re-queued for another five attempts each while their ``ignored`` rows sat in
+    ``crawl_dead_letters``. ``load_game_targets_from_db`` filters the same tuple for
+    the same reason; this is the other path's turn.
+
+    A database failure leaves the queue as it found it: the check is a filter, and a
+    filter that cannot run must not silently empty the work that should happen.
+
+    Args:
+        game_ids: The ids the queue returned as due.
+
+    Returns:
+        Those whose letter is ``pending``/``retrying``/absent.
+
+    """
+    if not game_ids:
+        return game_ids
+    try:
+        with SessionLocal() as session:
+            settled = settled_game_ids(session, game_ids)
+    except SQLAlchemyError:
+        logger.exception("   \u26a0\ufe0f Could not check settled dead letters; the queue is kept as it is")
+        return game_ids
+    if settled:
+        logger.info("   \u23ed\ufe0f Skipping %s queued game(s) whose detail dead letter is settled", len(settled))
+    return game_ids - settled
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
@@ -1688,10 +1722,12 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
         detail_recovery_queue=RecoveryManager(checkpoint_path=DETAIL_RECOVERY_QUEUE_PATH),
     )
     ctx.detail_recovery_queue.purge_detail_recovery_queue()  # type: ignore[union-attr]
-    ctx.queued_recovery_game_ids = set(
-        ctx.detail_recovery_queue.get_due_detail_recovery_targets(  # type: ignore[union-attr]
-            target_date,
-            cooldown_minutes=DETAIL_RECOVERY_COOLDOWN_MINUTES,
+    ctx.queued_recovery_game_ids = _without_settled_detail_games(
+        set(
+            ctx.detail_recovery_queue.get_due_detail_recovery_targets(  # type: ignore[union-attr]
+                target_date,
+                cooldown_minutes=DETAIL_RECOVERY_COOLDOWN_MINUTES,
+            ),
         ),
     )
 

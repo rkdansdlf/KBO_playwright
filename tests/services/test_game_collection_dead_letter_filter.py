@@ -173,3 +173,63 @@ class TestTheRelayOutranksTheLetter:
         _letter(session_factory, status=DlqStatus.EXHAUSTED.value)
 
         assert _targets() == []
+
+
+class TestSettledGameIds:
+    """The batch form a caller with a list of ids uses instead of a query.
+
+    The detail-recovery queue returns ids, not rows, so the ``EXISTS`` the collection
+    query uses cannot be applied to it. This is the same rule written for that shape,
+    and the reason both exist: on 2026-11-02 five settled games came back through the
+    queue for another five attempts each while their ``ignored`` rows sat in
+    ``crawl_dead_letters``.
+    """
+
+    def test_it_returns_only_the_settled_ones(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_game_ids
+
+        _game(session_factory, game_id="20241124USVE0")
+        _game(session_factory, game_id="20241123TWJP0")
+        _letter(session_factory, status=DlqStatus.IGNORED.value, game_id="20241124USVE0", target_id="20241124USVE0")
+
+        with session_factory() as session:
+            assert settled_game_ids(session, {"20241124USVE0", "20241123TWJP0"}) == {"20241124USVE0"}
+
+    def test_a_non_settled_letter_does_not_count(self, session_factory) -> None:
+        """``pending`` is what ``requeue`` produces; it has to stay eligible."""
+        from src.services.game_collection_service import settled_game_ids
+
+        _letter(session_factory, status=DlqStatus.PENDING.value)
+
+        with session_factory() as session:
+            assert settled_game_ids(session, {GAME_ID}) == set()
+
+    def test_target_id_alone_is_enough(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_game_ids
+
+        _letter(session_factory, status=DlqStatus.EXHAUSTED.value, game_id=None)
+
+        with session_factory() as session:
+            assert settled_game_ids(session, {GAME_ID}) == {GAME_ID}
+
+    def test_another_crawlers_letter_does_not_count(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_game_ids
+
+        _letter(session_factory, status=DlqStatus.EXHAUSTED.value, crawler="relay")
+
+        with session_factory() as session:
+            assert settled_game_ids(session, {GAME_ID}) == set()
+
+    def test_an_empty_input_asks_nothing(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_game_ids
+
+        with session_factory() as session:
+            assert settled_game_ids(session, set()) == set()
+
+    def test_ids_that_are_not_asked_about_are_not_returned(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_game_ids
+
+        _letter(session_factory, status=DlqStatus.IGNORED.value, game_id="20241123TWJP0", target_id="20241123TWJP0")
+
+        with session_factory() as session:
+            assert settled_game_ids(session, {GAME_ID}) == set()
