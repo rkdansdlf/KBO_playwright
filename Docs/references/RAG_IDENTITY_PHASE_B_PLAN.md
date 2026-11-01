@@ -44,29 +44,67 @@ That is the whole gap. Two functions plus two census record iterators close it.
 
 ## 2. Two populations, two different treatments
 
-### A. Re-key (identity swap, embedding reusable)
+### A. Re-key (identity swap, embedding reusable) — BLOCKED, see §2-B
 
 Measured: **8,274** rows with `index_status='ACTIVE'` and `source_row_id ~ '^id=[0-9]+$'`,
 excluding `game_summary`.
 
-| Source | Rows | Tool support |
-| --- | --- | --- |
-| `player_movements` | 4,503 | present |
-| `player_season_batting` | 2,572 | **needs the two additions** |
-| `awards` | 486 | present |
-| `team_history` | 385 | present |
-| `player_season_pitching` | 328 | **needs the two additions** |
+| Source | Rows | Tool support | Re-keyable? |
+| --- | --- | --- | --- |
+| `player_movements` | 4,503 | present | **no — the id is not the source row's id** |
+| `player_season_batting` | 2,572 | added | **no — same reason** |
+| `awards` | 486 | present | **no — same reason** |
+| `team_history` | 385 | present | **no — same reason** |
+| `player_season_pitching` | 328 | added | **no — same reason** |
 
 All 8,274 carry both `content_hash` and `embedding`; `indexed_at` is NULL for
 every one of them (the pipeline that wrote them did not stamp it).
 
 **Re-keying is an identity swap, not a re-embed.** The chunk text does not
 change when `source_row_id` changes, so `content_hash` stays valid and the
-existing vector stays correct. A re-key that re-embedded would be paying twice
-for the same bytes — and the embedding cache would make even that cheap, since
-`embedding_cache` holds **311,113 rows / 1,321 MB** under
-`perplexity/pplx-embed-v1-4b`: the same text hashes to the same key, so a
-re-embed served from cache costs no API call.
+existing vector stays correct, and `embedding_cache` (**311,113 rows /
+1,321 MB** under `perplexity/pplx-embed-v1-4b`) would absorb a re-embed anyway.
+
+### B. Why the `id=N` keys cannot be re-keyed (measured 2026-11-02)
+
+**The `N` in `id=N` is not the source row's primary key.** Three sources were
+checked against the live data, and in every one the ids name different rows:
+
+| Chunk | Says | `source_table.id = N` says |
+| --- | --- | --- |
+| `player_movements:id=3901` | 구자욱(외야수) 2022-05-04 부상자 명단 | 권혁경(포수) 2022-07-21 (구자욱 is `id=3814`) |
+| `awards:id=130` | 2021 Golden Glove 강민호 | 1987 골든글러브 포수 이만수 |
+| `awards:id=131` | 2021 Golden Glove 강백호 | 1987 골든글러브 1루수 김성한 |
+| `player_season_batting:id=8207` | 안권수 2021 두산 | **matches** — the exception, not the rule |
+
+The census matched all of them anyway, because `_source_entries` looks a legacy
+key up in a map keyed by the source's `id`. Numeric equality is not identity, so
+`safe_source_matches: 9,811` were **false matches** and the 860
+`safe_rekey_candidates` (awards 485, team_history 375) cannot be trusted either.
+
+**Consequences**
+
+* **Do not run `apply_rag_rekey` on this population.** A false match would move a
+  chunk onto another row's natural key and, where that key already exists, merge
+  two identities.
+* **`TARGET_EXISTS_CONTENT_MISMATCH` (8,951) is not evidence of a duplicate.**
+  It compares the chunk against whatever row the id happened to land on. The
+  live counts are real; the pairing is not.
+* The census improvement that surfaced this (recognising the `id=` prefix) is
+  still correct — it is what made the false matches visible instead of silent.
+
+**What would be needed**: a match on the chunk *content* rather than on a numeric
+id. The legacy text carries the fields (date, player, team, section for
+movements; year, award, player for awards), so the pairing is derivable — but it
+is parsing, so it fails loudly on formats it does not recognise and needs its own
+verification before any write. That is a piece of work, not a migration step.
+
+**Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
+embeddings are valid, and their text is a summary the current generator cannot
+reproduce — deleting them would lose the `[TL;DR]`/`[핵심 문장]`/`[상세]` form
+outright. Leaving them costs duplicate hits for the same player-season; removing
+them costs information. Neither is free, which is why the decision belongs after
+the content-based pairing exists.
 
 ### B. Re-index and clean (`#part` split keys)
 
