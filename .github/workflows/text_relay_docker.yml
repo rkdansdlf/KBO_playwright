@@ -37,6 +37,9 @@ jobs:
   text-relay-collect:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      has_data: ${{ steps.count.outputs.has_data }}
+      csv_count: ${{ steps.count.outputs.csv_count }}
 
     steps:
       - name: Checkout repository
@@ -125,13 +128,24 @@ jobs:
             --save \
             --output-dir /app/data
 
+      # 크롤러는 스케줄 소스(Naver)를 전혀 읽지 못하면 non-zero로 종료하므로
+      # 여기까지 성공했다면 CSV 0개는 "경기 없는 날"로 해석할 수 있다.
       - name: List collected files
+        id: count
         run: |
           echo "=== Collected Text Relay Files ==="
           find data -maxdepth 1 -type f -name '*_text_relay.csv' -print
+          CSV_COUNT=$(find data -maxdepth 1 -type f -name '*_text_relay.csv' | wc -l | tr -d ' ')
           echo ""
           echo "=== File Count ==="
-          find data -maxdepth 1 -type f -name '*_text_relay.csv' -print | wc -l
+          echo "$CSV_COUNT"
+          echo "csv_count=$CSV_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$CSV_COUNT" -gt 0 ]; then
+            echo "has_data=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_data=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=No text relay data::No scheduled games in the collection window; verify will be skipped."
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -163,13 +177,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Skip verification (no games)
+        if: needs.text-relay-collect.result == 'success' && needs.text-relay-collect.outputs.has_data != 'true'
+        run: echo "::notice title=Verify skipped::Collection succeeded with 0 CSV files (no games scheduled)."
+
       - name: Download artifacts
+        if: needs.text-relay-collect.outputs.has_data == 'true'
         uses: actions/download-artifact@v8
         with:
           name: text-relay-csv-${{ github.run_id }}
           path: data/
 
       - name: Verify CSV structure
+        if: needs.text-relay-collect.outputs.has_data == 'true'
         run: |
           echo "=== Verifying CSV Structure ==="
           for file in data/*_text_relay.csv; do
@@ -182,6 +202,7 @@ jobs:
           done
 
       - name: Check for empty files
+        if: needs.text-relay-collect.outputs.has_data == 'true'
         run: |
           echo "=== Checking for empty files ==="
           EMPTY_COUNT=0
@@ -205,3 +226,4 @@ jobs:
         if: needs.text-relay-collect.result != 'success'
         run: |
           echo "❌ Text relay collection failed"
+          exit 1
