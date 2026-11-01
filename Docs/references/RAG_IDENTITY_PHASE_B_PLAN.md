@@ -126,9 +126,32 @@ name) but a player-season can hold several leagues, so the row is *narrowed*
 rather than *identified*. Treat these two as a separate question from the three
 above, where the pairing is exact.
 
-This is a piece of work, not a migration step: it belongs in a tool with its own
-tests, and the counts above have to be reproduced there before anything is
-re-keyed or deleted.
+**The tool now exists** — `src/cli/rag/match_legacy_content.py` with its pure
+matching in `src/services/rag_legacy_content_match.py`. It reproduces the counts
+and adds the verdict each pairing produces (measured 2026-11-02, read-only):
+
+| Source | Legacy | Matched | Verdict |
+| --- | --- | --- | --- |
+| `player_movements` | 4,503 | 4,502 | **DUPLICATE 4,502** |
+| `awards` | 486 | 403 | **REKEY 403** |
+| `team_history` | 385 | 385 | REKEY 375 · DUPLICATE 10 |
+
+`team_history` reached **385/385** once the source column's embedded newline
+(`삼미\n슈퍼스타즈`) was normalised — the earlier 324 was a matching artifact, not
+a data gap.
+
+**What the verdicts mean**
+
+* **`REKEY` 778** (awards 403 + team_history 375): the natural key is free, so
+  the identity can move onto it. This is the population `apply_rag_rekey` may be
+  pointed at, and it is a fifth of what the census claimed.
+* **`DUPLICATE` 4,512** (movements 4,502 + team_history 10): the natural key
+  already exists, so the legacy chunk is a second copy of an indexed row.
+  Re-keying would merge two identities and is refused. Whether to delete them is
+  the `[TL;DR]` question in §2-A, unchanged.
+
+**Still unexamined**: one movement chunk that does not parse, and 83 awards that
+match no row.
 
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
