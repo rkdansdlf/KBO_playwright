@@ -94,10 +94,41 @@ key up in a map keyed by the source's `id`. Numeric equality is not identity, so
   still correct — it is what made the false matches visible instead of silent.
 
 **What would be needed**: a match on the chunk *content* rather than on a numeric
-id. The legacy text carries the fields (date, player, team, section for
-movements; year, award, player for awards), so the pairing is derivable — but it
-is parsing, so it fails loudly on formats it does not recognise and needs its own
-verification before any write. That is a piece of work, not a migration step.
+id. **Measured 2026-11-02 — the pairing is derivable, and the parse is exact.**
+
+The legacy text carries every field the source row keys on. Parsed over the whole
+population, with zero writes:
+
+| Source | Rows | Matched | What was needed |
+| --- | --- | --- | --- |
+| `player_movements` | 4,503 | **4,502 (100.0%)** | `(date, player, section)`, then the chunk's team name to split the 643 twins |
+| `team_history` | 385 | **324 (84.2%)** | `(season, team_name)` — no name→code table needed, the source has the name |
+| `awards` | 486 | needs 3 aliases | content says `Golden Glove`/`Rookie of the Year`/`MVP`; the column says `골든글러브`/`신인상`/`MVP` |
+
+**Parse failures were 0 in every source.** The failures are all *matching*, not
+parsing:
+
+* **`player_movements`**: one chunk of 4,503 did not parse. 643 rows matched two
+  source rows because a franchise appears under both its era code and its current
+  one (`HT` 해태 and `KIA` 기아), and the chunk names the team
+  (`팀: 해태 타이거즈`) — the team name resolves all 643, leaving **1**.
+* **`team_history`**: 61 chunks name a short form (`삼미`) while the source column
+  holds `삼미\n슈퍼스타즈`. Normalising the source name (split on whitespace, take
+  the first token) should close most of the gap; this is unverified.
+* **`awards`**: only three award names appear in the legacy text, while the table
+  holds six kinds. The three missing ones (`수비상`, `올스타전MVP`,
+  `한국시리즈MVP`) have no legacy chunks at all — that generator predates them.
+
+**Still open**: `player_season_batting`/`pitching` (4,437 chunks). Their key ends
+in `_{league}`, and the legacy text does not carry the league — the identifier is
+recoverable (`[핵심 문장] 2021년 두산 베어스 안권수` gives year, team name, player
+name) but a player-season can hold several leagues, so the row is *narrowed*
+rather than *identified*. Treat these two as a separate question from the three
+above, where the pairing is exact.
+
+This is a piece of work, not a migration step: it belongs in a tool with its own
+tests, and the counts above have to be reproduced there before anything is
+re-keyed or deleted.
 
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
