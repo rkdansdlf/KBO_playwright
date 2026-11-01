@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.services.rag_identity_census import (
+    R2_SOURCE_TABLES,
     IdentityCensusReport,
     SourceIdentityRecord,
     ExistingIdentityRow,
@@ -313,6 +314,29 @@ class TestIterSourceIdentityRecords:
         mock_session = Mock()
         with pytest.raises(ValueError, match="unsupported R2 source table"):
             list(iter_source_identity_records(mock_session, "invalid_table"))
+
+    def test_the_season_aggregates_are_declared_sources(self) -> None:
+        """2,900 legacy season-aggregate rows are only re-keyable if the census knows them.
+
+        Every source in ``R2_SOURCE_TABLES`` needs a matching entry in
+        ``iter_source_identity_records``; a source listed without one raises
+        ``ValueError`` instead of re-keying, so the two lists are checked
+        together rather than trusting that they were edited in step.
+        """
+        assert "player_season_batting" in R2_SOURCE_TABLES
+        assert "player_season_pitching" in R2_SOURCE_TABLES
+        assert validate_source_tables(["player_season_batting", "player_season_pitching"]) == (
+            "player_season_batting",
+            "player_season_pitching",
+        )
+
+    def test_the_season_aggregate_builders_are_registered(self) -> None:
+        """A declared source with no builder raises on the first row request."""
+        mock_session = Mock()
+        mock_session.execute.side_effect = AssertionError("builder reached the database")
+        for source in ("player_season_batting", "player_season_pitching"):
+            with pytest.raises(AssertionError, match="builder reached the database"):
+                list(iter_source_identity_records(mock_session, source))
 
 
 class TestReportSerialization:

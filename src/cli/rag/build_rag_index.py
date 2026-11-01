@@ -67,6 +67,8 @@ from src.services.rag_index_identity import (
     stable_highlight_source_row_id,
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
+    stable_player_season_batting_source_row_id,
+    stable_player_season_pitching_source_row_id,
     stable_team_history_source_row_id,
 )
 from src.utils.season_classification import (
@@ -768,8 +770,8 @@ def _iter_batting_chunks(session: Session, season: int | None, limit: int | None
         content = f"{name} {batting.season}시즌 타격기록: " + ", ".join(parts)
         yield {
             "source_table": "player_season_batting",
-            "source_row_id": (
-                f"{batting.player_id}_{batting.season}_{batting.team_code or 'NA'}_{batting.league or 'UNKNOWN'}"
+            "source_row_id": stable_player_season_batting_source_row_id(
+                batting.player_id, batting.season, batting.team_code, batting.league
             ),
             "title": f"{name} {batting.season}시즌 타격기록",
             "content": content,
@@ -829,8 +831,8 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
         content = f"{name} {pitching.season}시즌 투구기록: " + ", ".join(parts)
         yield {
             "source_table": "player_season_pitching",
-            "source_row_id": (
-                f"{pitching.player_id}_{pitching.season}_{pitching.team_code or 'NA'}_{pitching.league or 'UNKNOWN'}"
+            "source_row_id": stable_player_season_pitching_source_row_id(
+                pitching.player_id, pitching.season, pitching.team_code, pitching.league
             ),
             "title": f"{name} {pitching.season}시즌 투구기록",
             "content": content,

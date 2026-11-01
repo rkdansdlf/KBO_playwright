@@ -20,7 +20,7 @@ from src.models.award import Award
 from src.models.futures_schedule import FuturesGameSchedule
 from src.models.game import Game, GameHighlight, GamePlayByPlay
 from src.models.kbo_press_release import KboPressRelease
-from src.models.player import PlayerMovement
+from src.models.player import PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 from src.models.team_event import TeamEvent
@@ -33,6 +33,8 @@ from src.services.rag_index_identity import (
     stable_milestone_source_row_id,
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
+    stable_player_season_batting_source_row_id,
+    stable_player_season_pitching_source_row_id,
     stable_press_release_source_row_id,
     stable_splits_source_row_id,
     stable_team_event_source_row_id,
@@ -57,11 +59,17 @@ R2_SOURCE_TABLES = (
     "game_highlights",
     "team_events",
     "press_release",
+    "player_season_batting",
+    "player_season_pitching",
 )
 R2_MANIFEST_VERSION = "r2-identity-census-v1"
 R2_INDEX_VERSION = "rag-v2"
 
 _REGULAR_SEASON_CODE = 0
+#: The builder only indexes the KBO1 level of the season aggregates, and
+#: ``level`` is part of their source unique key — so the census has to filter on
+#: it too, or it would compute natural keys the generator never writes.
+_KBO1_LEVEL = "KBO1"
 _PBP_KEYWORDS = (
     "홈런",
     "적시타",
@@ -372,6 +380,50 @@ def _movement_records(session: Session, season: int | None) -> Iterator[SourceId
         )
 
 
+def _batting_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield season-batting identities for exactly the rows the builder indexes.
+
+    The builder filters ``level == 'KBO1'``, and ``level`` is part of the source
+    unique key, so a row in another level would produce a natural key the
+    generator never writes. That filter is what keeps the census's natural-key
+    set equal to the generator's.
+    """
+    statement = select(
+        PlayerSeasonBatting.id,
+        PlayerSeasonBatting.player_id,
+        PlayerSeasonBatting.season,
+        PlayerSeasonBatting.team_code,
+        PlayerSeasonBatting.league,
+    ).where(PlayerSeasonBatting.level == _KBO1_LEVEL)
+    if season is not None:
+        statement = statement.where(PlayerSeasonBatting.season == season)
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "player_season_batting",
+            str(row[0]),
+            stable_player_season_batting_source_row_id(row[1], row[2], row[3], row[4]),
+        )
+
+
+def _pitching_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield season-pitching identities for exactly the rows the builder indexes."""
+    statement = select(
+        PlayerSeasonPitching.id,
+        PlayerSeasonPitching.player_id,
+        PlayerSeasonPitching.season,
+        PlayerSeasonPitching.team_code,
+        PlayerSeasonPitching.league,
+    ).where(PlayerSeasonPitching.level == _KBO1_LEVEL)
+    if season is not None:
+        statement = statement.where(PlayerSeasonPitching.season == season)
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "player_season_pitching",
+            str(row[0]),
+            stable_player_season_pitching_source_row_id(row[1], row[2], row[3], row[4]),
+        )
+
+
 def _pbp_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
     """Yield identities for the same keyword-filtered PBP rows as the builder."""
     keyword_filter = or_(*(GamePlayByPlay.play_description.contains(keyword) for keyword in _PBP_KEYWORDS))
@@ -487,6 +539,8 @@ def iter_source_identity_records(
         "game_highlights": _highlight_records,
         "team_events": _team_event_records,
         "press_release": _press_release_records,
+        "player_season_batting": _batting_records,
+        "player_season_pitching": _pitching_records,
     }
     try:
         builder = record_builders[source_table]
