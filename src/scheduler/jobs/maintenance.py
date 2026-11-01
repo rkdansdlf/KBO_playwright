@@ -1187,8 +1187,6 @@ def crawl_dead_letter_retry_job() -> None:
 SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 
 
-@_with_db_fail_fast_guard
-@_with_lock_skip_guard
 def _warn_when_drift_is_unmeasurable(summary: object) -> None:
     """Say so when the check ran but had nothing to compare against.
 
@@ -1225,6 +1223,8 @@ def _warn_when_drift_is_unmeasurable(summary: object) -> None:
     )
 
 
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
 def snapshot_drift_check_job() -> None:
     """Daily snapshot drift check: re-parse stored artifacts and alert on count drift."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
