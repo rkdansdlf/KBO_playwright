@@ -37,6 +37,7 @@ import time
 from datetime import UTC, datetime
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import Engine
 
@@ -77,7 +78,7 @@ def _probe_ms(conn) -> float | None:
     started = time.perf_counter()
     try:
         conn.execute(text(PROBE_SQL)).scalar()
-    except Exception:
+    except SQLAlchemyError, OSError:
         return None
     return (time.perf_counter() - started) * 1000
 
@@ -166,7 +167,7 @@ def _run_build(build_conn, result: dict[str, str], sql: str) -> None:
     try:
         build_conn.execute(text(sql))
         result["outcome"] = "ok"
-    except Exception as exc:
+    except (SQLAlchemyError, OSError) as exc:
         result["outcome"] = f"{type(exc).__name__}: {str(exc)[:160]}"
 
 

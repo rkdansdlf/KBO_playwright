@@ -80,9 +80,10 @@ jobs:
       # this stops being installed, which is the only thing that stops the skip
       # below from quietly returning.
       PROMTOOL_VERSION: "3.15.0"
+    continue-on-error: ${{ matrix.python-version == '3.15' }}
     strategy:
       matrix:
-        python-version: ["3.14"]
+        python-version: ["3.14", "3.15"]
     steps:
       - uses: actions/checkout@v7
 
@@ -402,6 +403,47 @@ jobs:
           RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
           PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
         run: python -m src.cli.bootstrap_rag_eval_corpus --apply --json
+      # The schema above comes from ORM create_all, which does not build the
+      # expression/vector indexes production gets from migrations. Apply the
+      # same migration files after the corpus is loaded (ivfflat clusters on
+      # existing rows) so audit_rag_index checks what production has.
+      # Split mode: dense vector index lives in the vector store (006), so
+      # 068 (shared-DB ivfflat) is not applied to the primary store.
+      - name: Apply primary RAG search index migrations
+        env:
+          RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
+        run: |
+          python -c "
+          from pathlib import Path
+          from src.db.engine import create_engine_for_url
+          from src.db.sql_statements import split_sql_statements
+          import os
+
+          engine = create_engine_for_url(os.environ['RAG_TEST_DB_URL'])
+          for name in ['053_rag_search_text_index.sql', '069_rag_chunks_meta_game_date_index.sql']:
+              sql = (Path('migrations/postgresql') / name).read_text(encoding='utf-8')
+              with engine.begin() as conn:
+                  for stmt in split_sql_statements(sql):
+                      conn.exec_driver_sql(stmt)
+          engine.dispose()
+          "
+      - name: Apply pgvector search index migration
+        env:
+          PGVECTOR_TEST_URL: postgresql+psycopg://postgres:postgres@localhost:5433/kbo_rag_vector
+        run: |
+          python -c "
+          from pathlib import Path
+          from src.db.engine import create_engine_for_url
+          from src.db.sql_statements import split_sql_statements
+          import os
+
+          engine = create_engine_for_url(os.environ['PGVECTOR_TEST_URL'])
+          sql = Path('migrations/pgvector/006_embedding_ivfflat_index.sql').read_text(encoding='utf-8')
+          with engine.begin() as conn:
+              for stmt in split_sql_statements(sql):
+                  conn.exec_driver_sql(stmt)
+          engine.dispose()
+          "
       - name: Audit sparse/vector identity
         env:
           RAG_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/kbo_rag_primary
