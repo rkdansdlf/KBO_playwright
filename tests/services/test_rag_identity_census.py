@@ -17,6 +17,7 @@ from src.services.rag_identity_census import (
     IdentityCensusEntry,
     SourceIdentitySummary,
     _is_legacy_numeric_id,
+    _legacy_numeric_value,
     _target_disposition,
     build_identity_census,
     validate_source_tables,
@@ -53,6 +54,28 @@ class TestIsLegacyNumericId:
         assert not _is_legacy_numeric_id("abc")
         assert not _is_legacy_numeric_id("2025_2001_KIA_REGULAR")
         assert not _is_legacy_numeric_id("20260401OBHT0")
+
+    def test_the_id_prefix_the_older_loader_wrote_is_legacy(self) -> None:
+        """``id=8207`` and ``8207`` name the same row, and only one was recognized.
+
+        The live index holds 78,640 ``id=N`` keys and 7,095 bare ones. Accepting
+        only the bare form made the census report zero re-key candidates for
+        sources whose legacy chunks are all prefixed.
+        """
+        assert _is_legacy_numeric_id("id=8207")
+        assert _is_legacy_numeric_id("id=1")
+        assert _legacy_numeric_value("id=8207") == "8207"
+        assert _legacy_numeric_value("8207") == "8207"
+
+    def test_a_split_key_is_not_legacy(self) -> None:
+        """A ``#part`` key names a piece of a row; re-keying it would collide."""
+        assert not _is_legacy_numeric_id("id=1096#part1")
+        assert _legacy_numeric_value("id=1096#part1") is None
+
+    def test_a_prefixed_non_id_key_is_not_legacy(self) -> None:
+        """Stripping the prefix must not turn arbitrary text into an identity."""
+        assert not _is_legacy_numeric_id("id=abc")
+        assert not _is_legacy_numeric_id("id=")
 
 
 class TestTargetDisposition:

@@ -70,6 +70,9 @@ _REGULAR_SEASON_CODE = 0
 #: ``level`` is part of their source unique key — so the census has to filter on
 #: it too, or it would compute natural keys the generator never writes.
 _KBO1_LEVEL = "KBO1"
+#: The prefix an older loader put in front of a source row's autoincrement id.
+#: Both ``id=8207`` and ``8207`` name the same row; see `_legacy_numeric_value`.
+_LEGACY_ID_PREFIX = "id="
 _PBP_KEYWORDS = (
     "홈런",
     "적시타",
@@ -550,9 +553,29 @@ def iter_source_identity_records(
     yield from builder(session, season)
 
 
+def _legacy_numeric_value(source_row_id: str) -> str | None:
+    """Return the source-row id a legacy key names, or None when it names none.
+
+    Two spellings exist in the live index. An older loader wrote ``id=8207``;
+    the census was written expecting the bare ``8207``. Both name the same source
+    row, so the prefix is stripped before the value is judged.
+
+    The stripped value is also what the source-row lookup has to use. Judging the
+    prefixed form as "not legacy" did not merely miscount — it made every
+    ``id=N`` chunk invisible to the census, which reported ``safe_rekey_candidates:
+    0`` for a source holding 2,572 of them. Measured 2026-11-01: the index holds
+    78,640 ``id=N`` keys and 7,095 bare ones.
+
+    ``id=1096#part1`` is deliberately **not** legacy: a split key names a piece of
+    a row rather than the row, and re-keying it would collide with its siblings.
+    """
+    value = source_row_id.removeprefix(_LEGACY_ID_PREFIX)
+    return value if value.isascii() and value.isdecimal() else None
+
+
 def _is_legacy_numeric_id(source_row_id: str) -> bool:
-    """Return whether an identity is an ASCII autoincrement-style value."""
-    return source_row_id.isascii() and source_row_id.isdecimal()
+    """Return whether an identity names a source row's autoincrement key."""
+    return _legacy_numeric_value(source_row_id) is not None
 
 
 def _is_legacy_candidate(source_row_id: str, natural_keys: frozenset[str]) -> bool:
@@ -708,7 +731,19 @@ def _source_entries(
     for legacy in sorted(existing_rows, key=lambda row: (row.source_row_id, row.chunk_id)):
         if not _is_legacy_candidate(legacy.source_row_id, natural_keys):
             continue
-        candidates = source_by_id.get(legacy.source_row_id, [])
+        # The source projection keys on the bare id, so a legacy key carrying the
+        # older ``id=`` prefix has to be stripped before the lookup — otherwise
+        # every prefixed row is reported as ORPHAN_SOURCE_ROW instead of re-keyed.
+        #
+        # CAUTION: this lookup assumes ``id=N`` names the source row whose primary
+        # key is N. Measured 2026-11-02 on the live index, it does not:
+        # ``player_movements:id=3901`` describes 구자욱 2022-05-04 while that table's
+        # ``id=3901`` is 권혁경 2022-07-21, and ``awards:id=130`` describes the 2021
+        # Golden Glove catcher while ``awards.id=130`` is the 1987 first baseman.
+        # A numeric match is therefore not an identity match, and the SAFE_REKEY
+        # verdict it produces must not be applied without pairing the chunk by its
+        # content. ``RAG_IDENTITY_PHASE_B_PLAN.md`` §2-B carries the measurements.
+        candidates = source_by_id.get(_legacy_numeric_value(legacy.source_row_id) or legacy.source_row_id, [])
         if not candidates:
             entries.append(
                 IdentityCensusEntry(
