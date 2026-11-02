@@ -128,6 +128,7 @@ logger = logging.getLogger(__name__)
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_GUARD_DENIED = 3
+EXIT_ROLLBACK_CONFLICTS = 4
 
 ALLOW_ENV = "KBO_ALLOW_SEASON_REPAIR"
 DEFAULT_BACKUP_DIR = Path("data/repair_backups")
@@ -736,17 +737,51 @@ def _postseason_id_evidence(session: Session, games: list[Game]) -> frozenset[st
     return frozenset(evidence)
 
 
-def _counts_toward_quota(game: Game, key: tuple[date, str, str], primary_keys: set[tuple[date, str, str]]) -> bool:
-    """Whether a played regular-stored game counts toward its teams' quota.
+def _quota_bucket(game: Game, key: tuple[date, str, str], primary_keys: set[tuple[date, str, str]]) -> str | None:
+    """Where a played regular-stored game counts toward its teams' quota.
 
-    Only games inside the regular-season span and outside every exhibition or
-    postseason window count, and a row with ``is_primary`` NULL counts only
-    when no primary row exists for the same date and teams.
+    Returns ``""`` for the base count (inside the regular-season span, or a
+    postponed regular game after it outside every window), the postseason
+    stage for a game inside that stage's window (counted only when judging a
+    later stage, see ``_compute_quota_exhausted_games``), or None when it never
+    counts: before the span (preseason window, issue #40), in no known span,
+    or an ``is_primary`` NULL duplicate of a primary row (same date and teams).
     """
     game_day = key[0]
-    if in_regular_season_span(game_day) is not True or calendar_season_type(game_day) is not None:
-        return False
-    return not (game.is_primary is None and key in primary_keys)
+    if game.is_primary is None and key in primary_keys:
+        return None
+    if in_regular_season_span(game_day) is None:
+        return None
+    calendar = calendar_season_type(game_day)
+    if calendar in POSTSEASON_STAGES:
+        return calendar
+    if calendar is not None or game_day < date.fromisoformat(REGULAR_SEASON_SPANS[game_day.year][0]):
+        return None
+    return ""
+
+
+class _QuotaCounter:
+    """Per-bucket regular game counts by team; same-date games wait in ``pending``."""
+
+    def __init__(self) -> None:
+        # bucket -> team -> count; "" is the base count, a stage its window.
+        self.counts: dict[str, dict[str, int]] = {}
+        self.pending: list[tuple[str, str, str]] = []
+
+    def flush(self) -> None:
+        for bucket, home, away in self.pending:
+            bucket_counts = self.counts.setdefault(bucket, {})
+            for team in (home, away):
+                bucket_counts[team] = bucket_counts.get(team, 0) + 1
+        self.pending.clear()
+
+    def counted(self, team: str, judged_stage: str | None) -> int:
+        """Games counted for ``team`` when judging a game of ``judged_stage``'s window."""
+        total = self.counts.get("", {}).get(team, 0)
+        if judged_stage in POSTSEASON_STAGES:
+            for stage in POSTSEASON_STAGES[: POSTSEASON_STAGES.index(judged_stage)]:
+                total += self.counts.get(stage, {}).get(team, 0)
+        return total
 
 
 def _compute_quota_exhausted_games(
@@ -756,19 +791,19 @@ def _compute_quota_exhausted_games(
 ) -> frozenset[str]:
     """Game ids of played regular-stored games where either team had reached quota.
 
-    Issue #81: before looping over games in ``build_plan``, compute for each
-    played regular-stored game whether either team had ALREADY played >= quota
-    games stored as regular season before that game's date. Games on the same
-    date do not count against each other (counts as of the end of the previous
-    date are used). Team codes are normalized via ``season_team_code`` so
-    historical aliases (e.g. SK vs SSG) merge. Games with empty team codes are
-    ignored.
+    Issue #81: a played regular-stored game is quota-exhausted when either team
+    had ALREADY played >= quota regular games before that game's date. Games
+    on the same date do not count against each other. Team codes are
+    normalized via ``season_team_code`` so historical aliases (e.g. SK vs SSG)
+    merge. Games with empty team codes are ignored.
 
-    Only games that can genuinely count toward the quota are counted: dated
-    inside the regular-season span (so preseason-window games wrongly stored
-    as regular, issue #40, and games inside postseason windows never count),
-    and primary rows only: a row with ``is_primary`` NULL counts only when no
-    primary row exists for the same date and teams (a duplicate otherwise).
+    What counts (see ``_quota_bucket``): regular-span games and postponed
+    regular games played after the span outside every window always count;
+    preseason-window games stored as regular (issue #40) and non-primary
+    duplicates never do. A regular-stored game inside a postseason window
+    counts only toward judging a *later* stage, and only when it is not itself
+    quota-exhausted (it stays regular, i.e. a make-up game): the window being
+    judged never counts toward itself.
     """
     quota = regular_season_games_per_team(year)
     if quota is None:
@@ -780,38 +815,32 @@ def _compute_quota_exhausted_games(
         return home, away
 
     primary_keys = {(g.game_date, *teams_of(g)) for g in games if g.is_primary is True}
-    sorted_games = sorted(games, key=lambda g: (g.game_date, str(g.game_id)))
     exhausted_game_ids: set[str] = set()
-    cumulative_counts: dict[str, int] = {}
-    current_date_counts: dict[str, int] = {}
+    counter = _QuotaCounter()
     last_date: date | None = None
 
-    for game in sorted_games:
+    for game in sorted(games, key=lambda g: (g.game_date, str(g.game_id))):
         game_day = game.game_date
         if last_date is not None and game_day != last_date:
-            for team, count in current_date_counts.items():
-                cumulative_counts[team] = cumulative_counts.get(team, 0) + count
-            current_date_counts.clear()
+            counter.flush()
         last_date = game_day
 
         old_season_id = None if game.season_id is None else int(game.season_id)
         old_type = type_by_season_id.get(old_season_id) if old_season_id is not None else None
         status = (game.game_status or "").upper() or None
-
         if old_type != REGULAR or status not in _STARTED or game.is_primary is False:
             continue
-
         home, away = teams_of(game)
         if not home or not away:
             continue
 
-        if cumulative_counts.get(home, 0) >= quota or cumulative_counts.get(away, 0) >= quota:
+        judged_stage = calendar_season_type(game_day)
+        if counter.counted(home, judged_stage) >= quota or counter.counted(away, judged_stage) >= quota:
             exhausted_game_ids.add(str(game.game_id))
-
-        if not _counts_toward_quota(game, (game_day, home, away), primary_keys):
             continue
-        current_date_counts[home] = current_date_counts.get(home, 0) + 1
-        current_date_counts[away] = current_date_counts.get(away, 0) + 1
+        bucket = _quota_bucket(game, (game_day, home, away), primary_keys)
+        if bucket is not None:
+            counter.pending.append((bucket, home, away))
 
     return frozenset(exhausted_game_ids)
 
@@ -1079,11 +1108,22 @@ def _write(text: str) -> None:
     sys.stdout.write(text + "\n")
 
 
+def _note(args: argparse.Namespace, text: str) -> None:
+    """Write an operator notice; with ``--json`` it goes to stderr so stdout stays pure JSON."""
+    if getattr(args, "json", False):
+        sys.stderr.write(text + "\n")
+    else:
+        _write(text)
+
+
 def _guard_allows(args: argparse.Namespace) -> bool:
     return bool(args.apply) and os.getenv(ALLOW_ENV) == "1"
 
 
 def _run_rollback(session: Session, args: argparse.Namespace) -> int:
+    if not args.rollback.is_file():
+        msg = f"backup file not found: {args.rollback}; nothing was rolled back"
+        raise RepairError(msg)
     backup = json.loads(args.rollback.read_text(encoding="utf-8"))
     if not _guard_allows(args):
         games = len(backup.get("games", []))
@@ -1097,6 +1137,13 @@ def _run_rollback(session: Session, args: argparse.Namespace) -> int:
     result = rollback_backup(session, backup)
     session.commit()
     _write(json.dumps(result, ensure_ascii=False, indent=2))
+    conflicts = result.get("conflicts") or []
+    if conflicts:
+        sys.stderr.write(
+            f"rollback incomplete: {len(conflicts)} conflict(s) left unchanged (already rolled back, "
+            "or changed after the repair); see 'conflicts' above\n",
+        )
+        return EXIT_ROLLBACK_CONFLICTS
     return EXIT_OK
 
 
@@ -1108,20 +1155,22 @@ def _run_repair(session: Session, args: argparse.Namespace, state: dict[str, Pat
         return EXIT_OK
     if not _guard_allows(args):
         if args.apply:
-            _write(f"refusing to write: --apply requires {ALLOW_ENV}=1")
+            _note(args, f"refusing to write: --apply requires {ALLOW_ENV}=1")
             return EXIT_GUARD_DENIED
-        _write(f"dry run: nothing written. Re-run with --apply and {ALLOW_ENV}=1 to apply.")
+        _note(args, f"dry run: nothing written. Re-run with --apply and {ALLOW_ENV}=1 to apply.")
         return EXIT_OK
     backup_path = write_backup(plan, args.backup_dir)
     state["backup"] = backup_path
-    _write(f"backup written: {backup_path}")
+    _note(args, f"backup written: {backup_path}")
     apply_plan(session, plan)
     session.commit()
-    _write(
+    _note(
+        args,
         f"applied: {len(plan.games)} game(s), {len(plan.season_rows)} kbo_seasons change(s). "
         f"Roll back with: python3 -m src.cli.repair_season_classification --rollback {backup_path} --apply",
     )
-    _write(
+    _note(
+        args,
         "next: recompute standings (python3 -m src.cli.calculate_standings --year "
         f"{args.year}) and restart bega_backend -- LeagueStageResolver/LEAGUE_DATES cache "
         "season types and stage start dates until restart.",
@@ -1145,7 +1194,8 @@ def run(argv: Sequence[str] | None = None, *, session_factory: Callable[[], Sess
             return _run_repair(session, args, state)
         except RepairError as exc:
             session.rollback()
-            _write(f"error: {exc}{_backup_hint(state.get('backup'))}")
+            hint = "" if args.rollback else _backup_hint(state.get("backup"))
+            _write(f"error: {exc}{hint}")
             return EXIT_ERROR
         except Exception as exc:  # noqa: BLE001 - operator CLI: report cleanly, no raw traceback
             session.rollback()

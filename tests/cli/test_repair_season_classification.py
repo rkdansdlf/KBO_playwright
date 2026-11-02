@@ -14,7 +14,9 @@ from sqlalchemy.pool import StaticPool
 from src.cli.repair_season_classification import (
     ALLOW_ENV,
     EXIT_GUARD_DENIED,
+    EXIT_ERROR,
     EXIT_OK,
+    EXIT_ROLLBACK_CONFLICTS,
     build_plan,
     run,
 )
@@ -1088,3 +1090,54 @@ def test_quota_exhausted_game_beside_a_same_day_stage_game_goes_to_review(sessio
     item = _review_items(plan)["20251011KTLG0"]
     assert "quota" in item["note"]
     assert item["blocking"] is True
+
+
+def test_postponed_regular_games_after_the_span_count_toward_quota(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        # Both KS teams played 143 games in the span and a postponed regular game
+        # after it (10/05) and inside the WC window (10/07, a make-up): KS moves.
+        games = [_regular(f"2025{i:04d}HHLG0", date(2025, 4, 1) + timedelta(days=i), away="HH") for i in range(143)]
+        games.append(_regular("20251005KTLG0", date(2025, 10, 5), home="LG", away="KT"))
+        games.append(_regular("20251007KTHH0", date(2025, 10, 7), home="HH", away="KT"))
+        games += [_regular(f"202510{26 + i}HHLG0", date(2025, 10, 26 + i), away="HH") for i in range(5)]
+        db.add_all(games)
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    changes = {change.game_id: change.new_type for change in plan.games}
+    for i in range(5):
+        assert changes.get(f"202510{26 + i}HHLG0") == "korean_series"
+    assert "20251005KTLG0" not in changes
+    assert "20251007KTHH0" not in changes
+
+
+def test_json_dry_run_stdout_is_pure_json(session_2025: sessionmaker, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run(["--year", "2025", "--json"], session_factory=session_2025) == EXIT_OK
+    out = capsys.readouterr()
+    json.loads(out.out)
+    assert "dry run" in out.err
+
+
+def test_rollback_with_conflicts_is_nonzero(
+    factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(ALLOW_ENV, "1")
+    run(["--year", "2026", "--apply", "--backup-dir", str(tmp_path)], session_factory=factory)
+    backup = next(tmp_path.glob("*.json"))
+    assert run(["--rollback", str(backup), "--apply"], session_factory=factory) == EXIT_OK
+    assert run(["--rollback", str(backup), "--apply"], session_factory=factory) == EXIT_ROLLBACK_CONFLICTS
+
+
+def test_rollback_with_a_missing_backup_file_says_so(
+    factory: sessionmaker,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = tmp_path / "nope.json"
+    assert run(["--rollback", str(missing), "--apply"], session_factory=factory) == EXIT_ERROR
+    out = capsys.readouterr().out
+    assert "backup file not found" in out
+    assert "no backup was written" not in out
