@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -20,6 +20,7 @@ from src.cli.repair_season_classification import (
 )
 from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
+from src.utils.season_classification import regular_season_games_per_team
 
 
 @pytest.fixture
@@ -748,3 +749,260 @@ def test_unexpected_database_error_hides_bind_parameters() -> None:
     assert "parameters" not in text
     assert "constraint failed" in text
     assert len(_safe_error_text(OSError("x" * 1000))) <= 300
+
+
+# ── Issue #81: Regular-season quota evidence ───────────────────────────────────
+
+
+def test_regular_season_games_per_team() -> None:
+    assert regular_season_games_per_team(2014) is None
+    assert regular_season_games_per_team(2015) == 144
+    assert regular_season_games_per_team(2025) == 144
+    assert regular_season_games_per_team(2026) == 144
+
+
+@pytest.fixture
+def session_2025() -> sessionmaker:
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Game.__table__.create(engine)
+    KboSeason.__table__.create(engine)
+    make = sessionmaker(bind=engine, expire_on_commit=False)
+    with make() as db:
+        db.add_all(
+            [
+                KboSeason(
+                    season_id=202500,
+                    season_year=2025,
+                    league_type_code=0,
+                    league_type_name="정규시즌",
+                    start_date=date(2025, 3, 22),
+                    end_date=date(2025, 10, 4),
+                ),
+                KboSeason(
+                    season_id=202502,
+                    season_year=2025,
+                    league_type_code=2,
+                    league_type_name="와일드카드",
+                    start_date=date(2025, 10, 6),
+                    end_date=date(2025, 10, 7),
+                ),
+                KboSeason(
+                    season_id=202503,
+                    season_year=2025,
+                    league_type_code=3,
+                    league_type_name="준플레이오프",
+                    start_date=date(2025, 10, 9),
+                    end_date=date(2025, 10, 14),
+                ),
+                KboSeason(
+                    season_id=202504,
+                    season_year=2025,
+                    league_type_code=4,
+                    league_type_name="플레이오프",
+                    start_date=date(2025, 10, 18),
+                    end_date=date(2025, 10, 24),
+                ),
+                KboSeason(
+                    season_id=202505,
+                    season_year=2025,
+                    league_type_code=5,
+                    league_type_name="한국시리즈",
+                    start_date=date(2025, 10, 26),
+                    end_date=date(2025, 11, 1),
+                ),
+            ],
+        )
+        regular_games = [
+            Game(
+                game_id=f"2025{i:04d}KTLG0",
+                game_date=date(2025, 4, 1) + timedelta(days=i),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            )
+            for i in range(144)
+        ]
+        ps_games = [
+            Game(
+                game_id="20251006KTLG0",
+                game_date=date(2025, 10, 6),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            ),
+            Game(
+                game_id="20251009KTLG0",
+                game_date=date(2025, 10, 9),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            ),
+            Game(
+                game_id="20251018KTLG0",
+                game_date=date(2025, 10, 18),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            ),
+            Game(
+                game_id="20251026KTLG0",
+                game_date=date(2025, 10, 26),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            ),
+        ]
+        db.add_all([*regular_games, *ps_games])
+        db.commit()
+    return make
+
+
+def test_2025_postseason_games_moved_when_quota_exhausted(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        plan = build_plan(db, 2025)
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert changes["20251006KTLG0"] == "wildcard"
+    assert changes["20251009KTLG0"] == "semi_playoff"
+    assert changes["20251018KTLG0"] == "playoff"
+    assert changes["20251026KTLG0"] == "korean_series"
+    assert len(plan.review) == 0
+    assert plan.unresolved == 0
+
+
+def test_stored_regular_in_postseason_window_under_quota_goes_to_review(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        regular_games = [
+            Game(
+                game_id=f"2025{i:04d}SSHH0",
+                game_date=date(2025, 4, 1) + timedelta(days=i),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="HH",
+                away_team="SS",
+                is_primary=True,
+            )
+            for i in range(50)
+        ]
+        wc_game = Game(
+            game_id="20251006SSHH0",
+            game_date=date(2025, 10, 6),
+            season_id=202500,
+            game_status="COMPLETED",
+            home_team="HH",
+            away_team="SS",
+            is_primary=True,
+        )
+        db.add_all([*regular_games, wc_game])
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    assert "20251006SSHH0" not in {change.game_id for change in plan.games}
+    item = _review_items(plan)["20251006SSHH0"]
+    assert "make-up game" in item["note"]
+    assert item["blocking"] is True
+
+
+def test_sk_ssg_aliasing_counts_toward_same_team(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        games = [
+            Game(
+                game_id=f"2025{i:04d}SKLG0",
+                game_date=date(2025, 4, 1) + timedelta(days=i),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="SK",
+                is_primary=True,
+            )
+            for i in range(100)
+        ] + [
+            Game(
+                game_id=f"2025{100 + i:04d}SSGLG0",
+                game_date=date(2025, 7, 10) + timedelta(days=i),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="SSG",
+                is_primary=True,
+            )
+            for i in range(44)
+        ]
+        wc_game = Game(
+            game_id="20251006SSGLG0",
+            game_date=date(2025, 10, 6),
+            season_id=202500,
+            game_status="COMPLETED",
+            home_team="LG",
+            away_team="SSG",
+            is_primary=True,
+        )
+        db.add_all([*games, wc_game])
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert changes.get("20251006SSGLG0") == "wildcard"
+
+
+def test_games_on_same_date_as_144th_game_do_not_count_against_each_other(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        games = [
+            Game(
+                game_id=f"2025{i:04d}KTLG0",
+                game_date=date(2025, 4, 1) + timedelta(days=i),
+                season_id=202500,
+                game_status="COMPLETED",
+                home_team="LG",
+                away_team="KT",
+                is_primary=True,
+            )
+            for i in range(143)
+        ]
+        game_dh1 = Game(
+            game_id="20251006KTLG1",
+            game_date=date(2025, 10, 6),
+            season_id=202500,
+            game_status="COMPLETED",
+            home_team="LG",
+            away_team="KT",
+            is_primary=True,
+        )
+        game_dh2 = Game(
+            game_id="20251006KTLG2",
+            game_date=date(2025, 10, 6),
+            season_id=202500,
+            game_status="COMPLETED",
+            home_team="LG",
+            away_team="KT",
+            is_primary=True,
+        )
+        game_next_day = Game(
+            game_id="20251007KTLG0",
+            game_date=date(2025, 10, 7),
+            season_id=202500,
+            game_status="COMPLETED",
+            home_team="LG",
+            away_team="KT",
+            is_primary=True,
+        )
+        db.add_all([*games, game_dh1, game_dh2, game_next_day])
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    assert "20251006KTLG1" in _review_items(plan)
+    assert "20251006KTLG2" in _review_items(plan)
+    changes = {change.game_id: change.new_type for change in plan.games}
+    assert changes.get("20251007KTLG0") == "wildcard"

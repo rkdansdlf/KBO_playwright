@@ -3,6 +3,8 @@
 Issue #40: exhibition games stored as regular season (teams over 144 games),
 regular-season games stored as a postseason stage, postseason ``kbo_seasons``
 spans that do not match the real calendar, and games with no ``season_id``.
+Issue #81: 2025 postseason games stored as regular season, inflating standings
+game counts (>144 games per team).
 
 The repair re-derives each game's season type from the season calendar in
 :mod:`src.utils.season_classification` and points the game at the matching
@@ -16,13 +18,19 @@ of being changed, either as **decide** (needs an operator decision) or **info**
 
 * decide: a stored regular game inside a postseason window with no stored game
   of that stage the same day (the crawler confirms Naver date-style ids as
-  regular, so moving it would flip-flop), a stored stage *earlier* than the
-  calendar stage (a delayed series, or e.g. 준PO games stored as WC), a stage
-  move next to a window boundary, a stored regular game after the first
-  postseason day with no postseason game that day, a stored postseason game at
-  the start of the regular season or with a Naver postseason id before the
-  first postseason day, a NULL ``season_id`` the repair cannot place, an
-  unknown season type, and an All-Star game not stored under an all-star season;
+  regular, so moving it would flip-flop), unless regular-season quota evidence
+  shows either team already completed its regular-season games before that date
+  (issue #81: in 10-team era seasons >= 2015 with a 144-game quota, played
+  regular-stored games where either team has reached >= 144 regular games are
+  auto-moved to the calendar postseason stage because a team with 144 games
+  cannot play another regular-season game; make-up games only apply when neither
+  team has completed the quota); a stored stage *earlier* than the calendar
+  stage (a delayed series, or e.g. 준PO games stored as WC), a stage move next
+  to a window boundary, a stored regular game after the first postseason day
+  with no postseason game that day, a stored postseason game at the start of
+  the regular season or with a Naver postseason id before the first postseason
+  day, a NULL ``season_id`` the repair cannot place, an unknown season type,
+  and an All-Star game not stored under an all-star season;
 * info: a stored postseason game outside every window on or after the first
   postseason day (rain-delayed series, e.g. 10/16 WC, 10/24 준PO), a regular
   game after the regular-season span but before the first postseason day
@@ -31,7 +39,9 @@ of being changed, either as **decide** (needs an operator decision) or **info**
 A stored postseason game before the first postseason day (10/12, 10/13) is
 demoted to regular (postseason games are only ever pushed later) unless its id
 or a ``game_id_aliases`` row carries a Naver postseason prefix. Postseason games
-stored as regular are corrected by re-crawling (the Naver id prefix).
+stored as regular are auto-moved to the calendar stage when either team has
+exhausted its regular-season quota (issue #81, 144 games in 2015+), or corrected
+by re-crawling (the Naver id prefix).
 
 While any **decide** row or unplaced NULL ``season_id`` game remains ("date-hold
 mode"), a postseason stage with no confirmed first game never gets NULL dates
@@ -50,6 +60,7 @@ Safety:
 * **Dry run by default.** Without ``--apply`` it only prints the plan.
 * Writing needs ``--apply`` **and** ``KBO_ALLOW_SEASON_REPAIR=1``; with only one
   of them it previews and exits 3 without writing.
+* Pass ``--year 2025`` or ``--year 2026`` (defaults to 2026).
 * Before committing, every prior value is written to a JSON backup file, and
   ``--rollback <file>`` restores exactly those values (only where the row still
   holds the value the repair wrote, so later corrections are not clobbered).
@@ -101,8 +112,10 @@ from src.utils.season_classification import (
     calendar_season_type,
     in_regular_season_span,
     postseason_window_of,
+    regular_season_games_per_team,
     season_type_from_naver_game_id,
 )
+from src.utils.team_codes import season_team_code
 from src.validators.season_team_code import ALL_STAR_TEAM_CODES
 
 if TYPE_CHECKING:
@@ -489,9 +502,12 @@ def _expected_in_window(
     calendar: str,
     *,
     same_day_stage: bool,
+    quota_exhausted: bool = False,
 ) -> Verdict:
     """``_expected_type`` for a date inside an exhibition/postseason window."""
     if calendar in POSTSEASON_STAGES and stored_type == REGULAR:
+        if quota_exhausted:
+            return Verdict(calendar)
         if same_day_stage:
             return Verdict(None, f"regular make-up game beside a stored {calendar} game the same day; kept")
         return Verdict(
@@ -528,13 +544,14 @@ def _stored_postseason_outside_windows(game_date: date, *, postseason_id: bool) 
     return Verdict(None, "stored postseason game outside every window (delayed series); kept")
 
 
-def _expected_type(
+def _expected_type(  # noqa: PLR0913
     game_date: date,
     stored_type: str | None,
     calendar: str | None,
     *,
     same_day_stage: bool = False,
     postseason_id: bool = False,
+    quota_exhausted: bool = False,
 ) -> Verdict:
     """Decide what the repair does with one game.
 
@@ -554,12 +571,21 @@ def _expected_type(
       stage is on the same day). A stored regular game after the regular span
       is informational only before the first postseason day (10/13) or beside
       a same-day stored postseason game; otherwise it needs a decision.
+    * when regular-season quota evidence shows either team already completed
+      its 144 games before the game's date (issue #81), the game cannot be a
+      make-up game and is auto-moved to the calendar postseason stage.
 
     ``same_day_stage`` says a stored game of the calendar stage (outside every
     window: of any postseason stage) is on the same day.
     """
     if calendar is not None:
-        return _expected_in_window(game_date, stored_type, calendar, same_day_stage=same_day_stage)
+        return _expected_in_window(
+            game_date,
+            stored_type,
+            calendar,
+            same_day_stage=same_day_stage,
+            quota_exhausted=quota_exhausted,
+        )
     if stored_type in POSTSEASON_STAGES:
         verdict = _stored_postseason_outside_windows(game_date, postseason_id=postseason_id)
         if verdict is not None:
@@ -611,6 +637,7 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
         if game.season_id is not None and type_by_season_id.get(int(game.season_id)) in POSTSEASON_STAGES
     }
     postseason_ids = _postseason_id_evidence(session, games)
+    quota_exhausted_ids = _compute_quota_exhausted_games(games, year, type_by_season_id)
     played_stages: set[str] = set()
     for game in games:
         old_season_id = None if game.season_id is None else int(game.season_id)
@@ -633,6 +660,7 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
                     },
                 )
             continue
+        quota_exhausted = str(game.game_id) in quota_exhausted_ids
         confirmed_type = _plan_game(
             plan,
             game,
@@ -646,6 +674,7 @@ def build_plan(session: Session, year: int, *, include_unplayed_postseason: bool
                 str(game.game_id) in postseason_ids,
             ),
             include_unplayed_postseason=include_unplayed_postseason,
+            quota_exhausted=quota_exhausted,
         )
         # Only confirmed types count: a review item keeps its stored type, but
         # that type is exactly what is in doubt.
@@ -699,6 +728,60 @@ def _postseason_id_evidence(session: Session, games: list[Game]) -> frozenset[st
     return frozenset(evidence)
 
 
+def _compute_quota_exhausted_games(
+    games: Sequence[Game],
+    year: int,
+    type_by_season_id: dict[int, str | None],
+) -> frozenset[str]:
+    """Game ids of played regular-stored games where either team had reached quota.
+
+    Issue #81: before looping over games in ``build_plan``, compute for each
+    played regular-stored game whether either team had ALREADY played >= quota
+    games stored as regular season before that game's date. Games on the same
+    date do not count against each other (counts as of the end of the previous
+    date are used). Team codes are normalized via ``season_team_code`` so
+    historical aliases (e.g. SK vs SSG) merge. Games with empty team codes are
+    ignored.
+    """
+    quota = regular_season_games_per_team(year)
+    if quota is None:
+        return frozenset()
+
+    sorted_games = sorted(games, key=lambda g: (g.game_date, str(g.game_id)))
+    exhausted_game_ids: set[str] = set()
+    cumulative_counts: dict[str, int] = {}
+    current_date_counts: dict[str, int] = {}
+    last_date: date | None = None
+
+    for game in sorted_games:
+        game_day = game.game_date
+        if last_date is not None and game_day != last_date:
+            for team, count in current_date_counts.items():
+                cumulative_counts[team] = cumulative_counts.get(team, 0) + count
+            current_date_counts.clear()
+        last_date = game_day
+
+        old_season_id = None if game.season_id is None else int(game.season_id)
+        old_type = type_by_season_id.get(old_season_id) if old_season_id is not None else None
+        status = (game.game_status or "").upper() or None
+
+        if old_type != REGULAR or status not in _STARTED or game.is_primary is False:
+            continue
+
+        home = season_team_code(game.home_team, year) or str(game.home_team or "").strip().upper()
+        away = season_team_code(game.away_team, year) or str(game.away_team or "").strip().upper()
+        if not home or not away:
+            continue
+
+        if cumulative_counts.get(home, 0) >= quota or cumulative_counts.get(away, 0) >= quota:
+            exhausted_game_ids.add(str(game.game_id))
+
+        current_date_counts[home] = current_date_counts.get(home, 0) + 1
+        current_date_counts[away] = current_date_counts.get(away, 0) + 1
+
+    return frozenset(exhausted_game_ids)
+
+
 def _same_day_stage(game_date: date, calendar: str | None, stored_stage_days: set[tuple[date, str | None]]) -> bool:
     """Return whether a stored game of the calendar stage (outside every window: any stage) is on this day."""
     if calendar is not None:
@@ -733,13 +816,14 @@ def _review_stages(review: list[dict[str, Any]]) -> frozenset[str]:
     return frozenset(stages)
 
 
-def _plan_game(
+def _plan_game(  # noqa: PLR0913
     plan: RepairPlan,
     game: Game,
     season_ids: dict[str, int],
     state: tuple[int | None, str | None, str | None, str | None, bool, bool],
     *,
     include_unplayed_postseason: bool,
+    quota_exhausted: bool = False,
 ) -> str | None:
     """Plan one game; return its *confirmed* type after the repair.
 
@@ -773,6 +857,7 @@ def _plan_game(
         calendar,
         same_day_stage=same_day_stage,
         postseason_id=postseason_id,
+        quota_exhausted=quota_exhausted,
     )
     if (
         note is not None
