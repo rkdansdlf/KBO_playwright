@@ -1,6 +1,6 @@
 # RAG Identity Phase B — Re-key and Re-index Plan
 
-Last updated: 2026-11-02
+Last updated: 2026-11-02 (awards 76 examined)
 
 Phase B normalizes the RAG index identity so that a chunk's `source_row_id` is
 the same key the generator produces today. Until it runs, the store holds two
@@ -168,6 +168,26 @@ no such winner. Either the source table is incomplete or those chunks came from 
 different snapshot. This does not block the 785 re-keys (they matched exactly),
 but it does mean **no count here should be described as covering the whole
 awards population**.
+
+**Examined 2026-11-02 — the source table is the incomplete side.** The 76 are not
+stale chunks naming dead players; they name winners the table does not hold:
+
+| Years | `awards` rows / year | `외야수` rows | Chunk claims |
+| --- | --- | --- | --- |
+| 1982~2021 (40 years) | **8** | **1** | 3 outfielders |
+| 2022~2025 (4 years) | 10 | 3 | 3 outfielders |
+
+Every one of the 40 deficient years holds a single outfield row where the league
+awards three, so roughly **80 winners are absent from the source** — and the
+legacy chunks carry them. `(2021, 골든글러브, 구자욱)` is one of those two missing
+outfielders, not an error in the chunk.
+
+The natural key is still derivable for these, because the chunk holds all four
+fields it composes from (`시즌`, `수상 종류`, `선수`, `포지션`) — but `포지션` is an
+English code (`P`/`C`/`1B`/`OF`/`DH`) and `category` is Korean (`투수`/`포수`/`1루수`/`외야수`/`지명 타자`), so the translation is required first. Re-keying them before the
+source table is completed would leave identities the generator cannot reproduce:
+when those winners are eventually crawled, the row the generator writes must hash
+to the same key, which it only does if both sides agree on the category.
 
 ### The manifest exists, and the applier accepts it (2026-11-02)
 
