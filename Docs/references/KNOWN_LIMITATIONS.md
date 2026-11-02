@@ -702,14 +702,19 @@ sweep failed **31 of 31 days for October and 30 of 30 for November** with
 `m.sports.naver.com/robots.txt` is `Disallow: /` with only `/$` and `/index`
 allowed. Three paths, all closed.
 
-**What is missing**
+**What is missing now**
 
-* **`20261031HTSS0`** (KIA @ SS) sits at `SCHEDULED` with zero child rows. This is
-  a **defect, not a postponement**: the playoff stands at **2–2** (10-26 KIA 5:1,
+* **`20261031HTSS0`** (KIA @ SS) is `CANCELLED` with zero child rows. This is a
+  **defect, not a postponement**: the playoff stands at **2–2** (10-26 KIA 5:1,
   10-27 SS 3:8, 10-29 SS 6:4, 10-30 KIA 2:4), so a fifth game was required, and
   10-31 is it. Its result also decides which team reached the Korean Series.
+  Measured 2026-11-02: `game_events` = **0** (no finished relay to recover from),
+  `game_date = 2026-10-31`, all score fields NULL, `game.cancelled` not set — so
+  no relay-based recovery path (`scripts/maintenance/recover_game_result_from_relay.py`)
+  has anything to read either.
 * **The Korean Series (2026-11-02 ~ 11-10) has no `game` rows at all.** Only
-  `kbo_seasons` knows the window exists.
+  `kbo_seasons` knows the window exists. The KS roster it produces is therefore
+  unknown: with PO 2–2, either KIA or SSG won 10-31's decisive fifth game.
 
 **The five `CANCELLED` games in the same window are not defects.**
 `20261015OBLG0`, `20261021HTLG0`, `20261023LGHT0`, `20261025HTSS0` and
@@ -717,6 +722,24 @@ allowed. Three paths, all closed.
 continued past them are consistent with postponements: the wild card finished
 10-14, the semi-playoff ran 10-17/18/20 and then stopped, and the playoff began
 10-26 after 10-25 was lost. Nothing in the ledger claims they were played.
+
+**How the 10-31 decision was made (audited, not silent)**. The 11-02 03:00 KST
+nightly chain found the game still terminal-less. `correction_audit_trail` records
+two rows on 2026-11-02 03:27/03:29 KST (`--source 20261031` semantics):
+
+```
+id=9101  auto_healer:naver_record_unavailable  SCHEDULED      -> UNRESOLVED_MISSING
+id=9102  refresh_game_status                    UNRESOLVED_MISSING -> CANCELLED
+```
+
+`refresh_game_status_for_date` then extended that to the four sibling games that
+still had no rows (they were `CANCELLED` before). The evidence is "no boxscore,
+no PBP, no relay, no metadata: cannot assert the game happened" — the
+`has_metadata and not has_any_detail` branch, deliberately not a claim that the
+game was cancelled. A **false** `CANCELLED` costs one re-crawl; a **false**
+`COMPLETED` would fabricate scores, so fail-closed is correct. The fix needs the
+source to speak: a successful `game_detail` run for that date, or a relay that
+still terminates, re-derives the row (see §R4 and the 2026-10-26 HTSS0 recovery path).
 
 **Reopening**: the nightly `schedule` job keeps polling and records `success`
 with `records_read=0`; the moment `api-gw` answers, the October and November
