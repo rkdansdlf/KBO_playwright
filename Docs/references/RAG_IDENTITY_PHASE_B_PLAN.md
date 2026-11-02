@@ -335,3 +335,48 @@ post-re-key state, which is why `--require-corpus` reports them as absent.
 * Korean team names in chunk text (the `2026-07-17 HH 순위` vs "한화" gap). It
   needs a generator change **and** a re-embed, so it belongs to the same window
   but is a separate decision.
+
+## 8. Pre-flight re-measurement and the full content comparison (2026-11-02)
+
+The numbers the plan was built on were re-measured after the 2026-11-01 host-wide
+PostgreSQL outage, and **all of them reproduce unchanged**: 8,274 ACTIVE legacy
+`id=N` chunks (embedding and `content_hash` present, `indexed_at` NULL for every
+one), 5,564 `id=N#partM` split rows, `REINDEX_REQUIRED` 5,589. The outage moved
+nothing.
+
+**The §2-B conclusion is confirmed and strengthened by a full comparison.** The
+1,790 split groups (5,199 parts) carry a `[META]` JSON in their last part with the
+real identity — `player_id`, `season`, `team` (Korean name mapped to the code) — so
+the natural key each group *should* have is derivable from the chunk itself.
+Results across all 1,790 groups:
+
+| Outcome | Groups |
+| --- | --- |
+| Natural key exists (ACTIVE) | **1,371** |
+| Natural key does not exist — the split rows are the only copy | **248** |
+| `[META]` missing or unparseable | 171 |
+
+**For every one of the 1,371 matched groups the natural-key chunk is shorter than
+the split rows it would replace — 100% of them.** Worked example, 마해영 2002
+Korean Series (6 games, 0.458):
+
+* natural key `95549_2002_SS_KOREAN_SERIES`: **135 chars** — one summary line
+* split rows `id=1096#part1+#part2`: **~190 chars** — `[TL;DR]` + `[핵심 문장]` +
+  `[상세]` with ISO/BABIP/XR; `#part3` is a `[META]` JSON with `pa`, `wrc_plus`,
+  `aliases` that the generator's `meta` does not carry
+
+So plan step 2 ("verify the new chunk carries at least as much as the split it
+replaces") **fails for 100% of the matched population**, and step 3 (delete the
+`#part` rows) would destroy information in every one of them. The 248 unmatched
+groups would be deleted outright. The 171 unparseable ones cannot even be judged.
+
+**Phase B's cleanup stage is therefore cancelled, not deferred.** The direction
+that loses nothing is the other way round: make the generator emit the rich form
+(`[TL;DR]` / `[핵심 문장]` / `[상세]` / `[META]`) under the natural key, re-index,
+and *then* the split rows are true duplicates whose deletion is safe. Until that
+exists, both populations stay as they are: retrievable, embedded, duplicated for
+the same player-season — which the search already tolerates.
+
+(`[META]` parsing detail: the JSON is followed by a footer line
+(`… / 기준일 2026-04-19`), so it must be read with `json.JSONDecoder().raw_decode`,
+not `json.loads` — a plain `loads` rejects 100% of them as "Extra data".)
