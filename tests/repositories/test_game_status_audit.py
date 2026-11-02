@@ -126,3 +126,29 @@ class TestItIsTheCallersTransaction:
 
         assert len(_audits(session)) == 1
         assert session.query(Game).filter(Game.game_id == GAME_ID).one().game_status == GAME_STATUS_COMPLETED
+
+
+def test_reason_survives_the_sessionless_path(monkeypatch) -> None:
+    """Callers without a session (daily_update, reconciliation) must not lose ``reason``."""
+    from contextlib import contextmanager
+    from unittest.mock import MagicMock
+
+    import src.repositories.game_status as gs
+
+    calls: list[dict] = []
+    real = gs.update_game_status
+
+    def spy(game_id, status, session=None, **kw):
+        if session is None:
+            return real(game_id, status, session=session, **kw)
+        calls.append(kw)
+        return True
+
+    @contextmanager
+    def fake_session():
+        yield MagicMock()
+
+    monkeypatch.setattr(gs, "get_db_session", fake_session)
+    monkeypatch.setattr(gs, "update_game_status", spy)
+    assert gs.update_game_status("20260101XXXX0", "CANCELLED", reason="r1") is True
+    assert calls == [{"allow_historical": False, "reason": "r1"}]

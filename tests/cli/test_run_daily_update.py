@@ -167,7 +167,8 @@ def test_detail_step_exception_preserves_cancelled_and_tracks_queued_targets(mon
     monkeypatch.setattr(daily, "SessionLocal", SessionLocal)
     updates = []
 
-    def _fake_update_game_status(game_id: str, status: str) -> bool:
+    def _fake_update_game_status(game_id: str, status: str, *, reason: str = "") -> bool:
+        assert reason.startswith("daily_update:")
         updates.append((game_id, status))
         with SessionLocal() as session:
             game = session.query(Game).filter(Game.game_id == game_id).one()
