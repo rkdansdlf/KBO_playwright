@@ -331,23 +331,23 @@ tombstones.
 Postings freshness is operationally guarded:
 
 ```bash
-# Daily 05:40 KST job — insert-only resume after the last indexed chunk
+# Daily 02:40 KST job — insert-only resume after the last indexed chunk
 python3 -m src.cli.rag.build_oracle_sparse_index --apply --catch-up --batch-size 40
 
 # Coverage gate — fails when retrievable chunks lack postings
 python3 -m src.cli.audit_rag_index --require-nonempty --require-postings --json
 ```
 
-`sparse_terms_catchup_job` runs after the 05:00 incremental publish so chunks
+`sparse_terms_catchup_job` runs after the 02:00 incremental publish so chunks
 added without the terms flag are indexed on the same schedule;
 `--catch-up` resolves the resume point from `max(rag_chunk_id)` and never
 rewrites existing postings (the Oracle delete-then-reinsert path deadlocks).
 The audit reports `postings_missing` on every run and `--require-postings`
 turns any gap into an exit-code failure for CI/alerting.
 APScheduler loads jobs at process startup, so a running scheduler must be
-restarted once (`launchctl kickstart -k gui/$UID/com.kbo-playwright.scheduler`)
-before the 05:40 registration takes effect; until then run the catch-up
-command above manually after each publish.
+restarted once before the 02:40 registration takes effect (Windows host:
+`Docs/runbooks/WINDOWS_SCHEDULER.md` §5); until then run the catch-up command
+above manually after each publish.
 
 Audit the awards source path before attempting a production save:
 

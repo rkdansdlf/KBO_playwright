@@ -319,7 +319,7 @@ def _refuse_new_game_without_season(
     """Return True when a new game would be created with ``season_id`` NULL.
 
     That happens for a postseason game whose stage nothing can name (KBO page
-    "3,4,5,7" option, no calendar window, no kbo_seasons span). The 04:45
+    "3,4,5,7" option, no calendar window, no kbo_seasons span). The 01:45
     integrity check and /api/matches/range reject such rows; the Naver path
     (id prefix) saves the game instead.
     """

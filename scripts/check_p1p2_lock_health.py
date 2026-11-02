@@ -9,7 +9,7 @@ PID-1 guard fix are behaving in production:
 * ``diagnose_scheduler_locks`` reports a clean (exit 0) lock state.
 
 This is the Step 1 operational-monitoring check that must pass after the
-next 03:00 ``crawl_daily_games`` and 06:45 ``crawl_p1p2_data`` schedule cycle.
+next 00:00 ``crawl_daily_games`` and 06:45 ``crawl_p1p2_data`` schedule cycle.
 """
 
 from __future__ import annotations

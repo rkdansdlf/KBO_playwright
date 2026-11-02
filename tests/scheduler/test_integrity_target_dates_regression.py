@@ -1,4 +1,4 @@
-"""Resilience contract for the 04:45 KST `data_integrity_check_job` target window.
+"""Resilience contract for the 01:45 KST `data_integrity_check_job` target window.
 
 The job imported `parse_date_str_lenient` from `src.utils.date_helpers` while
 that function did not exist, so every scheduled run raised `ImportError` and the
@@ -7,7 +7,7 @@ in `test_integrity_check_job.py`; this module covers only what that file cannot:
 
 - an unparseable previous-day string must not stop the job, and
 - the substituted date must be the *previous* KST day, never today. Checking
-  today at 04:45 inspects a day whose 03:00 crawl has not landed yet and opens a
+  today at 01:45 inspects a day whose 00:00 crawl has not landed yet and opens a
   fresh incident against partial data.
 """
 
@@ -73,7 +73,7 @@ class TestMalformedPreviousDay:
         assert dates[1] - dates[2] == timedelta(days=1)
 
     def test_job_survives_malformed_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Drive the real 04:45 entry point: a bad value must not abort the job."""
+        """Drive the real 01:45 entry point: a bad value must not abort the job."""
         monkeypatch.setenv(_LOOKBACK_ENV, "1")
         monkeypatch.setattr(maintenance_jobs, "_previous_day_kst", lambda: "NOT-A-DATE")
         evaluated: list[str] = []

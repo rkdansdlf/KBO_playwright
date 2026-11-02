@@ -357,7 +357,7 @@ identity 대조가 이를 확정한다 — **pgvector의 `press_release` 40건�
 즉 **pgvector는 10/11 15:57 시점에 박힌 스냅샷이고**, 이후 추가분 40건과 `milestone` 353건은
 `milestone`가 pgvector에 **0건**인 것까지 포함해 **아직 백필이 돌지 않았다.**
 
-야간 `rag_vector_backfill`(05:30)이 이 갭을 닫는 정상 진행 중 상태다. **게이트가 드리프트를
+야간 `rag_vector_backfill`(02:30)이 이 갭을 닫는 정상 진행 중 상태다. **게이트가 드리프트를
 발견한 게 아니라, 진행 중을 올바르게 드러낸 것이다.**
 
 ### 왜 `TIME_EXPLAINABLE`이 0인가 — 그리고 왜 그래야 하는가

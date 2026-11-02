@@ -48,7 +48,7 @@ PROBE_SECONDS = 15
 #: range where a reader notices search is unusable.
 SLOW_MS = 3_000
 SLOW_STRIKES = 3
-#: Give up rather than let the build run into the nightly jobs at 05:00 KST.
+#: Give up rather than let the build run into the nightly jobs at 00:00 KST.
 DEFAULT_MAX_MINUTES = 90
 PROBE_SQL = "SELECT count(*) FROM rag_chunks WHERE game_date = '2026-10-26'"
 #: Defaults for the two build-time parameters. Measured on this host, the standard
