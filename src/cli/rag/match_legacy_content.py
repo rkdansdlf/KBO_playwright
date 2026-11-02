@@ -28,6 +28,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -41,6 +42,8 @@ from src.services.rag_index_identity import (
 from src.services.rag_legacy_content_match import (
     DUPLICATE,
     MATCHED,
+    REKEY,
+    LegacyMatchOutcome,
     LegacySourceRow,
     disposition,
     match_award,
@@ -48,12 +51,23 @@ from src.services.rag_legacy_content_match import (
     match_team_history,
     normalize_source_team_name,
 )
+from src.services.rag_rekey_manifest import build_manifest
 from src.utils.team_codes import TEAM_NAME_TO_CODE
 
 EXIT_OK = 0
 EXIT_STORE_UNREACHABLE = 2
 
 SOURCES = ("player_movements", "awards", "team_history")
+#: The applier's vocabulary. ``REKEY`` becomes ``SAFE_REKEY`` (the natural key is
+#: free) and ``DUPLICATE`` becomes ``TARGET_EXISTS_CONTENT_MISMATCH`` (the target
+#: exists and its text differs from this chunk's, so merging would lose one of
+#: the two). Applying a manifest whose entries do not match one of these five
+#: fails, so the translation is explicit here rather than in the applier.
+APPLIER_DISPOSITIONS = {
+    REKEY: "SAFE_REKEY",
+    DUPLICATE: "TARGET_EXISTS_CONTENT_MISMATCH",
+}
+
 #: How many per-source examples the text output shows. The JSON report carries
 #: the counts; the samples exist to make a number falsifiable at a glance.
 SAMPLE_LIMIT = 5
@@ -172,6 +186,7 @@ def build_report(session: Session, sources: tuple[str, ...]) -> dict:
         "team_history": _team_history_index(session),
     }
     per_source: list[dict] = []
+    entries: list[dict] = []
     total = Counter()
     for source_table in sources:
         existing = _existing_natural_keys(session, source_table)
@@ -179,12 +194,14 @@ def build_report(session: Session, sources: tuple[str, ...]) -> dict:
         by_reason: Counter[str] = Counter()
         actionable: Counter[str] = Counter()
         samples: list[str] = []
-        for _chunk_id, legacy_key, content in chunks:
+        pairings: list[tuple[int, str, LegacyMatchOutcome]] = []
+        for chunk_id, legacy_key, content in chunks:
             outcome = _match_one(source_table, content, indexes)
             by_reason[outcome.reason] += 1
             if outcome.reason == MATCHED:
                 verdict = disposition(outcome.natural_source_row_id, existing)
                 actionable[verdict] += 1
+                pairings.append((chunk_id, legacy_key, outcome, verdict))
                 if verdict == DUPLICATE and len(samples) < SAMPLE_LIMIT:
                     samples.append(f"{legacy_key} -> {outcome.natural_source_row_id} ({DUPLICATE})")
             elif len(samples) < SAMPLE_LIMIT:
@@ -199,7 +216,22 @@ def build_report(session: Session, sources: tuple[str, ...]) -> dict:
         }
         per_source.append(entry)
         total.update(by_reason)
-    return {"sources": per_source, "totals": dict(total), "read_only": True}
+        entries.extend(
+            {
+                "chunk_id": chunk_id,
+                "source_table": source_table,
+                "legacy_source_row_id": legacy_key,
+                "natural_source_row_id": outcome.natural_source_row_id,
+                "disposition": APPLIER_DISPOSITIONS[verdict],
+            }
+            for chunk_id, legacy_key, outcome, verdict in pairings
+        )
+    return {
+        "sources": per_source,
+        "totals": dict(total),
+        "entries": entries,
+        "read_only": True,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -207,6 +239,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--source", action="append", choices=SOURCES, help="Limit to one source table")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Render JSON output")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write the apply-gated rekey manifest to this path (entries the content pairing produced)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -218,6 +255,21 @@ def main(argv: list[str] | None = None) -> int:
         # reported as an outage.
         sys.stdout.write(f"legacy content match unavailable: {type(exc).__name__}: {exc}\n")
         return EXIT_STORE_UNREACHABLE
+
+    if args.output is not None:
+        entries = report["entries"]
+        unsafe = sum(1 for entry in entries if entry["disposition"] != "SAFE_REKEY")
+        manifest = build_manifest(
+            manifest_version="legacy-content-match-v1",
+            target_index_version="rag-v1",
+            source_tables=tuple(args.source or SOURCES),
+            totals=report["totals"],
+            unsafe_entry_count=unsafe,
+            sources=report["sources"],
+            entries=entries,
+        )
+        args.output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        sys.stdout.write(f"manifest written: {args.output} entries={len(entries)} unsafe={unsafe}\n")
 
     if args.as_json:
         sys.stdout.write(json.dumps(report, ensure_ascii=False) + "\n")
