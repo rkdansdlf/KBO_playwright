@@ -433,7 +433,7 @@ class TestAFailedDetailFetchNoLongerUnFinishesAGame:
         monkeypatch.setattr(
             rdu,
             "update_game_status",
-            lambda gid, status: writes.append((gid, status)),
+            lambda gid, status, *, reason="": writes.append((gid, status)),
         )
 
         rdu._apply_detail_failure_fallback(ctx, "19950624OBLG0", "not_found")
@@ -447,7 +447,11 @@ class TestAFailedDetailFetchNoLongerUnFinishesAGame:
         session.query.return_value.filter.return_value.one_or_none.return_value = MagicMock(game_status="DRAW")
         monkeypatch.setattr(rdu, "SessionLocal", lambda: _session_ctx(session))
         writes: list[tuple[str, str]] = []
-        monkeypatch.setattr(rdu, "update_game_status", lambda gid, status: writes.append((gid, status)))
+        monkeypatch.setattr(
+            rdu,
+            "update_game_status",
+            lambda gid, status, *, reason="": writes.append((gid, status)),
+        )
 
         rdu._apply_detail_failure_fallback(ctx, "19950624OBLG0", "not_found")
 
@@ -462,11 +466,21 @@ class TestAFailedDetailFetchNoLongerUnFinishesAGame:
         )
         monkeypatch.setattr(rdu, "SessionLocal", lambda: _session_ctx(session))
         writes: list[tuple[str, str]] = []
-        monkeypatch.setattr(rdu, "update_game_status", lambda gid, status: writes.append((gid, status)))
+        reasons: list[str] = []
+
+        def _record(gid: str, status: str, *, reason: str = "") -> None:
+            writes.append((gid, status))
+            reasons.append(reason)
+
+        monkeypatch.setattr(rdu, "update_game_status", _record)
 
         rdu._apply_detail_failure_fallback(ctx, "19950624OBLG0", "not_found")
 
         assert writes == [("19950624OBLG0", GAME_STATUS_UNRESOLVED)]
+        assert reasons and "not_found" in reasons[0], (
+            "the audit reason has to name why the fallback fired; a status change with no reason "
+            "is the silent write the audit-trail contract exists to remove"
+        )
 
 
 def _session_ctx(session):
