@@ -163,6 +163,30 @@ different snapshot. This does not block the 785 re-keys (they matched exactly),
 but it does mean **no count here should be described as covering the whole
 awards population**.
 
+### The manifest exists, and the applier accepts it (2026-11-02)
+
+`apply_rag_rekey` was blocked on a manifest the census could not produce, because
+its entries were false matches. `match_legacy_content --output` now writes one
+from the content pairing, translating the verdicts into the applier's vocabulary
+(`REKEY` → `SAFE_REKEY`, `DUPLICATE` → `TARGET_EXISTS_CONTENT_MISMATCH`).
+
+The manifest structure lives in `src/services/rag_rekey_manifest.py`, shared with
+the census. Two things were fixed on the way:
+
+* `disposition_counts` is derived from `entries` rather than accepted as an
+  argument — two sources for one number is how a manifest disagrees with itself.
+* `git_commit_sha` was resolved through a hardcoded `/usr/bin/git`, which does not
+  exist on the Windows host the scheduler runs on, so every manifest generated
+  there carried `"unknown"` and the applier refused it. It now resolves `git` from
+  `PATH`.
+
+Measured, read-only: `match_legacy_content --source awards --output m.json` then
+`apply_rag_rekey --manifest m.json` returned
+**`status=SUCCESS_APPLIED mode=dry-run rekeyed=410`**. The applier validates the
+body hash, the commit, and the entry count before touching anything, so a
+manifest it accepts is one whose structure is sound — that is the precondition
+`--apply` needs, and it is now met.
+
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
 reproduce — deleting them would lose the `[TL;DR]`/`[핵심 문장]`/`[상세]` form
