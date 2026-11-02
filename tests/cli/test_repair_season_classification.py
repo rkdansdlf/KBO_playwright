@@ -18,6 +18,7 @@ from src.cli.repair_season_classification import (
     build_plan,
     run,
 )
+from src.cli.backfill.repair_season_classification import _compute_quota_exhausted_games
 from src.models.game import Game, GameIdAlias
 from src.models.season import KboSeason
 from src.utils.season_classification import regular_season_games_per_team
@@ -972,8 +973,8 @@ def test_games_on_same_date_as_144th_game_do_not_count_against_each_other(sessio
             for i in range(143)
         ]
         game_dh1 = Game(
-            game_id="20251006KTLG1",
-            game_date=date(2025, 10, 6),
+            game_id="20251004KTLG1",
+            game_date=date(2025, 10, 4),
             season_id=202500,
             game_status="COMPLETED",
             home_team="LG",
@@ -981,8 +982,8 @@ def test_games_on_same_date_as_144th_game_do_not_count_against_each_other(sessio
             is_primary=True,
         )
         game_dh2 = Game(
-            game_id="20251006KTLG2",
-            game_date=date(2025, 10, 6),
+            game_id="20251004KTLG2",
+            game_date=date(2025, 10, 4),
             season_id=202500,
             game_status="COMPLETED",
             home_team="LG",
@@ -990,8 +991,8 @@ def test_games_on_same_date_as_144th_game_do_not_count_against_each_other(sessio
             is_primary=True,
         )
         game_next_day = Game(
-            game_id="20251007KTLG0",
-            game_date=date(2025, 10, 7),
+            game_id="20251006KTLG0",
+            game_date=date(2025, 10, 6),
             season_id=202500,
             game_status="COMPLETED",
             home_team="LG",
@@ -1002,7 +1003,88 @@ def test_games_on_same_date_as_144th_game_do_not_count_against_each_other(sessio
         db.commit()
         plan = build_plan(db, 2025)
 
-    assert "20251006KTLG1" in _review_items(plan)
-    assert "20251006KTLG2" in _review_items(plan)
     changes = {change.game_id: change.new_type for change in plan.games}
-    assert changes.get("20251007KTLG0") == "wildcard"
+    assert "20251004KTLG1" not in changes
+    assert "20251004KTLG2" not in changes
+    assert changes.get("20251006KTLG0") == "wildcard"
+
+
+def _regular(game_id: str, day: date, *, home: str = "LG", away: str = "KT", is_primary: bool | None = True) -> Game:
+    return Game(
+        game_id=game_id,
+        game_date=day,
+        season_id=202500,
+        game_status="COMPLETED",
+        home_team=home,
+        away_team=away,
+        is_primary=is_primary,
+    )
+
+
+def test_preseason_window_games_stored_as_regular_do_not_count_toward_quota(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        games = [_regular(f"2025{i:04d}KTLG0", date(2025, 4, 1) + timedelta(days=i)) for i in range(140)]
+        # Issue #40: preseason games wrongly stored as regular must not fill the quota.
+        games += [_regular(f"202503{8 + i:02d}KTLG0", date(2025, 3, 8 + i)) for i in range(10)]
+        games.append(_regular("20251006KTLG0", date(2025, 10, 6)))
+        db.add_all(games)
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    assert "20251006KTLG0" not in {change.game_id for change in plan.games}
+    assert _review_items(plan)["20251006KTLG0"]["blocking"] is True
+
+
+def _quota_ids(games: list[Game]) -> frozenset[str]:
+    return _compute_quota_exhausted_games(games, 2025, {202500: "regular", 202502: "wildcard"})
+
+
+def test_non_primary_duplicate_rows_do_not_count_toward_quota() -> None:
+    # The model defaults is_primary to True, so NULL rows (legacy duplicates)
+    # are built in memory rather than stored.
+    games = [_regular(f"2025{i:04d}KTLG0", date(2025, 4, 1) + timedelta(days=i)) for i in range(140)]
+    games += [_regular(f"2025{i:04d}KTLG9", date(2025, 4, 1) + timedelta(days=i), is_primary=None) for i in range(10)]
+    games.append(_regular("20251006KTLG0", date(2025, 10, 6)))
+    assert "20251006KTLG0" not in _quota_ids(games)
+
+
+def test_null_primary_row_without_a_duplicate_still_counts() -> None:
+    games = [_regular(f"2025{i:04d}KTLG0", date(2025, 4, 1) + timedelta(days=i), is_primary=None) for i in range(144)]
+    games.append(_regular("20251006KTLG0", date(2025, 10, 6)))
+    assert "20251006KTLG0" in _quota_ids(games)
+
+
+def test_rain_postponed_regular_game_in_a_postseason_window_is_not_moved(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        # 143 genuine games plus earlier postseason-window regular rows: those
+        # must not push the 144th (make-up) game over the quota.
+        games = [_regular(f"2025{i:04d}KTLG0", date(2025, 4, 1) + timedelta(days=i)) for i in range(143)]
+        games.append(_regular("20251006KTLG0", date(2025, 10, 6)))
+        games.append(_regular("20251007KTLG0", date(2025, 10, 7)))
+        db.add_all(games)
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    moved = {change.game_id for change in plan.games}
+    assert "20251006KTLG0" not in moved
+    assert "20251007KTLG0" not in moved
+
+
+def test_quota_exhausted_game_beside_a_same_day_stage_game_goes_to_review(session_2025: sessionmaker) -> None:
+    with session_2025() as db:
+        db.query(Game).delete()
+        games = [_regular(f"2025{i:04d}KTLG0", date(2025, 4, 1) + timedelta(days=i)) for i in range(144)]
+        games.append(_regular("20251011KTLG0", date(2025, 10, 11)))
+        stage = _regular("20251011SSHH0", date(2025, 10, 11), home="HH", away="SS")
+        stage.season_id = 202503
+        games.append(stage)
+        db.add_all(games)
+        db.commit()
+        plan = build_plan(db, 2025)
+
+    assert "20251011KTLG0" not in {change.game_id for change in plan.games}
+    item = _review_items(plan)["20251011KTLG0"]
+    assert "quota" in item["note"]
+    assert item["blocking"] is True

@@ -496,7 +496,7 @@ class Verdict(NamedTuple):
     blocking: bool = False
 
 
-def _expected_in_window(
+def _expected_in_window(  # noqa: PLR0911
     game_date: date,
     stored_type: str | None,
     calendar: str,
@@ -506,6 +506,14 @@ def _expected_in_window(
 ) -> Verdict:
     """``_expected_type`` for a date inside an exhibition/postseason window."""
     if calendar in POSTSEASON_STAGES and stored_type == REGULAR:
+        if quota_exhausted and same_day_stage:
+            # A postseason day has one game: a second, regular-stored game
+            # beside a stored stage game is doubtful even past the quota.
+            return Verdict(
+                None,
+                f"regular game past the 144-game quota beside a stored {calendar} game the same day; left unchanged",
+                blocking=True,
+            )
         if quota_exhausted:
             return Verdict(calendar)
         if same_day_stage:
@@ -728,6 +736,19 @@ def _postseason_id_evidence(session: Session, games: list[Game]) -> frozenset[st
     return frozenset(evidence)
 
 
+def _counts_toward_quota(game: Game, key: tuple[date, str, str], primary_keys: set[tuple[date, str, str]]) -> bool:
+    """Whether a played regular-stored game counts toward its teams' quota.
+
+    Only games inside the regular-season span and outside every exhibition or
+    postseason window count, and a row with ``is_primary`` NULL counts only
+    when no primary row exists for the same date and teams.
+    """
+    game_day = key[0]
+    if in_regular_season_span(game_day) is not True or calendar_season_type(game_day) is not None:
+        return False
+    return not (game.is_primary is None and key in primary_keys)
+
+
 def _compute_quota_exhausted_games(
     games: Sequence[Game],
     year: int,
@@ -742,11 +763,23 @@ def _compute_quota_exhausted_games(
     date are used). Team codes are normalized via ``season_team_code`` so
     historical aliases (e.g. SK vs SSG) merge. Games with empty team codes are
     ignored.
+
+    Only games that can genuinely count toward the quota are counted: dated
+    inside the regular-season span (so preseason-window games wrongly stored
+    as regular, issue #40, and games inside postseason windows never count),
+    and primary rows only: a row with ``is_primary`` NULL counts only when no
+    primary row exists for the same date and teams (a duplicate otherwise).
     """
     quota = regular_season_games_per_team(year)
     if quota is None:
         return frozenset()
 
+    def teams_of(game: Game) -> tuple[str, str]:
+        home = season_team_code(game.home_team, year) or str(game.home_team or "").strip().upper()
+        away = season_team_code(game.away_team, year) or str(game.away_team or "").strip().upper()
+        return home, away
+
+    primary_keys = {(g.game_date, *teams_of(g)) for g in games if g.is_primary is True}
     sorted_games = sorted(games, key=lambda g: (g.game_date, str(g.game_id)))
     exhausted_game_ids: set[str] = set()
     cumulative_counts: dict[str, int] = {}
@@ -768,14 +801,15 @@ def _compute_quota_exhausted_games(
         if old_type != REGULAR or status not in _STARTED or game.is_primary is False:
             continue
 
-        home = season_team_code(game.home_team, year) or str(game.home_team or "").strip().upper()
-        away = season_team_code(game.away_team, year) or str(game.away_team or "").strip().upper()
+        home, away = teams_of(game)
         if not home or not away:
             continue
 
         if cumulative_counts.get(home, 0) >= quota or cumulative_counts.get(away, 0) >= quota:
             exhausted_game_ids.add(str(game.game_id))
 
+        if not _counts_toward_quota(game, (game_day, home, away), primary_keys):
+            continue
         current_date_counts[home] = current_date_counts.get(home, 0) + 1
         current_date_counts[away] = current_date_counts.get(away, 0) + 1
 
