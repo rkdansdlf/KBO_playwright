@@ -1,6 +1,6 @@
 # RAG Identity Phase B — Re-key and Re-index Plan
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 Phase B normalizes the RAG index identity so that a chunk's `source_row_id` is
 the same key the generator produces today. Until it runs, the store holds two
@@ -15,8 +15,8 @@ for a row that already has one.
 ## 1. What decides the path
 
 The generator builds each key through a function in
-`src/services/rag_index_identity.py`. **The ten sources that have a `stable_*`
-function are exactly the ten the re-key tool supports**, because the tool needs
+`src/services/rag_index_identity.py`. **Every source that has a `stable_*`
+function is a source the re-key tool can help with**, because the tool needs
 to recompute the same key from source rows:
 
 | `stable_*` function | Source |
@@ -31,16 +31,22 @@ to recompute the same key from source rows:
 | `stable_highlight_source_row_id` | `game_highlights` |
 | `stable_team_event_source_row_id` | `team_events` |
 | `stable_press_release_source_row_id` | `kbo_press_releases` |
+| `stable_player_season_batting_source_row_id` | `player_season_batting` |
+| `stable_player_season_pitching_source_row_id` | `player_season_pitching` |
 
-`player_season_batting` and `player_season_pitching` build their keys **inline**
-in `build_rag_index._iter_batting_chunks` / `_iter_pitching_chunks`, so they
-have no function the census can call:
+The last two rows were the gap until 2026-11-02: they built their keys **inline**
+in `build_rag_index._iter_batting_chunks` / `_iter_pitching_chunks`, so the census
+had no function to call and both sources were invisible to it:
 
 ```python
 f"{batting.player_id}_{batting.season}_{batting.team_code or 'NA'}_{batting.league or 'UNKNOWN'}"
 ```
 
-That is the whole gap. Two functions plus two census record iterators close it.
+Both now route through the shared helpers, so the twelve functions and the
+twelve census sources agree again. They were added for completeness rather than
+for this phase: the content matcher pairs those two sources' legacy chunks
+through their text (§2-B), not through these functions, and it is the matcher's
+verdict that decides what happens to them.
 
 ## 2. Two populations, two different treatments
 
@@ -194,7 +200,7 @@ outright. Leaving them costs duplicate hits for the same player-season; removing
 them costs information. Neither is free, which is why the decision belongs after
 the content-based pairing exists.
 
-### B. Re-index and clean (`#part` split keys)
+### C. Re-index and clean (`#part` split keys)
 
 `REINDEX_REQUIRED` holds **5,589** rows:
 
