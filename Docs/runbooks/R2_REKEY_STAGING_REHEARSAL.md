@@ -1,5 +1,20 @@
 # R2 Natural-Key Rekey: Oracle Staging Rehearsal & Production Apply Runbook
 
+> [!CAUTION]
+> **DEPRECATED / DO NOT EXECUTE (2026-11-03)**:
+> This runbook is based on the legacy numeric ID census (`id=N == source_pk`) which was
+> proven to produce false matches (e.g., `id=3901`, `id=130`).
+>
+> 1. **Do not run `kbo rag census` to generate rekey manifests**: Old census manifests
+>    lack content proof and are rejected by `apply_rag_rekey --apply` (exit code 2).
+> 2. **Content-proof matching required**: Only `match_legacy_content --output` produces
+>    the required `content-proof-v1` manifest.
+> 3. **Scope restricted**: `player_movements` (DUPLICATE) and player season stats (unresolved
+>    leagues) are excluded from automated rekeying. Only `awards` and `team_history`
+>    are conditional candidates.
+> 4. **Live Execution BLOCKED**: Live `--apply` remains strictly blocked until formal
+>    re-audit of content proof and cross-store verification.
+
 ## Overview
 This runbook documents the complete procedure for executing the R2 natural-key rekey on Oracle staging, validating results, and promoting to production.
 

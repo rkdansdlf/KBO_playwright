@@ -208,10 +208,27 @@ the census. Two things were fixed on the way:
 
 Measured, read-only: `match_legacy_content --source awards --output m.json` then
 `apply_rag_rekey --manifest m.json` returned
-**`status=SUCCESS_APPLIED mode=dry-run rekeyed=410`**. The applier validates the
-body hash, the commit, and the entry count before touching anything, so a
-manifest it accepts is one whose structure is sound — that is the precondition
-`--apply` needs, and it is now met.
+**`status=SUCCESS_APPLIED mode=dry-run rekeyed=410`**.
+
+> [!WARNING]
+> **Safety Re-evaluation & Rekey Hold Notice (2026-11-03)**:
+> Dry-run success verifies JSON schema structure and chunk presence, but does
+> **not** constitute authorization for live writes (`--apply`).
+>
+> 1. **Content Proof v1 Required**: `apply_rag_rekey --apply` now strictly enforces
+>    `match_schema_version: "content-proof-v1"`. Every `SAFE_REKEY` entry must
+>    carry verified evidence: `matched_source_pk`, `proof.matched_fields`,
+>    `proof.source_snapshot_hash`, and `proof.chunk_content_hash`. Legacy numeric
+>    census manifests lacking proof are unconditionally rejected (exit 2).
+> 2. **Fail-Closed Write Gates**: The applier verifies candidate count == 1,
+>    verifies that target natural keys are not already occupied in `rag_chunks`,
+>    and validates CAS chunk content hashes.
+> 3. **Matcher Precision**: Movement, award, and team history matchers now reject
+>    single-candidate mismatches (`FIELD_CONFLICT`) on team, position/category,
+>    ranking, and city.
+> 4. **Execution Status**: Live `--apply` remains **BLOCKED** until formal sample
+>    audits (30+ boundary samples per source) and cross-store (sparse/vector)
+>    consistency checks are completed. Do not execute unverified rekey runs.
 
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
