@@ -460,11 +460,76 @@ class TestDedup:
             AwardRecord(2023, "MVP", None, "이정후", "키움 히어로즈"),
         ]
         result = AwardCrawler()._dedup(dups)
-        assert len(result) == 3
+        assert len(result) == 2
+        assert {r.year for r in result} == {2023, 2024}
 
     def test_empty_player_skipped(self) -> None:
         records = [AwardRecord(2024, "MVP", None, "", "LG 트윈스")]
         assert AwardCrawler()._dedup(records) == []
+
+    def test_the_same_winner_without_a_category_yields_to_the_one_with_it(self) -> None:
+        """Yagoonara carries no position for MVP; Wikipedia does.
+
+        Measured 2026-11-04: five rows would have been stored twice, once with
+        ``외야수``/``투수``/``3루수`` and once without.
+        """
+        records = [
+            AwardRecord(2022, "MVP", "외야수", "이정후", "키움"),
+            AwardRecord(2022, "MVP", None, "이정후", "키움 히어로즈"),
+        ]
+        result = AwardCrawler()._dedup(records)
+        assert len(result) == 1
+        assert result[0].category == "외야수"
+
+    def test_the_category_less_row_yields_whichever_order_it_arrives(self) -> None:
+        records = [
+            AwardRecord(2024, "MVP", None, "김도영", "KIA 타이거즈"),
+            AwardRecord(2024, "MVP", "3루수", "김도영", "KIA"),
+        ]
+        result = AwardCrawler()._dedup(records)
+        assert len(result) == 1
+        assert result[0].category == "3루수"
+
+    def test_two_category_less_rows_keep_the_first(self) -> None:
+        """Source order decides when neither side names a position."""
+        records = [
+            AwardRecord(2024, "신인상", None, "김택연", "두산"),
+            AwardRecord(2024, "신인상", None, "김택연", "두산 베어스"),
+        ]
+        result = AwardCrawler()._dedup(records)
+        assert len(result) == 1
+        assert result[0].team_name == "두산"
+
+    def test_the_two_spellings_of_the_designated_hitter_collapse(self) -> None:
+        """Wikipedia writes 지명 타자, yagoonara writes 지명타자 -- one winner."""
+        records = [
+            AwardRecord(2022, "골든글러브", "지명 타자", "이대호", "롯데"),
+            AwardRecord(2022, "골든글러브", "지명타자", "이대호", "롯데 자이언츠"),
+        ]
+        assert len(AwardCrawler()._dedup(records)) == 1
+
+    def test_the_defense_award_outfield_positions_stay_distinct(self) -> None:
+        """수비상 names 좌익수/중견수/우익수 separately; crawling must not fold them.
+
+        The RAG matcher folds them into 외야수 because the legacy chunks say only
+        ``OF``, but that is a comparison rule -- the table keeps what the source says.
+        """
+        records = [
+            AwardRecord(2024, "수비상", "좌익수", "김선수", "LG"),
+            AwardRecord(2024, "수비상", "중견수", "김선수", "LG"),
+            AwardRecord(2024, "수비상", "우익수", "김선수", "LG"),
+        ]
+        assert len(AwardCrawler()._dedup(records)) == 3
+
+    def test_a_team_name_variant_does_not_split_the_winner(self) -> None:
+        """The unique constraint includes team_name, so this has to be caught here."""
+        records = [
+            AwardRecord(2024, "골든글러브", "3루수", "김도영", "KIA"),
+            AwardRecord(2024, "골든글러브", "3루수", "김도영", "KIA 타이거즈"),
+        ]
+        result = AwardCrawler()._dedup(records)
+        assert len(result) == 1
+        assert result[0].team_name == "KIA"
 
 
 class TestWikiFetchSnapshot:

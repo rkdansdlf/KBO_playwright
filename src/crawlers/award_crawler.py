@@ -753,6 +753,18 @@ class AwardCrawler:
     def _dedup(records: list[AwardRecord]) -> list[AwardRecord]:
         """Deduplicate by (year, award_type, category, player).
 
+        The category is compared with its spaces removed. The two sources spell
+        the same position differently -- Wikipedia writes 지명 타자 and yagoonara
+        writes 지명타자 -- and comparing the strings verbatim let the same winner
+        through twice, with a different team_name on each row (``KIA`` vs
+        ``KIA 타이거즈``), so the unique constraint did not catch it either. Measured
+        2026-11-04: four rows (2022 이대호, 2023 손아섭, 2024·2025 최형우).
+
+        Only spaces are folded here. The RAG matcher folds more (좌익수/중견수/
+        우익수 into 외야수) because the legacy chunks name only ``OF``, but this
+        table keeps 수비상's three outfield positions distinct -- collapsing them
+        at crawl time would destroy what the source says.
+
         Args:
             records: Raw records.
 
@@ -765,12 +777,53 @@ class AwardCrawler:
         for rec in records:
             if not rec.player_name:
                 continue
-            key = (rec.year, rec.award_type, rec.category, rec.player_name)
+            key = (
+                rec.year,
+                rec.award_type,
+                rec.category.replace(" ", "") if rec.category else rec.category,
+                rec.player_name,
+            )
             if key in seen:
                 continue
             seen.add(key)
             deduped.append(rec)
-        return deduped
+        return AwardCrawler._prefer_the_record_with_a_category(deduped)
+
+    @staticmethod
+    def _prefer_the_record_with_a_category(records: list[AwardRecord]) -> list[AwardRecord]:
+        """Drop a category-less record when another source names the category.
+
+        yagoonara does not carry a position for the MVP and 신인상 tables, so its
+        rows enter as ``category=None`` and the key in :meth:`_dedup` cannot see that
+        Wikipedia already recorded the same winner with a position: measured
+        2026-11-04, five rows (2022 이정후·정철원, 2023 문동주, 2024 김도영·김택연)
+        would otherwise be stored twice, once with ``외야수``/``투수``/``3루수`` and
+        once without.
+
+        The first record survives when neither side names a category, so source
+        order still decides -- Wikipedia is read first and carries the fuller name.
+        That order does not fix the name spellings the two sources disagree on
+        (``에릭 페디`` vs ``페디``); those stay two rows and are recorded as a known
+        limit rather than guessed at here.
+
+        Args:
+            records: Records already deduplicated by category.
+
+        Returns:
+            The records, without the category-less duplicates.
+
+        """
+        with_category = {(r.year, r.award_type, r.player_name) for r in records if r.category is not None}
+        seen_category_less: set[tuple[int, str, str]] = set()
+        kept: list[AwardRecord] = []
+        for rec in records:
+            key = (rec.year, rec.award_type, rec.player_name)
+            if rec.category is None:
+                if key in with_category or key in seen_category_less:
+                    continue
+                seen_category_less.add(key)
+            kept.append(rec)
+        return kept
 
     async def save(self, records: list[AwardRecord], *, raise_on_error: bool = False) -> tuple[int, int]:
         """Persist new award records (unique: year+type+player).
