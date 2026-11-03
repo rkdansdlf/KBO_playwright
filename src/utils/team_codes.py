@@ -72,6 +72,9 @@ TEAM_NAME_TO_CODE = {
     "한화 이글스": "HH",
     "KT": "KT",
     "KT 위즈": "KT",
+    # The club's own English spelling, as `awards.team_name` stores it.
+    "kt wiz": "KT",
+    "KT WIZ": "KT",
     "NC": "NC",
     "NC 다이노스": "NC",
     "키움": "KH",

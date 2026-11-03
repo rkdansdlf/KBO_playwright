@@ -20,6 +20,7 @@ from src.services.rag_legacy_content_match import (
     normalize_award_type,
     normalize_source_team_name,
     parse_fields,
+    team_franchise_ids,
     MOVEMENT_FIELDS,
     MOVEMENT_TEAM_FIELD,
 )
@@ -242,7 +243,11 @@ class TestMatchAward:
                 LegacySourceRow(30, "2021_골든글러브_포수_강민호", team_code="DB", team_name="두산", category="포수")
             ],
         }
-        outcome = match_award(AWARD_BODY, by_key, team_name_to_code={"SS": "SS"})
+        outcome = match_award(
+            AWARD_BODY,
+            by_key,
+            team_franchises={"SS": frozenset({1}), "DB": frozenset({4}), "두산": frozenset({4})},
+        )
         assert outcome.reason == FIELD_CONFLICT
         assert outcome.candidates == (30,)
 
@@ -253,11 +258,96 @@ class TestMatchAward:
                 LegacySourceRow(30, "2021_골든글러브_포수_강민호", category="포수", team_code="SS")
             ],
         }
-        outcome = match_award(AWARD_BODY, by_key, team_name_to_code={"SS": "SS"})
+        outcome = match_award(AWARD_BODY, by_key, team_franchises={"SS": frozenset({1})})
         assert outcome.reason == MATCHED
         assert "category" in outcome.matched_fields
         assert "team" in outcome.matched_fields
         assert outcome.chunk_content_hash is not None
+
+
+class TestAwardTeamIsComparedByFranchise:
+    """A club appears as an era code on one side and a Korean name on the other.
+
+    Measured 2026-11-03: 289 of the 361 awards field conflicts were this, not a
+    disagreement about which club won.
+    """
+
+    def test_an_era_code_matches_the_current_name(self) -> None:
+        """The chunk says HT; the table says KIA 타이거즈. Both are franchise 5."""
+        body = "KBO 수상 기록\n시즌: 2021\n수상 종류: Golden Glove\n선수: 이의리\n팀: HT\n포지션: P"
+        by_key = {
+            (2021, "골든글러브", "이의리"): [
+                LegacySourceRow(1, "2021_골든글러브_투수_이의리", team_name="KIA 타이거즈", category="투수")
+            ],
+        }
+        outcome = match_award(body, by_key, team_franchises={"HT": frozenset({5}), "KIA 타이거즈": frozenset({5})})
+        assert outcome.reason == MATCHED
+
+    def test_a_different_franchise_is_still_a_conflict(self) -> None:
+        """The franchise check must not turn every team pair into a match."""
+        body = "KBO 수상 기록\n시즌: 2021\n수상 종류: Golden Glove\n선수: 이의리\n팀: HT\n포지션: P"
+        by_key = {
+            (2021, "골든글러브", "이의리"): [LegacySourceRow(1, "x", team_name="삼성", category="투수")],
+        }
+        outcome = match_award(body, by_key, team_franchises={"HT": frozenset({5}), "삼성": frozenset({1})})
+        assert outcome.reason == FIELD_CONFLICT
+
+    def test_an_unresolvable_label_falls_back_to_the_string(self) -> None:
+        """An unknown label must not pass by being unknown."""
+        body = "KBO 수상 기록\n시즌: 2021\n수상 종류: Golden Glove\n선수: 이의리\n팀: ZZ\n포지션: P"
+        by_key = {
+            (2021, "골든글러브", "이의리"): [LegacySourceRow(1, "x", team_name="삼성", category="투수")],
+        }
+        outcome = match_award(body, by_key, team_franchises={"ZZ": frozenset(), "삼성": frozenset({1})})
+        assert outcome.reason == FIELD_CONFLICT
+
+    def test_the_position_space_variant_matches(self) -> None:
+        """The table spells it 지명 타자 and 지명타자; the chunk says DH."""
+        body = "KBO 수상 기록\n시즌: 2020\n수상 종류: Golden Glove\n선수: 김현수\n팀: LG\n포지션: DH"
+        by_key = {
+            (2020, "골든글러브", "김현수"): [LegacySourceRow(1, "x", team_name="LG", category="지명 타자")],
+        }
+        assert match_award(body, by_key, team_franchises={"LG": frozenset({3})}).reason == MATCHED
+
+    def test_an_outfield_subtype_matches_the_generic_outfield(self) -> None:
+        body = "KBO 수상 기록\n시즌: 1990\n수상 종류: Golden Glove\n선수: 이호성\n팀: OB\n포지션: OF"
+        by_key = {
+            (1990, "골든글러브", "이호성"): [LegacySourceRow(1, "x", team_name="OB", category="중견수")],
+        }
+        assert match_award(body, by_key, team_franchises={"OB": frozenset({4})}).reason == MATCHED
+
+
+class TestTeamFranchiseIds:
+    def test_era_codes_resolve_through_the_history_table(self) -> None:
+        """team_franchises lacks NX/CB/TP, so resolving from it alone returns nothing."""
+        assert team_franchise_ids("HT") == frozenset({5})
+        assert team_franchise_ids("KIA") == frozenset({5})
+        assert team_franchise_ids("NX") == frozenset({11})
+        assert team_franchise_ids("WO") == frozenset({11})
+        assert team_franchise_ids("CB") == frozenset({6})
+        assert team_franchise_ids("TP") == frozenset({6})
+
+    def test_korean_names_resolve_through_the_alias_table(self) -> None:
+        assert team_franchise_ids("삼성") == frozenset({1})
+        assert team_franchise_ids("KIA 타이거즈") == frozenset({5})
+        assert team_franchise_ids("넥센") == frozenset({11})
+        assert team_franchise_ids("키움") == frozenset({11})
+
+    def test_the_clubs_english_spelling_resolves(self) -> None:
+        """`awards.team_name` stores ``kt wiz``; the alias table had only ``KT 위즈``."""
+        assert team_franchise_ids("kt wiz") == frozenset({10})
+        assert team_franchise_ids("kt 위즈") == frozenset({10})
+
+    def test_an_unknown_label_resolves_to_nothing(self) -> None:
+        """Empty is the caller's cue to fall back to the literal string."""
+        assert team_franchise_ids("ZZ") == frozenset()
+
+    def test_empty_labels_resolve_to_nothing(self) -> None:
+        assert team_franchise_ids("") == frozenset()
+        assert team_franchise_ids(None) == frozenset()
+
+    def test_the_resolver_seam_overrides_the_table(self) -> None:
+        assert team_franchise_ids("삼성", {"삼성": frozenset({99})}) == frozenset({99})
 
 
 class TestMatchTeamHistory:

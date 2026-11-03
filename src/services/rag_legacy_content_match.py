@@ -101,6 +101,14 @@ AWARD_POSITION_ALIASES: Mapping[str, str] = {
     "OF": "외야수",
     "DH": "지명타자",
     "P": "투수",
+    # The table spells the same position both ways (``지명 타자`` 40 rows,
+    # ``지명타자`` 4) and splits the outfield three ways while the legacy text
+    # says only ``OF``. Folding both here keeps the comparison about the
+    # position rather than about which of two spellings a row happens to carry.
+    "지명 타자": "지명타자",
+    "좌익수": "외야수",
+    "우익수": "외야수",
+    "중견수": "외야수",
 }
 
 
@@ -108,8 +116,44 @@ def normalize_award_category(raw: str | None) -> str:
     """Normalize position/category name across English code and Korean text."""
     if not raw:
         return ""
-    stripped = raw.strip()
-    return AWARD_POSITION_ALIASES.get(stripped, stripped)
+    return AWARD_POSITION_ALIASES.get(raw.strip(), raw.strip())
+
+
+def team_franchise_ids(
+    label: str | None,
+    resolver: Mapping[str, frozenset[int]] | None = None,
+) -> frozenset[int]:
+    """Resolve one team label -- a code or a Korean name, any era -- to franchises.
+
+    A precomputed map cannot do this job: the labels come from both sides at match
+    time, and a code the map happens not to carry compares as "no team", which
+    reads as a conflict. Resolving per label means an unlisted code still finds its
+    franchise.
+
+    ``HT``/``KIA`` (franchise 5), ``WO``/``NX``/``KH`` (11) and ``SM``/``CB``/``TP``/
+    ``HU`` (6) are the same club in different decades; ``franchise_id_for_team_code``
+    holds that table, and it is the reason ``team_franchises`` alone is not enough —
+    that table omits ``NX``, ``CB`` and ``TP``.
+
+    Args:
+        label: A team code or name as stored on either side of the comparison.
+        resolver: Test seam. A label present here wins over the built-in table.
+
+    Returns:
+        Franchise ids for the label, or an empty set when nothing claims it — the
+        caller's cue to fall back to a literal string match.
+
+    """
+    if not label:
+        return frozenset()
+    if resolver is not None and label in resolver:
+        return resolver[label]
+    from src.utils.team_codes import TEAM_NAME_TO_CODE
+    from src.utils.team_history import franchise_id_for_team_code
+
+    code = TEAM_NAME_TO_CODE.get(label) or TEAM_NAME_TO_CODE.get(label.upper()) or label
+    franchise = franchise_id_for_team_code(code)
+    return frozenset({franchise}) if franchise is not None else frozenset()
 
 
 TEAM_HISTORY_FIELDS = {
@@ -243,13 +287,26 @@ def match_movement(
 def _is_award_candidate_valid(
     cand: LegacySourceRow,
     chunk_team: str | None,
-    chunk_team_code: str | None,
     chunk_cat_norm: str | None,
+    team_franchises: Mapping[str, frozenset[int]] | None,
 ) -> bool:
+    """Reject a candidate whose team or position disagrees with the chunk.
+
+    Team agreement is decided by **franchise**, not by the string: the same club
+    appears as an era code in one place and a Korean name in the other, and a
+    literal comparison reads that as a conflict. When neither side resolves to a
+    franchise the comparison falls back to the literal string, so an unknown
+    label cannot pass by being unknown.
+    """
     if chunk_team is not None:
-        cand_teams = {cand.team_code, cand.team_name} - {None}
-        if cand_teams and chunk_team not in cand_teams and chunk_team_code not in cand_teams:
-            return False
+        cand_labels = {cand.team_code, cand.team_name} - {None}
+        if cand_labels and chunk_team not in cand_labels:
+            chunk_franchises = team_franchise_ids(chunk_team, team_franchises)
+            cand_franchises = frozenset().union(
+                *(team_franchise_ids(label, team_franchises) for label in cand_labels),
+            )
+            if not (chunk_franchises & cand_franchises):
+                return False
     return not (chunk_cat_norm and cand.category and normalize_award_category(cand.category) != chunk_cat_norm)
 
 
@@ -257,9 +314,13 @@ def match_award(
     content: str,
     by_key: Mapping[tuple[int, str, str], Sequence[LegacySourceRow]],
     by_year_type: Mapping[tuple[int, str], Sequence[LegacySourceRow]] | None = None,
-    team_name_to_code: Mapping[str, str] | None = None,
+    team_franchises: Mapping[str, frozenset[int]] | None = None,
 ) -> LegacyMatchOutcome:
-    """Pair a legacy award chunk with its row, cross-checking position and team."""
+    """Pair a legacy award chunk with its row, cross-checking position and team.
+
+    ``team_franchises`` comes from :func:`team_franchise_map`; without it the team
+    check compares strings and rejects the era-code/name pairs that name one club.
+    """
     fields = parse_fields(content, AWARD_FIELDS)
     if fields is None:
         return LegacyMatchOutcome(PARSE_FAILED)
@@ -278,14 +339,13 @@ def match_award(
 
     team_match = AWARD_TEAM_FIELD.search(content)
     chunk_team = team_match.group(1).strip() if team_match else None
-    chunk_team_code = team_name_to_code.get(chunk_team) if (team_name_to_code and chunk_team) else chunk_team
 
     cat_match = AWARD_CATEGORY_FIELD.search(content)
     chunk_cat = cat_match.group(1).strip() if cat_match else None
     chunk_cat_norm = normalize_award_category(chunk_cat) if chunk_cat else None
 
     valid = [
-        cand for cand in candidates if _is_award_candidate_valid(cand, chunk_team, chunk_team_code, chunk_cat_norm)
+        cand for cand in candidates if _is_award_candidate_valid(cand, chunk_team, chunk_cat_norm, team_franchises)
     ]
     if not valid:
         return LegacyMatchOutcome(FIELD_CONFLICT, candidates=tuple(row.source_row_id for row in candidates))

@@ -234,7 +234,7 @@ def _match_one(source_table: str, content: str, indexes: dict) -> LegacyMatchOut
         return match_movement(content, indexes["player_movements"], TEAM_NAME_TO_CODE)
     if source_table == "awards":
         exact, by_year_type = indexes["awards"]
-        return match_award(content, exact, by_year_type, team_name_to_code=TEAM_NAME_TO_CODE)
+        return match_award(content, exact, by_year_type)
     return match_team_history(content, indexes["team_history"])
 
 
