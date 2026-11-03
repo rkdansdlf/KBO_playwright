@@ -485,7 +485,16 @@ class AwardCrawler:
         all_rows = table.find_all("tr")
         if not all_rows:
             return [], []
-        headers = [re.sub(r"\s+", " ", cell.get_text(strip=True)) for cell in all_rows[0].find_all(["th", "td"])]
+        # A header cell that spans columns labels every column it covers. The
+        # 골든글러브 table declares ``외야수`` and ``지명 타자`` with ``colspan=4``
+        # each while its rows carry twelve cells, so taking the header's *cell*
+        # count as the grid width truncated the row after the first outfielder --
+        # the third outfielder and the DH were dropped, and the second outfielder
+        # was labelled ``지명 타자`` because that header sat at index 8.
+        headers: list[str] = []
+        for cell in all_rows[0].find_all(["th", "td"]):
+            label = re.sub(r"\s+", " ", cell.get_text(strip=True))
+            headers.extend([label] * max(int(str(cell.get("colspan") or 1)), 1))
         header_cells = len(headers)
         if header_cells == 0:
             headers = [f"col{i}" for i in range(max(len(r.find_all(["th", "td"])) for r in all_rows[1:]))]
@@ -619,7 +628,11 @@ class AwardCrawler:
             year = _extract_year(row[0])
             if year is None:
                 continue
-            for col in range(1, min(len(row), len(headers))):
+            # ``_render_table`` pads and truncates every row to the grid width, so
+            # ``headers[col]`` is in range for the whole row. Reading the label by
+            # index is why the grid width cannot be a guess: a shorter row would
+            # raise here rather than silently pair a player with the wrong position.
+            for col in range(1, len(headers)):
                 cell_text = row[col]
                 if not cell_text or cell_text in ("-", "—"):
                     continue

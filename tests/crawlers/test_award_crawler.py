@@ -121,6 +121,13 @@ DEFENSE_HTML = """
 </table>
 """
 
+COLSPAN_GG_HTML = """
+<table class="wikitable">
+  <tr><th>연도</th><th>투수</th><th>포수</th><th>1루수</th><th>2루수</th><th>3루수</th><th>유격수</th><th colspan="4">외야수</th><th colspan="4">지명 타자</th></tr>
+  <tr><td>2021</td><td>미란다 (두산)</td><td>강민호 (삼성)</td><td>강백호 (kt)</td><td>정은원 (한화)</td><td>최정 (SSG)</td><td>김혜성 (키움)</td><td>이정후 (키움)</td><td>홍창기 (LG)</td><td>구자욱 (삼성)</td><td></td><td>양의지 (NC)</td></tr>
+</table>
+"""
+
 YAGOO_HTML = """
 <html><body>
 <h2>2024 시즌 수상 내역</h2>
@@ -314,6 +321,43 @@ class TestParsePositionalWiki:
     def test_category_from_header_label(self) -> None:
         records = AwardCrawler()._parse_positional_wiki(_soup(DEFENSE_HTML), "수비상")
         assert all(r.category == "유격수" for r in records if r.player_name == "박찬호")
+
+    def test_a_colspan_header_labels_every_column_it_covers(self) -> None:
+        """외야수 spans four columns, so the row carries three outfielders and a DH.
+
+        Reading the header's *cell* count as the grid width truncated the row after
+        the first outfielder: the third outfielder and the DH were dropped, and the
+        second outfielder was labelled 지명 타자 because that header sat at index 8.
+        Measured 2026-11-03 against the live table: 40 seasons lost two outfielders
+        each, and 36 chunks disagreed with the table on position.
+        """
+        records = AwardCrawler()._parse_positional_wiki(_soup(COLSPAN_GG_HTML), "골든글러브")
+        by_player = {r.player_name: r.category for r in records}
+        assert len(records) == 10, "three outfielders and the DH must survive"
+        assert by_player["이정후"] == "외야수"
+        assert by_player["홍창기"] == "외야수"
+        assert by_player["구자욱"] == "외야수"
+        assert by_player["양의지"] == "지명 타자"
+
+    def test_an_empty_colspan_column_does_not_become_a_record(self) -> None:
+        """The outfield spans four columns but lists three; the gap must not parse."""
+        records = AwardCrawler()._parse_positional_wiki(_soup(COLSPAN_GG_HTML), "골든글러브")
+        assert all(r.player_name for r in records)
+        assert len([r for r in records if r.category == "외야수"]) == 3
+
+    def test_a_cell_whose_column_has_no_header_is_skipped_not_guessed(self) -> None:
+        """A row wider than its header names columns nobody labelled; drop those.
+
+        The parser reads the label from ``headers[col]``, so it must not walk past
+        the header: a column the header does not name has no position, and guessing
+        one (``투수``) would put a player where the source never said.
+        """
+        html = """<table class="wikitable">
+          <tr><th>연도</th><th>투수</th></tr>
+          <tr><td>2021</td><td>미란다 (두산)</td><td>강민호 (삼성)</td></tr>
+        </table>"""
+        records = AwardCrawler()._parse_positional_wiki(_soup(html), "골든글러브")
+        assert {r.player_name for r in records} == {"미란다"}
 
     def test_no_year_row_skipped(self) -> None:
         html = """<table class="wikitable">
