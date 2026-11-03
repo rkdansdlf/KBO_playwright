@@ -139,7 +139,7 @@ and adds the verdict each pairing produces (measured 2026-11-02, read-only):
 | Source | Legacy | Matched | Verdict |
 | --- | --- | --- | --- |
 | `player_movements` | 4,503 | **4,503 (100%)** | **DUPLICATE 4,503** |
-| `awards` | 486 | 410 | **REKEY 410** |
+| `awards` | 486 | **325** | **REKEY 325** (2026-11-03, franchise 대조 후) |
 | `team_history` | 385 | 385 | REKEY 375 · DUPLICATE 10 |
 
 `team_history` reached **385/385** once the source column's embedded newline
@@ -148,7 +148,7 @@ a data gap.
 
 **What the verdicts mean**
 
-* **`REKEY` 785** (awards 410 + team_history 375): the natural key is free, so
+* **`REKEY` 700** (awards 325 + team_history 375, both applied): the natural key is free, so
   the identity can move onto it. This is the population `apply_rag_rekey` may be
   pointed at, and it is under a tenth of what the census claimed.
 * **`DUPLICATE` 4,513** (movements 4,503 + team_history 10): the natural key
@@ -208,7 +208,7 @@ the census. Two things were fixed on the way:
 
 Measured, read-only: `match_legacy_content --source awards --output m.json` then
 `apply_rag_rekey --manifest m.json` returned
-**`status=SUCCESS_APPLIED mode=dry-run rekeyed=410`**.
+**`status=SUCCESS_APPLIED mode=dry-run rekeyed=325`** (awards, after the franchise fix below).
 
 > [!WARNING]
 > **Safety Re-evaluation & Rekey Hold Notice (2026-11-03)**:
@@ -397,3 +397,57 @@ the same player-season — which the search already tolerates.
 (`[META]` parsing detail: the JSON is followed by a footer line
 (`… / 기준일 2026-04-19`), so it must be read with `json.JSONDecoder().raw_decode`,
 not `json.loads` — a plain `loads` rejects 100% of them as "Extra data".)
+
+## 9. P1/P7 outcome — 700 chunks re-keyed, measured (2026-11-03)
+
+**Applied**: 375 `team_history` + 325 `awards` = **700 identities moved**. Every
+apply ran through the content-proof manifest; none rolled back.
+
+**`awards` went 49 → 325 matched.** The 361 `field_conflict` rows were re-examined
+and **289 were not conflicts at all** — the chunk writes an era code where the
+table writes a Korean name, and a string comparison reads one club as two:
+
+| chunk | table | same franchise |
+| --- | --- | --- |
+| `HT` | `KIA 타이거즈` | 5 |
+| `WO` | `넥센` | 11 |
+| `CB` | `청보` | 6 |
+| `TP` | `태평양` | 6 |
+
+`team_franchise_ids` resolves each label through `franchise_id_for_team_code`,
+whose era table carries `NX`/`CB`/`TP` that `team_franchises` omits — so a resolver
+reading only that table returns nothing for them and the pair reads as a conflict.
+A **precomputed map does not work** either: the chunk's label is unknown until match
+time, and a code the map lacks compares as "no team" (the first implementation lost
+all 289 that way). The remaining 29 were `kt wiz`/`kt 위즈`, now an alias in
+`TEAM_NAME_TO_CODE`. Position spellings also fold (`지명 타자`/`지명타자`, and
+`좌익수`/`우익수`/`중견수` → `외야수`).
+
+**36 conflicts survive, and they are real**: the chunk says `외야수` where the row
+says `지명 타자`. Normalization cannot decide those — the source needs re-checking
+(§2-C's 1982~2021 outfield gap is the same table).
+
+**Golden set, before → after the 700:**
+
+| | before | after |
+| --- | --- | --- |
+| Recall@5 | 0.8128 | **0.8795** |
+| MRR | 0.7178 | **0.7844** |
+| hit_rate | 0.8333 | **0.9000** |
+| precision@5 | 0.1933 | 0.2067 |
+| p95 | 1,071 ms | **405 ms** |
+| references absent from the store | 5 | **1** |
+
+The one remaining missing reference is `awards:2025_MVP_NONE_폰세`: **no legacy MVP
+chunk exists for 2025** (the legacy generator wrote Golden Glove only that year), so
+it can only be satisfied by running the awards generator — which is §2-C's
+direction, the generator emitting the rich form.
+
+**Legacy population after**: `game_summary` 68,827 (out of scope) ·
+`player_movements` 4,503 (all DUPLICATE) · `player_season_batting` 2,572 ·
+`awards` **112** (36 conflicts + 76 source gaps) · `player_season_pitching` 328 ·
+`team_history` 10 (DUPLICATE).
+
+**Still unapplied**: the 10 `team_history` DUPLICATE rows. `TARGET_EXISTS_CONTENT_MISMATCH`
+means the natural key is already indexed, so re-keying would merge two identities;
+whether to delete them is §2-C's rich-form question.
