@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 MANIFEST_SCHEMA_VERSION = "r2-rekey-manifest-v1"
 IDENTITY_SCHEMA_VERSION = "r2"
+MATCH_SCHEMA_VERSION = "content-proof-v1"
 #: ``git`` is resolved through ``PATH`` rather than a fixed ``/usr/bin/git``.
 #: The scheduler runs on Windows where that path does not exist, and the
 #: committed absolute path made every manifest generated there carry
@@ -82,6 +83,7 @@ def build_manifest(  # noqa: PLR0913 (all keyword-only; one per manifest section
     unsafe_entry_count: int,
     sources: Sequence[Mapping[str, object]],
     entries: Sequence[Mapping[str, object]],
+    match_schema_version: str = MATCH_SCHEMA_VERSION,
 ) -> dict[str, object]:
     """Return a manifest whose header hash covers its whole body.
 
@@ -97,6 +99,7 @@ def build_manifest(  # noqa: PLR0913 (all keyword-only; one per manifest section
         unsafe_entry_count: Entries a producer flagged as unsafe to apply.
         sources: Per-source summaries.
         entries: The rekey entries, already serialized.
+        match_schema_version: Match proof schema identifier attached to header.
 
     Returns:
         The manifest with ``manifest_header`` attached.
@@ -115,6 +118,7 @@ def build_manifest(  # noqa: PLR0913 (all keyword-only; one per manifest section
     header = {
         "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
         "identity_schema_version": IDENTITY_SCHEMA_VERSION,
+        "match_schema_version": match_schema_version,
         "generated_at": datetime.now(KST).isoformat(),
         "database_fingerprint": database_fingerprint(),
         "git_commit_sha": current_git_sha(),

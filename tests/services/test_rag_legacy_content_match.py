@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from src.services.rag_legacy_content_match import (
     AMBIGUOUS,
+    FIELD_CONFLICT,
     MATCHED,
     PARSE_FAILED,
     UNMATCHED,
@@ -15,6 +16,7 @@ from src.services.rag_legacy_content_match import (
     match_award,
     match_movement,
     match_team_history,
+    normalize_award_category,
     normalize_award_type,
     normalize_source_team_name,
     parse_fields,
@@ -160,6 +162,17 @@ class TestMatchMovement:
         assert outcome.reason == MATCHED
         assert outcome.source_row_id == 4549
 
+    def test_single_candidate_with_conflicting_team_returns_field_conflict(self) -> None:
+        """Single candidate whose team contradicts chunk must NOT match."""
+        by_key = {
+            ("2022-05-04", "구자욱(외야수)", "부상자 명단"): [
+                LegacySourceRow(3814, "2022-05-04_LG_구자욱(외야수)_부상자 명단_abc", team_code="LG")
+            ]
+        }
+        outcome = match_movement(MOVEMENT_BODY, by_key, {"삼성": "SS"})
+        assert outcome.reason == FIELD_CONFLICT
+        assert outcome.candidates == (3814,)
+
 
 class TestMatchAward:
     def test_the_english_award_name_matches_the_korean_column(self) -> None:
@@ -213,6 +226,39 @@ class TestMatchAward:
         outcome = match_award(body, {}, by_year_type)
         assert outcome.reason == UNMATCHED
 
+    def test_single_candidate_with_conflicting_position_returns_field_conflict(self) -> None:
+        """Award chunk with position 'C' (catcher) conflicting with row category '외야수'."""
+        by_key = {
+            (2021, "골든글러브", "강민호"): [LegacySourceRow(30, "2021_골든글러브_외야수_강민호", category="외야수")],
+        }
+        outcome = match_award(AWARD_BODY, by_key)
+        assert outcome.reason == FIELD_CONFLICT
+        assert outcome.candidates == (30,)
+
+    def test_single_candidate_with_conflicting_team_returns_field_conflict(self) -> None:
+        """Award chunk with team 'SS' conflicting with row team '두산'/'DB'."""
+        by_key = {
+            (2021, "골든글러브", "강민호"): [
+                LegacySourceRow(30, "2021_골든글러브_포수_강민호", team_code="DB", team_name="두산", category="포수")
+            ],
+        }
+        outcome = match_award(AWARD_BODY, by_key, team_name_to_code={"SS": "SS"})
+        assert outcome.reason == FIELD_CONFLICT
+        assert outcome.candidates == (30,)
+
+    def test_position_alias_c_matches_korean_catcher(self) -> None:
+        """'C' in chunk matches '포수' in row category."""
+        by_key = {
+            (2021, "골든글러브", "강민호"): [
+                LegacySourceRow(30, "2021_골든글러브_포수_강민호", category="포수", team_code="SS")
+            ],
+        }
+        outcome = match_award(AWARD_BODY, by_key, team_name_to_code={"SS": "SS"})
+        assert outcome.reason == MATCHED
+        assert "category" in outcome.matched_fields
+        assert "team" in outcome.matched_fields
+        assert outcome.chunk_content_hash is not None
+
 
 class TestMatchTeamHistory:
     def test_the_short_name_matches_the_source_column(self) -> None:
@@ -229,3 +275,19 @@ class TestMatchTeamHistory:
         outcome = match_team_history(TEAM_HISTORY_BODY, by_key)
         assert outcome.reason == MATCHED
         assert outcome.source_row_id == 182
+
+    def test_ranking_conflict_returns_field_conflict(self) -> None:
+        """Chunk ranking 6 conflicting with row ranking 1."""
+        by_key = {(1982, "삼미"): [LegacySourceRow(7, "1982_SM", ranking=1, city="인천")]}
+        body = "KBO 구단 변천사\n구단: 삼미\n시즌: 1982\n순위: 6\n도시: 인천"
+        outcome = match_team_history(body, by_key)
+        assert outcome.reason == FIELD_CONFLICT
+        assert outcome.candidates == (7,)
+
+    def test_city_conflict_returns_field_conflict(self) -> None:
+        """Chunk city 인천 conflicting with row city 수원."""
+        by_key = {(1982, "삼미"): [LegacySourceRow(7, "1982_SM", ranking=6, city="수원")]}
+        body = "KBO 구단 변천사\n구단: 삼미\n시즌: 1982\n순위: 6\n도시: 인천"
+        outcome = match_team_history(body, by_key)
+        assert outcome.reason == FIELD_CONFLICT
+        assert outcome.candidates == (7,)

@@ -108,4 +108,9 @@ def test_the_database_fingerprint_is_stable_and_masked(monkeypatch) -> None:
     assert first == database_fingerprint(), "two hosts with the same masked shape must not collide"
 
 
+def test_header_includes_match_schema_version() -> None:
+    manifest = _build()
+    assert manifest["manifest_header"]["match_schema_version"] == "content-proof-v1"
+
+
 ENTRIES = [ENTRY_ONE, ENTRY_TWO]
