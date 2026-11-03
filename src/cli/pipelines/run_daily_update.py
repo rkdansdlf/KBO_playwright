@@ -1589,6 +1589,43 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
     }
 
 
+def _log_dag_stage_failures(results: dict[str, object]) -> None:
+    """Summarize failed DAG stages in one error line a grep can find.
+
+    The DAG logs each failure where it happens (``logger.exception`` deep in the
+    per-task log) and then the pipeline reports "[DAG] All N tasks executed" at INFO
+    either way. Measured 2026-11-02: step_1 failed on a stale module cache and the
+    November schedule was never crawled, yet the pipeline's own summary said all
+    tasks executed -- the failure sat between two green-looking lines for days.
+
+    The DAG's ``allow_failure`` stages are meant to let the pipeline continue; they
+    are not meant to make a failure invisible. Nothing is alerted here -- an alert
+    needs a decision about who owns a stage failure, and the per-task exception log
+    already carries the traceback -- but the summary line has to stop pretending
+    every task succeeded.
+
+    Args:
+        results: The DAG's task results, keyed by task id.
+
+    """
+    broken = []
+    for task_id, res in (results or {}).items():
+        state = getattr(res, "state", None)
+        state_value = getattr(state, "value", None) or str(state or "")
+        error = getattr(res, "error", None)
+        if state_value == "FAILED":
+            broken.append(f"{task_id}(failed): {error}")
+        elif state_value == "SKIPPED":
+            broken.append(f"{task_id}(skipped): {error}")
+    if broken:
+        logger.error(
+            "   \u274c DAG stage failure: %d/%d task(s) did not succeed -- %s",
+            len(broken),
+            len(results or {}),
+            " | ".join(broken),
+        )
+
+
 def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
     from src.pipeline.dag import PipelineDAG
 
@@ -1737,6 +1774,7 @@ async def run_update(target_date: str, options: DailyUpdateOptions | None = None
 
     dag = _build_daily_update_dag(ctx)
     dag_results = await dag.execute_async()
+    _log_dag_stage_failures(dag_results)
     logger.info("   [DAG] All %d tasks executed through DAG engine.", len(dag_results))
 
     return _finalize_run_update(ctx)
