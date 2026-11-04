@@ -568,3 +568,41 @@ p50 408ms         p95 17.2s     max 29.2s
 The quality result is accepted. The remote-client p95 is highly variable and
 is not promoted to a hard latency gate until measured from the production
 server or an ADB-adjacent runner.
+
+### PostgreSQL 단일 저장소 — awards 인덱싱 후 재측정 (2026-11-04)
+
+> 아래 절까지는 Oracle/ADB 시절 측정이다. 이 절은 **현행 PostgreSQL 단일
+> 저장소**(`rag_chunks` 377,423행, `damage 0`) 기준이며, 변형은 `bm25`다.
+
+`awards` 원천이 재크롤로 정리된 뒤(§RAG_IDENTITY_PHASE_B_PLAN.md §10) 미인덱싱
+87건을 채웠다. 채우기 전후를 같은 조건(30 쿼리, `--top-k 5`, configured
+embeddings)으로 비교했다:
+
+```text
+                     recall@5   mrr      hit_rate   missing 참조   p50      p95
+인덱싱 전              0.8795     0.7844   0.9000     1             225ms    405ms
+인덱싱 후 (1회차)        0.9462     0.8511   0.9667     0             260ms    6,165ms
+인덱싱 후 (2회차)        0.9462     0.8511   0.9667     0             65ms     130ms
+```
+
+**세 지표가 모두 올랐고 참조 누락이 0이 됐다.** 87건은 수비상 28건 전부,
+올스타전MVP·한국시리즈MVP 8건, 1982~1999 골든글러브(외야수 2·3번째와 지명타자)
+등이었다 — 즉 **골든셋이 아니라 검색 인덱스가 그만큼 비어 있었다.**
+
+**p95 6,165ms는 콜드 캐시다.** 같은 조건으로 다시 돌리면 `130ms`가 나온다.
+이 문서 앞 절들이 p95를 "측정 시점에 따라 흔들리는 값"으로 취급한 이유와 같은
+현상이며, 두 번째 실행을 기준으로 읽어야 한다(첫 실행은 원격 저장소에서
+임베딩·하이드레이션 캐시를 채운다).
+
+**야간 잡은 이 갭을 채우지 않는다(기록)**: `_iter_award_chunks`가 `--season`을
+필터로 쓰는데 `rag_incremental_invocations`는 항상 `--season <올해>`를 붙인다.
+따라서 **과거 연도의 awards는 원천이 바뀌어도 야간에 갱신되지 않는다** —
+2026년 시상은 처리되지만, 재크롤로 과거가 수정되면 수동으로
+`build_rag_index --source awards`(시즌 없이)를 돌려야 한다. 이번 87건이 그
+경로로 채워졌다.
+
+**골든셋 참조 `awards:2025_MVP_NONE_폰세`가 이제 존재한다.** 이 키가 가리키는
+것은 야구나라 행(포지션 없음)이며, 위키 행(`코디 폰세`, `투수`)은
+`2025_MVP_투수_코디 폰세`로 따로 인덱싱된다. 두 소스가 이름과 포지션을 모두
+다르게 쓰는 4쌍이 그래서 청크 4건으로 갈라져 있고(§10의 알려진 한계), 그것이
+`missing 0`과 양립한다 — 참조가 **실재하는 청크**를 가리키면 된다.
