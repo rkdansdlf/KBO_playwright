@@ -89,19 +89,21 @@ def _movement_index(session: Session) -> dict:
     statement = select(
         PlayerMovement.id,
         PlayerMovement.movement_date,
+        PlayerMovement.canonical_team_id,
         PlayerMovement.team_code,
         PlayerMovement.player_name,
         PlayerMovement.section,
     )
     for row in session.execute(statement).yield_per(1_000):
-        identity = stable_player_movement_source_row_id(row[1], row[2], row[3], row[4])
-        snap = hashlib.sha256(repr((row[0], str(row[1]), row[2], row[3], row[4])).encode("utf-8")).hexdigest()
-        index.setdefault((str(row[1]), row[3], row[4]), []).append(
+        canonical = row[2] or row[3]
+        identity = stable_player_movement_source_row_id(row[1], canonical, row[4], row[5])
+        snap = hashlib.sha256(repr((row[0], str(row[1]), canonical, row[4], row[5])).encode("utf-8")).hexdigest()
+        index.setdefault((str(row[1]), row[4], row[5]), []).append(
             LegacySourceRow(
                 int(row[0]),
                 identity,
-                team_code=row[2],
-                player_name=row[3],
+                team_code=canonical,
+                player_name=row[4],
                 source_snapshot_hash=snap,
             ),
         )
