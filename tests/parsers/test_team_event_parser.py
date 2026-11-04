@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from pathlib import Path
 from src.constants import KST
 
 from src.parsers.team_event_parser import (
@@ -391,3 +392,51 @@ class TestConstants:
 
     def test_cutoff_days(self):
         assert CUTOFF_DAYS == 60
+
+
+class TestTheCutoffWindowChangesTheCount:
+    """The dependency the drift check has to replay, with real fixture numbers.
+
+    ``test_team_events_replay_determinism`` parses three times without metadata and
+    sees the same count -- because the fallback is ``datetime.now(KST)`` and the
+    three calls happen in the same instant. That test cannot see this: the window
+    is what the count depends on, and it only changes when the *conditions* change.
+    """
+
+    def _fixture(self) -> str:
+        path = Path(__file__).resolve().parents[1] / "fixtures" / "html" / "hh_events_notice.html"
+        return path.read_text(encoding="utf-8")
+
+    def test_the_same_fixture_yields_different_counts_under_different_windows(self) -> None:
+        from src.parsers.team_event_parser import parse_team_events
+
+        html = self._fixture()
+
+        crawl = parse_team_events(
+            html, "hanwha_eagles_events", {"fetched_at": "2025-04-10T00:00:00", "cutoff_days": 30}
+        )
+        default = parse_team_events(html, "hanwha_eagles_events")
+
+        assert len(crawl) == 4
+        assert len(default) == 0, "the default window starts from now, so the 2025 fixture ages out"
+
+    def test_the_same_window_twice_is_deterministic(self) -> None:
+        from src.parsers.team_event_parser import parse_team_events
+
+        html = self._fixture()
+        context = {"fetched_at": "2025-04-10T00:00:00", "cutoff_days": 30}
+
+        assert len(parse_team_events(html, "hanwha_eagles_events", context)) == len(
+            parse_team_events(html, "hanwha_eagles_events", dict(context)),
+        )
+
+    def test_a_narrower_window_yields_less(self) -> None:
+        from src.parsers.team_event_parser import parse_team_events
+
+        html = self._fixture()
+
+        narrow = parse_team_events(
+            html, "hanwha_eagles_events", {"fetched_at": "2025-04-10T00:00:00", "cutoff_days": 7}
+        )
+
+        assert len(narrow) == 1

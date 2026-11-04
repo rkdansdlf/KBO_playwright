@@ -197,7 +197,24 @@ class TeamEventCrawler:
             # measured 2026-11-01: 0 of the most recent 100 snapshots carried one,
             # and 76 of those 100 came from this crawler. A parse that raises
             # writes nothing, which is the honest record: there was no count.
-            snapshot["capture_metadata"] = {"parsed_records": len(page_events)}
+            #
+            # ``fetched_at`` and ``cutoff_days`` travel with the count because this
+            # parser is time-windowed: it keeps events published no earlier than
+            # ``fetched_at - cutoff_days``. The drift check re-parses weeks later,
+            # so without the conditions it reads *today's* window -- and this
+            # crawler parses with ``days_back`` (30) while the parser's default is
+            # ``CUTOFF_DAYS`` (60), which turned a 0-record page into N records and
+            # reported the calendar as drift (6 of the 8 drifted snapshots on
+            # 2026-11-04). The window is part of what the count means.
+            snapshot["capture_metadata"] = {
+                "parsed_records": len(page_events),
+                # Read from the same dict the parser was given, not from the crawler's
+                # fields again: two expressions for one window can drift apart, and a
+                # stored window that disagrees with the parsed one is worse than no
+                # window -- the replay would confidently use the wrong one.
+                "fetched_at": metadata["fetched_at"],
+                "cutoff_days": metadata["cutoff_days"],
+            }
             new_events = []
             for event in page_events:
                 event_key = (event.get("team_id"), event.get("title"), event.get("source_url"))
