@@ -510,6 +510,15 @@ def _rag_target_urls() -> tuple[str, ...]:
 #: every source that came after it.
 _NIGHTLY_EXCLUDED_SOURCES: frozenset[str] = frozenset({"staging_rag_chunks"})
 
+#: Sources whose past is still being corrected, so ``--season <this year>`` would only re-read this
+#: year and leave every earlier one untouched. ``awards`` and ``team_history`` are each one row per
+#: (year, winner) or (year, club) that describe the whole history in one cursor; unlike games and
+#: plays, an award or a franchise record from 1982 can still be fixed today. Measured 2026-11-04:
+#: the crawler's `colspan` bug had dropped ~80 award rows across 1982-2021 and the nightly sync had
+#: never revisited them, so 87 award chunks were missing from the index while the job reported
+#: success. Both sources are small (564 and 385 rows), so reading them whole costs little.
+_SEASONLESS_SOURCES: frozenset[str] = frozenset({"awards", "team_history"})
+
 
 def rag_incremental_invocations(year: int) -> list[list[str]]:
     """Return the builder argument lists for one nightly RAG sync.
@@ -525,7 +534,10 @@ def rag_incremental_invocations(year: int) -> list[list[str]]:
     others = [name for name in rag_all_source_names() if name != "pbp" and name not in _NIGHTLY_EXCLUDED_SOURCES]
     invocations = []
     for name in others:
-        argv = ["--source", name, "--season", season, "--skip-existing"]
+        argv = ["--source", name]
+        if name not in _SEASONLESS_SOURCES:
+            argv += ["--season", season]
+        argv.append("--skip-existing")
         if name in mapped:
             argv += ["--vector-presence", "--content-presence"]
         invocations.append(argv)
