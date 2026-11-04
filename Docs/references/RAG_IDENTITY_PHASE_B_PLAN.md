@@ -451,3 +451,66 @@ direction, the generator emitting the rich form.
 **Still unapplied**: the 10 `team_history` DUPLICATE rows. `TARGET_EXISTS_CONTENT_MISMATCH`
 means the natural key is already indexed, so re-keying would merge two identities;
 whether to delete them is §2-C's rich-form question.
+
+## 10. P4 outcome — the awards source was wrong, not the matcher (2026-11-04)
+
+The 36 `field_conflict` rows §9 left behind were not a matcher problem. The
+**crawler had been dropping cells**, and re-crawling fixed what matching could
+not.
+
+**The defect**: the 위키 골든글러브 table declares ``외야수`` and ``지명 타자``
+with **`colspan=4` each** while its data rows carry **twelve cells**. The crawler
+took the header's *cell* count (9) as the grid width and truncated there, so the
+third outfielder and the DH were dropped and the second outfielder was labelled
+``지명 타자`` (that header sat at index 8). Measured: 1982~2021 stored **8 rows a
+year** with one outfielder; 2022~2025 stored 10 because 야구나라 filled them.
+**About 80 rows across 40 seasons were missing.** The other three tables
+(MVP 6/6, 신인상 6/6, 수비상 10/10) and the draft tables are unaffected — none of
+them use `colspan`.
+
+The fix expands a header label across the columns it spans, and that is **all** it
+does. A data-width guard and header padding were written first and reverted —
+mutations could not kill them, because `_render_table` already truncates and pads
+every row to the grid width, and widening `headers` would have changed
+`draft_wiki_crawler`'s pick-order arithmetic, which reads `len(headers)`.
+
+**The second defect**: `_dedup` compared the category verbatim, so the two sources'
+spellings let the same winner through twice. ``지명 타자`` (위키) vs ``지명타자``
+(야구나라) — 4 rows, 2022~2025, each with a different `team_name` too, so
+`uq_award_record` did not catch them. And 야구나라 carries no position for MVP and
+신인상, so those rows entered as `category=None` and split from Wikipedia's —
+5 rows (2022 이정후·정철원, 2023 문동주, 2024 김도영·김택연). Both are fixed at
+dedup, folding **spaces only**: 수비상's 좌익수/중견수/우익수 stay distinct because
+the source distinguishes them (the matcher folds them later because the legacy
+chunks say only ``OF``; that is a comparison rule, not a storage rule).
+
+**The cleanup**: re-crawl took `awards` 486 → 616. Then 52 rows the current crawler
+would never emit were deleted — 40 mislabelled ``지명 타자`` and 12 second copies
+from the `team_name` split (`KIA` vs `KIA 타이거즈`). **616 − 52 = 564, exactly the
+crawl's own output.** The rows are in
+`data/repair_backups/awards_cleanup_20261104.csv` and the deletion is recorded in
+`correction_audit_trail` (`entity_type='award'`, `field_name='row_deleted'`).
+
+**The result**: re-matching awards legacy (112 rows left after §9) gave **106
+matched, `field_conflict` 0** — the 36 conflicts were collateral damage from the
+crawler, all of them, and re-keying fixed them. 106 more identities moved.
+
+**Six rows remain unmatched, and they are not a matcher problem either**: the
+source has no such winner. The names disagree across eras and languages —
+2014 `밴헤켄`/`헤켄` (the Dutch surname), 1998·1999·1994 `류지현`/`유지현` (the
+spelling changed after 두음법칙 reform; the wiki table uses the period form), 2004
+`이진영` (that year's outfielders are 브룸바·이병규·박한이), and 1982 신인상 is `-`
+in the chunk with no row at all. **No name-guessing rule was added** — partial
+matching would resurrect exactly the false confidence the numeric census had.
+They keep their embeddings and stay searchable.
+
+**Golden set: unchanged** (Recall@5 0.8795, MRR 0.7844, hit_rate 0.9000). This work
+made the *source* accurate; it did not change the reference identities, so the
+30-query set cannot see it. The one absent reference is still
+`awards:2025_MVP_NONE_폰세` — no legacy MVP chunk exists for 2025, which only
+running the generator can fix (§2-C).
+
+**Known limit, recorded not fixed**: the two sources also spell player names
+differently (``에릭 페디``/``페디``, ``코디 폰세``/``폰세``), so those two winners
+still have two rows (2023 and 2025 MVP). Deciding "same person" from a partial
+string is a guess, and the crawl stage is the wrong place to guess.
