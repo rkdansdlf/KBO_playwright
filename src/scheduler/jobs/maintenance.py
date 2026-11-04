@@ -106,7 +106,7 @@ def _rag_vector_backend_configured() -> bool:
     retry_error_callback=alert_failure,
 )
 def crawl_retired_players_job(limit: int | None = None) -> None:
-    """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 02:00 KST."""
+    """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 04:15 KST."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Monthly Retired Player Crawl ===")
         try:
@@ -195,7 +195,7 @@ def compute_standings_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def aggregate_team_defense_job() -> None:
-    """Aggregate daily team defense statistics. Runs daily at 03:45 KST.
+    """Aggregate daily team defense statistics. Runs daily at 00:45 KST.
 
     The daily pipeline already aggregates team defense right after it refreshes the
     player fielding/baserunning lines. This job stays as a safety net for days when
@@ -288,7 +288,7 @@ def _integrity_target_dates() -> list[str]:
 
     Incident keys are date-scoped (``integrity:<check>:<YYYYMMDD>``) and the job
     only ever evaluated the previous day. A check that failed transiently -- for
-    example when it ran before the 03:00 crawl landed, or against a briefly stale
+    example when it ran before the 00:00 crawl landed, or against a briefly stale
     database -- therefore had no later chance to pass, so its incident stayed OPEN
     forever and the dashboard never cleared. Re-checking a short trailing window
     re-evaluates those keys so a genuine recovery resolves the incident by itself.
@@ -300,7 +300,7 @@ def _integrity_target_dates() -> list[str]:
     from src.utils.date_helpers import parse_date_str_lenient
 
     # The window is anchored to the previous KST day, so that is also the
-    # fallback: defaulting to KST today would re-check a day whose 03:00 crawl
+    # fallback: defaulting to KST today would re-check a day whose 00:00 crawl
     # has not landed yet and open a fresh incident against incomplete data.
     yesterday = (datetime.now(KST) - timedelta(days=1)).date()
     newest = parse_date_str_lenient(_previous_day_kst(), fallback=yesterday)
@@ -396,7 +396,7 @@ def _revalidate_stale_integrity_incidents(evaluated_dates: set[str], resolve_key
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def data_integrity_check_job() -> None:
-    """Run post-crawl data integrity validation (daily at 04:45 KST)."""
+    """Run post-crawl data integrity validation (daily at 01:45 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Data Integrity Check ===")
         try:
@@ -445,7 +445,7 @@ def data_integrity_check_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def source_coverage_job() -> None:
-    """Publish the blocked-source incident (daily at 05:10 KST).
+    """Publish the blocked-source incident (daily at 02:10 KST).
 
     Runs after ``data_integrity_check`` so a day whose integrity problems were
     already explained does not also arrive as a source problem. The gap it
@@ -605,7 +605,7 @@ def sync_rag_incremental_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def sparse_terms_catchup_job() -> None:
-    """Sparse postings catch-up for chunks published after the last build (daily 05:40 KST)."""
+    """Sparse postings catch-up for chunks published after the last build (daily 02:40 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Sparse Terms Catch-up ===")
         try:
@@ -631,7 +631,7 @@ def sparse_terms_catchup_job() -> None:
 
 @_with_lock_skip_guard
 def backup_db_job() -> None:
-    """Weekly SQLite Backup & Integrity Check Job (Sunday 02:00 KST)."""
+    """Weekly SQLite Backup & Integrity Check Job (Sunday 03:00 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Weekly SQLite Backup & Integrity Check ===")
         try:
@@ -787,7 +787,7 @@ def cleanup_stale_data_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def notification_retention_job() -> None:
-    """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:00 KST)."""
+    """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:45 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Notification Retention Job ===")
         try:
@@ -972,7 +972,7 @@ def _drift_alert_severity(drifts: Sequence[object]) -> AlertSeverity:
 def relay_state_cleanup_job() -> None:
     """Weekly relay source state audit job.
 
-    Runs Sunday 02:15 KST to audit relay source states.
+    Runs Sunday 03:15 KST to audit relay source states.
     All remediation actions run in dry-run mode (observation only, no writes).
     Uses --sample-size 10000 for performance on large databases.
     """

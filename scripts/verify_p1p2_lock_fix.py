@@ -3,7 +3,7 @@
 Reproduces the 2026-07 contention scenario WITHOUT touching operational data,
 sending alerts, or leaving a run marker behind:
 
-1. Simulate ``crawl_daily_games`` holding ``DAILY_LOCK`` (as the real 03:00 job
+1. Simulate ``crawl_daily_games`` holding ``DAILY_LOCK`` (as the real 00:00 job
    does via ``run_daily_update_main(acquire_lock=False)``).
 2. Call ``crawl_p1p2_data_job()`` while that lock is held. Before the fix this
    raised ``LockAcquisitionError`` (nested ``daily_update`` lock collision) and

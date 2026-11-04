@@ -32,6 +32,7 @@ answer.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -42,11 +43,14 @@ if TYPE_CHECKING:
 #: ``matched`` — exactly one source row. ``ambiguous`` — two or more, and the
 #: team name did not split them. ``unmatched`` — none. ``parse_failed`` — the
 #: text did not carry the fields, which is a different claim from "the row is
-#: gone" and must not be reported as one.
+#: gone" and must not be reported as one. ``field_conflict`` — candidate found
+#: but contradictory metadata (e.g. team or position mismatch).
 MATCHED = "matched"
 AMBIGUOUS = "ambiguous"
 UNMATCHED = "unmatched"
 PARSE_FAILED = "parse_failed"
+FIELD_CONFLICT = "field_conflict"
+IDENTITY_VERIFIED = "identity_verified"
 
 #: What a matched chunk means for the store, once its natural key is known.
 #: ``REKEY`` — the natural key is free, so the identity can move onto it.
@@ -85,10 +89,79 @@ AWARD_FIELDS = {
     "award_type": re.compile(r"수상 종류:\s*([^\n]+)"),
     "player": re.compile(r"선수:\s*([^\n]+)"),
 }
+AWARD_TEAM_FIELD = re.compile(r"팀:\s*([^\n]+)")
+AWARD_CATEGORY_FIELD = re.compile(r"(?:포지션|부문):\s*([^\n]+)")
+
+AWARD_POSITION_ALIASES: Mapping[str, str] = {
+    "C": "포수",
+    "1B": "1루수",
+    "2B": "2루수",
+    "3B": "3루수",
+    "SS": "유격수",
+    "OF": "외야수",
+    "DH": "지명타자",
+    "P": "투수",
+    # The table spells the same position both ways (``지명 타자`` 40 rows,
+    # ``지명타자`` 4) and splits the outfield three ways while the legacy text
+    # says only ``OF``. Folding both here keeps the comparison about the
+    # position rather than about which of two spellings a row happens to carry.
+    "지명 타자": "지명타자",
+    "좌익수": "외야수",
+    "우익수": "외야수",
+    "중견수": "외야수",
+}
+
+
+def normalize_award_category(raw: str | None) -> str:
+    """Normalize position/category name across English code and Korean text."""
+    if not raw:
+        return ""
+    return AWARD_POSITION_ALIASES.get(raw.strip(), raw.strip())
+
+
+def team_franchise_ids(
+    label: str | None,
+    resolver: Mapping[str, frozenset[int]] | None = None,
+) -> frozenset[int]:
+    """Resolve one team label -- a code or a Korean name, any era -- to franchises.
+
+    A precomputed map cannot do this job: the labels come from both sides at match
+    time, and a code the map happens not to carry compares as "no team", which
+    reads as a conflict. Resolving per label means an unlisted code still finds its
+    franchise.
+
+    ``HT``/``KIA`` (franchise 5), ``WO``/``NX``/``KH`` (11) and ``SM``/``CB``/``TP``/
+    ``HU`` (6) are the same club in different decades; ``franchise_id_for_team_code``
+    holds that table, and it is the reason ``team_franchises`` alone is not enough —
+    that table omits ``NX``, ``CB`` and ``TP``.
+
+    Args:
+        label: A team code or name as stored on either side of the comparison.
+        resolver: Test seam. A label present here wins over the built-in table.
+
+    Returns:
+        Franchise ids for the label, or an empty set when nothing claims it — the
+        caller's cue to fall back to a literal string match.
+
+    """
+    if not label:
+        return frozenset()
+    if resolver is not None and label in resolver:
+        return resolver[label]
+    from src.utils.team_codes import TEAM_NAME_TO_CODE
+    from src.utils.team_history import franchise_id_for_team_code
+
+    code = TEAM_NAME_TO_CODE.get(label) or TEAM_NAME_TO_CODE.get(label.upper()) or label
+    franchise = franchise_id_for_team_code(code)
+    return frozenset({franchise}) if franchise is not None else frozenset()
+
+
 TEAM_HISTORY_FIELDS = {
     "team": re.compile(r"구단:\s*([^\n]+)"),
     "season": re.compile(r"시즌:\s*([0-9]{4})"),
 }
+TEAM_HISTORY_RANKING_FIELD = re.compile(r"순위:\s*([0-9]+)")
+TEAM_HISTORY_CITY_FIELD = re.compile(r"도시:\s*([^\n]+)")
 
 #: The legacy award generator wrote English names; the column holds Korean ones.
 AWARD_TYPE_ALIASES: Mapping[str, str] = {
@@ -104,13 +177,14 @@ class LegacySourceRow:
 
     source_row_id: int
     identity: str
-    #: Only ``player_movements`` needs this: it is what splits the era/current
-    #: code twins (``HT``/``KIA``) apart.
     team_code: str | None = None
-    #: Only ``awards`` needs this: the legacy text shortens foreign names
-    #: (``로하스`` for ``멜 로하스 주니어``, ``린드블럼`` for ``조쉬 린드블럼``), and the
-    #: full name is what a substring fallback searches.
     player_name: str | None = None
+    team_name: str | None = None
+    category: str | None = None
+    season: int | None = None
+    ranking: int | None = None
+    city: str | None = None
+    source_snapshot_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +195,9 @@ class LegacyMatchOutcome:
     natural_source_row_id: str | None = None
     source_row_id: int | None = None
     candidates: tuple[int, ...] = ()
+    matched_fields: tuple[str, ...] = ()
+    source_snapshot_hash: str | None = None
+    chunk_content_hash: str | None = None
 
 
 def parse_fields(content: str, patterns: Mapping[str, re.Pattern[str]]) -> dict[str, str] | None:
@@ -154,11 +231,23 @@ def normalize_award_type(raw: str) -> str:
     return AWARD_TYPE_ALIASES.get(raw.strip(), raw.strip())
 
 
-def _unique_or_ambiguous(candidates: Sequence[LegacySourceRow]) -> LegacyMatchOutcome:
+def _unique_or_ambiguous(
+    candidates: Sequence[LegacySourceRow],
+    matched_fields: tuple[str, ...] = (),
+    content: str | None = None,
+) -> LegacyMatchOutcome:
     """Return the single candidate, or an ambiguity that names all of them."""
     if len(candidates) == 1:
         row = candidates[0]
-        return LegacyMatchOutcome(MATCHED, row.identity, row.source_row_id)
+        chunk_hash = hashlib.sha256(content.strip().encode("utf-8")).hexdigest() if content else None
+        return LegacyMatchOutcome(
+            MATCHED,
+            row.identity,
+            row.source_row_id,
+            matched_fields=matched_fields,
+            source_snapshot_hash=row.source_snapshot_hash,
+            chunk_content_hash=chunk_hash,
+        )
     return LegacyMatchOutcome(AMBIGUOUS, candidates=tuple(row.source_row_id for row in candidates))
 
 
@@ -174,30 +263,63 @@ def match_movement(
     candidates = by_key.get((fields["date"], fields["player"], fields["section"]), ())
     if not candidates:
         return LegacyMatchOutcome(UNMATCHED)
-    if len(candidates) == 1:
-        return _unique_or_ambiguous(candidates)
+
     team_match = MOVEMENT_TEAM_FIELD.search(content)
-    code = team_name_to_code.get(team_match.group(1).strip()) if team_match else None
-    narrowed = [row for row in candidates if row.team_code == code]
-    if len(narrowed) == 1:
-        return _unique_or_ambiguous(narrowed)
+    chunk_team = team_match.group(1).strip() if team_match else None
+    chunk_code = team_name_to_code.get(chunk_team) if chunk_team else None
+
+    if chunk_team is None:
+        matched_fields = ("date", "player", "section")
+        return _unique_or_ambiguous(candidates, matched_fields=matched_fields, content=content)
+
+    matching = [
+        row
+        for row in candidates
+        if (row.team_code in (chunk_team, chunk_code) or row.team_name in (chunk_team, chunk_code))
+    ]
+    if len(matching) == 1:
+        return _unique_or_ambiguous(matching, matched_fields=("date", "player", "section", "team"), content=content)
+    if not matching:
+        return LegacyMatchOutcome(FIELD_CONFLICT, candidates=tuple(row.source_row_id for row in candidates))
     return LegacyMatchOutcome(AMBIGUOUS, candidates=tuple(row.source_row_id for row in candidates))
+
+
+def _is_award_candidate_valid(
+    cand: LegacySourceRow,
+    chunk_team: str | None,
+    chunk_cat_norm: str | None,
+    team_franchises: Mapping[str, frozenset[int]] | None,
+) -> bool:
+    """Reject a candidate whose team or position disagrees with the chunk.
+
+    Team agreement is decided by **franchise**, not by the string: the same club
+    appears as an era code in one place and a Korean name in the other, and a
+    literal comparison reads that as a conflict. When neither side resolves to a
+    franchise the comparison falls back to the literal string, so an unknown
+    label cannot pass by being unknown.
+    """
+    if chunk_team is not None:
+        cand_labels = {cand.team_code, cand.team_name} - {None}
+        if cand_labels and chunk_team not in cand_labels:
+            chunk_franchises = team_franchise_ids(chunk_team, team_franchises)
+            cand_franchises = frozenset().union(
+                *(team_franchise_ids(label, team_franchises) for label in cand_labels),
+            )
+            if not (chunk_franchises & cand_franchises):
+                return False
+    return not (chunk_cat_norm and cand.category and normalize_award_category(cand.category) != chunk_cat_norm)
 
 
 def match_award(
     content: str,
     by_key: Mapping[tuple[int, str, str], Sequence[LegacySourceRow]],
     by_year_type: Mapping[tuple[int, str], Sequence[LegacySourceRow]] | None = None,
+    team_franchises: Mapping[str, frozenset[int]] | None = None,
 ) -> LegacyMatchOutcome:
-    """Pair a legacy award chunk with its row, translating the award name first.
+    """Pair a legacy award chunk with its row, cross-checking position and team.
 
-    When the exact name finds nothing and ``by_year_type`` is supplied, the search
-    falls back to rows of the same year and award whose full name *contains* the
-    legacy one. The legacy generator shortened foreign names — ``로하스`` for
-    ``멜 로하스 주니어``, ``린드블럼`` for ``조쉬 린드블럼`` — and those are the bulk of
-    the 83 chunks the exact match missed. The fallback is only accepted when
-    exactly one row contains the name, so a short name that fits two players
-    stays ambiguous rather than picking one.
+    ``team_franchises`` comes from :func:`team_franchise_map`; without it the team
+    check compares strings and rejects the era-code/name pairs that name one club.
     """
     fields = parse_fields(content, AWARD_FIELDS)
     if fields is None:
@@ -205,23 +327,45 @@ def match_award(
     year = int(fields["year"])
     award_type = normalize_award_type(fields["award_type"])
     player = fields["player"]
+
     candidates = by_key.get((year, award_type, player), ())
-    if candidates:
-        return _unique_or_ambiguous(candidates)
-    if by_year_type is None:
+    if not candidates and by_year_type is not None:
+        same_award = by_year_type.get((year, award_type), ())
+        contained = [row for row in same_award if row.player_name and player in row.player_name]
+        candidates = tuple(contained)
+
+    if not candidates:
         return LegacyMatchOutcome(UNMATCHED)
-    same_award = by_year_type.get((year, award_type), ())
-    contained = [row for row in same_award if row.player_name and player in row.player_name]
-    if not contained:
-        return LegacyMatchOutcome(UNMATCHED)
-    return _unique_or_ambiguous(contained)
+
+    team_match = AWARD_TEAM_FIELD.search(content)
+    chunk_team = team_match.group(1).strip() if team_match else None
+
+    cat_match = AWARD_CATEGORY_FIELD.search(content)
+    chunk_cat = cat_match.group(1).strip() if cat_match else None
+    chunk_cat_norm = normalize_award_category(chunk_cat) if chunk_cat else None
+
+    valid = [
+        cand for cand in candidates if _is_award_candidate_valid(cand, chunk_team, chunk_cat_norm, team_franchises)
+    ]
+    if not valid:
+        return LegacyMatchOutcome(FIELD_CONFLICT, candidates=tuple(row.source_row_id for row in candidates))
+
+    if len(valid) == 1:
+        matched_fields = ["year", "award_type", "player"]
+        if chunk_team is not None:
+            matched_fields.append("team")
+        if chunk_cat_norm:
+            matched_fields.append("category")
+        return _unique_or_ambiguous(valid, matched_fields=tuple(matched_fields), content=content)
+
+    return LegacyMatchOutcome(AMBIGUOUS, candidates=tuple(row.source_row_id for row in valid))
 
 
 def match_team_history(
     content: str,
     by_key: Mapping[tuple[int, str], Sequence[LegacySourceRow]],
 ) -> LegacyMatchOutcome:
-    """Pair a legacy team-history chunk with its row by ``(season, short name)``."""
+    """Pair a legacy team-history chunk with its row by ``(season, short name)`` and verify fields."""
     fields = parse_fields(content, TEAM_HISTORY_FIELDS)
     if fields is None:
         return LegacyMatchOutcome(PARSE_FAILED)
@@ -229,7 +373,30 @@ def match_team_history(
     candidates = by_key.get(key, ())
     if not candidates:
         return LegacyMatchOutcome(UNMATCHED)
-    if len(candidates) == 1:
-        row = candidates[0]
-        return LegacyMatchOutcome(MATCHED, row.identity, row.source_row_id)
-    return LegacyMatchOutcome(AMBIGUOUS, candidates=tuple(row.source_row_id for row in candidates))
+
+    rank_match = TEAM_HISTORY_RANKING_FIELD.search(content)
+    chunk_rank = int(rank_match.group(1).strip()) if rank_match else None
+
+    city_match = TEAM_HISTORY_CITY_FIELD.search(content)
+    chunk_city = city_match.group(1).strip() if city_match else None
+
+    valid: list[LegacySourceRow] = []
+    for cand in candidates:
+        if chunk_rank is not None and cand.ranking is not None and cand.ranking != chunk_rank:
+            continue
+        if chunk_city is not None and cand.city is not None and cand.city.strip() != chunk_city:
+            continue
+        valid.append(cand)
+
+    if not valid:
+        return LegacyMatchOutcome(FIELD_CONFLICT, candidates=tuple(row.source_row_id for row in candidates))
+
+    if len(valid) == 1:
+        matched_fields = ["season", "team"]
+        if chunk_rank is not None:
+            matched_fields.append("ranking")
+        if chunk_city is not None:
+            matched_fields.append("city")
+        return _unique_or_ambiguous(valid, matched_fields=tuple(matched_fields), content=content)
+
+    return LegacyMatchOutcome(AMBIGUOUS, candidates=tuple(row.source_row_id for row in valid))

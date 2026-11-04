@@ -224,7 +224,7 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
         ),
         (
             crawl_daily_games,
-            trigger_cls(hour=3, minute=0),
+            trigger_cls(hour=0, minute=0),
             "crawl_daily_games",
             "Daily Games Crawl (Schedule + Details)",
             7200,
@@ -253,7 +253,7 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
         ),
         (
             rag_vector_backfill_job,
-            trigger_cls(hour=5, minute=30),
+            trigger_cls(hour=2, minute=30),
             "rag_vector_backfill",
             "RAG Vector Gap Backfill (bounded nightly)",
             3600,
@@ -267,14 +267,14 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
         ),
         (
             crawl_retired_players_job,
-            trigger_cls(day=1, hour=2, minute=0),
+            trigger_cls(day=1, hour=4, minute=15),
             "crawl_retired_players",
             "Monthly Retired Player Crawl",
             3600,
         ),
         (
             crawl_monthly_unified_audit_job,
-            trigger_cls(day=1, hour=3, minute=0),
+            trigger_cls(day=1, hour=4, minute=45),
             "crawl_monthly_unified_audit",
             "Monthly Unified Audit (PA + Team Stats)",
             3600,
@@ -435,43 +435,59 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     )
     logger.info("Registered job: crawl_live_refresh (Every 10s, 12:00-23:30 KST)")
 
+    # The nightly pipeline starts when the KST day turns over: the 00:00
+    # ``crawl_daily_games`` finalizes the previous day's games, the derived
+    # aggregates follow it, and the RAG publish/catch-up pair runs last so the
+    # index is built from that finalize rather than from a half-written day.
+    #
+    # The spacing is a serialization contract, not a preference. Almost every
+    # job here takes `MAINTENANCE_LOCK`, and a job that cannot get it within 60s
+    # is skipped rather than queued -- so overlapping entries do not slow the
+    # pipeline down, they drop work. Every entry therefore keeps the gap its
+    # predecessor was measured to need (30 min after the daily crawl, 15 min
+    # between aggregates, 30 min after the RAG publish).
+    #
+    # The weekly and monthly maintenance jobs used to occupy 02:00-03:00, ahead
+    # of the chain. They moved behind it (Sunday 03:00-04:00, 1st 04:15/04:45)
+    # for the same reason: with the chain now filling 00:00-02:40 they would
+    # have started while it held the lock and been skipped outright.
     tier2_jobs = [
-        (compute_standings_job, trigger_cls(hour=3, minute=30), "compute_standings", 7200),
-        (aggregate_team_defense_job, trigger_cls(hour=3, minute=45), "aggregate_team_defense", 7200),
-        (compute_rankings_job, trigger_cls(hour=4, minute=0), "compute_rankings", 7200),
-        (auto_heal_games_job, trigger_cls(hour=4, minute=15), "auto_heal_games", 7200),
-        (heal_unverified_pbp_job, trigger_cls(hour=4, minute=30), "heal_pbp", 7200),
-        (data_integrity_check_job, trigger_cls(hour=4, minute=45), "data_integrity_check", 7200),
-        (source_coverage_job, trigger_cls(hour=5, minute=10), "source_coverage", 3600),
-        (sync_rag_incremental_job, trigger_cls(hour=5, minute=0), "sync_rag_incremental", 7200),
-        (sparse_terms_catchup_job, trigger_cls(hour=5, minute=40), "sparse_terms_catchup", 7200),
+        (compute_standings_job, trigger_cls(hour=0, minute=30), "compute_standings", 7200),
+        (aggregate_team_defense_job, trigger_cls(hour=0, minute=45), "aggregate_team_defense", 7200),
+        (compute_rankings_job, trigger_cls(hour=1, minute=0), "compute_rankings", 7200),
+        (auto_heal_games_job, trigger_cls(hour=1, minute=15), "auto_heal_games", 7200),
+        (heal_unverified_pbp_job, trigger_cls(hour=1, minute=30), "heal_pbp", 7200),
+        (data_integrity_check_job, trigger_cls(hour=1, minute=45), "data_integrity_check", 7200),
+        (source_coverage_job, trigger_cls(hour=2, minute=10), "source_coverage", 3600),
+        (sync_rag_incremental_job, trigger_cls(hour=2, minute=0), "sync_rag_incremental", 7200),
+        (sparse_terms_catchup_job, trigger_cls(hour=2, minute=40), "sparse_terms_catchup", 7200),
         (rag_audit_sentinel_job, trigger_cls(hour=6, minute=5), "rag_audit_sentinel", 7200),
         (rag_coverage_sentinel_job, trigger_cls(hour=6, minute=20), "rag_coverage_sentinel", 3600),
         (rag_identity_drift_job, trigger_cls(hour=6, minute=25), "rag_identity_drift", 7200),
         (schema_drift_check_job, trigger_cls(hour=6, minute=35), "schema_drift_check", 3600),
         (snapshot_drift_check_job, trigger_cls(hour=6, minute=45), "snapshot_drift_check", 3600),
-        (backup_db_job, trigger_cls(day_of_week="sun", hour=2, minute=0), "backup_db_weekly", 7200),
+        (backup_db_job, trigger_cls(day_of_week="sun", hour=3, minute=0), "backup_db_weekly", 7200),
         (
             notification_retention_job,
-            trigger_cls(day_of_week="sun", hour=3, minute=0),
+            trigger_cls(day_of_week="sun", hour=3, minute=45),
             "notification_retention_weekly",
             3600,
         ),
         (
             cleanup_stale_data_job,
-            trigger_cls(day_of_week="sun", hour=2, minute=30),
+            trigger_cls(day_of_week="sun", hour=3, minute=30),
             "cleanup_stale_data_weekly",
             7200,
         ),
         (
             trim_scheduler_logs_job,
-            trigger_cls(day_of_week="sun", hour=2, minute=45),
+            trigger_cls(day_of_week="sun", hour=4, minute=0),
             "trim_scheduler_logs_weekly",
             7200,
         ),
         (
             relay_state_cleanup_job,
-            trigger_cls(day_of_week="sun", hour=2, minute=15),
+            trigger_cls(day_of_week="sun", hour=3, minute=15),
             "relay_state_cleanup_weekly",
             7200,
         ),

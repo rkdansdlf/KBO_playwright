@@ -538,7 +538,7 @@ python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
 # PBP 기반 SH/SF 백필
 python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020
 
-# 월간 자동 감사 (APScheduler가 매월 1일 03:00 KST 실행)
+# 월간 자동 감사 (APScheduler가 매월 1일 04:45 KST 실행)
 python3 -m src.cli.monthly_unified_audit
 python3 -m src.cli.monthly_unified_audit --team-only
 python3 -m src.cli.monthly_pa_audit
@@ -738,8 +738,9 @@ env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION
 
 | 시각(KST) | 잡 | 역할 |
 | --- | --- | --- |
-| 05:00 | `sync_rag_incremental_job` | 최신 소스 → chunk/vector 발행 (terms 기본으로 posting 동시 유지) |
-| 05:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
+| 00:00 | `crawl_daily_games` | 직전 KST 날짜 경기 확정 → 파생 집계·RAG 체인 시작 (이후 15~30분 간격) |
+| 02:00 | `sync_rag_incremental_job` | 최신 소스 → chunk/vector 발행 (terms 기본으로 posting 동시 유지) |
+| 02:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
 | 06:05 | `rag_audit_sentinel_job` | 커버리지 게이트 실패 시 Telegram/Slack 경보 |
 
 스케줄러는 Windows 서버의 작업 스케줄러로 도는 상주 프로세스이며, **잡 추가 후에는 재시작해야 반영**됩니다.
@@ -924,7 +925,7 @@ print(f"수집된 선수 수: {len(results)}")
 5. **시범경기** (`exhibition`): 참고용 데이터
 
 ### 크롤링 빈도 권장사항
-- **정규시즌 중**: 매일 03:00 KST
+- **정규시즌 중**: 매일 00:00 KST
 - **포스트시즌**: 경기 후 즉시
 - **비시즌**: 주 1회 (일요일 05:00 KST)
 - **역사 데이터**: 월 1회 검증

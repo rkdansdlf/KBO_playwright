@@ -469,7 +469,7 @@ otherwise leave a rule permanently silent.
 
 | Job | Schedule (KST) | Lock | Purpose |
 | --- | --- | --- | --- |
-| `notification_retention_weekly` | Sun 03:00 | `MAINTENANCE_LOCK` | Prune `notification_deliveries` and recovered `notification_incidents` |
+| `notification_retention_weekly` | Sun 03:45 | `MAINTENANCE_LOCK` | Prune `notification_deliveries` and recovered `notification_incidents` |
 
 The two windows are independent because a delivery is an external side effect
 worth keeping even after the incident it announced has closed.

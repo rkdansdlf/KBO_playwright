@@ -7,7 +7,7 @@ Team stats audit: compares TeamSeasonBatting/Pitching with
 PlayerSeasonBatting/Pitching aggregates (read-only).
 
 Imported by scripts/scheduler.py as the crawl_monthly_unified_audit_job target.
-Runs on the 1st of every month at 03:00 KST via APScheduler.
+Runs on the 1st of every month at 04:45 KST via APScheduler.
 
 """
 

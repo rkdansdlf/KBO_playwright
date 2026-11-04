@@ -302,3 +302,36 @@ class TestTheSnapshotCarriesTheParserOutcome:
             await crawler._crawl_team("LG", self._config())
 
         assert crawler._raw_pages == []
+
+
+class TestTheScheduleTableWaitSignature:
+    """``Page.wait_for_function`` takes the script argument as a keyword in this
+    Playwright version, and passing it positionally raises ``TypeError`` — which
+    ``SCHEDULE_CRAWLER_EXCEPTIONS`` swallows and turns into
+    ``return False, "schedule_empty"``. The KBO schedule fallback therefore could
+    never pass its month check: every run logged "[WARN] Schedule table wait
+    failed" and came back empty, which is how the November 2026 Korean-Series
+    schedule was never captured while the Naver api-gw outage was running.
+    """
+
+    def test_the_month_reaches_the_script_as_a_keyword_argument(self) -> None:
+        from src.crawlers.schedule_crawler import ScheduleCrawler
+
+        recorded: dict[str, object] = {}
+
+        class _FakePage:
+            async def wait_for_selector(self, selector: str, *, timeout: int) -> bool:
+                return True
+
+            async def wait_for_function(self, expression: str, **kwargs: object) -> None:
+                recorded["expression"] = expression
+                recorded["kwargs"] = kwargs
+
+        crawler = ScheduleCrawler()
+        import asyncio
+
+        ok, reason = asyncio.run(crawler._wait_for_schedule_table(_FakePage(), expected_month=11))
+
+        assert (ok, reason) == (True, "ok")
+        assert recorded["kwargs"].get("arg") == "11"
+        assert "timeout" in recorded["kwargs"]

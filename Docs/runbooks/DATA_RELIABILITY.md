@@ -246,7 +246,7 @@ Why the shape is what it is:
   a success has no success series, and `increase()` over a missing series yields
   no sample to compare -- the longest-running degradation would be the one the
   rule stays silent for.
-- The 24h window follows the daily pipeline cadence (03:00-06:45 KST), the same
+- The 24h window follows the daily pipeline cadence (00:00-06:45 KST), the same
   schedule-derived choice as `KboDlqBacklogAgeHigh`. It also gives a daily
   crawler one full cycle of grace: after a single partial day, yesterday's
   success is still inside the window and nothing pages. No production sample was
@@ -406,7 +406,7 @@ Why the shape is what it is:
   a success has no success series, and `increase()` over a missing series yields
   no sample to compare -- the longest-running degradation would be the one the
   rule stays silent for.
-- The 24h window follows the daily pipeline cadence (03:00-06:45 KST), the same
+- The 24h window follows the daily pipeline cadence (00:00-06:45 KST), the same
   schedule-derived choice as `KboDlqBacklogAgeHigh`. It also gives a daily
   crawler one full cycle of grace: after a single partial day, yesterday's
   success is still inside the window and nothing pages. No production sample was

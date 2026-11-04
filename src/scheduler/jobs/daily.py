@@ -85,7 +85,7 @@ class JobResult:
 # Global job state for tracking dependencies
 _JOB_REGISTRY: dict[str, JobResult] = {}
 
-# Disk backup of the registry so a scheduler restart between the 03:00 daily
+# Disk backup of the registry so a scheduler restart between the 00:00 daily
 # job and its downstream jobs does not wipe today's dependency evidence.
 _JOB_REGISTRY_FILE = PROJECT_ROOT / "data" / "last_runs" / "job_registry.json"
 
@@ -378,7 +378,7 @@ def _damage_metadata(quality_report: object) -> dict[str, int | bool | None]:
 def crawl_daily_games() -> None:
     """Daily job: Run unified daily update entrypoint with dependency tracking.
 
-    Runs at 03:00 KST daily to collect previous KST day's schedule+details.
+    Runs at 00:00 KST daily to collect previous KST day's schedule+details.
     No retry wrapper: the body catches ``SCHEDULER_JOB_EXCEPTIONS`` to record a
     run marker and a terminal ``JobStatus`` per attempt, so an exception never
     escapes to tenacity and the declared backoff would be unreachable. The next

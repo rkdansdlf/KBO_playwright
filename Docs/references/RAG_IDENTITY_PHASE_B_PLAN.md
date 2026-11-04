@@ -1,6 +1,6 @@
 # RAG Identity Phase B — Re-key and Re-index Plan
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02 (awards 76 examined)
 
 Phase B normalizes the RAG index identity so that a chunk's `source_row_id` is
 the same key the generator produces today. Until it runs, the store holds two
@@ -15,8 +15,8 @@ for a row that already has one.
 ## 1. What decides the path
 
 The generator builds each key through a function in
-`src/services/rag_index_identity.py`. **The ten sources that have a `stable_*`
-function are exactly the ten the re-key tool supports**, because the tool needs
+`src/services/rag_index_identity.py`. **Every source that has a `stable_*`
+function is a source the re-key tool can help with**, because the tool needs
 to recompute the same key from source rows:
 
 | `stable_*` function | Source |
@@ -31,16 +31,22 @@ to recompute the same key from source rows:
 | `stable_highlight_source_row_id` | `game_highlights` |
 | `stable_team_event_source_row_id` | `team_events` |
 | `stable_press_release_source_row_id` | `kbo_press_releases` |
+| `stable_player_season_batting_source_row_id` | `player_season_batting` |
+| `stable_player_season_pitching_source_row_id` | `player_season_pitching` |
 
-`player_season_batting` and `player_season_pitching` build their keys **inline**
-in `build_rag_index._iter_batting_chunks` / `_iter_pitching_chunks`, so they
-have no function the census can call:
+The last two rows were the gap until 2026-11-02: they built their keys **inline**
+in `build_rag_index._iter_batting_chunks` / `_iter_pitching_chunks`, so the census
+had no function to call and both sources were invisible to it:
 
 ```python
 f"{batting.player_id}_{batting.season}_{batting.team_code or 'NA'}_{batting.league or 'UNKNOWN'}"
 ```
 
-That is the whole gap. Two functions plus two census record iterators close it.
+Both now route through the shared helpers, so the twelve functions and the
+twelve census sources agree again. They were added for completeness rather than
+for this phase: the content matcher pairs those two sources' legacy chunks
+through their text (§2-B), not through these functions, and it is the matcher's
+verdict that decides what happens to them.
 
 ## 2. Two populations, two different treatments
 
@@ -133,7 +139,7 @@ and adds the verdict each pairing produces (measured 2026-11-02, read-only):
 | Source | Legacy | Matched | Verdict |
 | --- | --- | --- | --- |
 | `player_movements` | 4,503 | **4,503 (100%)** | **DUPLICATE 4,503** |
-| `awards` | 486 | 410 | **REKEY 410** |
+| `awards` | 486 | **325** | **REKEY 325** (2026-11-03, franchise 대조 후) |
 | `team_history` | 385 | 385 | REKEY 375 · DUPLICATE 10 |
 
 `team_history` reached **385/385** once the source column's embedded newline
@@ -142,7 +148,7 @@ a data gap.
 
 **What the verdicts mean**
 
-* **`REKEY` 785** (awards 410 + team_history 375): the natural key is free, so
+* **`REKEY` 700** (awards 325 + team_history 375, both applied): the natural key is free, so
   the identity can move onto it. This is the population `apply_rag_rekey` may be
   pointed at, and it is under a tenth of what the census claimed.
 * **`DUPLICATE` 4,513** (movements 4,503 + team_history 10): the natural key
@@ -163,6 +169,67 @@ different snapshot. This does not block the 785 re-keys (they matched exactly),
 but it does mean **no count here should be described as covering the whole
 awards population**.
 
+**Examined 2026-11-02 — the source table is the incomplete side.** The 76 are not
+stale chunks naming dead players; they name winners the table does not hold:
+
+| Years | `awards` rows / year | `외야수` rows | Chunk claims |
+| --- | --- | --- | --- |
+| 1982~2021 (40 years) | **8** | **1** | 3 outfielders |
+| 2022~2025 (4 years) | 10 | 3 | 3 outfielders |
+
+Every one of the 40 deficient years holds a single outfield row where the league
+awards three, so roughly **80 winners are absent from the source** — and the
+legacy chunks carry them. `(2021, 골든글러브, 구자욱)` is one of those two missing
+outfielders, not an error in the chunk.
+
+The natural key is still derivable for these, because the chunk holds all four
+fields it composes from (`시즌`, `수상 종류`, `선수`, `포지션`) — but `포지션` is an
+English code (`P`/`C`/`1B`/`OF`/`DH`) and `category` is Korean (`투수`/`포수`/`1루수`/`외야수`/`지명 타자`), so the translation is required first. Re-keying them before the
+source table is completed would leave identities the generator cannot reproduce:
+when those winners are eventually crawled, the row the generator writes must hash
+to the same key, which it only does if both sides agree on the category.
+
+### The manifest exists, and the applier accepts it (2026-11-02)
+
+`apply_rag_rekey` was blocked on a manifest the census could not produce, because
+its entries were false matches. `match_legacy_content --output` now writes one
+from the content pairing, translating the verdicts into the applier's vocabulary
+(`REKEY` → `SAFE_REKEY`, `DUPLICATE` → `TARGET_EXISTS_CONTENT_MISMATCH`).
+
+The manifest structure lives in `src/services/rag_rekey_manifest.py`, shared with
+the census. Two things were fixed on the way:
+
+* `disposition_counts` is derived from `entries` rather than accepted as an
+  argument — two sources for one number is how a manifest disagrees with itself.
+* `git_commit_sha` was resolved through a hardcoded `/usr/bin/git`, which does not
+  exist on the Windows host the scheduler runs on, so every manifest generated
+  there carried `"unknown"` and the applier refused it. It now resolves `git` from
+  `PATH`.
+
+Measured, read-only: `match_legacy_content --source awards --output m.json` then
+`apply_rag_rekey --manifest m.json` returned
+**`status=SUCCESS_APPLIED mode=dry-run rekeyed=325`** (awards, after the franchise fix below).
+
+> [!WARNING]
+> **Safety Re-evaluation & Rekey Hold Notice (2026-11-03)**:
+> Dry-run success verifies JSON schema structure and chunk presence, but does
+> **not** constitute authorization for live writes (`--apply`).
+>
+> 1. **Content Proof v1 Required**: `apply_rag_rekey --apply` now strictly enforces
+>    `match_schema_version: "content-proof-v1"`. Every `SAFE_REKEY` entry must
+>    carry verified evidence: `matched_source_pk`, `proof.matched_fields`,
+>    `proof.source_snapshot_hash`, and `proof.chunk_content_hash`. Legacy numeric
+>    census manifests lacking proof are unconditionally rejected (exit 2).
+> 2. **Fail-Closed Write Gates**: The applier verifies candidate count == 1,
+>    verifies that target natural keys are not already occupied in `rag_chunks`,
+>    and validates CAS chunk content hashes.
+> 3. **Matcher Precision**: Movement, award, and team history matchers now reject
+>    single-candidate mismatches (`FIELD_CONFLICT`) on team, position/category,
+>    ranking, and city.
+> 4. **Execution Status**: Live `--apply` remains **BLOCKED** until formal sample
+>    audits (30+ boundary samples per source) and cross-store (sparse/vector)
+>    consistency checks are completed. Do not execute unverified rekey runs.
+
 **Meanwhile**: 8,274 legacy chunks stay as they are. They are retrievable, their
 embeddings are valid, and their text is a summary the current generator cannot
 reproduce — deleting them would lose the `[TL;DR]`/`[핵심 문장]`/`[상세]` form
@@ -170,7 +237,7 @@ outright. Leaving them costs duplicate hits for the same player-season; removing
 them costs information. Neither is free, which is why the decision belongs after
 the content-based pairing exists.
 
-### B. Re-index and clean (`#part` split keys)
+### C. Re-index and clean (`#part` split keys)
 
 `REINDEX_REQUIRED` holds **5,589** rows:
 
@@ -285,3 +352,102 @@ post-re-key state, which is why `--require-corpus` reports them as absent.
 * Korean team names in chunk text (the `2026-07-17 HH 순위` vs "한화" gap). It
   needs a generator change **and** a re-embed, so it belongs to the same window
   but is a separate decision.
+
+## 8. Pre-flight re-measurement and the full content comparison (2026-11-02)
+
+The numbers the plan was built on were re-measured after the 2026-11-01 host-wide
+PostgreSQL outage, and **all of them reproduce unchanged**: 8,274 ACTIVE legacy
+`id=N` chunks (embedding and `content_hash` present, `indexed_at` NULL for every
+one), 5,564 `id=N#partM` split rows, `REINDEX_REQUIRED` 5,589. The outage moved
+nothing.
+
+**The §2-B conclusion is confirmed and strengthened by a full comparison.** The
+1,790 split groups (5,199 parts) carry a `[META]` JSON in their last part with the
+real identity — `player_id`, `season`, `team` (Korean name mapped to the code) — so
+the natural key each group *should* have is derivable from the chunk itself.
+Results across all 1,790 groups:
+
+| Outcome | Groups |
+| --- | --- |
+| Natural key exists (ACTIVE) | **1,371** |
+| Natural key does not exist — the split rows are the only copy | **248** |
+| `[META]` missing or unparseable | 171 |
+
+**For every one of the 1,371 matched groups the natural-key chunk is shorter than
+the split rows it would replace — 100% of them.** Worked example, 마해영 2002
+Korean Series (6 games, 0.458):
+
+* natural key `95549_2002_SS_KOREAN_SERIES`: **135 chars** — one summary line
+* split rows `id=1096#part1+#part2`: **~190 chars** — `[TL;DR]` + `[핵심 문장]` +
+  `[상세]` with ISO/BABIP/XR; `#part3` is a `[META]` JSON with `pa`, `wrc_plus`,
+  `aliases` that the generator's `meta` does not carry
+
+So plan step 2 ("verify the new chunk carries at least as much as the split it
+replaces") **fails for 100% of the matched population**, and step 3 (delete the
+`#part` rows) would destroy information in every one of them. The 248 unmatched
+groups would be deleted outright. The 171 unparseable ones cannot even be judged.
+
+**Phase B's cleanup stage is therefore cancelled, not deferred.** The direction
+that loses nothing is the other way round: make the generator emit the rich form
+(`[TL;DR]` / `[핵심 문장]` / `[상세]` / `[META]`) under the natural key, re-index,
+and *then* the split rows are true duplicates whose deletion is safe. Until that
+exists, both populations stay as they are: retrievable, embedded, duplicated for
+the same player-season — which the search already tolerates.
+
+(`[META]` parsing detail: the JSON is followed by a footer line
+(`… / 기준일 2026-04-19`), so it must be read with `json.JSONDecoder().raw_decode`,
+not `json.loads` — a plain `loads` rejects 100% of them as "Extra data".)
+
+## 9. P1/P7 outcome — 700 chunks re-keyed, measured (2026-11-03)
+
+**Applied**: 375 `team_history` + 325 `awards` = **700 identities moved**. Every
+apply ran through the content-proof manifest; none rolled back.
+
+**`awards` went 49 → 325 matched.** The 361 `field_conflict` rows were re-examined
+and **289 were not conflicts at all** — the chunk writes an era code where the
+table writes a Korean name, and a string comparison reads one club as two:
+
+| chunk | table | same franchise |
+| --- | --- | --- |
+| `HT` | `KIA 타이거즈` | 5 |
+| `WO` | `넥센` | 11 |
+| `CB` | `청보` | 6 |
+| `TP` | `태평양` | 6 |
+
+`team_franchise_ids` resolves each label through `franchise_id_for_team_code`,
+whose era table carries `NX`/`CB`/`TP` that `team_franchises` omits — so a resolver
+reading only that table returns nothing for them and the pair reads as a conflict.
+A **precomputed map does not work** either: the chunk's label is unknown until match
+time, and a code the map lacks compares as "no team" (the first implementation lost
+all 289 that way). The remaining 29 were `kt wiz`/`kt 위즈`, now an alias in
+`TEAM_NAME_TO_CODE`. Position spellings also fold (`지명 타자`/`지명타자`, and
+`좌익수`/`우익수`/`중견수` → `외야수`).
+
+**36 conflicts survive, and they are real**: the chunk says `외야수` where the row
+says `지명 타자`. Normalization cannot decide those — the source needs re-checking
+(§2-C's 1982~2021 outfield gap is the same table).
+
+**Golden set, before → after the 700:**
+
+| | before | after |
+| --- | --- | --- |
+| Recall@5 | 0.8128 | **0.8795** |
+| MRR | 0.7178 | **0.7844** |
+| hit_rate | 0.8333 | **0.9000** |
+| precision@5 | 0.1933 | 0.2067 |
+| p95 | 1,071 ms | **405 ms** |
+| references absent from the store | 5 | **1** |
+
+The one remaining missing reference is `awards:2025_MVP_NONE_폰세`: **no legacy MVP
+chunk exists for 2025** (the legacy generator wrote Golden Glove only that year), so
+it can only be satisfied by running the awards generator — which is §2-C's
+direction, the generator emitting the rich form.
+
+**Legacy population after**: `game_summary` 68,827 (out of scope) ·
+`player_movements` 4,503 (all DUPLICATE) · `player_season_batting` 2,572 ·
+`awards` **112** (36 conflicts + 76 source gaps) · `player_season_pitching` 328 ·
+`team_history` 10 (DUPLICATE).
+
+**Still unapplied**: the 10 `team_history` DUPLICATE rows. `TARGET_EXISTS_CONTENT_MISMATCH`
+means the natural key is already indexed, so re-keying would merge two identities;
+whether to delete them is §2-C's rich-form question.

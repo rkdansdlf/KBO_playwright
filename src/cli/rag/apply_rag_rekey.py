@@ -144,6 +144,43 @@ def _get_current_database_fingerprint() -> str:
     return hashlib.sha256(fp_content).hexdigest()[:16]
 
 
+_MAX_VALIDATION_ERRORS = 5
+
+
+def _validate_entries_proof(entries: list[dict]) -> list[str]:
+    """Validate that every SAFE_REKEY entry carries verified content proof."""
+    errors: list[str] = []
+    for idx, entry in enumerate(entries):
+        if entry.get("disposition") != DISPOSITION_REKEY:
+            continue
+        if entry.get("matched_source_pk") is None:
+            errors.append(f"entry[{idx}] missing matched_source_pk")
+        proof = entry.get("proof")
+        if not isinstance(proof, dict):
+            errors.append(f"entry[{idx}] missing proof metadata")
+        else:
+            if not proof.get("matched_fields"):
+                errors.append(f"entry[{idx}] proof missing matched_fields")
+            if not proof.get("source_snapshot_hash"):
+                errors.append(f"entry[{idx}] proof missing source_snapshot_hash")
+            if not proof.get("chunk_content_hash"):
+                errors.append(f"entry[{idx}] proof missing chunk_content_hash")
+        if len(errors) >= _MAX_VALIDATION_ERRORS:
+            break
+    return errors
+
+
+def _validate_header_counts(header: dict, entries: list[dict]) -> list[str]:
+    errors: list[str] = []
+    if header.get("expected_entry_count") != len(entries):
+        errors.append(f"entry count mismatch: expected={header.get('expected_entry_count')}, actual={len(entries)}")
+    actual_counts = Counter(e.get("disposition") for e in entries)
+    expected_counts = header.get("expected_disposition_counts", {})
+    if dict(actual_counts) != expected_counts:
+        errors.append(f"disposition count mismatch: expected={expected_counts}, actual={dict(actual_counts)}")
+    return errors
+
+
 def _validate_manifest_header(manifest: dict, *, apply: bool) -> str | None:
     """Validate manifest header metadata against current environment."""
     header = manifest.get("manifest_header", {})
@@ -160,6 +197,14 @@ def _validate_manifest_header(manifest: dict, *, apply: bool) -> str | None:
     if header.get("identity_schema_version") != _IDENTITY_SCHEMA_VERSION:
         errors.append(f"unsupported identity schema version: {header.get('identity_schema_version')}")
 
+    # Under --apply, require verified content-proof schema
+    match_schema = header.get("match_schema_version")
+    if apply and match_schema != "content-proof-v1":
+        errors.append(
+            f"unsupported match schema '{match_schema}': "
+            "--apply requires verified 'content-proof-v1' manifest with content proof"
+        )
+
     # Check git commit matches current code
     current_sha = _get_current_git_sha()
     if header.get("git_commit_sha") != current_sha:
@@ -170,24 +215,18 @@ def _validate_manifest_header(manifest: dict, *, apply: bool) -> str | None:
     if header.get("manifest_sha256") != actual_sha:
         errors.append(f"manifest SHA mismatch: expected={header.get('manifest_sha256')}, actual={actual_sha}")
 
-    # Verify expected entry count matches
     entries = manifest.get("entries", [])
-    if header.get("expected_entry_count") != len(entries):
-        errors.append(f"entry count mismatch: expected={header.get('expected_entry_count')}, actual={len(entries)}")
+    errors.extend(_validate_header_counts(header, entries))
 
-    # Verify disposition counts
-    actual_counts = Counter(e.get("disposition") for e in entries)
-    expected_counts = header.get("expected_disposition_counts", {})
-    if dict(actual_counts) != expected_counts:
-        errors.append(f"disposition count mismatch: expected={expected_counts}, actual={dict(actual_counts)}")
-
-    # If apply mode, verify database fingerprint
-    if apply and header.get("database_fingerprint") != _get_current_database_fingerprint():
-        errors.append(
-            f"database fingerprint mismatch: "
-            f"manifest={header.get('database_fingerprint')}, "
-            f"current={_get_current_database_fingerprint()}"
-        )
+    # If apply mode, verify database fingerprint and proof on entries
+    if apply:
+        if header.get("database_fingerprint") != _get_current_database_fingerprint():
+            errors.append(
+                f"database fingerprint mismatch: "
+                f"manifest={header.get('database_fingerprint')}, "
+                f"current={_get_current_database_fingerprint()}"
+            )
+        errors.extend(_validate_entries_proof(entries))
 
     if errors:
         return "; ".join(errors)
@@ -423,8 +462,11 @@ def _build_where_clause(entry: dict) -> list:
     legacy_id = entry.get("legacy_source_row_id")
     if legacy_id is not None:
         where_clause.append(RagChunk.source_row_id == str(legacy_id))
-    if entry.get("legacy_content_hash") is not None:
-        where_clause.append(RagChunk.content_hash == entry["legacy_content_hash"])
+    expected_hash = entry.get("legacy_content_hash")
+    if expected_hash is None and isinstance(entry.get("proof"), dict):
+        expected_hash = entry["proof"].get("chunk_content_hash")
+    if expected_hash is not None:
+        where_clause.append(RagChunk.content_hash == expected_hash)
     if entry.get("index_status") is not None:
         where_clause.append(RagChunk.index_status == entry["index_status"])
     if entry.get("index_version") is not None:
@@ -458,6 +500,8 @@ def _apply_rekey(  # noqa: C901, PLR0912, PLR0915
         natural_id = entry.get("natural_source_row_id")
         legacy_id = str(entry.get("legacy_source_row_id")) if entry.get("legacy_source_row_id") is not None else None
         expected_hash = entry.get("legacy_content_hash")
+        if expected_hash is None and isinstance(entry.get("proof"), dict):
+            expected_hash = entry["proof"].get("chunk_content_hash")
         expected_status = entry.get("index_status")
         expected_version = entry.get("index_version")
 
@@ -500,6 +544,19 @@ def _apply_rekey(  # noqa: C901, PLR0912, PLR0915
         # Valid mutation target
         where_clause = _build_where_clause(entry)
         if disposition == DISPOSITION_REKEY and natural_id:
+            dest_stmt = select(RagChunk).where(RagChunk.source_row_id == natural_id, RagChunk.id != chunk_id)
+            dest_row = session.execute(dest_stmt).scalar_one_or_none()
+            if dest_row is not None and dest_row.index_status in ("ACTIVE", "INDEXED"):
+                skipped.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "legacy_source_row_id": legacy_id,
+                        "disposition": disposition,
+                        "reason": f"target natural key already occupied by chunk {dest_row.id}",
+                    }
+                )
+                continue
+
             pending_mutations.append(
                 (
                     update(RagChunk)

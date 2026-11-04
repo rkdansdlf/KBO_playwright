@@ -126,7 +126,7 @@ GUI(`taskschd.msc`)로 등록한다면 같은 값을 넣는다.
 ```powershell
 $taskName = "<작업 이름>"
 
-# 1) 진행 중인 잡이 없는지 로그 끝을 본다 (특히 03:00 crawl_daily_games, 경기 시간대 live refresh)
+# 1) 진행 중인 잡이 없는지 로그 끝을 본다 (특히 00:00 crawl_daily_games, 경기 시간대 live refresh)
 Get-Content "<프로젝트 경로>\logs\scheduler.log" -Tail 30
 
 # 2) 중지
