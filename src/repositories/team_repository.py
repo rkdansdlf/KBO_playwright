@@ -9,6 +9,7 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from src.db.bulk_insert import chunk_for_bind
 from src.models.player import PlayerBasic
 from src.models.team import TeamDailyRoster
 from src.repositories.oracle_upsert import upsert_model_by_unique_keys
@@ -89,33 +90,47 @@ class TeamRepository:
                 },
             )
 
+        self._execute_roster_upserts(values, dialect)
+
+        return len(values)
+
+    def _execute_roster_upserts(self, values: list[dict[str, Any]], dialect: str) -> None:
+        """Upsert the roster rows, chunked so one statement can carry them.
+
+        One multi-row statement per chunk: a full day's rosters across ten teams
+        times the column count can cross the dialect's bind-parameter ceiling
+        (PostgreSQL 65,535 / SQLite 32,766), and the refusal is an error for the
+        whole batch rather than a skipped row.
+        """
         if dialect == "sqlite":
-            stmt = sqlite_insert(TeamDailyRoster).values(values)
-            update_dict = {
-                "player_name": stmt.excluded.player_name,
-                "player_basic_id": stmt.excluded.player_basic_id,
-                "person_type": stmt.excluded.person_type,
-                "position": stmt.excluded.position,
-                "back_number": stmt.excluded.back_number,
-                "updated_at": text("CURRENT_TIMESTAMP"),
-            }
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["roster_date", "team_code", "player_id"],
-                set_=update_dict,
-            )
-            self.session.execute(stmt)
+            for chunk in chunk_for_bind(values):
+                stmt = sqlite_insert(TeamDailyRoster).values(chunk)
+                update_dict = {
+                    "player_name": stmt.excluded.player_name,
+                    "player_basic_id": stmt.excluded.player_basic_id,
+                    "person_type": stmt.excluded.person_type,
+                    "position": stmt.excluded.position,
+                    "back_number": stmt.excluded.back_number,
+                    "updated_at": text("CURRENT_TIMESTAMP"),
+                }
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["roster_date", "team_code", "player_id"],
+                    set_=update_dict,
+                )
+                self.session.execute(stmt)
         elif dialect == "mysql":
-            stmt = mysql_insert(TeamDailyRoster).values(values)
-            update_dict = {
-                "player_name": stmt.inserted.player_name,
-                "player_basic_id": stmt.inserted.player_basic_id,
-                "person_type": stmt.inserted.person_type,
-                "position": stmt.inserted.position,
-                "back_number": stmt.inserted.back_number,
-                "updated_at": text("CURRENT_TIMESTAMP"),
-            }
-            stmt = stmt.on_duplicate_key_update(update_dict)
-            self.session.execute(stmt)
+            for chunk in chunk_for_bind(values):
+                stmt = mysql_insert(TeamDailyRoster).values(chunk)
+                update_dict = {
+                    "player_name": stmt.inserted.player_name,
+                    "player_basic_id": stmt.inserted.player_basic_id,
+                    "person_type": stmt.inserted.person_type,
+                    "position": stmt.inserted.position,
+                    "back_number": stmt.inserted.back_number,
+                    "updated_at": text("CURRENT_TIMESTAMP"),
+                }
+                stmt = stmt.on_duplicate_key_update(update_dict)
+                self.session.execute(stmt)
         elif dialect == "oracle":
             for val in values:
                 upsert_model_by_unique_keys(
@@ -125,22 +140,21 @@ class TeamRepository:
                     ("roster_date", "team_code", "player_id"),
                 )
         else:
-            stmt = pg_insert(TeamDailyRoster).values(values)
-            update_dict = {
-                "player_name": stmt.excluded.player_name,
-                "player_basic_id": stmt.excluded.player_basic_id,
-                "person_type": stmt.excluded.person_type,
-                "position": stmt.excluded.position,
-                "back_number": stmt.excluded.back_number,
-                "updated_at": text("CURRENT_TIMESTAMP"),
-            }
-            stmt = stmt.on_conflict_do_update(
-                constraint="uq_team_daily_roster",
-                set_=update_dict,
-            )
-            self.session.execute(stmt)
-
-        return len(values)
+            for chunk in chunk_for_bind(values):
+                stmt = pg_insert(TeamDailyRoster).values(chunk)
+                update_dict = {
+                    "player_name": stmt.excluded.player_name,
+                    "player_basic_id": stmt.excluded.player_basic_id,
+                    "person_type": stmt.excluded.person_type,
+                    "position": stmt.excluded.position,
+                    "back_number": stmt.excluded.back_number,
+                    "updated_at": text("CURRENT_TIMESTAMP"),
+                }
+                stmt = stmt.on_conflict_do_update(
+                    constraint="uq_team_daily_roster",
+                    set_=update_dict,
+                )
+                self.session.execute(stmt)
 
     def _person_type_for_position(self, position: str | None) -> str:
         normalized = str(position or "").strip()

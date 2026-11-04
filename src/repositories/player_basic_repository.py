@@ -16,6 +16,7 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from src.db.bulk_insert import chunk_for_bind
 from src.models.player import PlayerBasic
 from src.utils.player_validation import filter_valid_player_payloads, validate_player_payload
 
@@ -66,7 +67,12 @@ class PlayerBasicRepository:
             for row in rows:
                 self.session.merge(PlayerBasic(**row))
         else:
-            self.session.execute(self._build_upsert_stmt(rows))
+            # One multi-row statement per chunk: a full-league payload times the
+            # column count can cross the dialect's bind-parameter ceiling
+            # (PostgreSQL 65,535 / SQLite 32,766), and the refusal is an error for
+            # the whole batch, not a skipped row.
+            for chunk in chunk_for_bind(rows):
+                self.session.execute(self._build_upsert_stmt(chunk))
         return len(rows)
 
     def _upsert_one(self, player_data: dict[str, Any]) -> None:
