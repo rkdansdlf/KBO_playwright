@@ -514,3 +514,57 @@ running the generator can fix (§2-C).
 differently (``에릭 페디``/``페디``, ``코디 폰세``/``폰세``), so those two winners
 still have two rows (2023 and 2025 MVP). Deciding "same person" from a partial
 string is a guess, and the crawl stage is the wrong place to guess.
+
+## 11. P2 outcome — the movements key was three keys at once (2026-11-05)
+
+`player_movements.team_code` holds Korean names (`롯데`, `삼성`), era codes (`HT`,
+`SK`) and canonical codes (`KIA`) -- and the natural key was built from that column.
+So one movement was indexed under up to three spellings. Measured on the 6,401
+natural-key chunks: **canonical 2,922 · Korean-name 2,724 · era-code 755**, and
+**1,504 of them were the same movement stored twice**. Meanwhile 2,821 canonical
+keys had no chunk at all.
+
+`canonical_team_id` was already in the source (2,776 rows differ from `team_code`).
+Four call sites now pass `canonical_team_id or team_code`: the builder, the rekey
+matcher, the census, and the cleanup tool. They must compute the same bytes -- a
+rekey swaps one identity for another, so a matcher that disagrees with the builder
+produces keys the index does not contain.
+
+**A bug found while reading the index**: `_movement_index` had been giving
+`player_name` the column that holds the team code (a column added in the same
+edit shifted the tuple). Name-based matching was quietly comparing against the
+wrong field. One test in `tests/cli/test_match_legacy_content_movement.py` now
+pins that column.
+
+**What was deleted, and what had to be true first**: 7,227 rows -- 4,503 legacy
+(`id=N`) and 2,724 Korean-name keys. The legacy half was verified row by row
+(4,503/4,503): every one has a natural-key chunk with the same `(date, player,
+section)`, every note it carries is in that counterpart, and the source's
+`remarks` is at most 28 characters so the generator's `remarks[:150]` truncation
+loses nothing. **The first pass read the legacy form as richer because it is
+longer** -- it writes a header line and five labelled fields where the natural key
+writes one line. Length is not information.
+
+**Resumability, not atomicity, was the answer.** Two attempts to delete all 7,227
+in one transaction died with `could not receive data from server: Operation timed
+out` while the server sat idle with no locks: the connection was being dropped by
+a Tailscale link that has been flapping all session (it also produced a
+`password authentication failed` episode and two offline periods). The path now
+commits every 200 rows, so a drop costs the batch in flight and the same command
+resumes -- an id already off the surface is counted as `already_done`.
+
+**A second silence**: the golden-set coverage check stayed **green** through the
+delete while one of the deleted chunks was a golden-set answer. `_lookup_rows` did
+not look at `index_status`, so `DELETED` counted as present. Recall fell 0.9462 →
+0.9128 and nothing said why -- the same silence this check exists to break. It now
+counts only `ACTIVE`, and the golden set's `2018-12-07_삼성_김동엽…` reference was
+updated to its canonical `2018-12-07_SS_김동엽…` (the source holds **two rows** that
+day -- `넥센`/`SK→넥센` and `삼성`/`넥센→삼성` -- so keeping both canonical keys is
+correct; the fixture was pointing at the old name).
+
+**Result**: absent references 0 · **Recall@5 0.9462 · MRR 0.8511 · hit_rate 0.9667 ·
+p95 390ms** -- unchanged from before the cleanup, with 7,227 duplicate rows gone.
+Audit: `damage 0`, `consistent true`, `deleted 9,604`.
+
+**Still open**: one new movement (the crawler keeps adding) is unindexed until the
+nightly run; `update_status`-style last-write inspection is not part of this work.
