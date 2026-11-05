@@ -212,7 +212,7 @@
   {
     "id": "prod_move_029",
     "query": "2018년 12월 김동엽 선수 트레이드 내용은?",
-    "relevantChunkIds": ["player_movements:2018-12-07_삼성_김동엽(외야수)_트레이드_53ef4827f2294e4a"],
+    "relevantChunkIds": ["player_movements:2018-12-07_SS_김동엽(외야수)_트레이드_42f3d3a6605c5578"],
     "filters": {"source_table": "player_movements", "document_type": "player_movement"},
     "tags": ["player"]
   },
