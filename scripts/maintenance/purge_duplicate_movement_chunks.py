@@ -41,9 +41,9 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scripts.maintenance.purge_orphan_rag_chunks import _retire_rows
@@ -55,7 +55,16 @@ from src.models.rag_chunk import RagChunk
 from src.services.rag_index_identity import stable_player_movement_source_row_id
 
 ALLOW_ENV = "KBO_ALLOW_RAG_CHUNK_DELETE"
+
+#: How many ids one ``UPDATE`` may carry. 7,227 ids in a single ``IN (...)`` list
+#: timed out waiting for the server on the first attempt (2026-11-05:
+#: ``could not receive data from server: Operation timed out``) -- the delete path
+#: has to issue many small statements rather than one large one. 500 keeps each
+#: round trip well inside the connection's patience while still covering the whole
+#: set in 15 statements.
+_RETIRE_CHUNK_SIZE = 500
 REASON = "duplicate_of_natural_key"
+STALE_REASON = "superseded_by_canonical_key"
 BACKUP_COLUMNS = ("chunk_id", "source_row_id", "index_status", "natural_key", "legacy_note", "reason")
 
 _LEGACY_ID = re.compile(r"^id=\d+$")
@@ -64,7 +73,7 @@ LEGACY_FIELDS = re.compile(r"^([가-힣 ]+):\s*(.*)$", re.MULTILINE)
 
 @dataclass(frozen=True)
 class DuplicateRow:
-    """One legacy chunk whose fact is already stored under the natural key."""
+    """One chunk whose fact is already stored under another key."""
 
     chunk_id: int
     source_row_id: str
@@ -175,7 +184,71 @@ def plan_duplicates(session: Session) -> tuple[list[DuplicateRow], list[str]]:
                 legacy_note=note,
             ),
         )
+
+    confirmed.extend(_stale_natural_key_rows(session, indexed=natural))
     return confirmed, rejected
+
+
+def _stale_natural_key_rows(
+    session: Session,
+    *,
+    indexed: Mapping[str, str],
+) -> list[DuplicateRow]:
+    """Find natural keys that a canonical key has superseded.
+
+    ``player_movements.team_code`` holds Korean names and era codes, and the key was
+    built from it before 2026-11-05, so one movement was indexed under up to three
+    spellings. The canonical key now exists for every source row; where the two
+    chunks hold the **same content**, the older key is a duplicate.
+
+    Content equality is the test, not the triple: (date, player, section) is not
+    unique -- a player can move twice on one day -- so mapping keys by that triple
+    reads two different movements as one.
+    """
+    from src.models.rag_chunk import RagChunk as _Chunk
+
+    stale: list[DuplicateRow] = []
+    for movement in session.execute(select(PlayerMovement)).scalars():
+        canonical_key = stable_player_movement_source_row_id(
+            movement.movement_date,
+            movement.canonical_team_id or movement.team_code,
+            movement.player_name,
+            movement.section,
+        )
+        raw_key = stable_player_movement_source_row_id(
+            movement.movement_date,
+            movement.team_code,
+            movement.player_name,
+            movement.section,
+        )
+        if raw_key == canonical_key:
+            continue
+        raw_content = indexed.get(raw_key)
+        canonical_content = indexed.get(canonical_key)
+        if raw_content is None or canonical_content is None:
+            continue
+        if raw_content != canonical_content:
+            continue
+        row = session.execute(
+            select(_Chunk.id, _Chunk.index_status).where(
+                _Chunk.source_table == "player_movements",
+                _Chunk.source_row_id == raw_key,
+                _Chunk.index_status == "ACTIVE",
+            ),
+        ).first()
+        if row is None:
+            continue
+        stale.append(
+            DuplicateRow(
+                chunk_id=int(row[0]),
+                source_row_id=raw_key,
+                index_status=str(row[1]),
+                natural_key=canonical_key,
+                legacy_note="",
+                reason=STALE_REASON,
+            ),
+        )
+    return stale
 
 
 def _write_backup(path: Path, rows: Sequence[DuplicateRow]) -> None:
@@ -244,6 +317,37 @@ def _audit(session: Session, row: DuplicateRow, backup_file: Path) -> None:
     )
 
 
+def _apply_deletions(session: Session, rows: Sequence[DuplicateRow], backup_file: Path) -> int:
+    """Audit every row, then walk the ids to ``DELETED`` in bounded statements.
+
+    The audit rows go first so the trail exists before anything moves, and the
+    transitions run in chunks: one ``IN (...)`` covering all 7,227 ids timed out
+    waiting on the server, and a delete that dies mid-flight rolls back -- the
+    work is not lost, but the wait is.
+
+    Args:
+        session: Session the writes go through.
+        rows: The planned rows.
+        backup_file: Where the plan came from, recorded on each audit row.
+
+    Returns:
+        The number of rows moved.
+
+    """
+    by_status: dict[str, list[int]] = {}
+    for row in rows:
+        _audit(session, row, backup_file)
+        by_status.setdefault(row.index_status, []).append(row.chunk_id)
+    session.flush()
+
+    retired = 0
+    for status, ids in by_status.items():
+        for start in range(0, len(ids), _RETIRE_CHUNK_SIZE):
+            chunk = ids[start : start + _RETIRE_CHUNK_SIZE]
+            retired += _retire_rows(session, {status: chunk})
+    return retired
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Plan or delete the duplicate legacy movement chunks.
 
@@ -286,22 +390,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with SessionLocal() as session:
         ids = [row.chunk_id for row in rows]
-        found = set(
-            session.execute(
-                select(RagChunk.id).where(RagChunk.id.in_(ids), or_(RagChunk.source_row_id.regexp_match("^id="))),
-            ).scalars(),
-        )
-        if len(found) != len(ids):
-            missing = sorted(set(ids) - found)
-            message = f"refusing: {len(missing)} id(s) are missing or no longer legacy, e.g. {missing[:5]}"
+        # The plan lists both legacy ids and superseded natural keys, so "is it still
+        # legacy" is the wrong question. What must hold is that each id still carries
+        # **the row the plan saw**: an id reused by another chunk would otherwise be
+        # deleted under the old row's authority.
+        live = {
+            int(row[0]): (str(row[1]), str(row[2]))
+            for row in session.execute(
+                select(RagChunk.id, RagChunk.source_row_id, RagChunk.index_status).where(RagChunk.id.in_(ids)),
+            ).fetchall()
+        }
+        mismatched = [row for row in rows if live.get(row.chunk_id) != (row.source_row_id, row.index_status)]
+        if mismatched:
+            sample = [row.chunk_id for row in mismatched[:5]]
+            message = f"refusing: {len(mismatched)} id(s) no longer carry the planned row, e.g. {sample}"
             raise SystemExit(message)
 
-        by_status: dict[str, list[int]] = {}
-        for row in rows:
-            _audit(session, row, args.backup_file)
-            by_status.setdefault(row.index_status, []).append(row.chunk_id)
-
-        retired = _retire_rows(session, by_status)
+        retired = _apply_deletions(session, rows, args.backup_file)
         session.commit()
 
     counts = Counter(row.index_status for row in rows)
