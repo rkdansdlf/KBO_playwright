@@ -335,11 +335,12 @@ def test_the_deletions_are_split_into_bounded_statements(monkeypatch: pytest.Mon
         lambda session, ids_by_status: (calls.append(ids_by_status), sum(len(v) for v in ids_by_status.values()))[1],
     )
 
-    retired = module._apply_deletions(session, rows, Path("plan.csv"))
+    retired, already_done = module._apply_deletions(session, rows, Path("plan.csv"))
 
     assert len(calls) == 3
-    assert sorted(len(next(iter(call.values()))) for call in calls) == [100, 500, 500]
+    assert sorted(len(next(iter(call.values()))) for call in calls) == [100, 200, 200]
     assert retired == len(rows)
+    assert already_done == 0
 
 
 def test_every_deleted_row_leaves_an_audit_trail() -> None:
@@ -368,7 +369,7 @@ def test_every_deleted_row_leaves_an_audit_trail() -> None:
     )
     session.commit()
 
-    retired = _apply_deletions(session, rows, Path("data/repair_backups/plan.csv"))
+    retired, _already = _apply_deletions(session, rows, Path("data/repair_backups/plan.csv"))
 
     audit = list(session.execute(select(CorrectionAuditTrail)).scalars())
     assert retired == 3
@@ -377,3 +378,76 @@ def test_every_deleted_row_leaves_an_audit_trail() -> None:
     assert all(entry.field_name == "row_deleted" for entry in audit)
     assert all(entry.corrected_value.startswith("2024-07-18_KIA_") for entry in audit)
     assert all("plan.csv" in (entry.extra_metadata or {})["backup_file"] for entry in audit)
+
+
+def test_a_rerun_skips_rows_already_off_the_search_surface() -> None:
+    """A dropped connection costs the batch in flight, not the run.
+
+    Every batch commits, so a second attempt sees the first attempt's work as
+    ``DELETED``. It must count those and move on -- ``main``'s guard only checks that
+    the id still carries the planned ``source_row_id``, so refusing here would make
+    a dropped connection unrecoverable.
+    """
+    from src.models.rag_chunk import RagChunk
+
+    session = _session()
+    rows = [
+        DuplicateRow(
+            chunk_id=index + 1,
+            source_row_id=f"id={index + 1}",
+            index_status="ACTIVE",
+            natural_key=f"2024-07-18_KIA_x_부상자 명단_{index:016x}",
+            legacy_note="",
+        )
+        for index in range(3)
+    ]
+    session.add_all(
+        [
+            RagChunk(id=row.chunk_id, source_table="player_movements", source_row_id=row.source_row_id, content="x")
+            for row in rows
+        ],
+    )
+    session.commit()
+
+    retired, already_done = _apply_deletions(session, rows, Path("plan.csv"))
+    assert (retired, already_done) == (3, 0)
+
+    retired2, already_done2 = _apply_deletions(session, rows, Path("plan.csv"))
+    assert (retired2, already_done2) == (0, 3)
+
+
+def test_each_batch_commits_so_a_later_failure_keeps_earlier_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The point of batching is that a mid-run drop is resumable."""
+    from src.models.rag_chunk import RagChunk
+
+    session = _session()
+    rows = [
+        DuplicateRow(
+            chunk_id=index + 1,
+            source_row_id=f"id={index + 1}",
+            index_status="ACTIVE",
+            natural_key=f"2024-07-18_KIA_x_부상자 명단_{index:016x}",
+            legacy_note="",
+        )
+        for index in range(6)
+    ]
+    session.add_all(
+        [
+            RagChunk(id=row.chunk_id, source_table="player_movements", source_row_id=row.source_row_id, content="x")
+            for row in rows
+        ],
+    )
+    session.commit()
+
+    commits: list[int] = []
+    original_commit = session.commit
+
+    def counting_commit() -> None:
+        commits.append(1)
+        original_commit()
+
+    monkeypatch.setattr(session, "commit", counting_commit)
+
+    _apply_deletions(session, rows, Path("plan.csv"), batch_size=2)
+
+    assert len(commits) == 3

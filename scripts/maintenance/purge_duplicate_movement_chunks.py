@@ -23,6 +23,14 @@ destructive half reading a list rather than making judgments.
 Guard: ``--apply`` **and** ``KBO_ALLOW_RAG_CHUNK_DELETE=1``; otherwise it prints the
 plan and exits 3 without writing.
 
+**Deletes commit per batch** (``--batch-size``, default 200). One transaction over
+all 7,227 rows was tried twice and died the same way both times -- ``could not
+receive data from server: Operation timed out`` -- while the server sat idle with
+no locks: the connection was dropped by the network (a Tailscale link that has
+been flapping), not by anything the query did. Committing per batch means a drop
+costs the batch in flight, not the run, and re-running the same command resumes:
+an id already off the search surface is counted as ``already_done`` and skipped.
+
 Usage:
     python3 -m scripts.maintenance.purge_duplicate_movement_chunks \
         --backup-out data/repair_backups/movement_duplicates_20261105.csv
@@ -62,7 +70,11 @@ ALLOW_ENV = "KBO_ALLOW_RAG_CHUNK_DELETE"
 #: has to issue many small statements rather than one large one. 500 keeps each
 #: round trip well inside the connection's patience while still covering the whole
 #: set in 15 statements.
-_RETIRE_CHUNK_SIZE = 500
+_RETIRE_CHUNK_SIZE = 200
+
+#: Statuses that mean the row is already off the search surface, so a re-run after
+#: a dropped connection does not try to walk it again.
+SETTLED_STATUSES: frozenset[str] = frozenset({"DELETED", "TOMBSTONED", "PURGED"})
 REASON = "duplicate_of_natural_key"
 STALE_REASON = "superseded_by_canonical_key"
 BACKUP_COLUMNS = ("chunk_id", "source_row_id", "index_status", "natural_key", "legacy_note", "reason")
@@ -317,35 +329,56 @@ def _audit(session: Session, row: DuplicateRow, backup_file: Path) -> None:
     )
 
 
-def _apply_deletions(session: Session, rows: Sequence[DuplicateRow], backup_file: Path) -> int:
-    """Audit every row, then walk the ids to ``DELETED`` in bounded statements.
+def _apply_deletions(
+    session: Session,
+    rows: Sequence[DuplicateRow],
+    backup_file: Path,
+    *,
+    batch_size: int = _RETIRE_CHUNK_SIZE,
+) -> tuple[int, int]:
+    """Audit and delete the planned rows, committing once per batch.
 
-    The audit rows go first so the trail exists before anything moves, and the
-    transitions run in chunks: one ``IN (...)`` covering all 7,227 ids timed out
-    waiting on the server, and a delete that dies mid-flight rolls back -- the
-    work is not lost, but the wait is.
+    The audit rows go in the same batch as the move they describe, so the trail and
+    the change land together. A batch that fails leaves the earlier ones committed:
+    the run is resumable rather than all-or-nothing, which is what the connection
+    has required -- two all-in-one attempts died mid-flight and rolled back.
 
     Args:
         session: Session the writes go through.
         rows: The planned rows.
         backup_file: Where the plan came from, recorded on each audit row.
+        batch_size: Rows per transaction.
 
     Returns:
-        The number of rows moved.
+        ``(retired, already_done)`` -- rows moved and rows already off the surface.
 
     """
-    by_status: dict[str, list[int]] = {}
-    for row in rows:
-        _audit(session, row, backup_file)
-        by_status.setdefault(row.index_status, []).append(row.chunk_id)
-    session.flush()
-
     retired = 0
-    for status, ids in by_status.items():
-        for start in range(0, len(ids), _RETIRE_CHUNK_SIZE):
-            chunk = ids[start : start + _RETIRE_CHUNK_SIZE]
-            retired += _retire_rows(session, {status: chunk})
-    return retired
+    already_done = 0
+    for start in range(0, len(rows), batch_size):
+        batch = rows[start : start + batch_size]
+        live = {
+            int(row[0]): str(row[2])
+            for row in session.execute(
+                select(RagChunk.id, RagChunk.source_row_id, RagChunk.index_status).where(
+                    RagChunk.id.in_([row.chunk_id for row in batch]),
+                ),
+            ).fetchall()
+        }
+
+        by_status: dict[str, list[int]] = {}
+        for row in batch:
+            status = live.get(row.chunk_id)
+            if status is None or status in SETTLED_STATUSES:
+                already_done += 1
+                continue
+            _audit(session, row, backup_file)
+            by_status.setdefault(status, []).append(row.chunk_id)
+
+        for status, ids in by_status.items():
+            retired += _retire_rows(session, {status: ids})
+        session.commit()
+    return retired, already_done
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -362,6 +395,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--backup-out", type=Path, help="write the verified plan to this CSV (read-only)")
     parser.add_argument("--backup-file", type=Path, help="delete the rows listed in this CSV")
     parser.add_argument("--apply", action="store_true", help="actually delete (needs the env guard)")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=_RETIRE_CHUNK_SIZE,
+        help=f"rows per committed batch (default {_RETIRE_CHUNK_SIZE})",
+    )
     args = parser.parse_args(argv)
 
     if not args.backup_out and not args.backup_file:
@@ -406,11 +445,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             message = f"refusing: {len(mismatched)} id(s) no longer carry the planned row, e.g. {sample}"
             raise SystemExit(message)
 
-        retired = _apply_deletions(session, rows, args.backup_file)
-        session.commit()
+        retired, already_done = _apply_deletions(
+            session,
+            rows,
+            args.backup_file,
+            batch_size=max(args.batch_size, 1),
+        )
 
     counts = Counter(row.index_status for row in rows)
     print(f"deleted {retired} row(s) from {dict(counts)}")
+    if already_done:
+        print(f"already off the search surface: {already_done}")
     print("audit rows written to correction_audit_trail (entity_type='rag_chunk', field_name='row_deleted')")
     return 0
 
