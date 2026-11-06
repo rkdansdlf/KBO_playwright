@@ -145,14 +145,18 @@ def _get_current_database_fingerprint() -> str:
 
 
 _MAX_VALIDATION_ERRORS = 5
+_APPROVED_SOURCE_TABLES = frozenset({"awards", "team_history", "player_movements"})
 
 
 def _validate_entries_proof(entries: list[dict]) -> list[str]:
-    """Validate that every SAFE_REKEY entry carries verified content proof."""
+    """Validate that every SAFE_REKEY entry carries verified content proof and approved source."""
     errors: list[str] = []
     for idx, entry in enumerate(entries):
         if entry.get("disposition") != DISPOSITION_REKEY:
             continue
+        source_table = entry.get("source_table")
+        if source_table and source_table not in _APPROVED_SOURCE_TABLES:
+            errors.append(f"entry[{idx}] unapproved source_table '{source_table}'")
         if entry.get("matched_source_pk") is None:
             errors.append(f"entry[{idx}] missing matched_source_pk")
         proof = entry.get("proof")

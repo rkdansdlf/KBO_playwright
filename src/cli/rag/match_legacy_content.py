@@ -44,6 +44,7 @@ from src.services.rag_legacy_content_match import (
     DUPLICATE,
     MATCHED,
     REKEY,
+    UNMATCHED,
     LegacyMatchOutcome,
     LegacySourceRow,
     disposition,
@@ -75,8 +76,6 @@ SAMPLE_LIMIT = 5
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
-
-    from src.services.rag_legacy_content_match import LegacyMatchOutcome
 
 
 def _movement_index(session: Session) -> dict:
@@ -237,7 +236,9 @@ def _match_one(source_table: str, content: str, indexes: dict) -> LegacyMatchOut
     if source_table == "awards":
         exact, by_year_type = indexes["awards"]
         return match_award(content, exact, by_year_type)
-    return match_team_history(content, indexes["team_history"])
+    if source_table == "team_history":
+        return match_team_history(content, indexes["team_history"])
+    return LegacyMatchOutcome(UNMATCHED)
 
 
 def build_report(

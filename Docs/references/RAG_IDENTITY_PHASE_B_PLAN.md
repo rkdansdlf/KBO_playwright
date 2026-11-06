@@ -568,3 +568,46 @@ Audit: `damage 0`, `consistent true`, `deleted 9,604`.
 
 **Still open**: one new movement (the crawler keeps adding) is unindexed until the
 nightly run; `update_status`-style last-write inspection is not part of this work.
+
+## 12. P8 outcome — team_history 10 duplicate legacy chunks retired (2026-11-07)
+
+`team_history`의 legacy 10건(2026년 10개 구단 청크: `id=311`, `356`, `358`, `360`,
+`362`, `365`, `368`, `371`, `375`, `379`)을 전수 값 비교 검증(10/10) 후 삭제 완료
+(commit `8bc5b30c`).
+
+* **검증 내용**: legacy가 `구단/시즌/순위/도시/주경기장/현재 구단명` 6개 필드를
+  갖고 자연 키(`2026_XX`)는 한 줄 요약 형태를 띄나, `현재 구단명`은 원천 컬럼이 아닌
+  생성기 반복 필드였으며 10건 모두 2026년이라 두 값이 동일함. 나머지 5개 값 및
+  `team_code`는 자연 키 청크에 100% 온전히 보존됨(누락 0건).
+* **조치**: `purge_duplicate_movement_chunks.py`에 `--source team_history`를 추가하여
+  동일한 가드(`KBO_ALLOW_RAG_CHUNK_DELETE=1`)와 톰스톤 전이(`ACTIVE → DELETE_PENDING → DELETED`)를
+  거쳐 안전하게 10행 삭제 완료.
+* **결과**: `team_history` 활성 자연키 385건 유지, 레거시 활성 청크 0건.
+
+## 13. P9 outcome — awards legacy duplicate verification & purge tooling (2026-11-07)
+
+`awards`에 남아있던 레거시 6건(`id=64`, `199`, `308`, `355`, `365`, `88`)에 대한
+전수 분석 및 정리 도구화 완료:
+
+* **정식 표기 및 등록명 매핑**:
+  - `1994_신인상_유격수_유지현` ↔ `id=64` (1994 Rookie of the Year 류지현)
+  - `1998_골든글러브_유격수_유지현` ↔ `id=365` (1998 Golden Glove 류지현)
+  - `1999_골든글러브_유격수_유지현` ↔ `id=355` (1999 Golden Glove 류지현)
+  - `2014_골든글러브_투수_헤켄` ↔ `id=199` (2014 Golden Glove 밴헤켄)
+  위 4건은 자연 키 청크가 이미 완벽하게 생성·임베딩되어 있으며, 본문 사실이 온전히
+  보존됨을 확인하여 `duplicate_of_natural_key`로 확정.
+* **비정상 청크의 엄격한 거부 (Fail-Closed)**:
+  - `id=308` (2004 Golden Glove 이진영): 원천 테이블에 수상 사실이 없는 허위 청크로,
+    단순 중복이 아니므로 중복 정리 목록에서 정당하게 제외(`refused`).
+  - `id=88` (1982 Rookie of the Year -): 수상자 없는 공백 플레이스홀더 청크로 거부(`refused`).
+* **도구화**: `purge_duplicate_movement_chunks.py --source awards` 및 전용 테스트
+  스위트(`TestAwardDuplicates`) 구현 완료.
+
+## 14. Remaining Frontier — player_season_batting / pitching architecture
+
+* **원칙 재확인 (§8)**: 레거시 청크가 담고 있는 ISO, BABIP, XR, wRC+ 등
+  사베르메트릭스 정보가 신규 생성기(`build_rag_index.py`)의 자연 키 청크에 먼저
+  구현(`[TL;DR]` / `[핵심 문장]` / `[상세]` / `[META]`)된 후 재인덱싱을 거쳐야만
+  기존 분할/레거시 청크의 안전한 퇴역이 가능함.
+* **현 상태 유지**: 정보 손실 없는 생성기 고도화 전까지는 단순 재키나 삭제를
+  엄격히 차단(Fail-Closed)하여 검색 품질 및 메타데이터 무결성을 영구 보존함.
