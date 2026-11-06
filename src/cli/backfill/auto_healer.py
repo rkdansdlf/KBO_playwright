@@ -49,6 +49,7 @@ from src.services.game_collection_service import (
     GameCollectionConfig,
     GameCollectionItemResult,
     crawl_and_save_game_details,
+    settled_unless_relay_finished,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
@@ -62,7 +63,7 @@ from src.utils.game_status import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -334,6 +335,49 @@ def _apply_heal_outcome(
     return "unresolved"
 
 
+def _settled_recovery_blocklist(game_ids: Iterable[str]) -> set[str]:
+    """Return the target ids an automatic healing pass must leave out.
+
+    A ``game_detail`` dead letter that reached ``exhausted``/``ignored`` is the
+    record of an answered question: the source could not supply this game. Asking
+    again does not simply fail -- it opens a fresh letter (a new ``original_run_id``
+    never collides with the old one), spends five more attempts, and returns the
+    same game here tomorrow. Measured 2026-11-01..05: about 40 letters a night for
+    40 past-season games (2011/2015 and the 2024 Premier12) whose only new
+    information each night was that Naver still does not serve their records. The
+    collection loader, the detail-recovery queue and the boxscore repair already
+    honour the same rule; the healer's own target list did not.
+
+    The relay exception is the collection path's: a game whose relay ran to its
+    closing marker is still wanted even though an earlier attempt gave up
+    (``20261026HTSS0``). ``requeue`` returns a letter to ``pending``, which this
+    does not match, so an operator who knows the source has recovered can put the
+    game back in front of the healer.
+
+    A read that fails blocks nothing: the filter is an addition to the healing
+    pass, and a filter that cannot run must not silently drop the work itself.
+
+    Args:
+        game_ids: Candidate game ids from this run's anomaly sets.
+
+    Returns:
+        The ids to leave out of this pass.
+
+    """
+    wanted = {game_id for game_id in game_ids if game_id}
+    if not wanted:
+        return set()
+    try:
+        with SessionLocal() as session:
+            blocked = settled_unless_relay_finished(session, wanted)
+    except SQLAlchemyError:
+        logger.exception("Could not check settled dead letters; keeping every recovery target")
+        return set()
+    if blocked:
+        logger.info("⏭️  Leaving %s game(s) out of recovery: their game_detail dead letter is settled", len(blocked))
+    return blocked
+
+
 def _find_recovery_targets(
     target_game_ids: list[str] | None,
 ) -> tuple[list[Game], list[Game], list[Game], list[Game]]:
@@ -350,6 +394,17 @@ def _find_recovery_targets(
     stuck_games = [game for game in _find_stuck_games() if automatic_write_allowed(game_year_of(game), season_year)]
     inconsistent_games = _find_inconsistent_games()
     pa_formula_games = _find_pa_formula_inconsistent_games()
+
+    # Stuck games are deliberately left out of the settled check: the healer owns a
+    # terminal write for them (UNRESOLVED_MISSING), so a settled letter does not trap
+    # them in a loop, and the recent-retry window (issue #55) has to keep working
+    # while their source is still being chased. The other two sets have no such
+    # exit -- their only remedy is another crawl -- so for them the letter is it.
+    blocked = _settled_recovery_blocklist([game.game_id for game in inconsistent_games + pa_formula_games])
+    if blocked:
+        inconsistent_games = [game for game in inconsistent_games if game.game_id not in blocked]
+        pa_formula_games = [game for game in pa_formula_games if game.game_id not in blocked]
+
     all_found = sorted(
         {game.game_id: game for game in (stuck_games + inconsistent_games + pa_formula_games)}.values(),
         key=lambda game: game.game_id,

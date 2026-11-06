@@ -61,6 +61,7 @@ from src.services.game_collection_service import (
     GameCollectionItemResult,
     crawl_and_save_game_details,
     settled_game_ids,
+    settled_unless_relay_finished,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
@@ -430,6 +431,40 @@ def _without_settled_detail_games(game_ids: set[str]) -> set[str]:
     if settled:
         logger.info("   \u23ed\ufe0f Skipping %s queued game(s) whose detail dead letter is settled", len(settled))
     return game_ids - settled
+
+
+def _without_settled_unless_relay_finished(game_ids: list[str]) -> list[str]:
+    """Drop the ids whose game_detail dead letter is settled and whose relay has not finished.
+
+    The post-crawl audit heals the logic violations it finds by re-crawling the
+    games behind them. For a game whose letter already reached ``exhausted`` or
+    ``ignored`` that only spends the retry budget again and writes one more letter
+    per night -- the same loop the collection loader and the healer's own target
+    list already refuse. The relay exception is theirs too: a finished relay says
+    the game happened and its data is still wanted (``20261026HTSS0``), so it keeps
+    the game in front of the audit's heal.
+
+    A database failure keeps every id: the check is a filter, and a filter that
+    cannot run must not silently drop the work that should happen.
+
+    Args:
+        game_ids: The audit's game ids.
+
+    Returns:
+        The ids the heal should target.
+
+    """
+    if not game_ids:
+        return game_ids
+    try:
+        with SessionLocal() as session:
+            blocked = settled_unless_relay_finished(session, set(game_ids))
+    except SQLAlchemyError:
+        logger.exception("   ⚠️ Could not check settled dead letters; keeping every audit target")
+        return game_ids
+    if blocked:
+        logger.info("   ⏭️  Skipping %s audit game(s) whose game_detail dead letter is settled", len(blocked))
+    return [game_id for game_id in game_ids if game_id not in blocked]
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
@@ -1309,9 +1344,12 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
                 len(violations),
                 len(inconsistent_ids),
             )
-            logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(inconsistent_ids[:5]))
-
-            await run_healer_async(target_game_ids=inconsistent_ids)
+            heal_ids = _without_settled_unless_relay_finished(inconsistent_ids)
+            if heal_ids:
+                logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(heal_ids[:5]))
+                await run_healer_async(target_game_ids=heal_ids)
+            else:
+                logger.info("   ⏭️  No healable target left: every audit game's game_detail dead letter is settled")
 
             logger.info("   \U0001f50d Re-auditing after repair...")
             violations_after = audit_game_logic(year=ctx.year)
