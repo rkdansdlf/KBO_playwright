@@ -36,8 +36,6 @@ def _capture(caplog: pytest.LogCaptureFixture, results: dict[str, object]) -> st
     return caplog.text
 
 
-
-
 class TestAFailedStageIsNamed:
     def test_the_summary_names_the_stage_and_its_error(self, caplog: pytest.LogCaptureFixture) -> None:
         results = {
@@ -65,7 +63,9 @@ class TestASkippedStageIsAlsoNamed:
         """A skipped stage did no work either; it belongs in the same line."""
         results = {
             "step_1_schedule": _result("step_1_schedule", TaskState.FAILED, "upstream died"),
-            "step_2_detail_crawl": _result("step_2_detail_crawl", TaskState.SKIPPED, "Upstream dependency failed: step_1_schedule"),
+            "step_2_detail_crawl": _result(
+                "step_2_detail_crawl", TaskState.SKIPPED, "Upstream dependency failed: step_1_schedule"
+            ),
         }
 
         text = _capture(caplog, results)

@@ -33,6 +33,7 @@ from src.services.crawl_run_service import track_crawl_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
     from sqlalchemy.orm import Session
 
@@ -181,6 +182,7 @@ class _SnapshotView:
     #: The parse conditions the baseline count was produced under, replayed on
     #: re-parse so a time-windowed parser reads the same window twice.
     capture_metadata: dict | None = None
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -313,7 +315,11 @@ def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _Pars
             "content_hash": view.content_hash,
             "target_domain": view.target_domain,
         }
-        captured = view.capture_metadata or {}
+        captured = dict(view.capture_metadata or {})
+        if "fetched_at" not in captured and view.created_at is not None:
+            captured["fetched_at"] = view.created_at.isoformat()
+        if "cutoff_days" not in captured:
+            captured["cutoff_days"] = 30
         for key in REPLAYED_PARSE_CONTEXT_KEYS:
             if captured.get(key) is not None:
                 metadata[key] = captured[key]
@@ -348,6 +354,7 @@ def _load_view(session: Session, snapshot_id: int) -> _SnapshotView:
         parser_version=snapshot.parser_version,
         baseline_count=_baseline_count(snapshot.capture_metadata),
         capture_metadata=snapshot.capture_metadata,
+        created_at=snapshot.created_at,
     )
 
 
