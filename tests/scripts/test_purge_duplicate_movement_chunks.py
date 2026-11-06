@@ -47,9 +47,11 @@ def _session() -> Session:
     PlayerMovement.__table__.create(engine)
     from src.models.audit_trail import CorrectionAuditTrail
     from src.models.rag_chunk import RagChunk
+    from src.models.team_history import TeamHistory
 
     RagChunk.__table__.create(engine, checkfirst=False)
     CorrectionAuditTrail.__table__.create(engine, checkfirst=False)
+    TeamHistory.__table__.create(engine, checkfirst=False)
     return Session(engine)
 
 
@@ -451,3 +453,83 @@ def test_each_batch_commits_so_a_later_failure_keeps_earlier_work(monkeypatch: p
     _apply_deletions(session, rows, Path("plan.csv"), batch_size=2)
 
     assert len(commits) == 3
+
+
+class TestTeamHistoryPlanning:
+    """The legacy form labels five fields; the natural key writes one line.
+
+    The first read called the legacy form richer because it lists more fields.
+    Comparing values says otherwise -- ``현재 구단명`` is not a source column at all.
+    """
+
+    def _add(self, session, *, natural_content: str, legacy_content: str) -> None:
+        from src.models.rag_chunk import RagChunk
+        from src.models.team_history import TeamHistory
+
+        session.add(
+            TeamHistory(
+                franchise_id=1,
+                season=2026,
+                team_name="삼성 라이온즈",
+                team_code="SS",
+                ranking=1,
+                stadium="대구 삼성 라이온즈 파크",
+                city="대구",
+            ),
+        )
+        session.commit()
+        session.add_all(
+            [
+                RagChunk(
+                    source_table="team_history",
+                    source_row_id="2026_SS",
+                    content=natural_content,
+                    index_status="ACTIVE",
+                ),
+                RagChunk(
+                    source_table="team_history",
+                    source_row_id="id=311",
+                    content=legacy_content,
+                    index_status="ACTIVE",
+                ),
+            ],
+        )
+        session.commit()
+
+    def test_a_row_whose_values_all_survive_is_confirmed(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_team_history_duplicates
+
+        session = _session()
+        self._add(
+            session,
+            natural_content="2026년 삼성 라이온즈 (SS): 1위, 구장: 대구 삼성 라이온즈 파크, 도시: 대구",
+            legacy_content=(
+                "KBO 구단 변천사\n구단: 삼성 라이온즈\n시즌: 2026\n순위: 1\n도시: 대구\n"
+                "주경기장: 대구 삼성 라이온즈 파크\n\n현재 구단명: 삼성 라이온즈"
+            ),
+        )
+
+        confirmed, rejected = plan_team_history_duplicates(session)
+
+        assert rejected == []
+        assert [row.source_row_id for row in confirmed] == ["id=311"]
+        assert confirmed[0].natural_key == "2026_SS"
+
+    def test_a_value_missing_from_the_natural_key_is_refused(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_team_history_duplicates
+
+        session = _session()
+        self._add(
+            session,
+            natural_content="2026년 삼성 라이온즈 (SS): 1위, 구장: 불명, 도시: 대구",
+            legacy_content=(
+                "KBO 구단 변천사\n구단: 삼성 라이온즈\n시즌: 2026\n순위: 1\n도시: 대구\n"
+                "주경기장: 대구 삼성 라이온즈 파크\n\n현재 구단명: 삼성 라이온즈"
+            ),
+        )
+
+        confirmed, rejected = plan_team_history_duplicates(session)
+
+        assert confirmed == []
+        assert len(rejected) == 1
+        assert "주경기장" in rejected[0]

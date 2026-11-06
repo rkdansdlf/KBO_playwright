@@ -60,7 +60,11 @@ from src.db.engine import SessionLocal
 from src.models.audit_trail import CorrectionAuditTrail
 from src.models.player import PlayerMovement
 from src.models.rag_chunk import RagChunk
-from src.services.rag_index_identity import stable_player_movement_source_row_id
+from src.models.team_history import TeamHistory
+from src.services.rag_index_identity import (
+    stable_player_movement_source_row_id,
+    stable_team_history_source_row_id,
+)
 
 ALLOW_ENV = "KBO_ALLOW_RAG_CHUNK_DELETE"
 
@@ -263,6 +267,81 @@ def _stale_natural_key_rows(
     return stale
 
 
+def plan_team_history_duplicates(session: Session) -> tuple[list[DuplicateRow], list[str]]:
+    """Verify every legacy ``team_history`` chunk against its natural-key chunk.
+
+    The legacy form labels five fields (``구단``/``시즌``/``순위``/``도시``/``주경기장``)
+    where the natural key writes one line, so it *looks* richer -- and the first read
+    called it that. Comparing the values instead of the field list says otherwise:
+    every value is present in the natural-key chunk, which additionally carries
+    ``team_code``, and ``현재 구단명`` is not a source column at all -- the legacy
+    generator repeated ``구단`` into it, and for the ten 2026 rows those are equal.
+    Measured 2026-11-06: 10/10 show no missing value.
+
+    Args:
+        session: Session the chunks are read through.
+
+    Returns:
+        The rows safe to delete and one message per row that failed verification.
+
+    """
+    natural = {
+        row.source_row_id: (row.content or "")
+        for row in session.execute(
+            select(RagChunk).where(
+                RagChunk.source_table == "team_history",
+                RagChunk.source_row_id.regexp_match("^[0-9]"),
+            ),
+        ).scalars()
+    }
+    by_season_team = {(row.season, row.team_name): row for row in session.execute(select(TeamHistory)).scalars()}
+
+    legacy = list(
+        session.execute(
+            select(RagChunk).where(
+                RagChunk.source_table == "team_history",
+                RagChunk.source_row_id.regexp_match("^id="),
+                RagChunk.index_status == "ACTIVE",
+            ),
+        ).scalars(),
+    )
+
+    confirmed: list[DuplicateRow] = []
+    rejected: list[str] = []
+    for chunk in legacy:
+        fields = legacy_fields(chunk.content or "")
+        season = fields.get("시즌", "")
+        team = fields.get("구단", "")
+        movement = by_season_team.get((int(season) if season.isdigit() else -1, team))
+        if movement is None:
+            rejected.append(f"{chunk.source_row_id}: no source row for season={season!r} team={team!r}")
+            continue
+        key = stable_team_history_source_row_id(movement.season, movement.team_code)
+        counterpart = natural.get(key)
+        if counterpart is None:
+            rejected.append(f"{chunk.source_row_id}: no natural-key chunk for {key}")
+            continue
+        missing = [
+            f"{label}={fields[label]!r}"
+            for label in ("순위", "도시", "주경기장")
+            if fields.get(label, "").strip() and fields[label].strip() not in counterpart
+        ]
+        if missing:
+            rejected.append(f"{chunk.source_row_id}: {', '.join(missing)} absent from {key}")
+            continue
+        confirmed.append(
+            DuplicateRow(
+                chunk_id=chunk.id,
+                source_row_id=chunk.source_row_id,
+                index_status=chunk.index_status,
+                natural_key=key,
+                legacy_note="",
+                reason=REASON,
+            ),
+        )
+    return confirmed, rejected
+
+
 def _write_backup(path: Path, rows: Sequence[DuplicateRow]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -392,6 +471,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--source",
+        choices=("player_movements", "team_history"),
+        default="player_movements",
+        help="which source's duplicates to plan (default player_movements)",
+    )
     parser.add_argument("--backup-out", type=Path, help="write the verified plan to this CSV (read-only)")
     parser.add_argument("--backup-file", type=Path, help="delete the rows listed in this CSV")
     parser.add_argument("--apply", action="store_true", help="actually delete (needs the env guard)")
@@ -407,8 +492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("one of --backup-out or --backup-file is required")
 
     if args.backup_out:
+        planner = plan_duplicates if args.source == "player_movements" else plan_team_history_duplicates
         with SessionLocal() as session:
-            confirmed, rejected = plan_duplicates(session)
+            confirmed, rejected = planner(session)
         _write_backup(args.backup_out, confirmed)
         print(f"verified {len(confirmed)} row(s) as duplicates → {args.backup_out}")
         if rejected:
