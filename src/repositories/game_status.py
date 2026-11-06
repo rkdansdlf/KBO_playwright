@@ -140,7 +140,7 @@ def update_game_status(
     if session is None:
         try:
             with get_db_session() as s:
-                return update_game_status(game_id, status, session=s, allow_historical=allow_historical)
+                return update_game_status(game_id, status, session=s, allow_historical=allow_historical, reason=reason)
         except Exception:
             logger.exception("[ERROR] DB Error (Status)")
             return False
