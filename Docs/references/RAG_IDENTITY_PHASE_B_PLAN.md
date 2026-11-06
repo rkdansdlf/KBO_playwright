@@ -611,3 +611,30 @@ nightly run; `update_status`-style last-write inspection is not part of this wor
   기존 분할/레거시 청크의 안전한 퇴역이 가능함.
 * **현 상태 유지**: 정보 손실 없는 생성기 고도화 전까지는 단순 재키나 삭제를
   엄격히 차단(Fail-Closed)하여 검색 품질 및 메타데이터 무결성을 영구 보존함.
+
+## 13. P3 narrow start — team_history legacy removed (2026-11-06)
+
+`team_history` legacy 10건(2026년 10개 구단)도 지웠다. **처음엔 지우면 안 된다고
+읽었다** — legacy가 `구단/시즌/순위/도시/주경기장/현재 구단명` 여섯 필드를 라벨
+붙여 쓰고 자연 키는 한 줄이라, legacy에만 `현재 구단명`이 있다고 판단했던 것이다.
+
+**값을 비교하니 반대였다**:
+- `현재 구단명`은 **원천 컬럼이 아니다**(스키마 `id, franchise_id, season, team_name,
+  team_code, logo_url, ranking, stadium, city, color, created_at, updated_at`).
+  legacy 생성기가 `구단`을 그대로 반복한 것이고, 10건이 전부 2026년이라 두 값이
+  같다.
+- 나머지 다섯 값은 전부 자연 키 청크에 있다. 자연 키는 `team_code`(`SS`)까지 더 갖는다.
+- **전수 검증 10/10에서 빠진 값 0건.**
+
+movements에서 "legacy가 길다"를 "더 풍부하다"로 읽은 것과 같은 실수였다 — 필드
+목록이 아니라 값을 비교해야 한다.
+
+도구는 `--source`로 일반화했다(`player_movements` | `team_history`, `plan_team_history_duplicates`).
+**판정만 소스별이고 백업·가드·전이·감사 경로는 공유한다** — 파괴적인 절반이 하나로
+남아 감사 가능성이 같다.
+
+실행: 10행 삭제, ACTIVE 385, `2026_XX` canonical 10건 유지, 감사 10행.
+뮤테이션: M1(값 검사 제거) 1 failed · M2(키를 team_name로) 2 failed. 회귀 16건.
+
+**재측정 필요**: 방화벽이 개발 Mac에 열리면 team_history 정리 전후를 다시 비교해야
+한다(해당 청크는 골든셋 참조가 아니다 — 갱신된 참조는 `player_movements:2018-12-07_SS_…`).
