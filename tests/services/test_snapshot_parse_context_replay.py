@@ -109,15 +109,21 @@ class TestTheWindowIsReplayed:
 
 
 class TestTheEdges:
-    def test_without_a_recorded_window_nothing_is_injected(self, artifact) -> None:
-        """A parser that needs no window must not receive one anyway."""
+    def test_a_missing_window_falls_back_to_the_crawlers_default(self, artifact) -> None:
+        """Old captures re-parse under the crawler's standard window.
+
+        The re-parse once fell through to the parser's own default (60 days for
+        some) while the crawl had read 30, and the difference surfaced as drift.
+        The fallback keeps the two halves of the pair aligned; the capture time is
+        still not invented when the row has no ``created_at`` to derive it from.
+        """
         parser = _RecordingParser()
 
         _run_parser(_view(artifact, capture_metadata={"parsed_records": 4}), parser)
 
         assert parser.metadata is not None
-        for key in REPLAYED_PARSE_CONTEXT_KEYS:
-            assert key not in parser.metadata
+        assert parser.metadata["cutoff_days"] == 30
+        assert "fetched_at" not in parser.metadata
 
     def test_a_missing_capture_metadata_is_not_an_error(self, artifact) -> None:
         """Rows captured before this contract existed still parse."""
