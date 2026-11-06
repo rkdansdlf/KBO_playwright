@@ -46,12 +46,14 @@ def _session() -> Session:
     engine = create_engine("sqlite://")
     PlayerMovement.__table__.create(engine)
     from src.models.audit_trail import CorrectionAuditTrail
+    from src.models.award import Award
     from src.models.rag_chunk import RagChunk
     from src.models.team_history import TeamHistory
 
     RagChunk.__table__.create(engine, checkfirst=False)
     CorrectionAuditTrail.__table__.create(engine, checkfirst=False)
     TeamHistory.__table__.create(engine, checkfirst=False)
+    Award.__table__.create(engine, checkfirst=False)
     return Session(engine)
 
 
@@ -533,3 +535,166 @@ class TestTeamHistoryPlanning:
         assert confirmed == []
         assert len(rejected) == 1
         assert "주경기장" in rejected[0]
+
+
+class TestAwardDuplicates:
+    """Awards legacy chunks carry English titles or historical orthography.
+
+    Where the source row and natural-key chunk exist, they are confirmed as duplicates.
+    Phantom or empty placeholder chunks are refused.
+    """
+
+    def _add(
+        self,
+        session: Session,
+        *,
+        year: int,
+        award_type: str,
+        category: str,
+        player_name: str,
+        team_name: str,
+        natural_key: str,
+        natural_content: str,
+        legacy_id: str,
+        legacy_content: str,
+    ) -> None:
+        from src.models.award import Award
+        from src.models.rag_chunk import RagChunk
+
+        session.add(
+            Award(
+                year=year,
+                award_type=award_type,
+                category=category,
+                player_name=player_name,
+                team_name=team_name,
+            ),
+        )
+        session.commit()
+        session.add_all(
+            [
+                RagChunk(
+                    source_table="awards",
+                    source_row_id=natural_key,
+                    content=natural_content,
+                    index_status="ACTIVE",
+                ),
+                RagChunk(
+                    source_table="awards",
+                    source_row_id=legacy_id,
+                    content=legacy_content,
+                    index_status="ACTIVE",
+                ),
+            ],
+        )
+        session.commit()
+
+    def test_korean_name_alias_is_confirmed(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_award_duplicates
+
+        session = _session()
+        self._add(
+            session,
+            year=1994,
+            award_type="신인상",
+            category="유격수",
+            player_name="유지현",
+            team_name="LG 트윈스",
+            natural_key="1994_신인상_유격수_유지현",
+            natural_content="1994시즌 KBO 신인상 (유격수): 유지현 (LG 트윈스)",
+            legacy_id="id=64",
+            legacy_content=(
+                "KBO 수상 기록 (MVP, 신인왕, 골든글러브)\n"
+                "시즌: 1994\n"
+                "수상 종류: Rookie of the Year\n"
+                "선수: 류지현\n"
+                "팀: LG"
+            ),
+        )
+
+        confirmed, rejected = plan_award_duplicates(session)
+
+        assert rejected == []
+        assert [row.source_row_id for row in confirmed] == ["id=64"]
+        assert confirmed[0].natural_key == "1994_신인상_유격수_유지현"
+
+    def test_foreign_player_alias_is_confirmed(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_award_duplicates
+
+        session = _session()
+        self._add(
+            session,
+            year=2014,
+            award_type="골든글러브",
+            category="투수",
+            player_name="헤켄",
+            team_name="넥센",
+            natural_key="2014_골든글러브_투수_헤켄",
+            natural_content="2014시즌 KBO 골든글러브 (투수): 헤켄 (넥센)",
+            legacy_id="id=199",
+            legacy_content=(
+                "KBO 수상 기록 (MVP, 신인왕, 골든글러브)\n"
+                "시즌: 2014\n"
+                "수상 종류: Golden Glove\n"
+                "선수: 밴헤켄\n"
+                "팀: WO\n\n"
+                "포지션: P"
+            ),
+        )
+
+        confirmed, rejected = plan_award_duplicates(session)
+
+        assert rejected == []
+        assert [row.source_row_id for row in confirmed] == ["id=199"]
+        assert confirmed[0].natural_key == "2014_골든글러브_투수_헤켄"
+
+    def test_phantom_award_with_no_source_row_is_refused(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_award_duplicates
+        from src.models.rag_chunk import RagChunk
+
+        session = _session()
+        session.add(
+            RagChunk(
+                source_table="awards",
+                source_row_id="id=308",
+                content=(
+                    "KBO 수상 기록 (MVP, 신인왕, 골든글러브)\n"
+                    "시즌: 2004\n"
+                    "수상 종류: Golden Glove\n"
+                    "선수: 이진영\n"
+                    "팀: SK\n\n"
+                    "포지션: OF"
+                ),
+                index_status="ACTIVE",
+            ),
+        )
+        session.commit()
+
+        confirmed, rejected = plan_award_duplicates(session)
+
+        assert confirmed == []
+        assert len(rejected) == 1
+        assert "no source row" in rejected[0]
+
+    def test_placeholder_award_is_refused(self) -> None:
+        from scripts.maintenance.purge_duplicate_movement_chunks import plan_award_duplicates
+        from src.models.rag_chunk import RagChunk
+
+        session = _session()
+        session.add(
+            RagChunk(
+                source_table="awards",
+                source_row_id="id=88",
+                content=(
+                    "KBO 수상 기록 (MVP, 신인왕, 골든글러브)\n시즌: 1982\n수상 종류: Rookie of the Year\n선수: -\n팀: -"
+                ),
+                index_status="ACTIVE",
+            ),
+        )
+        session.commit()
+
+        confirmed, rejected = plan_award_duplicates(session)
+
+        assert confirmed == []
+        assert len(rejected) == 1
+        assert "placeholder" in rejected[0]

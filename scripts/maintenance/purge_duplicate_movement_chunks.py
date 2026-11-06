@@ -58,10 +58,12 @@ from scripts.maintenance.purge_orphan_rag_chunks import _retire_rows
 from src.constants import KST
 from src.db.engine import SessionLocal
 from src.models.audit_trail import CorrectionAuditTrail
+from src.models.award import Award
 from src.models.player import PlayerMovement
 from src.models.rag_chunk import RagChunk
 from src.models.team_history import TeamHistory
 from src.services.rag_index_identity import (
+    stable_award_source_row_id,
     stable_player_movement_source_row_id,
     stable_team_history_source_row_id,
 )
@@ -342,6 +344,103 @@ def plan_team_history_duplicates(session: Session) -> tuple[list[DuplicateRow], 
     return confirmed, rejected
 
 
+AWARD_TYPE_MAP: dict[str, str] = {
+    "Golden Glove": "골든글러브",
+    "Rookie of the Year": "신인상",
+    "MVP": "MVP",
+}
+
+AWARD_PLAYER_ALIASES: dict[str, str] = {
+    "류지현": "유지현",
+    "밴헤켄": "헤켄",
+}
+
+
+def plan_award_duplicates(session: Session) -> tuple[list[DuplicateRow], list[str]]:
+    """Verify legacy ``awards`` chunks against their natural-key chunk.
+
+    Legacy award chunks record facts using English titles (``Golden Glove``,
+    ``Rookie of the Year``) and historical orthography (``류지현`` instead of
+    ``유지현``, ``밴헤켄`` instead of ``헤켄``). Where the corresponding source row
+    and natural-key chunk exist and preserve the season and winner name, the legacy
+    chunk is confirmed as a duplicate. Phantom or empty placeholder legacy chunks
+    are rejected with explicit reasons.
+
+    Args:
+        session: Session the chunks are read through.
+
+    Returns:
+        The rows safe to delete and one message per row that failed verification.
+
+    """
+    natural = {
+        row.source_row_id: (row.content or "")
+        for row in session.execute(
+            select(RagChunk).where(
+                RagChunk.source_table == "awards",
+                RagChunk.source_row_id.regexp_match("^[0-9]"),
+            ),
+        ).scalars()
+    }
+    by_triple = {(row.year, row.award_type, row.player_name): row for row in session.execute(select(Award)).scalars()}
+
+    legacy = list(
+        session.execute(
+            select(RagChunk).where(
+                RagChunk.source_table == "awards",
+                RagChunk.source_row_id.regexp_match("^id="),
+                RagChunk.index_status == "ACTIVE",
+            ),
+        ).scalars(),
+    )
+
+    confirmed: list[DuplicateRow] = []
+    rejected: list[str] = []
+    for chunk in legacy:
+        fields = legacy_fields(chunk.content or "")
+        season_raw = fields.get("시즌", "").strip()
+        if not season_raw.isdigit():
+            rejected.append(f"{chunk.source_row_id}: no valid season in {chunk.content!r}")
+            continue
+        year = int(season_raw)
+        award_type_raw = fields.get("수상 종류", "").strip()
+        award_type = AWARD_TYPE_MAP.get(award_type_raw, award_type_raw)
+        player_raw = fields.get("선수", "").strip()
+        if not player_raw or player_raw == "-":
+            rejected.append(f"{chunk.source_row_id}: placeholder row with empty player")
+            continue
+        player = AWARD_PLAYER_ALIASES.get(player_raw, player_raw)
+
+        award = by_triple.get((year, award_type, player))
+        if award is None:
+            rejected.append(
+                f"{chunk.source_row_id}: no source row for year={year} award_type={award_type!r} player={player!r}",
+            )
+            continue
+
+        key = stable_award_source_row_id(award.year, award.award_type, award.category, award.player_name)
+        counterpart = natural.get(key)
+        if counterpart is None:
+            rejected.append(f"{chunk.source_row_id}: no natural-key chunk for {key}")
+            continue
+
+        if player not in counterpart:
+            rejected.append(f"{chunk.source_row_id}: player {player!r} absent from {key}")
+            continue
+
+        confirmed.append(
+            DuplicateRow(
+                chunk_id=chunk.id,
+                source_row_id=chunk.source_row_id,
+                index_status=chunk.index_status,
+                natural_key=key,
+                legacy_note="",
+                reason=REASON,
+            ),
+        )
+    return confirmed, rejected
+
+
 def _write_backup(path: Path, rows: Sequence[DuplicateRow]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -473,7 +572,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--source",
-        choices=("player_movements", "team_history"),
+        choices=("player_movements", "team_history", "awards"),
         default="player_movements",
         help="which source's duplicates to plan (default player_movements)",
     )
@@ -492,7 +591,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("one of --backup-out or --backup-file is required")
 
     if args.backup_out:
-        planner = plan_duplicates if args.source == "player_movements" else plan_team_history_duplicates
+        planners = {
+            "player_movements": plan_duplicates,
+            "team_history": plan_team_history_duplicates,
+            "awards": plan_award_duplicates,
+        }
+        planner = planners[args.source]
         with SessionLocal() as session:
             confirmed, rejected = planner(session)
         _write_backup(args.backup_out, confirmed)
