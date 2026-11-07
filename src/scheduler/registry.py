@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import os
 import signal
@@ -12,7 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from sqlalchemy.engine import URL
 
@@ -21,6 +22,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.cli.calc.monthly_unified_audit import crawl_monthly_unified_audit_job
+from src.crawlers.run_origin import CrawlRunOrigin, use_run_origin
 from src.monitoring.crawler_cadence import publish_crawler_cadence
 from src.scheduler.cadence import expected_interval_seconds
 from src.scheduler.config import (
@@ -369,6 +371,25 @@ def _publish_job_cadence_contract(scheduler: object) -> None:
             KBO_SCHEDULER_JOB_EXPECTED_INTERVAL_SECONDS.labels(job_id=job_id).set(interval)
 
 
+def _scheduled_job(fn: Callable[..., object]) -> Callable[..., object]:
+    """Tag every recorded run a scheduled job starts with ``scheduler``.
+
+    Applied when the job is registered rather than as a decorator on each job, so
+    a job added later is covered by construction. The claim is scoped to the call
+    -- APScheduler reuses worker threads, and a value that outlived its job would
+    label the next job scheduled onto the same thread. A job that starts the daily
+    pipeline still records ``daily_update`` inside it: the pipeline makes its own
+    claim, and the innermost one wins.
+    """
+
+    @functools.wraps(fn)
+    def _tagged(*args: object, **kwargs: object) -> object:
+        with use_run_origin(CrawlRunOrigin.SCHEDULER):
+            return fn(*args, **kwargs)
+
+    return _tagged
+
+
 def _start_scheduler(args: argparse.Namespace) -> None:
     mod = sys.modules.get("scripts.scheduler") or sys.modules.get("src.scheduler")
     scheduler_cls = getattr(mod, "BlockingScheduler", BlockingScheduler) if mod else BlockingScheduler
@@ -382,7 +403,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     jobs = job_specs(trigger_cls)
     for fn, trigger, job_id, name, grace in jobs:
         scheduler.add_job(
-            fn,
+            _scheduled_job(fn),
             trigger=trigger,
             id=job_id,
             name=name,
@@ -392,7 +413,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         logger.info("Registered job: %s", job_id)
 
     scheduler.add_job(
-        crawl_pregame_refresh,
+        _scheduled_job(crawl_pregame_refresh),
         trigger=trigger_cls(hour="10-23", minute="*/15"),
         id="crawl_pregame_refresh",
         name="Pregame Refresh",
@@ -402,7 +423,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     # Notification dispatch. Both ran only in the manually dispatched ``daily-extras``
     # job, so nothing sent them on a schedule before this.
     scheduler.add_job(
-        send_milestone_summary_job,
+        _scheduled_job(send_milestone_summary_job),
         trigger=trigger_cls(hour=8, minute=30),
         id="send_milestone_summary",
         name="Milestone Summary Dispatch",
@@ -410,7 +431,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        send_pregame_alerts_job,
+        _scheduled_job(send_pregame_alerts_job),
         trigger=trigger_cls(hour=16, minute=0),
         id="send_pregame_alerts",
         name="Pregame Alert Dispatch",
@@ -418,7 +439,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_live_refresh,
+        _scheduled_job(crawl_live_refresh),
         trigger=trigger_cls(hour="12-22", second="*/10"),
         id="crawl_live_refresh_day",
         name="Live Refresh Day Window",
@@ -426,7 +447,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_live_refresh,
+        _scheduled_job(crawl_live_refresh),
         trigger=trigger_cls(hour=23, minute="0-30", second="*/10"),
         id="crawl_live_refresh_night",
         name="Live Refresh Night Window",
@@ -493,11 +514,13 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         ),
     ]
     for fn, trigger, job_id, grace in tier2_jobs:
-        scheduler.add_job(fn, trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1)
+        scheduler.add_job(
+            _scheduled_job(fn), trigger=trigger, id=job_id, name=job_id, misfire_grace_time=grace, max_instances=1
+        )
         logger.info("Registered job: %s (Daily)", job_id)
 
     scheduler.add_job(
-        crawl_dead_letter_recovery_job,
+        _scheduled_job(crawl_dead_letter_recovery_job),
         trigger=trigger_cls(minute="*/30"),
         id="crawl_dead_letter_recovery",
         name="Dead Letter Recovery",
@@ -507,7 +530,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     logger.info("Registered job: crawl_dead_letter_recovery (Every 30 min)")
 
     scheduler.add_job(
-        crawl_dead_letter_retry_job,
+        _scheduled_job(crawl_dead_letter_retry_job),
         trigger=trigger_cls(minute="*/10"),
         id="crawl_dead_letter_retry",
         name="Dead Letter Retry",
@@ -517,7 +540,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
     logger.info("Registered job: crawl_dead_letter_retry (Every 10 min)")
 
     scheduler.add_job(
-        crawl_transit_time_job,
+        _scheduled_job(crawl_transit_time_job),
         trigger=trigger_cls(hour="10-23", minute="*/15"),
         id="crawl_transit_time",
         name="Stadium Transit Time Measurement (JAMSIL)",
@@ -525,7 +548,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_congestion_job,
+        _scheduled_job(crawl_congestion_job),
         trigger=trigger_cls(hour="10-23", minute="*/5"),
         id="crawl_congestion",
         name="Stadium Congestion Data (JAMSIL)",
@@ -533,7 +556,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_operation_notices_job,
+        _scheduled_job(crawl_operation_notices_job),
         trigger=trigger_cls(hour=9, minute=0),
         id="crawl_operation_notices_morning",
         name="Operation Notices — Morning",
@@ -541,7 +564,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_operation_notices_job,
+        _scheduled_job(crawl_operation_notices_job),
         trigger=trigger_cls(hour=11, minute=30),
         id="crawl_operation_notices_daygame",
         name="Operation Notices — Day-of-Game",
@@ -549,7 +572,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_operation_notices_naver_job,
+        _scheduled_job(crawl_operation_notices_naver_job),
         trigger=trigger_cls(hour=9, minute=30),
         id="crawl_naver_notices_morning",
         name="Naver Notice — Morning",
@@ -557,7 +580,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_operation_notices_naver_job,
+        _scheduled_job(crawl_operation_notices_naver_job),
         trigger=trigger_cls(hour=13, minute=0),
         id="crawl_naver_notices_afternoon",
         name="Naver Notice — Afternoon",
@@ -565,7 +588,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        crawl_fan_culture_job,
+        _scheduled_job(crawl_fan_culture_job),
         trigger=trigger_cls(day_of_week="sat", hour=4, minute=0),
         id="crawl_fan_culture",
         name="Fan Culture Data Crawl",
@@ -573,7 +596,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        _crawl_team_info_history,
+        _scheduled_job(_crawl_team_info_history),
         trigger=trigger_cls(day_of_week="sun", hour=6, minute=0),
         id="crawl_team_info_history",
         name="Team Info/History Refresh",
@@ -581,7 +604,7 @@ def _start_scheduler(args: argparse.Namespace) -> None:
         max_instances=1,
     )
     scheduler.add_job(
-        lock_skip_monitor_job,
+        _scheduled_job(lock_skip_monitor_job),
         trigger=trigger_cls(minute="*/15"),
         id="lock_skip_monitor",
         name="Lock Skip Rate Monitor",

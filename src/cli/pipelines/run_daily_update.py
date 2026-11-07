@@ -39,6 +39,7 @@ from src.crawlers.player_batting_all_series_crawler import BattingSeriesCrawlReq
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import PitchingSeriesCrawlRequest, crawl_pitcher_series
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
+from src.crawlers.run_origin import RUN_ORIGIN_ENV_VAR, CrawlRunOrigin, use_run_origin
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
 from src.crawlers.team_event_crawler import TeamEventCrawler
@@ -397,7 +398,14 @@ def _failure_status(target_date: str, failure_reason: str | None, today: date) -
 def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
-    subprocess.run([sys.executable, *argv], check=True)
+    # The step runs as a child process, which cannot inherit the context claim
+    # (``use_run_origin``) -- the ledger reads the environment override instead,
+    # so the runs a step records are still attributed to the daily pipeline.
+    subprocess.run(
+        [sys.executable, *argv],
+        check=True,
+        env={**os.environ, RUN_ORIGIN_ENV_VAR: CrawlRunOrigin.DAILY_UPDATE.value},
+    )
 
 
 def _without_settled_detail_games(game_ids: set[str]) -> set[str]:
@@ -1776,6 +1784,11 @@ def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
 
 async def run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
     """Handle main orchestration logic for postgame finalize and daily reconciliation."""
+    with use_run_origin(CrawlRunOrigin.DAILY_UPDATE):
+        return await _run_update(target_date, options)
+
+
+async def _run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
     options = options or DailyUpdateOptions()
     ctx = _RunContext(
         target_date=target_date,
