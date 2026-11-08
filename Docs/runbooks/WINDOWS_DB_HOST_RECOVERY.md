@@ -26,6 +26,9 @@
 | 445 (SMB) / 135 (RPC) | **OPEN** |
 | Tailscale ping | **정상 (29ms)** |
 
+> **2026-11-09 재측정에서 445·139·3389 는 닫혔다.** 위 표는 10-05 시점의 기록이다.
+> 현재 상태와 전 채널 실측은 **§17.3** 을 본다.
+
 해석: 네트워크 계층(Tailscale)은 정상이고, **Windows 쪽 방화벽 DROP 또는 PostgreSQL 서비스 미기동**이다.
 `RST`가 아니라 timeout이라는 점은 "서비스가 죽어서 거부"보다 **방화벽이 먼저 버리는 경우**와 일치한다
 (둘 다 가능하므로 §3에서 서비스와 방화벽을 함께 확인한다).
@@ -798,3 +801,156 @@ pass(0), `game_result_without_body` warn(8,281, 변동 없음).
 `self._tmpdir` 로 고치고, 잘못 추가된 13개 디렉터리를 인덱스와 디스크에서 제거했다.
 재발 방지는 픽스처가 아니라 호출부의 경로 표현이 문제였으므로 경로 자체를 고치는 것으로
 충분하다.
+
+## 17. Docker 백엔드 정지 — 원격 복구 수단 없음 (2026-11-09)
+
+§14 는 "전 컨테이너 PostgreSQL 무응답"을 호스트 전역 가능성으로 남겼고, 그 뒤 다른 세션이
+`bega_prod` 컨테이너 init 실패로 정정했다. 이번 것은 **그때와 다른 형태**다. 컨테이너 하나가
+죽은 것이 아니라 **Windows 의 사용자 영역 프로세스가 광범위하게 멈췄고**, 원격에서 되살릴
+채널이 하나도 남지 않았다.
+
+### 17.1 확정된 상태
+
+| 계층 | 관측 | 판정 |
+| --- | --- | --- |
+| Tailscale | `ch806-08` online/active, ping 정상 | 네트워크 정상 |
+| Windows 커널·네이티브 서비스 | RPC 135 `bind_ack`, WSDAPI 5357 `HTTP/1.1 503` | **생존** |
+| Docker 백엔드 | 5432·5435 `SSLRequest` 10초 무응답, 8000 `/health`·9090 `/-/healthy`·3000 `/api/health` 10초 무응답 | **멈춤** |
+| Chrome 원격 데스크톱 | Google 릴레이 **오프라인** | 원격 화면 없음 |
+| 원격 접속 계열 | 3389·445·139·5985·5986·47001·22 전부 사용 불가(§17.3) | **없음** |
+
+**5432 가 SYN-ACK 를 돌려준다는 점이 핵심이다.** 프로세스가 죽으면 리스너도 함께 닫힌다.
+리스너를 쥔 프로세스가 살아 있다는 뜻이므로, 이 상태는 "서비스 정지"가 아니라
+**백엔드를 기다리며 멈춘(hung)** 것이다. 그래서 `Get-Service` 로 시작시키는 §2 카드가
+듣지 않는다 — 서비스는 이미 Running 이다.
+
+### 17.2 진단 정정 — "0바이트 수신"은 정지의 증거가 아니다
+
+§14 에서 "응답 없음"을 `recv()` 가 0바이트를 돌려주는 것으로 판정했다. **그 측정으로는
+정지와 정상을 구분할 수 없다.** PostgreSQL 과 HTTP 는 둘 다 **클라이언트가 먼저 말하는**
+프로토콜이다. 아무것도 보내지 않고 `recv()` 하면 정상 서버도 타임아웃으로 0바이트를 준다.
+
+PostgreSQL 은 `SSLRequest` 로 묻는다. 응답이 오면 살아 있고, 침묵하면 멈춘 것이다.
+
+```python
+import socket
+import struct
+
+s = socket.create_connection(("100.81.73.13", 5432), timeout=10)
+s.sendall(struct.pack("!II", 8, 80877103))  # SSLRequest
+print(s.recv(1))  # b"S" 지원 / b"N" 미지원 / 침묵 = 정지
+```
+
+HTTP 는 요청을 보내야 한다. `000` 은 응답 없음이다.
+
+```bash
+curl -m 5 -sS -o /dev/null -w '%{http_code}\n' http://100.81.73.13:8000/health
+```
+
+이 방법으로 5432·5435·8000·9090·3000 을 다시 재었고, **다섯 곳 모두 침묵**했다.
+
+### 17.3 원격 채널 전수 실측 (2026-11-09)
+
+| 채널 | 포트 | 결과 |
+| --- | --- | --- |
+| RDP | 3389 | 닫힘 |
+| SMB (원격 `sc`) | 445 / 139 | 닫힘 |
+| SSH | 22 | 연결됨, **25초간 배너 없음** → sshd 아님 |
+| WinRM | 5985 / 5986 / 47001 | 닫힘 |
+| Docker API | 2375 / 2376 | 닫힘 |
+| Intel AMT / IPMI | 16992~16995 / 623 / 664 | 닫힘 |
+| HTTPS·HTTP | 443 / 80 / 8888 | 닫힘 |
+| VNC | 5900 / 5901 / 5800 | 닫힘 |
+| HP iLO / rpcbind / NFS | 17988 / 111 / 2049 | 닫힘 |
+| Chrome 원격 데스크톱 | Google 릴레이 | 오프라인 |
+
+살아 있는 것은 **135(RPC) 와 5357(WSDAPI)** 뿐이다. §1 의 2026-10-05 표는 445·135 를
+OPEN 으로 적고 있는데, **445 는 지금 닫혀 있다.** 그 표는 10-05 시점의 기록으로 읽고,
+현재 상태는 이 표를 본다.
+
+### 17.4 DCOM/WMI — 도달하지만 인증에서 막힌다
+
+RPC 가 살아 있어 마지막 후보로 `Win32_Process` 원격 기동(재부팅용 `shutdown /r`)을 시도했다.
+결과는 **도달 성공, 인증 실패**다.
+
+- `DCOMConnection` 생성과 OXID 해석까지 성공한다.
+- `Win32_Process` 활성화에서 `rpc_s_access_denied`.
+- 원인은 자격증명 부재다. 계정 암호가 없고, Windows 의
+  `Accounts: Limit local account use of blank passwords to console logon only` 정책이
+  **빈 암호의 네트워크 로그온을 거부**한다. PIN 은 계정 암호가 아니므로 대체되지 않는다.
+
+**추측 대입은 하지 않는다.** 계정 잠금 정책이 걸려 있으면 남은 채널까지 함께 닫힌다.
+즉 이 경로는 "자격증명을 아는 사람"만 쓸 수 있고, 그것이 없다면 폐쇄다.
+
+### 17.5 왜 재부팅 외에 수단이 없는가
+
+서로 무관한 서비스가 **동시에** 멈췄다 — Docker Desktop, WSL2 백엔드, Chrome 원격 데스크톱
+호스트. 커널과 네이티브 서비스만 응답한다. 개별 서비스 재시작으로 풀리는 형태가 아니고,
+원격에서 새 사용자 세션을 만들 채널도 전부 닫혀 있다.
+
+강제 차단의 위험은 이 시점에 낮다. 며칠째 쓰기를 받지 못해 **진행 중인 트랜잭션이 없다.**
+다만 스케줄러도 같은 호스트에서 돌므로([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md))
+야간 파이프라인과 DLQ 잡도 함께 멈춰 있다. 복구 후 밀린 날짜를 한꺼번에 재실행하지 않는다
+(§17.7-5).
+
+### 17.6 현장 절차
+
+1. 모니터·키보드가 붙어 있으면 `Ctrl+Alt+Del` → 우하단 전원 → **다시 시작**.
+   정상 종료 경로라 가장 안전하다.
+2. 화면이 뜨지 않으면 전원 버튼을 **5초 길게** 눌러 차단 → 10초 대기 → 다시 눌러 켠다.
+3. 부팅 후 확인할 것 두 가지: **자동 로그인**이 되는지, 트레이에 **Docker Desktop** 이
+   떠 있는지. 둘 중 하나가 아니면 백엔드는 다시 올라오지 않는다.
+
+원격 콘센트로 전원을 내리는 경우에도 같다. 재인가 후 자동 로그인과 Docker 자동 시작이
+걸려 있어야 스스로 올라온다(§17.9).
+
+### 17.7 복구 직후 확인 순서
+
+Mac 에서 위에서부터 실행한다.
+
+1. **연결 판정** — §17.2 의 `SSLRequest`. `b"S"` 또는 `b"N"` 이면 살아 있다.
+2. **마이그레이션** — `python3 -m src.cli.apply_postgres_migrations --check` → exit 0.
+3. **골든셋** —
+   `python3 -m src.cli.evaluate_rag_retrieval --dataset Docs/references/rag_golden_queries.json --variant bm25 --top-k 5`
+   기대값(2026-11-07 기준): Recall@5 **0.9462** · MRR **0.8511** · hit **0.9667** · p95 **130ms**.
+4. **감사** — `python3 -m src.cli.audit_rag_index --json --require-nonempty --require-postings`
+   → `damage 0`, `consistent true`. 미완성(`embedding_missing`·`stale_keys`)은 실패가 아니다.
+5. **밀린 크롤** — 스케줄러 로그에서 `crawl_daily_games` 의 마지막 성공 날짜를 확인하고,
+   그 다음 날부터가 백필 대상인지 **판단해서** 실행한다. 일괄 재실행은 하지 않는다.
+
+### 17.8 대체 DB 는 없다 (실측)
+
+대기 중 골든셋 재측정이나 인덱스 작업이 가능한지 확인했고, **불가능**하다.
+
+| 후보 | 실측 | 판정 |
+| --- | --- | --- |
+| 로컬 PostgreSQL 15.19 (Homebrew) | DB 23개, 최대 `bega` **13MB** | 운영 데이터 없음 |
+| `data/kbo_dev.db` (SQLite, 1.2GB) | `rag_chunks` **162행** | 인덱스 대체 불가 |
+| 덤프 파일 | `data/` 내 5MB 초과 `.dump`·`.sql` **0건** | 없음 |
+
+따라서 이 구간에 할 수 있는 것은 코드·테스트·문서뿐이다. DB 를 요구하는 RAG 작업은
+복구 후로 미룬다.
+
+### 17.9 재발 방지 (복구 후 적용)
+
+| 항목 | 명령·경로 | 이유 |
+| --- | --- | --- |
+| OpenSSH Server + 키 인증 | `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0` → `Set-Service sshd -StartupType Automatic` | 이번에 시도할 수 있었던 비상구가 **없었다** |
+| Chrome 원격 데스크톱 자동 시작 | `Set-Service chromoting -StartupType Automatic` | 수동이면 재부팅 후 원격 화면이 없다 |
+| Docker Desktop 자동 시작 | Settings → General → *Start Docker Desktop when you sign in* | 재부팅 후 백엔드가 스스로 올라온다 |
+| 자동 로그인 | `netplwiz` | 사용자 세션이 올라와야 Docker 가 뜬다 |
+| WSL2 메모리 상한 | `%UserProfile%\.wslconfig` → `[wsl2]` `memory=8GB` | 이번 정지가 메모리 압박이라면 재발을 막는다 |
+| 커밋 시각 추적 | `ALTER SYSTEM SET track_commit_timestamp = on` 후 **재시작** | §10 의 `xmin` 판정이 상대 순서만 가능한 이유 |
+
+우선순위는 **SSH** 다. 나머지는 재부팅 후 자동 복구를 돕는 것이고, SSH 는 다음 장애에서
+사람이 개입할 수 있는 유일한 경로다.
+
+### 17.10 진단 중 발견한 함정 — 로컬 VPN 킬스위치
+
+이번에 Mac 이 DB 에 붙지 못한 원인 **하나**는 원격이 아니라 로컬이었다. NordVPN(NordLynx)의
+`killSwitchEnabled=true` 가 Tailscale 인터페이스(utun7)의 TCP 를 차단했다.
+**Disconnect 만으로는 부족하고 앱을 완전히 종료해야** 풀린다.
+
+이 상태에서는 정상 서비스도 무응답으로 보이므로, 원격 장애를 판정하기 전에 로컬 VPN
+킬스위치를 먼저 확인한다. 다만 이번 건은 킬스위치를 끈 뒤에도 §17.3 의 실측이 그대로
+재현됐다 — **로컬 문제와 호스트 정지가 함께 있었다.**
