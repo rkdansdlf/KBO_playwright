@@ -474,6 +474,46 @@ def _log_anomaly_summary(
         logger.info("  - %s", anomaly_date)
 
 
+#: Every incident the healer opens carries this prefix; the trailing segment is
+#: the earliest anomaly date of the run that opened it.
+_HEALER_ANOMALY_PREFIX = "auto_healer:anomaly:"
+
+
+def _superseded_anomaly_keys(current_key: str | None) -> list[str]:
+    """Return open healer anomaly incidents this run supersedes.
+
+    The alert is a point-in-time summary keyed by the run's earliest anomaly
+    date, so the key moves when the set does: the summary was
+    ``auto_healer:anomaly:2011-07-23`` on 2026-10-30 and
+    ``auto_healer:anomaly:2011-10-25`` by 11-01. Nothing ever closed the earlier
+    key, and each re-key left another OPEN incident behind -- the same "incident
+    outlives its cause" shape the integrity-window revalidation and the
+    detail-recovery keys already fixed. A run that reaches the point of
+    publishing (or of finding nothing at all) is the current truth, so every
+    other open key under the prefix is returned for resolution.
+
+    The listing is additive, and a read that fails returns nothing: a
+    bookkeeping read must not cost the run the alert it was about to send.
+
+    Args:
+        current_key: The key this run publishes, or ``None`` when it publishes
+            none (nothing detected). Never returned.
+
+    Returns:
+        The keys to resolve via ``apply_incidents(resolve_keys=...)``.
+
+    """
+    from src.notifications.incident import IncidentManager
+
+    try:
+        with SessionLocal() as session:
+            keys = [incident.incident_key for incident in IncidentManager(session).active_incidents()]
+    except SQLAlchemyError:
+        logger.exception("Could not list open auto-healer incidents; leaving them for the next run")
+        return []
+    return [key for key in keys if key.startswith(_HEALER_ANOMALY_PREFIX) and key != current_key]
+
+
 def _send_healer_start_alert(
     total: int,
     stuck_games: list[Game],
@@ -490,6 +530,7 @@ def _send_healer_start_alert(
         summary_parts.append(f"*{len(pa_formula_games)}* PA formula violation games")
 
     date_range = f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
+    current_key = f"{_HEALER_ANOMALY_PREFIX}{anomaly_dates[0]}"
     apply_incidents(
         [
             AlertEvent(
@@ -498,7 +539,7 @@ def _send_healer_start_alert(
                 severity=AlertSeverity.WARNING,
                 title=f"Pipeline Anomaly: {total} games detected for auto-healing.",
                 message=f"Found {' and '.join(summary_parts)} for auto-healing.\nAffected dates: {date_range}",
-                incident_key=f"auto_healer:anomaly:{anomaly_dates[0]}",
+                incident_key=current_key,
                 metadata={
                     "total": total,
                     "stuck": len(stuck_games),
@@ -507,6 +548,10 @@ def _send_healer_start_alert(
                 },
             ),
         ],
+        # The summary is keyed by the earliest anomaly date, so a changed set
+        # publishes under a new key; the run that supersedes the previous one is
+        # also the one that closes it.
+        resolve_keys=_superseded_anomaly_keys(current_key),
     )
 
 
@@ -748,6 +793,14 @@ async def run_healer_async(
         if recovered_quarantines:
             logger.info("✅ Recovered %s quarantined record(s) via reconciliation.", recovered_quarantines)
         recovery_mgr.clear()
+        # A run that finds nothing is the current truth: whatever an earlier
+        # summary reported has either been healed or been answered (settled),
+        # and a key left open would outlive its cause.
+        if not dry_run:
+            superseded = _superseded_anomaly_keys(None)
+            if superseded:
+                logger.info("✅ Closing %s superseded auto-healer incident(s).", len(superseded))
+                apply_incidents([], resolve_keys=superseded)
         return 0
 
     if not all_found:
