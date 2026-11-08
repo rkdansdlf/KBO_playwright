@@ -82,6 +82,7 @@ from src.scheduler.jobs.maintenance import (
     weekly_sla_report_job,
 )
 from src.scheduler.jobs.sentinel import (
+    heartbeat_ping_job,
     rag_audit_sentinel_job,
     rag_coverage_sentinel_job,
     selector_drift_sentinel_job,
@@ -251,6 +252,13 @@ def job_specs(trigger_cls: type[CronTrigger]) -> list[tuple[object, object, str,
             trigger_cls(minute="*/15"),
             "db_reachability_check",
             "Primary Database Reachability Check",
+            300,
+        ),
+        (
+            heartbeat_ping_job,
+            trigger_cls(minute="*/10"),
+            "heartbeat_ping",
+            "External Dead-man's Switch Heartbeat",
             300,
         ),
         (

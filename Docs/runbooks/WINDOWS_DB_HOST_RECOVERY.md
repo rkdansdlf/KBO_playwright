@@ -954,3 +954,83 @@ Mac 에서 위에서부터 실행한다.
 이 상태에서는 정상 서비스도 무응답으로 보이므로, 원격 장애를 판정하기 전에 로컬 VPN
 킬스위치를 먼저 확인한다. 다만 이번 건은 킬스위치를 끈 뒤에도 §17.3 의 실측이 그대로
 재현됐다 — **로컬 문제와 호스트 정지가 함께 있었다.**
+
+### 17.11 외부 하트비트 — 감시 대상 밖에서 보는 유일한 신호
+
+이번 장애에서 **아무 경보도 나가지 않았다.** Prometheus 는
+`monitoring/prometheus/prometheus.yml` 에서 `scheduler:8000`·`api-server:8000` 을 스크레이프하고,
+Alertmanager 도 **같은 Docker 스택**에 있다. 호스트가 멈추면 감시자와 피감시자가 함께 멈추므로,
+"감시 대상이 죽었다"를 말해 줄 주체가 그 안에 없다.
+
+죽은 자의 스위치(dead-man's switch)는 방향을 뒤집는다. 서비스가 **바깥으로** 핑을 보내고,
+**핑이 끊긴 것**이 경보다. 관측자가 감시 대상 밖에 있으므로 이번 형태의 정지를 견딘다.
+
+#### 동작 계약
+
+| 항목 | 값 | 위치 |
+| --- | --- | --- |
+| 잡 | `heartbeat_ping` (`heartbeat_ping_job`) | `src/scheduler/jobs/sentinel.py` |
+| 주기 | 10분 (`minute="*/10"`) | `src/scheduler/registry.py::job_specs` |
+| 설정 | `KBO_HEARTBEAT_URL` — **비어 있으면 잡이 즉시 반환** | `src/monitoring/heartbeat.py` |
+| 성공 판정 | **2xx 만** 성공 | 〃 |
+| 타임아웃 | 10초 | `HEARTBEAT_TIMEOUT_SECONDS` |
+
+- **리다이렉트를 따라가지 않는다.** URL 자체가 자격증명이라 3xx 를 따라가면 그 자격증명을
+  응답이 지목한 곳으로 넘기게 된다. 따라서 3xx 는 실패다 — 스위치가 기록하지 못한 것이 맞다.
+- **URL 은 비밀값이다.** 이 URL 을 가진 사람은 호스트를 대신해 핑을 보내 스위치를 조용하게
+  만들 수 있다. 요청 **전에** `src.utils.log_masking.register_secret` 에 등록되므로
+  `httpx` 가 INFO 로 남기는 전체 URL 에서도 `***` 로 치환된다. 실패 로그는 **예외 클래스명만**
+  남기고 URL 과 `str(exc)` 는 남기지 않는다.
+- **인시던트를 만들지 않는다.** `apply_incidents` 가 쓰는 원장은 이 잡이 살아남아야 하는 바로 그
+  DB 안에 있고, 경보 주체는 외부 스위치다. `alert_warning`/`alert_success` 도 호출하지 않는다.
+- **DB 게이트를 걸지 않는다.** `_with_db_fail_fast_guard` 를 붙이면 DB 장애 때 핑이 멈춰
+  **"호스트 사망"으로 잘못 보고**된다. DB 장애는 `src.monitoring.db_availability` 계열이 맡는다.
+  이 계약은 `tests/monitoring/test_heartbeat.py::test_it_pings_while_the_database_is_down` 이
+  행동으로 고정한다(데코레이터를 추가하면 실패한다).
+
+#### 설정 절차 (복구 후 1회)
+
+1. healthchecks.io(또는 동등한 서비스)에서 체크를 만든다.
+   - **Period 10분 / Grace 15분.** 경보는 마지막 핑으로부터 **25분** 뒤에 온다.
+     한 번 걸러진 틱으로 호출이 울리지 않게 하려는 것이고, 호스트가 30분 멈춰 있으면 울린다.
+2. 발급된 ping URL 을 서버의 `.env` 에 넣는다. **이 값을 티켓·채팅·로그에 붙이지 않는다.**
+
+   ```dotenv
+   KBO_HEARTBEAT_URL=https://hc-ping.com/<uuid>
+   ```
+
+3. 스케줄러를 재시작한다([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §5).
+   컨테이너로 돌리는 구성이라면 재생성으로 확실히 반영한다.
+
+   ```powershell
+   docker compose -f docker-compose.prod.yml up -d --force-recreate scheduler
+   ```
+
+4. 대시보드에서 **`Last Ping` 이 10분 이내**인지 확인한다. 계속 "never" 면 잡이 실패하고 있다.
+   로그에서 아래 문구를 찾는다.
+
+   ```
+   [Heartbeat] ping failed (<예외 클래스명>)
+   [Heartbeat] switch did not record the ping (HTTP <코드>)
+   ```
+
+5. 체크에 **알림 채널을 연결**한다. 아무도 받지 않는 경보는 경보가 아니다.
+
+#### 경보를 읽는 법
+
+| 하트비트 | DB(5432 `SSLRequest`)·HTTP(8000/9090) | 판정 | 조치 |
+| --- | --- | --- | --- |
+| 끊김 | 침묵 | **호스트 정지** | §17.6 현장 절차 |
+| 끊김 | 응답 | 스케줄러 프로세스만 정지 | 스케줄러 재시작(§5) |
+| 정상 | 침묵 | DB 만 정지 | 하트비트는 **정상이다** — 설계대로다. DB 경보 경로를 본다 |
+
+#### 한계 (정직하게 남긴다)
+
+- 이 핑은 **스케줄러 프로세스의 생존**을 말한다. 호스트의 모든 하위 시스템을 말하지 않는다.
+  스케줄러가 살아 있고 DB 가 죽은 상태에서도 핑은 계속 나가며, 그건 의도된 동작이다.
+- URL 이 틀렸거나 만료되면 **10분마다 WARNING 만 남고 경보는 울리지 않는다.**
+  설정 직후 대시보드에서 한 번 확인하는 이유가 이것이다.
+- 경보는 정지 **즉시**가 아니라 유예를 포함해 약 25분 뒤에 온다. 즉시성이 필요하면
+  Period 를 줄이되, 스케줄러 재시작 한 번으로 오탐이 나지 않는 범위에서 정한다.
+- 계획된 유지보수로 스케줄러를 내릴 때는 URL 을 지우지 말고 **체크를 일시정지**한다.
+  지우면 복구 후 다시 설정해야 하고, 그 사이 공백은 아무도 모른다.

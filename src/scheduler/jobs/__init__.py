@@ -65,6 +65,7 @@ from src.scheduler.jobs.maintenance import (
     weekly_sla_report_job,
 )
 from src.scheduler.jobs.sentinel import (
+    heartbeat_ping_job,
     rag_audit_sentinel_job,
     rag_coverage_sentinel_job,
     selector_drift_sentinel_job,
@@ -130,6 +131,7 @@ __all__ = [
     "data_integrity_check_job",
     "db_reachability_check_job",
     "heal_unverified_pbp_job",
+    "heartbeat_ping_job",
     "lock_health_check_job",
     "rag_audit_sentinel_job",
     "rag_coverage_sentinel_job",

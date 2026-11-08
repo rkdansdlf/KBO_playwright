@@ -11,13 +11,17 @@ import logging
 
 import pytest
 
+from src.utils import log_masking
 from src.utils.log_masking import (
     SecretMaskingFilter,
     install_secret_masking,
     mask_text,
+    register_secret,
 )
 
 _SEND_URL = "https://api.telegram.org/bot8755432405:AAFjwy00x03IrJG42ZcO3CtF4ZwvIuuCCSo/sendMessage"
+
+_HEARTBEAT_URL = "https://hc-ping.com/6b1f0c2e-6a4d-4c1e-9a1f-3f0d2b7c8e91"
 
 
 class TestMaskingText:
@@ -112,3 +116,76 @@ class TestTheRecordIsMaskedWhereverItComesFrom:
             logging.getLogger("httpx").info("HTTP Request: POST %s", _SEND_URL)
 
         assert "AAFjwy00x03IrJG42ZcO3CtF4ZwvIuuCCSo" not in caplog.text
+
+
+class TestRegisteredSecrets:
+    """Some credentials have no shape a pattern can recognise.
+
+    A heartbeat ping URL is a UUID in a path. The only thing that makes it secret
+    is that the caller knows it, so the caller registers the exact value and the
+    mask becomes an equality substitution rather than a guess.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolated_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(log_masking, "_REGISTERED_SECRETS", ())
+
+    @pytest.fixture(autouse=True)
+    def _factories(self) -> None:
+        original = logging.getLogRecordFactory()
+        yield
+        logging.setLogRecordFactory(original)
+
+    def test_an_exact_value_is_masked(self) -> None:
+        register_secret(_HEARTBEAT_URL)
+
+        assert mask_text(f"HTTP Request: GET {_HEARTBEAT_URL}") == "HTTP Request: GET ***"
+
+    def test_the_credential_part_is_gone(self) -> None:
+        # Masking only the host would leave the UUID, and the UUID is the switch.
+        register_secret(_HEARTBEAT_URL)
+
+        assert "6b1f0c2e" not in mask_text(_HEARTBEAT_URL)
+
+    def test_an_empty_value_is_ignored(self) -> None:
+        register_secret("")
+        register_secret(None)
+
+        assert log_masking._REGISTERED_SECRETS == ()
+
+    def test_registering_twice_keeps_one_entry(self) -> None:
+        register_secret(_HEARTBEAT_URL)
+        register_secret(_HEARTBEAT_URL)
+
+        assert log_masking._REGISTERED_SECRETS == (_HEARTBEAT_URL,)
+
+    def test_a_longer_secret_is_replaced_before_a_shorter_prefix(self) -> None:
+        # Replacing "abc" first would leave "***def" in the log.
+        register_secret("abc")
+        register_secret("abcdef")
+
+        assert mask_text("abcdef") == "***"
+
+    def test_a_registered_secret_in_an_argument_is_masked(self) -> None:
+        register_secret(_HEARTBEAT_URL)
+        record = SecretMaskingFilter()
+        built = logging.LogRecord("httpx", logging.INFO, __file__, 1, "HTTP Request: GET %s", (_HEARTBEAT_URL,), None)
+
+        record.filter(built)
+
+        assert built.getMessage() == "HTTP Request: GET ***"
+
+    def test_the_record_factory_masks_a_registered_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+        register_secret(_HEARTBEAT_URL)
+        install_secret_masking()
+
+        with caplog.at_level(logging.INFO, logger="httpx"):
+            logging.getLogger("httpx").info("HTTP Request: GET %s", _HEARTBEAT_URL)
+
+        assert "6b1f0c2e" not in caplog.text
+        assert "HTTP Request: GET ***" in caplog.text
+
+    def test_the_telegram_mask_still_applies_after_registration(self) -> None:
+        register_secret(_HEARTBEAT_URL)
+
+        assert mask_text(_SEND_URL) == "https://api.telegram.org/bot8755432405:***/sendMessage"

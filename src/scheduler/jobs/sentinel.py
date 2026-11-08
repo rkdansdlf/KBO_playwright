@@ -1,4 +1,9 @@
-"""Canary checks for KBO website selector drift and RAG index consistency."""
+"""Canary checks for KBO website selector drift and RAG index consistency.
+
+Also holds the external heartbeat. It is not a canary -- it observes the host
+from outside rather than looking for drift inside -- but it shares this module's
+defining property: it must not depend on the database it is meant to survive.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,7 @@ import logging
 import requests
 from requests import RequestException
 
+from src.monitoring.heartbeat import heartbeat_url, send_heartbeat
 from src.notifications.bridge import apply_incidents
 from src.scheduler.alerting import alert_success, alert_warning
 from src.scheduler.config import SCHEDULER_JOB_EXCEPTIONS
@@ -186,3 +192,21 @@ def _audit_failure_message(exit_code: int) -> str:
         f"RAG index audit failed (exit {exit_code}); retrievable chunks are missing "
         "embeddings or sparse postings. Run build_oracle_sparse_index --catch-up if needed."
     )
+
+
+def heartbeat_ping_job() -> None:
+    """Ping the external dead-man's switch.
+
+    Deliberately **not** decorated with ``_with_db_fail_fast_guard``. That guard
+    keeps DB-bound jobs from taking a lock while the database is down, and this
+    job must keep pinging in exactly that case: a heartbeat silenced by a
+    database outage would be reported as a dead host, and the host would be fine.
+
+    It raises no incident either. ``apply_incidents`` writes to the database this
+    job is meant to outlive, and the alerting party is the external switch -- the
+    only observer that stays reachable when the host does not.
+    """
+    url = heartbeat_url()
+    if url is None:
+        return
+    send_heartbeat(url)
