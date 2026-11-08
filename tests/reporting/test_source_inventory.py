@@ -742,7 +742,11 @@ class TestCollectionState:
             crawler,
             inv.SourceDeclaration(tables=tables, alternative_source="elsewhere"),
         )
-        return inv.build_inventory(session_factory=factory).rows_by_crawler()[crawler]
+        # The scratch tables are stamped against ``_REFERENCE``, so freshness has to
+        # be measured at that same instant: a wall-clock measurement ages them out of
+        # their thresholds as the calendar moves. (The fixture cannot restamp them --
+        # the direct measure_table tests assert their exact ages.)
+        return inv.build_inventory(session_factory=factory, now=_REFERENCE).rows_by_crawler()[crawler]
 
     def test_yielding_runs_with_a_stale_table_are_stable_not_broken(
         self,
@@ -1091,7 +1095,9 @@ class TestPartiallyEmptyIsAFinding:
             "parking_crawler",
             inv.SourceDeclaration(tables=tables, alternative_source="elsewhere"),
         )
-        return inv.build_inventory(session_factory=factory).rows_by_crawler()["parking_crawler"]
+        # Same pin as ``TestCollectionState._row``: the fixture's tables are stamped
+        # against ``_REFERENCE``, so the measurement must share that reference.
+        return inv.build_inventory(session_factory=factory, now=_REFERENCE).rows_by_crawler()["parking_crawler"]
 
     def test_a_yielding_crawler_with_an_empty_table_is_not_stable(
         self,
