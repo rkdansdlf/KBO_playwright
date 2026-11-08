@@ -226,7 +226,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 15 workflows and 3 composite actions under `.github/`:
 
 ### Composite Actions
 - `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.14), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
@@ -266,6 +266,7 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.14)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
+- `db_availability_watchdog.yml`: 30분 주기 PostgreSQL 도달성 워치독 — 호스트 독립(GitHub Actions), 전이 알림(첫 실패·회복만), 상태는 Actions 캐시. DB 만 침묵하는 상태(포트는 열리고 PG 무응답)를 밖에서 잡는다 (`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12)
 
 ### Required Secrets
 - `DATABASE_URL`: PostgreSQL URL for the Tailscale-hosted operational database. Carry the `keepalives` query parameters; without them idle connections get reaped mid-transaction.

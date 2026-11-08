@@ -1034,3 +1034,29 @@ Alertmanager 도 **같은 Docker 스택**에 있다. 호스트가 멈추면 감�
   Period 를 줄이되, 스케줄러 재시작 한 번으로 오탐이 나지 않는 범위에서 정한다.
 - 계획된 유지보수로 스케줄러를 내릴 때는 URL 을 지우지 말고 **체크를 일시정지**한다.
   지우면 복구 후 다시 설정해야 하고, 그 사이 공백은 아무도 모른다.
+
+### 17.12 GitHub Actions 워치독 — 설정 불필요, 즉시 활성 (2026-11-09 추가)
+
+§17.11 의 하트비트는 **설정을 마쳐야** 울리고(복구 후 1회), 구조적으로 **DB 만 침묵하는
+상태**는 보지 못한다(스케줄러가 살아 있으면 핑은 계속 나간다 — 17.11 의 한계 1). 이번
+주말(11-07~09)에는 두 구멍이 겹쳐 아무 신호도 없었다. 보완으로
+`.github/workflows/db_availability_watchdog.yml` 을 추가했다 — **GitHub Actions(호스트
+밖)** 에서 30분마다 DB 의 응답 자체를 확인한다.
+
+- 경로: 주간 live 검증과 동일 — `LIVE_DB_READONLY_URL`(읽기 전용 역할) + Tailscale `tag:ci`.
+- 프로브: `scripts/verification/check_db_availability.py` — TCP + **PostgreSQL 핸드셰이크**.
+  사유를 구분한다: `tcp_unreachable`(호스트/방화벽) vs `postgres_silent`(포트는 열리고
+  PG 가 침묵 — §17.1 이 실측한 바로 그 형태).
+- 알림은 전이에만: 첫 실패 1건, 회복 1건. 상태는 Actions 캐시(`db-watchdog-outage`)로
+  기억하고 회복 시 지운다. 실패가 이어지는 동안에도 각 실행은 red 로 끝나므로 실행
+  이력이 장애 기간을 남긴다.
+- 시크릿이 없거나 Tailscale 이 깨지면 "watchdog could not run" 알림이 대신 나간다 —
+  감시자가 조용히 죽는 것을 감시자가 되지 않게 한다.
+
+하트비트와의 관계: **둘은 대체가 아니라 보완**이다. 하트비트는 10분 주기로 호스트·스케줄러
+생존을 보고(설정 후), 워치독은 설정 없이 30분 주기로 **DB 의 응답 자체**를 밖에서 본다.
+이번 형태(호스트 정지)는 둘 다 잡고, DB-only 침묵은 워치독만 잡는다. 운영 전제조건이
+없는 쪽이 워치독이므로, 하트비트 설정 전까지의 공백도 이것이 덮는다.
+
+설정: **없음.** 저장소 시크릿(`TS_OAUTH_*`·`LIVE_DB_READONLY_URL`·`TELEGRAM_*`)이 이미
+있으면 머지 즉시 돈다. 수동 실행: Actions → DB Availability Watchdog → Run workflow.
