@@ -45,6 +45,9 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Runtime-only system dependencies (Playwright libs + PostgreSQL client)
+# libatomic1: python:3.14-slim does not ship libatomic.so.1, but the Playwright
+# driver node binary links it at startup.  Without it, `python -m playwright
+# install chromium` exits 127 before it can download anything.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     postgresql-client \
@@ -66,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
+    libatomic1 \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 

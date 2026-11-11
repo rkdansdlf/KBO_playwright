@@ -23,11 +23,16 @@ WORKDIR /app
 
 # 시스템 패키지 업데이트 및 필수 도구 설치
 # (Playwright 베이스 이미지에 대부분 포함되어 있으나, 추가 도구 설치)
+# libatomic1: python:3.14-slim does not ship libatomic.so.1, but the Playwright
+# driver node binary links it at startup.  Without this package, `node` exits
+# with "cannot open shared object file" (exit 127) before --with-deps can run,
+# breaking the chicken-and-egg that would otherwise let it install Chromium deps.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
         jq \
         gosu \
+        libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
