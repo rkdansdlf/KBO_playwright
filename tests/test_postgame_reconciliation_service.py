@@ -193,7 +193,8 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
             },
         )
 
-    def _fake_update_status(game_id: str, status: str):
+    def _fake_update_status(game_id: str, status: str, *, reason: str = ""):
+        assert reason == "postgame_reconciliation: 경기 취소 확인"
         with SessionLocal() as session:
             game = session.query(Game).filter(Game.game_id == game_id).one()
             game.game_status = status
@@ -265,7 +266,9 @@ def test_reconcile_postgame_range_preserves_existing_cancelled_detail_miss(monke
         "repair_game_parent_from_existing_children",
         lambda game_id: repair_calls.append(game_id) or True,
     )
-    monkeypatch.setattr(service, "update_game_status", lambda game_id, status: status_updates.append((game_id, status)))
+    monkeypatch.setattr(
+        service, "update_game_status", lambda game_id, status, **_kw: status_updates.append((game_id, status))
+    )
 
     result = asyncio.run(
         service.reconcile_postgame_range(
