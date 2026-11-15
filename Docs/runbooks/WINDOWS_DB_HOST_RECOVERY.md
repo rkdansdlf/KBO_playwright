@@ -1035,7 +1035,7 @@ Alertmanager 도 **같은 Docker 스택**에 있다. 호스트가 멈추면 감�
 - 계획된 유지보수로 스케줄러를 내릴 때는 URL 을 지우지 말고 **체크를 일시정지**한다.
   지우면 복구 후 다시 설정해야 하고, 그 사이 공백은 아무도 모른다.
 
-### 17.12 GitHub Actions 워치독 — 설정 불필요, 즉시 활성 (2026-11-09 추가)
+### 17.12 GitHub Actions 워치독 — 호스트 밖에서 DB 응답 자체를 본다 (2026-11-09 추가, 11-15 갱신)
 
 §17.11 의 하트비트는 **설정을 마쳐야** 울리고(복구 후 1회), 구조적으로 **DB 만 침묵하는
 상태**는 보지 못한다(스케줄러가 살아 있으면 핑은 계속 나간다 — 17.11 의 한계 1). 이번
@@ -1047,16 +1047,28 @@ Alertmanager 도 **같은 Docker 스택**에 있다. 호스트가 멈추면 감�
 - 프로브: `scripts/verification/check_db_availability.py` — TCP + **PostgreSQL 핸드셰이크**.
   사유를 구분한다: `tcp_unreachable`(호스트/방화벽) vs `postgres_silent`(포트는 열리고
   PG 가 침묵 — §17.1 이 실측한 바로 그 형태).
-- 알림은 전이에만: 첫 실패 1건, 회복 1건. 상태는 Actions 캐시(`db-watchdog-outage`)로
-  기억하고 회복 시 지운다. 실패가 이어지는 동안에도 각 실행은 red 로 끝나므로 실행
-  이력이 장애 기간을 남긴다.
-- 시크릿이 없거나 Tailscale 이 깨지면 "watchdog could not run" 알림이 대신 나간다 —
-  감시자가 조용히 죽는 것을 감시자가 되지 않게 한다.
+- 알림은 전이에만, **두 종류의 trouble 을 따로 기억**한다:
+  - `db-watchdog-outage` — DB 미응답: 첫 실패 1건 + 회복 1건.
+  - `db-watchdog-selfcheck` — 워치독 자체 고장(시크릿·Tailscale·의존성 설치): 1건,
+    기전이 다시 돌면 조용히 해제.
+  - 두 상태를 나눈 이유: 설정을 고친 뒤에도 DB 가 죽어 있으면 "DB 장애"를 알려야 하는데,
+    한 상태로 합치면 "이미 알렸다"로 상속돼 침묵한다.
+- 상태 캐시를 읽지 못하는 실행은 알림하지 않는다(모르고 "첫 실패"를 외치면 그게 스팸이다).
+  실패가 이어지는 동안 각 실행은 red 로 끝나므로 실행 이력이 장애 기간을 남긴다.
 
-하트비트와의 관계: **둘은 대체가 아니라 보완**이다. 하트비트는 10분 주기로 호스트·스케줄러
-생존을 보고(설정 후), 워치독은 설정 없이 30분 주기로 **DB 의 응답 자체**를 밖에서 본다.
-이번 형태(호스트 정지)는 둘 다 잡고, DB-only 침묵은 워치독만 잡는다. 운영 전제조건이
-없는 쪽이 워치독이므로, 하트비트 설정 전까지의 공백도 이것이 덮는다.
+**실측 기록 (2026-11-15)**: 저장소 시크릿 `TS_OAUTH_CLIENT_ID`·`TS_OAUTH_SECRET`·
+`LIVE_DB_READONLY_URL` 이 **없다**(`gh secret list` 확인). 그래서
+- 주간 `live_db_verification` 은 매주 "Check required secrets" 게이트에서 실패 중이고,
+- 워치독의 첫 버전은 자체 고장 경로에 상태가 없어 **11-09~15 동안 30분마다
+  "watchdog could not run" 알림을 보냈다**(~300건). 지금은 `selfcheck` 캐시로 1회만 보낸다.
+  같은 실수를 반복하지 않으려면: **모든 "1회성" 알림에는 그 1회를 기억할 상태가 있어야 한다.**
 
-설정: **없음.** 저장소 시크릿(`TS_OAUTH_*`·`LIVE_DB_READONLY_URL`·`TELEGRAM_*`)이 이미
-있으면 머지 즉시 돈다. 수동 실행: Actions → DB Availability Watchdog → Run workflow.
+**설정 절차 (DB 복구 후)**:
+1. §4 1~4 대로 `tag:ci` OAuth 클라이언트와 읽기 전용 역할(`kbo_ci_ro`)을 만든다.
+   (역할 생성은 DB 가 살아 있어야 하므로 복구가 선행 조건이다.)
+2. 저장소 시크릿 등록: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`,
+   `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod?keepalives=1&…`).
+3. 워치독 수동 1회 실행(Actions → DB Availability Watchdog → Run workflow)으로
+   `selfcheck` 알림 1건이 나가고, 다음 실행부터 침묵하면 정상이다.
+4. 복구 시점에는 `db-watchdog-outage` 가 없으므로 첫 프로브 성공은 조용히 지나간다 —
+   그게 맞다(알릴 장애가 없었다).
