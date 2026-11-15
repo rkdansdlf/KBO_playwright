@@ -29,6 +29,11 @@
 # "first" failure on every run without knowing what was already sent is exactly
 # the spam this design prevents. The red runs remain either way.
 #
+# GitHub's schedule is best-effort: measured 2026-11-09..15, this */30 cron fired
+# only 3-4 times a day (4-8 hour gaps). Treat this as an hours-latency backup
+# layer, not a 30-minute monitor -- the external heartbeat (§17.11) is the fast
+# layer once configured.
+#
 # Read-only by design: LIVE_DB_READONLY_URL is the same role the weekly live
 # verification uses (setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4), and the
 # probe runs a single SELECT 1. See Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md
