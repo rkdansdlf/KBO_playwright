@@ -281,7 +281,17 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-11-02
+Last updated: 2026-11-15
+
+### 2026-11-15: 8일째 DB 호스트 정지 · 호스트 밖 워치독(스팸 사고 포함) · 통합 마커가 가린 CI red
+- **장애 지속(11-07~)**: Windows 호스트의 사용자 영역 프로세스가 멈춰 Docker 백엔드(Docker Desktop·WSL2·Chrome 원격 데스크톱)가 함께 섰다(런북 §17). 커널·네이티브 서비스만 응답하고 원격 채널(RDP·SMB·WinRM·Docker API·AMT)은 전부 닫혀 **현장 재부팅만이 수단**이다(§17.6) — 복구 후 §17.7. 실측: 백엔드 실패 스트릭 17,973(≈8.3일).
+- **감지 공백의 실체**: 백엔드 Alertmanager 의 telegram 발송은 정상이었고(요청 107건 중 실패 2건, `BackendHikariAcquireSlow` 11-07부터 firing) — 문제는 그 채널이 BEGA 운영 대상이고 KBO 감시 스택은 피감시자와 같은 호스트에 있다는 것. §17.11 하트비트(설정 대기)의 보완으로 **호스트 밖에서 DB 응답 자체를 보는** `db_availability_watchdog.yml`(30분, `LIVE_DB_READONLY_URL`+`tag:ci`, `tcp_unreachable`/`postgres_silent` 구분, 전이 알림)을 신설(`198989cd`).
+  - **스팸 사고·교훈**: 첫 버전은 자체 고장 경로에 상태가 없어, 시크릿 3종(`TS_OAUTH_*`·`LIVE_DB_READONLY_URL`) 부재 상태에서 11-09~15 동안 30분마다 **약 300건**을 보냈다. trouble 상태를 `db-watchdog-outage`/`db-watchdog-selfcheck` 두 캐시로 분리하고 복원을 checkout 직후로 이동해 해결(`a718aaa6`). **1회성 알림에는 그 1회를 기억할 상태가 있어야 한다.**
+  - 주간 `live_db_verification` 도 같은 시크릿 게이트에서 매주 실패 중. 순서: DB 복구 → `kbo_ci_ro` 역할(§4) → 시크릿 3종 등록 → 수동 1회 확인.
+- **통합 마커가 가린 CI red 6건(`b0e3363d`)**: 로컬 권위 명령(`-m "not integration"`)이 integration 잡의 red(`reason=` fake 2 + auto_healer 순서 의존 4)를 세 번의 push 동안 가렸다. **터치 영역에 integration 마커가 있으면 `-m integration` 도 함께 돌린다** — CI 가 처음 보는 실패를 로컬이 못 보는 구조였다.
+- **시간폭탄(`313ad806`)**: `build_inventory` 에 참조 시각 경로가 없어 고정 스탬프 테이블이 실시계로 노화 — 10-08+30일을 넘긴 11-08 21:00 KST부터 전체 스위트 red. `now=` 를 꿰어 테스트를 참조 시각에 고정. **픽스처가 고정 스탬프면 측정도 참조 시각이어야 한다.**
+- **11-09 커밋(선행)**: auto_healer 정착 필터(`8664aa36` — 정착 letter 재크롤 churn 차단, stuck 예외·`requeue` 복귀)·`auto_healer` 인시던트 supersession(`ae788364`)·런 원장 `origin` 배선(`6a8c08a1` — `use_run_origin` 컨텍스트+env 폴백+등록 래핑, replay 명시값 우선)·병행 하트비트(`9572a223`).
+- **검증 기준(갱신)**: 비통합 **15,648 passed**; 통합(`-m integration -n 2`) **242 passed**; actionlint·워크플로 계약·프로브 16건 통과. push CI(`43714231313`) green.
 
 ### 2026-11-02: 야간 파이프라인 자정(00:00) 시작으로 이동 — 주간·월간 잡은 체인 뒤로
 - **배경**: 야간 파이프라인이 03:00-05:40에 흩어져 있었다. 운영 요청으로 **체인 전체를 00:00 KST 시작**으로 -3시간 이동했다(`src/scheduler/registry.py`).
