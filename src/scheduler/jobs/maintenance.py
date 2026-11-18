@@ -1174,7 +1174,9 @@ def crawl_dead_letter_retry_job() -> None:
         try:
             from src.services.crawl_dead_letter_worker import retry_due_dead_letters
 
-            summary = retry_due_dead_letters()
+            batch_limit = max(1, _env_int("DLQ_RETRY_BATCH_SIZE", 5))
+            logger.info("Dead letter retry batch limit: %d", batch_limit)
+            summary = retry_due_dead_letters(limit=batch_limit)
             _refresh_dlq_metrics()
             if summary.attempted == 0:
                 logger.info("=== Dead Letter Retry: nothing due ===")
