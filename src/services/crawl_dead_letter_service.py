@@ -105,6 +105,25 @@ class CrawlDeadLetterService:
         if existing is not None:
             return existing
 
+        open_letter = self.repository.find_open_for_target(
+            crawler=spec.crawler,
+            target_type=spec.target_type,
+            target_id=spec.target_id,
+        )
+        if open_letter is not None:
+            # A settled letter is an answered question. A fresh run id is not a
+            # new answer, so absorbing the failure here keeps the retry queue
+            # from being refilled for a target whose source already gave up.
+            # ``requeue`` is the explicit way back in, and it reopens the same row.
+            logger.info(
+                "DLQ failure absorbed by open letter for %s/%s (status=%s, dlq_id=%s)",
+                spec.crawler,
+                spec.target_id,
+                open_letter.status,
+                open_letter.dlq_id,
+            )
+            return open_letter
+
         decision = decide(spec.error_code, retry_count=0)
         letter = self.repository.create_dead_letter(spec)
         record_dlq_enqueued(spec.crawler, spec.error_code)
