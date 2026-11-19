@@ -1074,12 +1074,50 @@ schedule 의 best-effort 특성). 즉 이 워치독의 탐지 지연은 수 분�
 `db-watchdog-selfcheck` 저장(`14:25:27Z`), #2 → 같은 고장인데 알림 스텝 **전부
 skipped**(상태 히트). 스팸 수정이 실제로 동작한다.
 
-**설정 절차 (DB 복구 후)**:
-1. §4 1~4 대로 `tag:ci` OAuth 클라이언트와 읽기 전용 역할(`kbo_ci_ro`)을 만든다.
-   (역할 생성은 DB 가 살아 있어야 하므로 복구가 선행 조건이다.)
-2. 저장소 시크릿 등록: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`,
-   `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod?keepalives=1&…`).
-3. 워치독 수동 1회 실행(Actions → DB Availability Watchdog → Run workflow)으로
-   `selfcheck` 알림 1건이 나가고, 다음 실행부터 침묵하면 정상이다.
-4. 복구 시점에는 `db-watchdog-outage` 가 없으므로 첫 프로브 성공은 조용히 지나간다 —
-   그게 맞다(알릴 장애가 없었다).
+**설정 절차 (DB 복구 후) — 실행 체크리스트**
+
+사전 확인 (2026-11-20 실측): `gh secret list`에는 `DATABASE_URL`, `KBO_*`, `OCI_*`, `ORACLE_*`, `TELEGRAM_*`만 있고
+`TS_OAUTH_CLIENT_ID` · `TS_OAUTH_SECRET` · `LIVE_DB_READONLY_URL` 3종이 없다. 워치독은 11-17~19 연속 failure(최근 실행 11-19 09:14 UTC)였고
+로그는 전부 `Secret ... is not set`(self-check 게이트)였다. 즉 DB가 복구됐는지 **밖에서 확인할 수 없는 상태**다.
+Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 터미널에서 해야 한다(에이전트는 비밀 값을 읽지 않는다).
+
+- [ ] **1. DB 호스트 복구 확인.** 역할 생성은 DB가 살아 있어야 하므로 복구가 선행 조건이다.
+      사용자 영역 프로세스가 멈춘 상태라면 §17.6~17.7(현장 재부팅)이 유일한 수단이고 코드로 해결되지 않는다.
+- [ ] **2. Tailscale `tag:ci` OAuth 클라이언트 + 네트워크 경로.**
+      - 관리 콘솔에서 OAuth 클라이언트 생성, scope `auth_keys` write, `tag:ci` 사용
+      - ACL이 `tag:ci` → `100.81.73.13:5432`를 허용하는지 확인
+      - Windows 호스트(`ch806-08`) 방화벽이 tailnet 대역의 5432를 허용하는지 확인
+- [ ] **3. 읽기 전용 역할 생성** (`bega_prod`, 쓰기 권한 없음):
+      ```sql
+      CREATE ROLE kbo_ci_ro LOGIN PASSWORD '<생성한 비밀번호>';
+      GRANT CONNECT ON DATABASE bega_prod TO kbo_ci_ro;
+      GRANT pg_read_all_data TO kbo_ci_ro;
+      ```
+      `pg_read_all_data`는 PostgreSQL 14+의 전역 읽기 권한(운영 DB 16.x). 이 역할로 DML/DDL이 되면 안 된다 —
+      쓰기 가능한 역할을 쓰면 5번의 `--require-readonly-role`이 실패한다.
+- [ ] **4. 저장소 시크릿 3종 등록.** 값은 stdin으로 넘겨 argv에 남기지 않는다:
+      ```bash
+      # read -p 는 zsh 에서 "no coprocess" 로 실패하므로 printf 프롬프트를 쓴다 (bash/zsh 공통).
+      printf 'TS_OAUTH_CLIENT_ID: ' >&2;    read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_CLIENT_ID; unset V
+      printf 'TS_OAUTH_SECRET: ' >&2;       read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_SECRET; unset V
+      printf 'LIVE_DB_READONLY_URL: ' >&2; read -rs V; printf '%s' "$V" | gh secret set LIVE_DB_READONLY_URL; unset V
+      gh secret list   # 이름만 출력됨; 3종이 추가됐는지 확인
+      ```
+      URL 형식:
+      `postgresql+psycopg://kbo_ci_ro:<pw>@100.81.73.13:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`
+      `&`가 포함되므로 반드시 따옴표로 감싼다. keepalives를 빼면 유휴 연결이 도중에 끊겨 spurious
+      `PERSIST_TIMEOUT`으로 보고된다. **`DATABASE_URL`(쓰기 역할)을 절대 대입하지 않는다.**
+- [ ] **5. CI 전에 로컬에서 읽기 전용 검사:**
+      ```bash
+      LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod' \
+        venv/bin/python scripts/verification/verify_live_postgres.py --require-readonly-role
+      ```
+      exit 0 통과 / 1 실패 / 2 설정 오류.
+- [ ] **6. 워치독 수동 dispatch 2회 연속** (Actions → DB Availability Watchdog → Run workflow):
+      - 1회차: self-check 게이트를 통과해야 한다(로그에 `Secret ... is not set`가 없어야 함). DB가 죽어 있으면
+        `db-watchdog-outage` 첫 알림 1건, 살아 있으면 조용한 성공.
+      - 2회차: 같은 상태라면 알림 스텝이 전부 **skipped**여야 한다(캐시 히트). 여기서 알림이 또 오면 스팸 수정이 퇴행한 것이다.
+      - 복구 직후 `db-watchdog-outage` 캐시가 없다면 첫 성공은 조용히 지나간다 — 알릴 장애가 없었으므로 그게 맞다.
+- [ ] **7. `live_db_verification` 수동 1회** 실행해 통과 확인(주간 cron은 reviewed schedule이라 자동으로 안 돈다).
+- [ ] **8. 스트릭 종료 확인:**
+      `gh run list --workflow db_availability_watchdog.yml --limit 5`에서 failure 연속이 끊겼는지 본다.

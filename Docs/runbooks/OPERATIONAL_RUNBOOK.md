@@ -169,7 +169,7 @@ Oracle ADB는 2026-09-27부터 `DPY-6005`로 연결이 거부되며 phase-out �
    GRANT CONNECT ON DATABASE bega_prod TO kbo_ci_ro;
    GRANT pg_read_all_data TO kbo_ci_ro;
    ```
-4. GitHub 저장소 secret을 등록한다: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`). `TELEGRAM_*`는 기존 값을 쓴다.
+4. GitHub 저장소 secret을 등록한다: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`). `TELEGRAM_*`는 기존 값을 쓴다. 복구 순서·검증까지 담은 실행 체크리스트는 `Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12 "설정 절차 (DB 복구 후) — 실행 체크리스트"를 따른다.
 
 **로컬에서 같은 검사 실행 (읽기 전용)**
 ```bash
