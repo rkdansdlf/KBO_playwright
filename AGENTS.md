@@ -288,7 +288,19 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-11-15
+Last updated: 2026-11-20
+
+### 2026-11-20: RAG 필요성 측정 — 질의의 90%는 SQL로 답할 수 있었다 (AtlasKV 교체 기각)
+- **측정 도구 신규**: `src/cli/rag/audit_retrieval_necessity.py` (`kbo rag necessity`). **읽기 전용** — DB 접속·쓰기·네트워크 없음. 입력은 골든셋과 코드뿐이다. `evaluate_rag_retrieval`이 "검색이 정확한가"를 묻는 반면 이 도구는 **"그 질문은 SQL로 답할 수 있었는가"**를 묻는다. `player_season_batting` 한 행이 relevant chunk인 질문은 테이블 조회이고, 벡터 검색으로 도착한 것은 우연이다.
+- **실측 (30건, `rag_golden_queries.json`)**: `sql_covered=16`(선수 시즌 타격 5·투구 5·팀 순위 5·프로필 1) · `relational_no_template=11`(game 2·teams 2·awards 2·team_history 2·하이라이트·PBP·이적 각 1) · **`prose=3`**(규정 2·용어 1) · `unknown=0`. **`prose_share=0.1000` → `sql_expansion_warranted`.** RAG가 하는 일의 90%는 테이블 행 조회의 우회로이고, 그중 16/30은 **이미 `StructuredRetriever` 분기가 있다**. 다음 투자는 검색기 교체가 아니라 **`StructuredRetriever` 확장**이다(1순위 4개 테이블 추가로 16 → 24/30 = 80%).
+- **RAG 폐기가 아니다**: 남은 3건은 텍스트 인덱스 없이는 **0%**가 되는 질문이다. 그것을 SQL로 바꾸는 일은 규정 문서를 파싱해 규칙 엔진을 만드는 것이고, 검색을 없애는 게 아니라 다른 종류의 취약성을 추가한다.
+- **경계는 소유한 코드에서 유도한다(같은 교훈의 네 번째 적용)**: 산문 집합은 `build_rag_index._MARKDOWN_SOURCE_TABLES`, 인덱싱 집합은 `_SOURCE_TABLE_BY_SOURCE.values()`, SQL 커버리지는 `structured_retriever.py`의 `source_table=` 리터럴 **AST 스캔**. 이 파일에 목록을 적으면 사본이 하나 더 생기고, 사본이 낡는 방식이 곧 **4개월간 전 시즌 포스트시즌이 인덱스에서 빠져 있던 사고**다. 뮤테이션 M4(SQL 목록 하드코딩)·M8(산문 목록 하드코딩)이 실패를 생성한다.
+- **`unknown`은 0이 아니다**: `filters.source_table`을 선언하지 않은 케이스는 어느 쪽으로도 세지 않고, 비율은 **분류된 케이스**에 대해서만 계산한다(미분류가 10%를 넘으면 `undetermined`). 빈 유도는 `RuntimeError`다 — 빈 집합으로 분류하면 전 케이스가 "템플릿 없음"이 되고, 그것은 발견이 아니라 **측정 실패**다(M5가 3건 실패).
+- **잘못된 데이터셋은 이름으로 거부한다**: 라우팅 골든셋 100건에는 `source_table`이 없다. `--dataset`으로 넘기면 전건 unknown이 되어 도구가 고장난 것처럼 보인다. 대신 **exit 2** + "the routing dataset answers a different question (use `--routing-dataset`)". 라우팅 분포는 별도 축으로만 보고한다: `STRUCTURED=60 DOCUMENT=35 MIXED=5 → retrieved_share=0.40`. 그 `DOCUMENT 35` 중 **16건이 `GAME_QUERY`**(테이블 행 조회인데 문서 경로로 감)다.
+- **`uncovered_tables`는 "분기 필요"만 뜻한다**: 집합 차집합으로 계산하면 **존재하지 않는 테이블 이름**이 목록에 올라가 없는 테이블에 SQL을 쓰라고 권한다. `relational_no_template` **판정**에서 유도한다(뮤테이션 M9). 같은 이유로 `by_source_table`은 미선언 케이스에 빈 키를 만들지 않는다(M10).
+- **AtlasKV/HiKVP 교체 기각** — 근거는 `Docs/references/RAG_NECESSITY.md` 부록 A: ① 207,305청크에서 서브리니어 이득은 **이미 HNSW**(`idx_rag_chunks_embedding_hnsw` 2.9GB, 10-31)로 확보했고, 논문의 네 자리수 이득은 `M≈10⁹`에서 성립한다(`M^(1/3)≈59`) ② "RAG 제거"가 아니라 **검색을 GPU로 옮기는 것**이다(3단 프루닝 = 계층 ANN, ivfflat의 3단 버전) ③ 상위 1회 오판이 `k_R`개 서브트리 손실로 **증폭**되고 그 오판은 **관측 불가능**하다 — 이 저장소가 4개월 겪은 `league_type_code=0` 누락보다 나쁘다(그것은 `EXPLAIN`으로 보였다) ④ 측정 축이 다르다(ACC@k·peak VRAM vs wall-clock p95, 동시성 미보고, 오프라인 인코딩 비용 제외) ⑤ GPU는 `Docs/references/SKILL_LICENSE_REVIEW.md`가 프로젝트 범위 밖으로 명시.
+- **남은 공백(정직하게)**: **L3 — 실사용 질의 분포 — 는 측정 불가**다. API·`RagAnswerService`에 질의 로그도 테이블도 없다(grep 0건). 그러므로 10%는 **트래픽의 성질이 아니라 골든셋의 성질**이고 방향 지표다(`promotion_approved=false`, 골든셋 `status: staging_acceptance_pending_*`와 같은 이유). 라우팅 `route_accuracy=1.0`도 **표본 내** 값이다.
+- **검증**: 계약 테스트 **53건** + 뮤테이션 10건 전부 실패 생성, `ruff check`/`ruff format --check` 통과, 전체 스위트 **15,702 passed, 20 skipped**.
 
 ### 2026-11-15: 8일째 DB 호스트 정지 · 호스트 밖 워치독(스팸 사고 포함) · 통합 마커가 가린 CI red
 - **장애 지속(11-07~)**: Windows 호스트의 사용자 영역 프로세스가 멈춰 Docker 백엔드(Docker Desktop·WSL2·Chrome 원격 데스크톱)가 함께 섰다(런북 §17). 커널·네이티브 서비스만 응답하고 원격 채널(RDP·SMB·WinRM·Docker API·AMT)은 전부 닫혀 **현장 재부팅만이 수단**이다(§17.6) — 복구 후 §17.7. 실측: 백엔드 실패 스트릭 17,973(≈8.3일).

@@ -734,6 +734,39 @@ env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION
 `candidate_count`가 `0`인지 확인하고 `audit_rag_index --require-postings`를
 재실행합니다.
 
+### 2-2. 검색 필요성 측정 (audit_retrieval_necessity)
+
+골든셋의 각 질문이 **SQL로 답할 수 있었는지**를 분해합니다. DB에 연결하지 않고,
+인덱스도 쓰지 않습니다. 입력은 골든셋과 코드뿐입니다.
+
+```bash
+# 비율 측정
+python3 -m src.cli.rag.audit_retrieval_necessity \
+  --dataset Docs/references/rag_golden_queries.json \
+  --routing-dataset Docs/references/rag_routing_golden_queries.json \
+  --json
+
+# 회귀 게이트 — SQL 커버리지가 줄었거나 분류 불가 케이스가 생기면 exit 1
+python3 -m src.cli.rag.audit_retrieval_necessity --require-sql-covered 0.50 --fail-on-unknown
+
+# Master CLI 경유
+python3 -m src.cli.kbo rag necessity --json
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--dataset` | 분류할 골든셋 (기본 `Docs/references/rag_golden_queries.json`) |
+| `--routing-dataset` | 선택. `expectedRoute` 분포를 함께 보고 |
+| `--require-sql-covered R` | `sql_covered` 비율이 R 미만이면 exit 1 |
+| `--fail-on-unknown` | `filters.source_table`을 선언하지 않은 케이스가 있으면 exit 1 |
+| `--json` | `thresholds`를 수치와 함께 출력 |
+
+버킷 경계는 손으로 적지 않고 소유한 코드에서 유도합니다 — 산문은
+`build_rag_index._MARKDOWN_SOURCE_TABLES`, SQL 커버리지는
+`structured_retriever.py`의 `source_table=` 리터럴, 나머지는
+`_SOURCE_TABLE_BY_SOURCE`입니다. 현재 측정값과 결정 규칙은
+`Docs/references/RAG_NECESSITY.md`를 참고하세요.
+
 ### 3. 일일 자동 파이프라인 (스케줄러 등록)
 
 | 시각(KST) | 잡 | 역할 |
