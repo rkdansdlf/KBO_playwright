@@ -53,7 +53,7 @@ Windows APScheduler 00:00 KST   crawl_daily_games        [DAILY_LOCK = ForceProc
 
 **모든 스텝이 `allow_failure=True`** — 실패해도 파이프라인은 끝까지 돌고, 결과는 `logs/daily_update_summary/`와 알림으로 남는다.
 
-> **관찰(미수정)**: 기본 경로(Master DAG)에서는 step 8이 standings/matchups/rankings/sabermetrics를 계산한 뒤, DAG의 `processing`이 standings를, `analytics`가 rankings+sabermetrics를 다시 계산한다. UPSERT라 정합성 문제는 없지만 순수 중복 작업이다.
+> **중복 계산 해소**: step 8이 standings/matchups/rankings/sabermetrics를 계산하면 그 결과가 `derived_refresh`로 반환되고, DAG의 `processing`/`analytics`는 이미 끝난 standings/rankings를 다시 계산하지 않는다(`master.py`의 `derived_refresh_completed`). step 8이 실패해 목록이 비면 DAG가 폴백으로 직접 계산한다 — 모든 스텝이 `allow_failure=True`이므로 이 2차 경로가 없으면 시즌 테이블이 갱신되지 않은 채 남을 수 있다. 계약 테스트: `tests/orchestration/test_master_daily_pipeline.py::test_derived_stats_are_not_recomputed_when_ingestion_did_them` 및 `...::test_missing_derived_refresh_keeps_the_dag_fallback`.
 
 ---
 

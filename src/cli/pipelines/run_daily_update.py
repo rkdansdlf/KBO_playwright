@@ -1632,6 +1632,11 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
         "summary_path": str(summary_path),
         "stability": stability_summary,
         "p0_readiness": p0_readiness,
+        # The Master DAG consumes this to avoid recomputing the same derived
+        # tables in its processing/analytics stages. Step 8 appends a name only
+        # after its CLI call succeeded, so a failed step leaves the DAG fallback
+        # in place.
+        "derived_refresh": list(ctx.derived_refresh),
     }
 
 
