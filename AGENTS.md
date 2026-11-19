@@ -226,7 +226,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 15 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 19 workflows and 3 composite actions under `.github/` (count = `.github/workflows/*.yml`; `tests/test_github_workflows.py::test_documented_workflow_inventory_matches_the_repository` keeps this inventory honest):
 
 ### Composite Actions
 - `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.14), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
@@ -258,14 +258,21 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ### Other Workflows
 - `daily_preview.yml`: Pregame batch and live crawl (day-of-game cron windows)
+- `kbo_smart_polling.yml`: Game-finish polling and daily update (cron windows on game days)
 - `pitcher_backfill.yml`: Live pitcher stat backfill during game hours
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation against the configured database
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
+- `backfill_season_team_codes.yml`: Manual — futures season team-code repair
+- `text_relay_docker.yml`: Scheduled + manual — text relay Docker job
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.14)
+- `agent_harness.yml`: Push/PR on `tools/agent_harness/**`, `tests/agent_harness/**`, `.agent-harness/**` or composite actions, plus manual dispatch — Harness gate + execution gate
+- `docker_build_check.yml`: PR-stage runtime image build check — builds without pushing (push-only path is `docker_build.yml`)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
+- `live_db_verification.yml`: Weekly Sunday 19:00 UTC (Monday 04:00 KST) + manual — read-only live acceptance against PostgreSQL with `LIVE_DB_READONLY_URL`; replaces the retired Oracle acceptance run
+- `oci_connection_probe.yml`: Manual — legacy Oracle ADB read-only connection probe (never use `OCI_DB_URL` as the primary URL)
 - `db_availability_watchdog.yml`: 30분 주기 PostgreSQL 도달성 워치독 — 호스트 독립(GitHub Actions), 전이 알림(첫 실패·회복만), 상태는 Actions 캐시. DB 만 침묵하는 상태(포트는 열리고 PG 무응답)를 밖에서 잡는다 (`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12)
 
 ### Required Secrets
