@@ -86,8 +86,31 @@ GitHub Actions 기반, 14개 워크플로와 3개 Composite Action으로 구성�
 | `KBO_USER_PWD` | 예 | KBO 웹사이트 로그인 PW |
 | `TELEGRAM_BOT_TOKEN` | 예 | Telegram 알림 봇 토큰 |
 | `TELEGRAM_CHAT_ID` | 예 | 기본 Telegram 알림 채널 |
-| `DATABASE_URL` | 예 | Oracle Autonomous Database URL |
+| `DATABASE_URL` | 예 | 운영 PostgreSQL (Tailscale `100.108.105.65:5432`, `bega_prod`) |
 | `ORACLE_WALLET_B64` | 예 | Oracle Wallet zip의 base64 값 |
 | `OCI_WALLET_PASSWORD` | 조건부 | Wallet 비밀번호 |
 | `YOUTUBE_API_KEY` | 아니오 | 팬 문화 유튜브 API |
 | `NAVER_CLIENT_ID/SECRET` | 아니오 | 네이버 API |
+
+### `DATABASE_URL` 을 쓰는 워크플로는 DB 에 닿을 수 없다 (2026-11-23 확인)
+
+운영 PostgreSQL 은 **tailnet 전용**이다(공인 포트 없음). 그런데 저장소 시크릿
+`DATABASE_URL` 을 참조하는 워크플로 9개(`daily_kbo_sync`, `weekly_maintenance`,
+`backfill`, `kbo_automation`, `kbo_smart_polling`, `daily_preview`, `pitcher_backfill`,
+`periodic_extras`, `full_recalculation`)는 **어느 것도 tailnet 에 참여하지 않는다** —
+`tailscale/github-action` 을 쓰는 워크플로는 `live_db_verification` 과
+`db_availability_watchdog` 두 개뿐이고, 그 둘은 `secrets.DATABASE_URL` 이 아니라
+`LIVE_DB_READONLY_URL` 을 쓴다.
+
+즉 **시크릿 값을 고쳐도 위 9개는 접속에 실패한다.** 원인은 값이 아니라 경로다.
+`daily_kbo_sync` 의 `schedule:` 은 비활성(주석)이라 자동 실행되지 않으므로 이 결함이
+매일 드러나지는 않지만, 수동 dispatch 하면 연결 단계에서 멈춘다. 해소는 둘 중 하나다:
+
+1. 해당 워크플로에 tailnet 참여 스텝을 추가한다(`tag:ci` OAuth — `TS_OAUTH_CLIENT_ID` /
+   `TS_OAUTH_SECRET` 필요, 아래 4절 참조).
+2. GitHub Actions 가 DB 를 만지지 않는다고 결정하고, DB 작업은 호스트 스케줄러
+   (`WINDOWS_SCHEDULER.md`) 단일 경로로 둔다. 이 경우 위 9개는 **실행되지 않는 경로**임을
+   문서에 명시해야 한다(지금은 "백업 경로"로 읽힌다).
+
+현재 상태는 2에 가깝다 — `DATABASE_URL` 시크릿은 2026-11-22 에 갱신됐지만, 그 값을
+실제로 쓸 수 있는 CI 잡은 아직 하나도 없다.

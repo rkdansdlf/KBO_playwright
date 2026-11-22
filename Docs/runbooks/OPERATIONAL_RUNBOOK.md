@@ -158,22 +158,22 @@ validation record is `Docs/references/rag_production_validation_20260828.json`.
 ## 4. Live Database Acceptance & Oracle 레거시 진단
 
 ### 0) 주간 PostgreSQL live 검증 (read-only, 워크플로 `live_db_verification.yml`)
-Oracle ADB는 2026-09-27부터 `DPY-6005`로 연결이 거부되며 phase-out 대상이다. 주간 live 검증은 운영 PostgreSQL(Tailscale `100.81.73.13`, `bega_prod`)을 **읽기 전용 역할**로 확인한다. 스크립트는 세션과 트랜잭션을 모두 읽기 전용으로 열고 커밋하지 않으며 마이그레이션·시드를 실행하지 않는다.
+Oracle ADB는 2026-09-27부터 `DPY-6005`로 연결이 거부되며 phase-out 대상이다. 주간 live 검증은 운영 PostgreSQL(Tailscale `100.108.105.65`, `bega_prod` — 2026-11-20 호스트 이전, `WINDOWS_DB_HOST_RECOVERY.md` §18.1)을 **읽기 전용 역할**로 확인한다. 스크립트는 세션과 트랜잭션을 모두 읽기 전용으로 열고 커밋하지 않으며 마이그레이션·시드를 실행하지 않는다.
 
 **Setup (1회, 운영자)**
-1. Tailscale 관리 콘솔에서 `tag:ci`를 쓰는 OAuth 클라이언트를 만든다(scope: `auth_keys` write). ACL은 `tag:ci`가 `100.81.73.13:5432`에 닿도록 허용한다.
-2. Windows 호스트 `ch806-08`의 방화벽이 tailnet 대역에서 5432를 허용하는지 확인한다(`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md`).
+1. Tailscale 관리 콘솔에서 `tag:ci`를 쓰는 OAuth 클라이언트를 만든다(scope: `auth_keys` write). ACL은 `tag:ci`가 `100.108.105.65:5432`에 닿도록 허용한다.
+2. Windows 호스트 `돈통`(구 `ch806-08`)의 방화벽이 tailnet 대역에서 5432를 허용하는지 확인한다(`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md`).
 3. PostgreSQL에 읽기 전용 역할을 만든다. 쓰기 권한이 없어야 한다.
    ```sql
    CREATE ROLE kbo_ci_ro LOGIN PASSWORD '<생성한 비밀번호>';
    GRANT CONNECT ON DATABASE bega_prod TO kbo_ci_ro;
    GRANT pg_read_all_data TO kbo_ci_ro;
    ```
-4. GitHub 저장소 secret을 등록한다: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`). `TELEGRAM_*`는 기존 값을 쓴다. 복구 순서·검증까지 담은 실행 체크리스트는 `Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12 "설정 절차 (DB 복구 후) — 실행 체크리스트"를 따른다.
+4. GitHub 저장소 secret을 등록한다: `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `LIVE_DB_READONLY_URL`(`postgresql+psycopg://kbo_ci_ro:…@100.108.105.65:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`). `TELEGRAM_*`는 기존 값을 쓴다. 복구 순서·검증까지 담은 실행 체크리스트는 `Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12 "설정 절차 (DB 복구 후) — 실행 체크리스트"를 따른다.
 
 **로컬에서 같은 검사 실행 (읽기 전용)**
 ```bash
-LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod' \
+LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.108.105.65:5432/bega_prod' \
   venv/bin/python scripts/verification/verify_live_postgres.py --require-readonly-role
 ```
 `--require-readonly-role`에서 실패하면 쓰기 가능한 역할로 접속한 것이다. 위 3번으로 읽기 전용 역할을 만든 뒤 URL을 바꾼다. 종료 코드는 0 통과, 1 실패, 2 설정 오류다.
