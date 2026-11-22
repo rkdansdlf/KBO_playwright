@@ -3,13 +3,14 @@
 # Containers reach the database by its container DNS name (`kbo_postgres`), not
 # by the host IP. Both are reachable, but the host IP routes through Docker
 # Desktop's userland port proxy, and that proxy was reprogrammed onto the wrong
-# container after a host reboot (2026-11-05: 100.81.73.13:5432 landed on
+# container after a host reboot (2026-11-05: 100.81.73.13:5432 — the address in use
+# then; it is 100.108.105.65 since 2026-11-20 — landed on
 # `bega_dev`, which has no `bega_prod_user` role, so scheduler and api-server
 # crash-looped on "password authentication failed" while the credentials were
 # in fact correct). Container DNS has no such indirection: it resolves to the
 # bridge address of the named container and cannot drift.
 #
-# The host-side `.env` deliberately keeps the `100.81.73.13:5432` form, because
+# The host-side `.env` deliberately keeps the tailnet host-address form (`100.108.105.65:5432`), because
 # the host itself cannot resolve container DNS names.
 #
 # Credentials come from `.env` (`BEGA_PROD_PASSWORD`) — this file contains no
