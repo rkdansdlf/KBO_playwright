@@ -1,4 +1,4 @@
-# Windows DB 호스트 복구 런북 (ch806-08)
+# Windows DB 호스트 복구 런북 (돈통 · 구 ch806-08)
 
 > 이 문서는 **Windows 서버 앞(또는 사내망 PC)에서** 실행할 절차다.
 > 원격(Mac 등 다른 tailnet 기기)에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다(2026-10 관측).
@@ -6,14 +6,18 @@
 > **크롤러 스케줄러도 이 Windows 서버에서 돈다**(2026-10-18 운영자 확인). PostgreSQL만 Windows에 있고 스케줄러는 Mac(launchd)에서 돈다는 이전 설명은 더 이상 맞지 않다.
 > 스케줄러 실행·재시작·로그 위치·작업 스케줄러 등록은 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)를 본다.
 > DB 복구 후 스케줄러 확인 절차는 §7에 있다. §9 이후는 Mac에서 관측·작업하던 시기의 기록이라 "Mac" 표현을 그대로 둔다.
+>
+> ⚠️ **주소 정본은 §18.1 이다.** 2026-11-20 에 호스트가 `ch806-08`(`100.81.73.13`)에서
+> `돈통`(`100.108.105.65`)으로 옮겨졌다. §2~§17 본문에 남은 옛 주소는 **당시 기록**이며,
+> 그 명령을 그대로 복사해 실행하면 죽은 호스트를 본다.
 
 ## 1. 대상과 현재 증상
 
 | 항목 | 값 |
 |---|---|
-| 호스트 | `ch806-08` (Windows) |
-| 네트워크 주소 | Tailscale `100.81.73.13` |
-| 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.81.73.13:5432`) — BEGA 백엔드와 공유 |
+| 호스트 | `ch806-08` (Windows) → 2026-11-20부터 **`돈통`** (§18.1) |
+| 네트워크 주소 | Tailscale `100.81.73.13` → **`100.108.105.65`** (§18.1) |
+| 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.108.105.65:5432`) — BEGA 백엔드와 공유 |
 | 역할 (스케줄러) | 크롤러 스케줄러 `scripts/scheduler.py` — Windows 작업 스케줄러로 상주 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)) |
 | 서버 앞 접근 | RDP(3389)·SSH(22)·WinRM(5985/5986) **무응답** → 사내망 PC의 RDP 또는 물리 접근 필요 |
 
@@ -955,6 +959,13 @@ Mac 에서 위에서부터 실행한다.
 킬스위치를 먼저 확인한다. 다만 이번 건은 킬스위치를 끈 뒤에도 §17.3 의 실측이 그대로
 재현됐다 — **로컬 문제와 호스트 정지가 함께 있었다.**
 
+> **2026-11-23 재확인 — 판별 신호와 해제 명령.** 이번에는 인터페이스가 **`utun6`** 이었고,
+> 앱을 종료하는 대신 `scutil --nc stop "NordVPN - NordLynx"` 로 utun6 을 제거하자 기본 경로가
+> `en1` 로 돌아오며 **즉시** 복구됐다(`100.108.105.65:5432` 14ms OPEN). 판별 신호는
+> **"ICMP·TSMP 는 통과하는데 모든 TCP SYN 이 죽는다"** 이고, 이때 테일넷 자체 주소
+> (`100.100.100.100:80`)까지 죽으므로 **원격을 의심하기 전에 로컬 VPN 을 먼저 본다.**
+> 인터페이스 번호(`utunN`)는 부팅마다 달라지므로 번호로 판정하지 말고 `scutil --nc list` 로 본다.
+
 ### 17.11 외부 하트비트 — 감시 대상 밖에서 보는 유일한 신호
 
 이번 장애에서 **아무 경보도 나가지 않았다.** Prometheus 는
@@ -1085,8 +1096,8 @@ Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 �
       사용자 영역 프로세스가 멈춘 상태라면 §17.6~17.7(현장 재부팅)이 유일한 수단이고 코드로 해결되지 않는다.
 - [ ] **2. Tailscale `tag:ci` OAuth 클라이언트 + 네트워크 경로.**
       - 관리 콘솔에서 OAuth 클라이언트 생성, scope `auth_keys` write, `tag:ci` 사용
-      - ACL이 `tag:ci` → `100.81.73.13:5432`를 허용하는지 확인
-      - Windows 호스트(`ch806-08`) 방화벽이 tailnet 대역의 5432를 허용하는지 확인
+      - ACL이 `tag:ci` → `100.108.105.65:5432`를 허용하는지 확인 (§18.1 — 옛 `100.81.73.13` 은 11-19부터 오프라인)
+      - Windows 호스트(`돈통`) 방화벽이 tailnet 대역의 5432를 허용하는지 확인
 - [ ] **3. 읽기 전용 역할 생성** (`bega_prod`, 쓰기 권한 없음):
       ```sql
       CREATE ROLE kbo_ci_ro LOGIN PASSWORD '<생성한 비밀번호>';
@@ -1104,12 +1115,12 @@ Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 �
       gh secret list   # 이름만 출력됨; 3종이 추가됐는지 확인
       ```
       URL 형식:
-      `postgresql+psycopg://kbo_ci_ro:<pw>@100.81.73.13:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`
+      `postgresql+psycopg://kbo_ci_ro:<pw>@100.108.105.65:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`
       `&`가 포함되므로 반드시 따옴표로 감싼다. keepalives를 빼면 유휴 연결이 도중에 끊겨 spurious
       `PERSIST_TIMEOUT`으로 보고된다. **`DATABASE_URL`(쓰기 역할)을 절대 대입하지 않는다.**
 - [ ] **5. CI 전에 로컬에서 읽기 전용 검사:**
       ```bash
-      LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.81.73.13:5432/bega_prod' \
+      LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.108.105.65:5432/bega_prod' \
         venv/bin/python scripts/verification/verify_live_postgres.py --require-readonly-role
       ```
       exit 0 통과 / 1 실패 / 2 설정 오류.
@@ -1121,3 +1132,124 @@ Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 �
 - [ ] **7. `live_db_verification` 수동 1회** 실행해 통과 확인(주간 cron은 reviewed schedule이라 자동으로 안 돈다).
 - [ ] **8. 스트릭 종료 확인:**
       `gh run list --workflow db_availability_watchdog.yml --limit 5`에서 failure 연속이 끊겼는지 본다.
+
+## 18. 호스트 이전과 자격증명 분기 (2026-11-23)
+
+§17 이 기록한 정지(11-07~) 뒤 호스트가 **다른 Windows 기기로 옮겨졌다**. 그래서 §17.12 의
+체크리스트가 가리키던 주소(`100.81.73.13`)는 이제 죽은 주소다. 이 절은 새 호스트의 실측과,
+그 과정에서 드러난 **자격증명 분기**를 남긴다.
+
+### 18.1 새 호스트
+
+| 항목 | 값 |
+| --- | --- |
+| 이름 | `돈통` — `node.tail2a897d.ts.net` |
+| 주소 | **`100.108.105.65`** |
+| 상태 | Tailscale online/active, `CurAddr 192.168.35.209:41641`, relay `tok` |
+| 이전 호스트 | `ch806-08` / `100.81.73.13` — 11-19 무렵부터 무응답 |
+| 전환 시각 | 이 저장소 `.env` 의 mtime 이 **11-20 02:41** |
+
+이전이 **호스트만** 바뀌었다는 증거: `.env.bak_20261120_tailscale_new_host`(이전 사본)와 현행
+`.env` 는 **같은 역할(`bega_prod_user`)·같은 비밀번호 지문**을 갖고 있고 주소만 다르다. 즉
+그 시점에 비밀번호는 바뀌지 않았고, 두 값이 갈라진 것은 **그 뒤 호스트 쪽에서** 일어났다.
+
+### 18.2 포트 실측 (2026-11-23, 이 Mac 기준)
+
+| 포트 | 상태 | 정체 |
+| --- | --- | --- |
+| 5432 | **OPEN** (14ms) | `kbo_postgres` — api-server 실측 `inet_server_addr()=172.18.0.4`, `current_database()=bega_prod` |
+| 8000 | **OPEN** (21ms) | `kbo_api_server` — KBO Playwright Platform v1.5.0, 54 paths, `/openapi.json` 공개 |
+| 3000 | **OPEN** | `browserless/chromium` |
+| 445 | OPEN | SMB — `smbutil view -N` 인증 거부 |
+| 22 · 3389 · 5985 · 5986 · 2375 · 2376 · 6379 · 9090 | 닫힘/타임아웃 | **원격 셸 경로 없음** — §17.5 의 결론이 유지된다 |
+
+### 18.3 API 는 DB 자격증명 없이도 쓰는 관측 지점이다
+
+자격증명이 틀려도 `:8000` 은 **실데이터를 서빙**한다. 호스트에 들어가지 못하는 상황에서
+이것이 유일한 읽기 경로다.
+
+| 경로 | 돌려주는 것 |
+| --- | --- |
+| `/status` | `games_count 26,525` · `players_count 8,066` · `latest_game_date 2026-11-11` · 락 상태 |
+| `/api/v1/health/healing-status` | `score_inconsistent_count 42`, `discrepant_seasons [2026]` |
+| `/api/rag/search` · `/api/v1/rag/search` | 청크 + `source_table` · `source_row_id` |
+| `/api/v1/rag/ask` | 답변 + `provenance.record_key`(=`<table>:<pk>`) — **구조화 경로의 도메인 PK** |
+
+즉 "인덱스 신원 ↔ 도메인 신원" 대조의 일부는 **HTTP 만으로** 가능하다(§18.5 의 신원 규약
+주의 참조). 반대로 테이블 전체 분포(예: `embedding IS NULL` 잔량)는 여전히 SQL 이 필요하다.
+
+`/api/pipeline/defects` 는 500 과 함께 **SQL 전문을 반환**한다(DSN 은 노출하지 않는다).
+진단에는 유용하지만 응답 본문을 그대로 옮길 때는 내용을 확인할 것.
+
+### 18.4 자격증명 분기 — 서버는 정상, 이 Mac 의 값이 낡았다
+
+증상: 같은 `.env` 의 `bega_prod_user` 가 **호스트에서는 통과**하고(같은 host:port), **이 Mac
+에서는 `28P01`** 로 거부된다. 이 조합은 둘로만 설명된다 — (A) 값이 서로 다르다, (B) 클라이언트가
+값을 변형해 보낸다.
+
+판별은 **드라이버를 쓰지 않는 SCRAM 핸드셰이크**로 한다. psycopg/libpq 를 거치지 않으므로
+"클라이언트 버그"라는 가설이 판정에 섞이지 않는다.
+
+```python
+# 요지: client-first-message 는 gs2 헤더("n,,")를 포함해야 한다. 빠뜨리면 서버가
+# "malformed SCRAM message" 로 거절하는데, 이는 인증 실패와 구별되지 않는다.
+nonce = b64encode(os.urandom(18)).decode()
+bare  = f"n=,r={nonce}"
+send(b"p", b"SCRAM-SHA-256\x00" + pack("!I", len("n,," + bare)) + ("n,," + bare).encode())
+# server-first → salted = pbkdf2_hmac("sha256", pw, salt, iters)
+# ClientProof = ClientKey XOR HMAC(SHA256(ClientKey), f"{bare},{server_first},{final_no_proof}")
+# 판정: R/12(SASLFinal) + R/0(Ok) = 통과, E/28P01 = 값 불일치
+```
+
+실측 결과:
+
+| 후보 | 결과 |
+| --- | --- |
+| `.env` 의 값 (len 40, 대문자13·소문자19·숫자8·기호0) | **`28P01`** |
+| 같은 값의 기계적 변형 17종 (줄바꿈·CRLF·앞뒤 공백·따옴표·`unquote`·재인코딩·대소문자·1~2자 절단·base64 디코드) | **전부 `28P01`** |
+| 고의로 틀린 값 / 존재하지 않는 역할 | `28P01` (구별 불가 — §18.5) |
+
+호스트 쪽 실측은 반대다: 같은 host:port 에 `bega_prod_user` 로 **exit 0**, `kbo_readonly` 로도
+exit 0. 따라서 **(B) 는 기각**되고, **이 저장소 `.env` 의 값이 낡았다**는 결론만 남는다.
+
+### 18.5 "password authentication failed" 가 말하지 않는 것
+
+- **역할 부재와 비밀번호 불일치를 구별하지 못한다.** 존재하지 않는 역할도 `28P01` 이다.
+  이 문구만 보고 "역할을 만들어야 한다"로 가면 틀린 조치를 한다.
+- **서버가 죽었다는 뜻이 아니다.** SCRAM 교환이 성립했다는 것은 서버가 살아서 verifier 를
+  계산했다는 뜻이다(§17.1 이 실측한 `postgres_silent` 와 정반대 상태).
+- **포트 매핑 오류일 수도 있다**(`docker-compose.local.yml` 이 기록한 11-05 사고). 이번에는
+  `inet_server_addr()=172.18.0.4` 로 `kbo_postgres` 임을 확인해 기각했다. 순서는 항상
+  **(1) 핸드셰이크 성립 여부 → (2) 어느 인스턴스인가 → (3) 값이 맞는가**.
+- **인덱스 신원 규약은 폐기 저장소와 다르다.** 현행 빌더의 `source_row_id` 는 자연키다
+  (`game_lineups` → `20260515LGSK0_away`, `pbp` → `<game_id>_content_<sha256>`). 2026-10-17 에
+  기록한 "`game` 0/6,199" 같은 숫자 PK 불일치는 **폐기 저장소**의 규약이며, 현재 코드로 만든
+  인덱스에 그 기준을 적용하면 없는 불일치를 만든다.
+
+### 18.6 조치 순서
+
+1. **호스트의 정본 값을 이 Mac 으로 가져온다.** 값을 채팅·셸 히스토리에 남기지 않으려면
+   `getpass` 로 받아 `.env` 를 in-place 갱신한다. 갱신 대상은 **host·port·role 이 모두 일치하는
+   URL 만**이다(이 저장소는 `DATABASE_URL`·`PGVECTOR_URL`·`PGVECTOR_URL_DOCKER` 3개;
+   `LOCAL_PG_URL` 은 `127.0.0.1:5434`/`postgres` 라 제외).
+2. **바꾸기 전에 검증한다.** 저장 **전에** SCRAM 으로 통과를 확인하고, 실패하면 `.env` 를
+   건드리지 않는다. 백업은 `.env.bak_<UTC>` 로 남긴다.
+3. **회전을 권한다.** 이 저장소의 값은 11-03 이후 바뀌지 않았고 그 사이 진단 과정에서 한 번
+   노출됐다. 회전은 호스트에서 한다:
+   ```cmd
+   docker exec -it kbo_postgres psql -U postgres -d bega_prod -c "ALTER ROLE bega_prod_user WITH PASSWORD '<새 값>'"
+   ```
+   (공식 이미지의 `pg_hba.conf` 는 **로컬 소켓을 trust** 로 두므로 컨테이너 안 `psql` 은
+   비밀번호 없이 들어간다. 호스트 `.env` 도 함께 바꾸고 `api-server`·`scheduler` 를 재기동한다.)
+4. **CI 시크릿도 함께 본다.** `gh secret list` 의 `DATABASE_URL` 은 **2026-10-20** 에 설정된
+   값이라 11-20 이전 주소를 가리킨다. 즉 CI 는 지금 **죽은 호스트**를 본다. 값이 확보되면
+   `gh secret set DATABASE_URL` 로 갱신하고, 읽기 전용 경로는 §17.12 체크리스트를 따른다.
+
+### 18.7 하지 않은 것
+
+- **호스트의 `.env` 를 읽지 못했다.** SMB(445)는 인증 거부, SSH/RDP/WinRM/Docker API 는 닫힘.
+  값을 옮기는 일은 사람이 한 번 해야 한다.
+- **비밀번호를 추측으로 맞히지 않았다.** 보유한 92조합 + 기계적 변형 17종이 전부 실패했고,
+  더 넓히는 것은 브루트포스이므로 하지 않는다.
+- **`pg_hba.conf` 를 trust 로 열지 않았다.** tailnet 전체에 무비밀번호 접근을 여는 것은 이
+  장애의 해결책이 아니라 다음 장애의 원인이다.
