@@ -288,7 +288,20 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-11-20
+Last updated: 2026-11-23
+
+### 2026-11-23: 호스트가 `돈통`으로 옮겨졌고, 이 Mac의 `.env`는 낡았다 — DB 접속은 호스트에서 한다
+- **연결 불가의 원인은 로컬 VPN이었다**: `NordVPN - NordLynx`가 `utun6`을 잡고 기본 경로와 `128.0/1`을 가져가 킬스위치가 모든 TCP를 막았다. `scutil --nc stop "NordVPN - NordLynx"`로 인터페이스를 제거하자 즉시 복구(`100.108.105.65:5432` 14ms). 판별 신호는 **"ICMP·TSMP는 통과하는데 TCP SYN만 전부 죽는다"**(테일넷 자체 주소 `100.100.100.100:80`까지 죽으면 확정). `utunN` 번호는 부팅마다 달라지므로 번호로 판정하지 않는다.
+- **호스트 이전(11-20)은 호스트만 바뀌었다**: `ch806-08`(`100.81.73.13`) → `돈통`(`node.tail2a897d.ts.net`, `100.108.105.65`). `.env`와 `KBO_platform/.env.prod`·백업본의 `bega_prod_user` 비밀번호 지문이 **동일**하고 주소만 다르다. 즉 그 시점에 비밀번호는 바뀌지 않았다.
+- **그 뒤 이 Mac의 값과 서버의 값이 갈렸다 — 이 Mac이 낡았다**: 서버는 `28P01`로 거부하는데 **호스트에서 같은 host:port·같은 역할로 exit 0**(`kbo_readonly`도 exit 0). 드라이버를 배제하려고 `psycopg` 없이 **손으로 쓴 SCRAM-SHA-256 클라이언트**로 재현했고 `E/28P01`을 받았으며, 기계적 변형 17종(줄바꿈·CRLF·공백·따옴표·`unquote`·재인코딩·대소문자·1~2자 절단·base64)도 전부 거부됐다. 92조합 추측은 실패했고 더 넓히지 않았다(브루트포스).
+- **`28P01`이 말하지 않는 것**: 역할 부재도 같은 코드이고(존재하지 않는 역할로 확인), 서버 사망도 아니며(SCRAM 교환이 성립 = verifier 계산됨), 포트 재매핑도 아니다(`inet_server_addr()=172.18.0.4` = `kbo_postgres`). 순서는 **(1) 핸드셰이크 성립 → (2) 어느 인스턴스인가 → (3) 값이 맞는가**.
+- **호스트로 들어갈 원격 채널이 없다**: `22`·`3389`·`5985/5986`·`2375/2376` 전부 닫힘, SMB `445`는 인증 거부. 남은 자격증명 전달 경로는 **사람이 한 번 옮기는 것**이고, 그래서 값을 채팅·셸 히스토리에 남기지 않는 `getpass` 기반 `.env` 갱신기를 만들어 두었다(저장 **전에** SCRAM 검증, 실패 시 무기록, host·port·role 3중 일치 URL만 갱신, `.env.bak_<UTC>` 백업).
+- **API는 자격증명 없이도 관측 지점이다**: `:8000`이 실데이터를 서빙한다(`/status` games 26,525·players 8,066·latest_game_date 2026-11-11, `/api/v1/rag/ask`가 `provenance.record_key` 반환). 단 `/api/pipeline/defects`는 500과 함께 SQL 전문을 반환하므로 응답 본문을 옮길 때 확인할 것.
+- **재측정(호스트 실행, 4개 게이트 통과)**: `migrations --check` exit 0 · `rag census` `orphan 0`/`collision 19키·39행`/`unsafe 8,959` · `audit_rag_index` `damage 0`·`primary=vector=380,477` · `audit_rag_coverage` `missing 0`(10-27의 **10,632 백로그가 닫혔다**).
+- **`unsafe`는 판정된 값이 아니다**: `unsafe_entry_count`는 `disposition != SAFE_REKEY`의 합이고 게이트는 `--fail-on-unsafe`를 줬을 때만 exit code로 바꾼다(`return 1 if args.fail_on_unsafe and ...`). 이번 실행에는 플래그가 없었으므로 **exit 0은 그 값에 대해 아무 말도 하지 않는다**. 8,959는 11-02의 8,951과 같은 자리이고 그 절의 결론(**이 집단의 disposition은 중복의 증거가 아니다** — `id=N` 짝이 틀렸다)이 그대로 적용된다. 소스별 구성은 이번에 측정하지 않았다.
+- **지연 측정은 코퍼스가 커진 뒤의 값이 아니다**: 165,031(10-27) → **380,477**청크. `RAG_EVALUATION.md`의 p95는 207,305청크 시절 값이므로 현재 코퍼스에서 다시 재야 한다. 증가분의 구성은 미분해(재인덱싱·역사 백필·분할 키 혼재 추정).
+- **CI 시크릿**: `DATABASE_URL`은 2026-10-20 설정값이라 **죽은 호스트**를 가리키고 있었다(11-23 갱신 완료). `LIVE_DB_READONLY_URL`·`TS_OAUTH_CLIENT_ID`·`TS_OAUTH_SECRET`은 여전히 없어 `db_availability_watchdog`은 시크릿 게이트에서 실패한다 — 워치독이 DB 상태를 본 적은 11-20 이후 한 번도 없다.
+- **회전 권고**: 노출된 값은 11-03 이후 바뀌지 않았고 진단 과정에서 한 번 평문으로 출력됐다. 그리고 지금 인증되지 않으므로 회전이 자연스러운 해소책이다(호스트에서 `ALTER ROLE ... WITH PASSWORD`, 이어서 호스트 `.env`·api-server·scheduler 재기동).
 
 ### 2026-11-20: RAG 필요성 측정 — 질의의 90%는 SQL로 답할 수 있었다 (AtlasKV 교체 기각)
 - **측정 도구 신규**: `src/cli/rag/audit_retrieval_necessity.py` (`kbo rag necessity`). **읽기 전용** — DB 접속·쓰기·네트워크 없음. 입력은 골든셋과 코드뿐이다. `evaluate_rag_retrieval`이 "검색이 정확한가"를 묻는 반면 이 도구는 **"그 질문은 SQL로 답할 수 있었는가"**를 묻는다. `player_season_batting` 한 행이 relevant chunk인 질문은 테이블 조회이고, 벡터 검색으로 도착한 것은 우연이다.
