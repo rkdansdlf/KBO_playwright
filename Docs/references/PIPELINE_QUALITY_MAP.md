@@ -1,9 +1,10 @@
 # 수집 파이프라인 · 품질 게이트 현재 상태 지도
 
-> **기준 커밋**: `4008a86f` (2026-11-19) · **작성**: 2026-11-19
+> **기준 커밋**: `3da4c0b1` (2026-11-29) · **작성**: 2026-11-19 · **마지막 갱신**: 2026-11-29
 > **갱신 규칙**: 아래 계약이 바뀌면 **같은 PR에서 이 문서도 갱신**한다.
 > **문서 위계**: `AGENTS.md` = 정책·명령어·시간순 "왜"(Anchored Summary), `Docs/runbooks/` = 운영 절차, 이 문서 = **현재 코드가 무엇을 하는가**에 대한 코드 레벨 지도.
 > 라인 번호는 기준 커밋 스냅샷이므로, 이동했으면 심볼 이름으로 다시 찾는다.
+> 갱신 이력: `4008a86f`(초판) → `5441a57f`(DAG 중복 계산 해소) → `257fc627`(setup-uv v7) → `b16eee18`·`3c4475d8`(Pandas 4 경고 0건) → `40342665`(RAG L3 원장) → `3da4c0b1`(ivfflat 빌더).
 
 ---
 
@@ -18,6 +19,8 @@
 | 품질 검증은 몇 겹? | L1 실시간 → L2 통계 7종 → L3 SQL 불변식 20종 + 기준선 대조 | `game_save.py:943`, `quality_gate.py:1271`, `data_quality_regression_pack.py:622` |
 | 취소 상태인데 경기가 끝났다면? | **릴레이 종료 마커가 상태를 이긴다** | `game_collection_service.py:416`, `game_helpers.py:816` |
 | 정착된 DLQ는? | 재시도하지 않음. `requeue`만 되돌아오는 문 | `crawl_dead_letter.py:47`, `crawl_dead_letter_state.py:12` |
+| RAG 인덱스 상태 | 청크 380,359 · `damage=0` · exit 1의 유일한 사유는 dense 인덱스 부재 | `kbo rag` 감사 실측(2026-11-28), `AGENTS.md` 11-28 |
+| 실사용 질의 분포는? | `rag_query_events` 원장에 관측치만 저장(원문 아님). `kbo rag traffic`이 읽기 전용으로 집계 | `src/services/rag_query_log.py`, `src/cli/rag/traffic.py` |
 
 ---
 
@@ -28,7 +31,7 @@ Windows APScheduler 00:00 KST   crawl_daily_games        [DAILY_LOCK = ForceProc
   └─ src/scheduler/jobs/daily.py:378
      ├─ DAILY_USE_DAG_ORCHESTRATOR=1 (기본)
      │   └─ MasterWorkflowOrchestrator.build_daily_sync_workflow()
-     │      src/orchestration/master.py:266
+     │      src/orchestration/master.py:289
      │      ingestion → processing → analytics → quality_gate → cloud_sync → notification
      │      ingestion = run_daily_update_main(--date 어제, --seed-tomorrow-preview, acquire_lock=False)
      └─ (구 경로) _run_legacy_daily_update
@@ -38,7 +41,7 @@ Windows APScheduler 00:00 KST   crawl_daily_games        [DAILY_LOCK = ForceProc
 - DAG의 각 stage는 실패를 격리하고, `quality_gate` 실패는 `crawl_daily_games`를 FAILURE가 아니라 **WARNING**으로 끝낸다(`daily.py:438~456`). 이유: 품질 게이트 하나가 의존성 체인 전체를 멈추게 하면 데이터 갱신 자체가 중단된다.
 - `quality:daily` 인시던트는 `_publish_quality_incident`(`daily.py:231`)가 발행한다. SKIPPED(상류 실패)와 FAILED(게이트 실행 실패)를 구분하고, PASS여도 기준선이 없으면 "기준선 미기록" 경고를 낸다.
 
-### `run_daily_update` 17단계 (`src/cli/pipelines/run_daily_update.py:1629`)
+### `run_daily_update` 17단계 (`src/cli/pipelines/run_daily_update.py:1680`)
 
 | Step | 내용 | Step | 내용 |
 |---|---|---|---|
@@ -222,16 +225,40 @@ resolved / ignored = terminal
 | 00:30 standings → 00:45 team defense → 01:00 rankings → 01:15 auto_heal → 01:30 heal_pbp → 01:45 integrity | 야간 체인 | MAINTENANCE_LOCK |
 | 02:00 RAG publish → 02:10 source_coverage → 02:30 rag_vector_backfill → 02:40 sparse_terms_catchup | RAG 체인 | MAINTENANCE_LOCK |
 | 06:05~06:45 | rag_audit / coverage / identity / schema_drift / snapshot_drift | MAINTENANCE_LOCK |
-| 10분마다 | `heartbeat_ping` (`:197`, 외부 dead-man's switch) | 없음(의도적) |
+| 10분마다 | `heartbeat_ping` (`sentinel.py:197`, 외부 dead-man's switch) | 없음(의도적) |
 | 15분마다 | `db_reachability_check` | 없음 |
+| 일 03:50 (주간) | `rag_query_log_retention_weekly` (`maintenance.py:831`) | MAINTENANCE_LOCK |
 
 - **간격은 계약**: 티어 락은 60초 안에 못 잡으면 스킵(큐잉 아님) → 겹친 잡은 밀리는 게 아니라 사라진다.
-- `_scheduled_job()` (`registry.py:382`)이 등록 시 모든 잡에 `CrawlRunOrigin.SCHEDULER`를 태깅. innermost claim이 이기므로 데일리 파이프라인 내부는 `daily_update`로 남는다.
+- `_scheduled_job()` (`registry.py:383`)이 등록 시 모든 잡에 `CrawlRunOrigin.SCHEDULER`를 태깅. innermost claim이 이기므로 데일리 파이프라인 내부는 `daily_update`로 남는다.
 - `heartbeat_ping_job`은 DB fail-fast 가드를 **일부러 붙이지 않는다** — DB가 죽었을 때 하트비트까지 멈추면 정상 호스트가 죽은 것으로 오인된다.
+- `rag_query_log_retention_weekly`는 알림을 보내지 않는다(원장이 best-effort 관측치라 알림이 관측 대상보다 시끄러워짐). 보존 `RAG_QUERY_LOG_RETENTION_DAYS=90`.
 
 ### 운영 컨텍스트 (문서 기준, 실시간 상태 미검증)
 
-`AGENTS.md` 2026-11-15 항목: 11-07부터 Windows DB 호스트 정지(≈8일), 감시 스택이 피감시자와 같은 호스트에 있어 탐지 공백 → 호스트 밖 `db_availability_watchdog.yml`(30분, **전이만 알림**, 상태는 Actions 캐시 2종) 신설. 첫 버전이 자체 고장 경로에 상태가 없어 약 300건 스팸을 보낸 사고 포함. 라이브 상태는 `Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17 참조.
+`AGENTS.md` 2026-11-15/11-28 항목: 11-07부터 Windows DB 호스트 정지(≈8일), 감시 스택이 피감시자와 같은 호스트에 있어 탐지 공백 → 호스트 밖 `db_availability_watchdog.yml`(30분, **전이만 알림**, 상태는 Actions 캐시 2종) 신설. 첫 버전이 자체 고장 경로에 상태가 없어 약 300건 스팸을 보낸 사고 포함. 호스트는 11-20 `ch806-08`(100.81.73.13) → `돈통`(100.108.105.65)으로 이전, 11-23에 이 Mac의 자격증명이 갈라졌고 11-28에 갱신. 라이브 상태·절차는 `Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17·§18 참조.
+
+---
+
+## 7-A. RAG 관측 계층 (L3 질의 분포, `40342665`)
+
+`evaluate_rag_retrieval`(정확도)·`audit_rag_index`(저장소 일치)·`audit_rag_coverage`(달력 커버리지)가 못 묻던 **"실사용 질의가 정형/SQL인가 산문인가"**를 측정하는 원장이 추가됐다.
+
+| 요소 | 위치 | 계약 |
+|---|---|---|
+| 원장 | `rag_query_events` (PG `migrations/postgresql/070_rag_query_events.sql`, SQLite `071_`, **Oracle 없음**) | append-only. 질의 **원문은 저장하지 않고** 공백 정규화 sha256 + 길이만 저장 |
+| 기록 | `src/services/rag_query_log.py::record_query_request` | `rag_ask`가 retrieval 직후 호출(`src/api/routers/rag.py:272`). `DeliveryRecorder`처럼 **자기 세션의 짧은 트랜잭션** 소유, 실패 삼키고 `kbo_rag_query_log_failures_total`만 증가 |
+| 분류 6종 | `classify_query_event` (`rag_query_log.py:143`) | `structured_answered` · `structured_fallback` · `document_table_rows` · `document_prose` · `empty` · `unknown`. 지배 출처 최빈값, 동률이면 `unknown`(산문 분모에 절대 합치지 않음) |
+| 정형 테이블 집합 | `query_router.STRUCTURED_SOURCE_TABLES` import | 목록 복사 금지 — 복사본이 낡으면 포스트시즌 누락 사고 재발 |
+| 리포트 | `kbo rag traffic` (`src/cli/rag/traffic.py`) | 읽기 전용. `basis=served_chunks` 명시. `total < --min-events`(기본 100)이면 `undetermined` 반환 |
+
+**측정은 배포부터 시작**이므로 기준 커밋 시점에 실측값은 없다. `document_table_rows`는 SQL 가능성의 하한, `prose_share`는 산문 필요도의 상한이다.
+
+### dense 인덱스 빌더 (`scripts/maintenance/build_hnsw_index_guarded.py`, `3da4c0b1`)
+
+- `INDEX_KINDS = ("hnsw", "ivfflat")`, 기본 `--kind hnsw`; ivfflat은 `DEFAULT_LISTS = 100`(검증된 `ANN_PROBES=5`와 짝). `lists`를 올리면서 probe를 안 올리면 recall이 오히려 감소한다.
+- 11-28 실패 이력: `lists=400`은 `maintenance_work_mem=120MB` 미만에서 거부, 512MB × 2 worker는 3GB WSL VM에서 backend 사망. **재시도 금지 상태는 유지** — 빌더의 watchdog이 reader 지연을 측정해 감당 불가하면 중단한다.
+- 현재 `audit_rag_index` exit 1의 유일한 사유는 dense 인덱스 부재(`damage=0`, exact scan은 정상 동작 → 정확도 유지, 지연만 증가).
 
 ---
 
@@ -246,4 +273,6 @@ resolved / ignored = terminal
 
 **검증 명령** (기준): `./venv/bin/python -m pytest tests/ -q -m "not integration and not slow and not oci" -n 2` + `ruff check src/ tests/ scripts/`. 터치 영역에 integration 마커가 있으면 `-m integration`도 함께 돌린다(AGENTS.md 2026-11-15 교훈).
 
-**기준 커밋 실측 (2026-11-19)**: 비통합 **15,643 passed / 20 skipped** (95.69s), 통합 **242 passed / 6 skipped** (13.60s), `ruff check src/ tests/ scripts/` 0 errors, `ruff format --check` 2,305 files clean. AGENTS.md 11-15 기록의 비통합 15,648과 5건 차이는 그 뒤 커밋(DLQ 정착 흡수·재시도 배치 제한 등) 반영분.
+**기준 커밋 실측 (2026-11-29, `3da4c0b1`)**: 비통합 **15,768 passed / 20 skipped**, 통합 **242 passed / 6 skipped**, `ruff check src/ tests/ scripts/` 0 errors, `ruff format --check` 2,316 files clean. **Pandas 4 경고 0건**(`b16eee18` 파서 dtype별 채움 + `3c4475d8` `rename` 재할당). CI `test_suite.yml` 8개 job 전부 success (3.14 · 3.15 · lint · migration-apply · rag-acceptance · integration-test ×2 · slow-no-network).
+
+초판 실측(2026-11-19, `4008a86f`)은 15,643 passed / 20 skipped. 사이에 DAG 중복 계산 해소(+3), Pandas 경고 대응(+4), RAG L3 원장(+21) 등이 추가됐다.
