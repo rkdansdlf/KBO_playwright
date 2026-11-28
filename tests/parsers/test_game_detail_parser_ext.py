@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -245,3 +246,59 @@ class TestResolveMissingPlayerId:
         call_args = mock_session.execute.call_args
         assert call_args[0][1]["n1"] == "김태연"
         assert call_args[0][1]["n2"] == "김 태연"
+
+
+class TestMissingCellFillIsDtypeSafe:
+    """Missing cells must be filled with a value their column's dtype accepts.
+
+    ``DataFrame.fillna(0)`` passes an integer to pandas' string columns.
+    Pandas 4 will raise on that. The existing guards must still treat a
+    missing name as absent once the fill value becomes an empty string.
+    """
+
+    @staticmethod
+    def _tables() -> tuple[list[pd.DataFrame], dict[str, dict[str, str]]]:
+        teams = {"away": {"code": "LG"}, "home": {"code": "SS"}}
+        hitters = pd.DataFrame(
+            {
+                "선수": pd.Series(["이름있음", None], dtype="str"),
+                "선수ID": pd.Series(["10101", None], dtype="str"),
+                "타수": [3, float("nan")],
+            },
+        )
+        pitchers = pd.DataFrame(
+            {
+                "선수": pd.Series(["투수", None], dtype="str"),
+                "이닝": pd.Series(["5.0", None], dtype="str"),
+                "삼진": [5, 3],
+            },
+        )
+        return [hitters, pitchers], teams
+
+    def _collect_warnings(self) -> list[str]:
+        tables, teams = self._tables()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _build_hitter_payload(tables[:1], teams)
+            _build_pitcher_payload(tables[1:], teams)
+        return [str(item.message) for item in caught]
+
+    def test_filling_missing_cells_emits_no_fillna_warning(self) -> None:
+        messages = self._collect_warnings()
+        incompatible = [message for message in messages if "fill value" in message and "dtype" in message]
+        assert incompatible == []
+
+    def test_missing_name_is_not_the_literal_zero(self) -> None:
+        tables, teams = self._tables()
+        hitters = _build_hitter_payload(tables[:1], teams)["away"]
+        assert [entry["player_name"] for entry in hitters] == ["이름있음"]
+        pitchers = _build_pitcher_payload(tables[1:], teams)["away"]
+        assert [entry["player_name"] for entry in pitchers] == ["투수"]
+
+    def test_present_numeric_stats_are_unchanged(self) -> None:
+        tables, teams = self._tables()
+        pitchers = _build_pitcher_payload(tables[1:], teams)["away"]
+        hitters = _build_hitter_payload(tables[:1], teams)["away"]
+        # The fix must not disturb rows that already had every cell populated.
+        assert pitchers[0]["stats"]["strikeouts"] == 5
+        assert hitters[0]["player_id"] == 10101

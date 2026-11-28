@@ -23,6 +23,25 @@ DURATION_PART_COUNT = 2
 MIN_NAME_LENGTH_WITH_SPACING = 2
 
 
+def _fill_missing_cells(df: pd.DataFrame) -> pd.DataFrame:
+    """Fill missing cells with a value each column's dtype accepts.
+
+    ``DataFrame.fillna(0)`` passes an integer to pandas' string columns.
+    Pandas 4 will reject that instead of warning, so every column is filled
+    with a value its own dtype accepts: numeric columns keep 0 and text
+    columns get ``""``, which the existing ``or``/``strip`` guards already
+    treat as absent.
+    """
+    filled = df.copy()
+    for column in filled.columns:
+        series = filled[column]
+        if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+            filled[column] = series.fillna(0)
+        else:
+            filled[column] = series.fillna("")
+    return filled
+
+
 from src.parsers.base_parser import BaseHtmlParser
 
 
@@ -205,7 +224,7 @@ def _build_team_info(
     }
 
     if scoreboard is not None and not scoreboard.empty:
-        df = scoreboard.fillna(0)
+        df = _fill_missing_cells(scoreboard)
         away_row = df.iloc[0]
         home_row = df.iloc[1] if len(df) > 1 else None
 
@@ -253,7 +272,7 @@ def _build_hitter_payload(
     team_index = 0
 
     for raw_df in tables:
-        df = raw_df.fillna(0)
+        df = _fill_missing_cells(raw_df)
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
@@ -324,7 +343,7 @@ def _build_pitcher_payload(
     team_index = 0
 
     for raw_df in tables:
-        df = raw_df.fillna(0)
+        df = _fill_missing_cells(raw_df)
         team_side = team_cycle[team_index % 2]
         team_index += 1
 
