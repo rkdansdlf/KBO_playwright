@@ -6,7 +6,7 @@ for the ``src.scheduler`` package.
 
 from __future__ import annotations
 
-import datetime
+import datetime  # noqa: ICN001 - re-exported as `datetime` (see __all__); live.py and tests look it up by that name
 import logging
 from pathlib import Path
 import subprocess

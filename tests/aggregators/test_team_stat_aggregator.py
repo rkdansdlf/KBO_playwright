@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt
 import unittest
 
 import pytest
@@ -279,7 +279,7 @@ def seed_standings(seed_teams):
     session = seed_teams
     standings = [
         TeamStandingsDaily(
-            standings_date=datetime.date(2025, 10, 1),
+            standings_date=dt.date(2025, 10, 1),
             team_code="OB",
             games_played=144,
             wins=80,
@@ -298,7 +298,7 @@ def seed_standings(seed_teams):
             recent_10_draws=0,
         ),
         TeamStandingsDaily(
-            standings_date=datetime.date(2025, 10, 1),
+            standings_date=dt.date(2025, 10, 1),
             team_code="SS",
             games_played=144,
             wins=75,

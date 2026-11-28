@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt
 from datetime import date
 
 import pytest
@@ -27,9 +27,9 @@ def test_aggregate_pitching_season_decisions(tmp_path):
         season = KboSeason(season_id=1, season_year=2025, league_type_code=1, league_type_name="KBO 정규시즌")
         session.add(season)
 
-        g1 = Game(game_id="20250401OBWO0", season_id=1, game_date=datetime.date(2025, 4, 1))
-        g2 = Game(game_id="20250402OBWO0", season_id=1, game_date=datetime.date(2025, 4, 2))
-        g3 = Game(game_id="20250403OBWO0", season_id=1, game_date=datetime.date(2025, 4, 3))
+        g1 = Game(game_id="20250401OBWO0", season_id=1, game_date=dt.date(2025, 4, 1))
+        g2 = Game(game_id="20250402OBWO0", season_id=1, game_date=dt.date(2025, 4, 2))
+        g3 = Game(game_id="20250403OBWO0", season_id=1, game_date=dt.date(2025, 4, 3))
         session.add_all([g1, g2, g3])
 
         p1 = GamePitchingStat(
