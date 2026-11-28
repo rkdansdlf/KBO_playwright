@@ -1313,3 +1313,17 @@ postgres 컨테이너自身는 307MB/2.84GB로 여유가 있어도 VM 상한이 
 인덱스는 0개다. 데이터는 변경되지 않았다. **인덱스 자체는 여전히 없으므로
 `audit_rag_index`의 `missing_search_indexes` 실패는 그대로다** — 이것은 숨길 것이 아니라
 메모리 여유가 생길 때까지의 알려진 상태다.
+
+같은 날 누락된 KS 3경기도 재인덱싱했다. 먼저 `--dry-run`으로 정확히 3청크임을 확인하고
+(임베딩 API 200, `write_enabled=False`), 그 뒤 쓰기 가드
+(`RAG_TARGET_ENV=production` + `RAG_INDEX_ALLOW_WRITE=1` +
+`RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`)로 실행했다. 결과:
+
+- `rag_chunks` **380,356 → 380,359** (`primary = vector` 유지)
+- `audit_rag_coverage --require-recent 2` **exit 0, `missing 0`, `gaps []`**
+- `audit_rag_index` **exit 1** — 유일한 사유는 `missing_search_indexes`;
+  `damage 0`, `incomplete 5,708`은 그대로
+
+즉 **데이터 갭은 닫혔고, 남은 것은 물리 인덱스 하나다.** 인덱스가 없는 동안 dense
+검색은 exact scan으로 동작하므로 정확도는 유지되지만 지연이 크게 늘어난다. 메모리
+여유가 생기면 `lists`를 낮춘 소규모 ivfflat을 유지보수 창에 감시를 붙여 시도한다.

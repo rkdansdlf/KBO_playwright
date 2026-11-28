@@ -288,7 +288,15 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-11-23
+Last updated: 2026-11-28
+
+### 2026-11-28: 로컬 DB 복구 · 인덱스 재생성 실패 · 데이터 갭만 닫힘
+- **로컬 접속 복구**: `set_db_password.py`(저장 전 SCRAM 검증)로 `.env`를 갱신해 `bega_prod_user/bega_prod`, game 26,525건 확인. NordVPN은 계속 꺼둘 것(켜지면 TCP만 전부 죽는 증상 재현).
+- **호스트 11-23 게이트는 11-26 재구성 이전 값이었다**: `pg_postmaster_start_time()=11-26 18:33 UTC`, 청크 380,477 → 380,356. `schema_migrations`에는 068·069가 11-01 `applied`인데 `vector_cosine_ops` 인덱스가 **0개** — **마이그레이션 이력은 인덱스 존재를 증명하지 않는다.** `apply_postgres_migrations --check`(exit 0)와 `audit_rag_index`(exit 1)는 서로 대신할 수 없다.
+- **벡터 인덱스 빌드는 중단했다**: `maintenance_work_mem=64MB`로는 120MB 필요로 즉시 거부, 512MB로 `CREATE INDEX CONCURRENTLY` 시도 중 backend가 `exit code 2`로 죽고 약 2분간 `in recovery mode`. postmaster는 살아 있었다(`pg_postmaster_start_time()` 불변). 제약은 컨테이너가 아니라 **WSL VM 전체**(memory=3GB, vmmemWSL 3,117MB, 호스트 가용 639MB, E: 약 10MB/s). 재시도 금지.
+- **무효 인덱스 정리**: 실패한 빌드가 `indisvalid=false` 인덱스 416MB를 남겨 `IF NOT EXISTS`가 속이지 않게 `DROP INDEX CONCURRENTLY`로 제거(가드로 `indisvalid`·DDL 확인). 데이터 변경 없음.
+- **데이터 갭 해소**: KS 3경기(`20261106/07/08KTSS0`)는 dry-run으로 3청크 확인 후 쓰기 가드 3종으로 재인덱싱 → **380,359**, `audit_rag_coverage` exit 0·`missing 0`. **`audit_rag_index`는 exit 1 유지 — 유일한 사유는 벡터 인덱스 부재**, `damage 0`. 인덱스 없는 exact scan은 동작하므로 정확도는 유지, 지연만 증가.
+- **census `unsafe 8,956`은 판정이 아니다**: `existing_natural_target`과 정확히 일치 = 자연키 청크가 이미 있음. 실제 재키 대상은 51건뿐. `collision 20키/42행`, `orphan 0`.
 
 ### 2026-11-23: 호스트가 `돈통`으로 옮겨졌고, 이 Mac의 `.env`는 낡았다 — DB 접속은 호스트에서 한다
 - **연결 불가의 원인은 로컬 VPN이었다**: `NordVPN - NordLynx`가 `utun6`을 잡고 기본 경로와 `128.0/1`을 가져가 킬스위치가 모든 TCP를 막았다. `scutil --nc stop "NordVPN - NordLynx"`로 인터페이스를 제거하자 즉시 복구(`100.108.105.65:5432` 14ms). 판별 신호는 **"ICMP·TSMP는 통과하는데 TCP SYN만 전부 죽는다"**(테일넷 자체 주소 `100.100.100.100:80`까지 죽으면 확정). `utunN` 번호는 부팅마다 달라지므로 번호로 판정하지 않는다.
