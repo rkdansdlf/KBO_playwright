@@ -24,6 +24,8 @@ DURATION_PART_COUNT = 2
 PARK_JUNYOUNG_RESOLUTION_ROW_THRESHOLD = 4
 PARK_JUNYOUNG_ERA_THRESHOLD = 3.0
 PARK_JUNYOUNG_SPECIAL_SEASON = 2026
+LG_LEE_BYUNGKYU_VET_ID = 97109
+LG_LEE_BYUNGKYU_JR_ID = 76100
 
 import contextlib
 from datetime import date, datetime, timedelta
@@ -44,6 +46,8 @@ from src.db.engine import SessionLocal
 from src.repositories.crawl_execution_repository import MAX_SOURCE_URLS
 from src.urls import GAME_CENTER
 from src.utils.compliance import compliance
+from src.utils.crawler_failure_logger import record_crawl_failure
+from src.utils.inning_cells import classify_base_hit_token, derive_hitter_stats_from_inning_cells
 from src.utils.playwright_pool import AsyncPlaywrightPool
 from src.utils.playwright_retry import NAV_TIMEOUT, SEL_TIMEOUT
 from src.utils.request_policy import RequestPolicy
@@ -53,6 +57,7 @@ from src.utils.team_codes import (
     resolve_team_code,
     season_team_code,
     team_code_from_game_id_segment,
+    to_kbo_site_game_id,
 )
 from src.utils.type_helpers import parse_innings_to_outs, safe_int_or_none
 
@@ -472,15 +477,13 @@ class GameDetailCrawler:
             game_id: Game ID.
             game_date: Game Date.
             section: Section.
-            game_id: Game ID.
-            game_date: Game Date.
-            section: Section.
 
         Returns:
             String result.
 
         """
-        return f"{self.base_url}?gameDate={game_date}&gameId={game_id}&section={section}"
+        site_game_id = to_kbo_site_game_id(game_id)
+        return f"{self.base_url}?gameDate={game_date}&gameId={site_game_id}&section={section}"
 
     @staticmethod
     def _empty_metadata() -> dict[str, Any]:
@@ -810,7 +813,7 @@ class GameDetailCrawler:
         """
         from src.crawlers.relay_crawler import RelayCrawler
 
-        naver_id = RelayCrawler._map_to_naver_id(game_id)  # noqa: SLF001
+        naver_id = RelayCrawler._map_to_naver_id(to_kbo_site_game_id(game_id))  # noqa: SLF001
         url = NAVER_RECORD_API_URL.format(naver_id=naver_id)
         # The primary attempt starts here, so this is where a fresh record
         # begins. Recording before the fetch instead of after it is deliberate:
@@ -883,6 +886,31 @@ class GameDetailCrawler:
         if not raw:
             return frozenset()
         return frozenset({raw, KBO_TO_NAVER_TEAM_CODE.get(raw, raw)})
+
+    async def _resolve_record_naver_id(self, relay_cls: type, game_id: str) -> str:
+        """Return the Naver record id for a game, preferring the schedule's answer.
+
+        The schedule lookup is authoritative when it knows the game. A miss
+        (``None``) or a raising lookup falls back to the computed id, so the
+        record fetch is still attempted; a raising lookup is logged, never
+        propagated, because the record fetch can still succeed without it.
+
+        Args:
+            relay_cls: Relay crawler class that owns the schedule lookup and the
+                computed-id mapping. Injected so tests can supply a double.
+            game_id: KBO game ID.
+
+        Returns:
+            The Naver ``gameId`` to build the record URL from.
+
+        """
+        computed_id = relay_cls._map_to_naver_id(game_id)  # noqa: SLF001
+        try:
+            resolved = await relay_cls()._resolve_naver_game_id(game_id)  # noqa: SLF001
+        except Exception:
+            logger.exception("Schedule lookup raised for %s; using the computed id", game_id)
+            return computed_id
+        return resolved or computed_id
 
     async def _resolve_naver_game_id(self, game_id: str, game_date: str) -> str | None:
         """Resolve the Naver ``gameId`` for a KBO game via the schedule API.
@@ -1099,6 +1127,9 @@ class GameDetailCrawler:
                 "at_bats": at_bats,
                 "runs": _as_int(raw.get("run")),
                 "hits": hits,
+                # Naver reports hits only as a total; the split lives in the inning cells.
+                "doubles": derived["doubles"],
+                "triples": derived["triples"],
                 "home_runs": _as_int(raw.get("hr")),
                 "rbi": _as_int(raw.get("rbi")),
                 "walks": walks,
@@ -1276,12 +1307,40 @@ class GameDetailCrawler:
                     if payload is None and await self._kbo_fallback_allowed(game_id, game_date):
                         # The KBO page writes its own reason while it works. It is
                         # cleared below so the canonical cause can replace it.
-                        payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
+                        max_retries = 3
+                        for attempt in range(1, max_retries + 1):
+                            payload = await self._crawl_single(page, game_id, game_date, lightweight=lightweight)
+                            if payload is not None:
+                                break
+                            if attempt < max_retries:
+                                logger.warning("⚠️ 재시도 중 (%s/%s회): %s", attempt, max_retries, game_id)
+                                await asyncio.sleep(1.0 * attempt)
                     results[idx] = payload
                     self._attribute_final_outcome(game_id, payload, naver)
-                except DETAIL_CRAWLER_EXCEPTIONS:  # pragma: no cover - resilience path
+                    if payload is None:
+                        fail_reason = self._last_failure_reason.get(game_id, "crawl_failed")
+                        fail_url = self._section_url(game_id, game_date, "REVIEW")
+                        record_crawl_failure(
+                            "game",
+                            game_id,
+                            fail_url,
+                            fail_reason,
+                            retry_count=3,
+                            crawler="GameDetailCrawler",
+                        )
+                except DETAIL_CRAWLER_EXCEPTIONS as e:  # pragma: no cover - resilience path
                     self._last_failure_reason[game_id] = "exception"
                     logger.exception("❌ Error crawling %s", game_id)
+                    fail_url = self._section_url(game_id, game_date, "REVIEW")
+                    record_crawl_failure(
+                        "game",
+                        game_id,
+                        fail_url,
+                        "exception",
+                        retry_count=3,
+                        error=e,
+                        crawler="GameDetailCrawler",
+                    )
                 finally:
                     queue.task_done()
         finally:
@@ -1879,6 +1938,21 @@ class GameDetailCrawler:
 
         try:
             await page.wait_for_selector(", ".join(selectors), timeout=SEL_TIMEOUT)
+            # 동적 로딩(JS)으로 인해 표가 덜 그려진 상태에서 수집되지 않도록 테이블 행 렌더링 대기
+            if not lightweight:
+                try:
+                    await page.wait_for_function(
+                        """() => {
+                            const sel = '#tblAwayHitter1 tbody tr, #tblHomeHitter1 tbody tr, ' +
+                                        'table.tData01 tbody tr, #tblScordboard1 tbody tr';
+                            const rows = document.querySelectorAll(sel);
+                            return rows.length > 0 &&
+                                Array.from(rows).some(r => r.querySelectorAll('td, th').length > 1);
+                        }""",
+                        timeout=SEL_TIMEOUT,
+                    )
+                except PlaywrightError:
+                    logger.debug("Table rows dynamic wait timed out (proceeding with selector presence)")
         except PlaywrightError:
             logger.warning("⚠️ Timeout waiting for boxscore selectors. Page URL: %s", page.url)
 
@@ -2342,6 +2416,8 @@ class GameDetailCrawler:
         team_code: str | None,
         season_year: int | None,
         uniform_no: str | None,
+        *,
+        position: str | None = None,
     ) -> int | None:
         """Resolve hitter id.
 
@@ -2350,10 +2426,7 @@ class GameDetailCrawler:
             team_code: Team Code.
             season_year: Season Year.
             uniform_no: Uniform No.
-            player_name: Player Name.
-            team_code: Team code identifier.
-            season_year: Season Year.
-            uniform_no: Uniform No.
+            position: Defensive position name or code.
 
         Returns:
             The result of the operation.
@@ -2367,9 +2440,10 @@ class GameDetailCrawler:
             season_year,
             uniform_no=uniform_no,
             is_pitcher=False,
+            position=position,
         )
         if p_id:
-            logger.info("   [RESOLVED] %s (%s) -> %s", player_name, team_code, p_id)
+            logger.info("   [RESOLVED] %s (%s, pos=%s) -> %s", player_name, team_code, position, p_id)
         return p_id
 
     @staticmethod
@@ -2539,8 +2613,9 @@ class GameDetailCrawler:
 
             self._apply_hitter_inning_derivatives(stats, inning_rows, idx)
 
+            position = self._parse_position(row["cells"])
             if p_id is None:
-                p_id = self._resolve_hitter_id(player_name, team_code, season_year, uniform_no)
+                p_id = self._resolve_hitter_id(player_name, team_code, season_year, uniform_no, position=position)
 
             extra_row = self._select_hitter_extra_row(
                 extra_has_names=extra_has_names,
@@ -2557,6 +2632,8 @@ class GameDetailCrawler:
 
             if not p_id:
                 p_id, uniform_no = self._resolve_from_roster_map(roster_map, player_name, uniform_no)
+
+            p_id = self._disambiguate_lg_lee_byungkyu(results, player_name, team_code, p_id)
 
             payload = self._build_hitter_payload(
                 HitterPayloadContext(
@@ -2608,6 +2685,28 @@ class GameDetailCrawler:
         except ValueError:
             pass
         return 56709 if era_val < PARK_JUNYOUNG_ERA_THRESHOLD else 52731
+
+    @staticmethod
+    def _disambiguate_lg_lee_byungkyu(
+        results: list[dict[str, Any]],
+        player_name: str,
+        team_code: str | None,
+        p_id: int | None,
+    ) -> int | None:
+        """Disambiguate LG Lee Byung-kyu (76100 vs 97109) when multiple appear in one game."""
+        if player_name != "이병규" or team_code != "LG":
+            return p_id
+        assigned = {
+            h.get("player_id")
+            for h in results
+            if h.get("player_name") == "이병규"
+            and h.get("player_id") in (LG_LEE_BYUNGKYU_JR_ID, LG_LEE_BYUNGKYU_VET_ID)
+        }
+        if LG_LEE_BYUNGKYU_VET_ID in assigned:
+            return LG_LEE_BYUNGKYU_JR_ID
+        if LG_LEE_BYUNGKYU_JR_ID in assigned:
+            return LG_LEE_BYUNGKYU_VET_ID
+        return p_id
 
     def _resolve_pitcher_from_resolver(
         self,
@@ -3054,29 +3153,24 @@ class GameDetailCrawler:
             logger.info("   - name=%s, team_code=%s, uniform_no=%s", name, team_code or "N/A", uniform_no or "N/A")
 
     @staticmethod
+    def _classify_base_hit_token(token: str) -> str | None:
+        """Classify one inning cell token as doubles, triples, or home runs.
+
+        Args:
+            token: One cell result.
+
+        """
+        return classify_base_hit_token(token)
+
+    @staticmethod
     def _derive_hitter_stats_from_inning_cells(cells: dict[str, str]) -> dict[str, int]:
-        """Count stats from inning breakdown cells (e.g. '삼진', '4구').
+        """Count stats from inning breakdown cells (e.g. '삼진', '4구', '좌2').
 
         Args:
             cells: Cells.
 
         """
-        derived = {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
-
-        for val in cells.values():
-            if not val or val == "&nbsp;":
-                continue
-            if "삼진" in val or "스낫" in val or "루낫" in val or "낫아웃" in val:
-                derived["strikeouts"] += 1
-            if "4구" in val or "볼넷" in val or "고의4구" in val:
-                derived["walks"] += 1
-            if "사구" in val or "몸에 맞는 볼" in val:
-                derived["hbp"] += 1
-            if "희타" in val or "희번" in val or "희생번트" in val:
-                derived["sacrifice_hits"] += 1
-            if "희비" in val or "희생플라이" in val:
-                derived["sacrifice_flies"] += 1
-        return derived
+        return derive_hitter_stats_from_inning_cells(cells)
 
     @staticmethod
     def _populate_hitter_stats(stats: dict[str, Any], extras: dict[str, Any], cells: dict[str, str]) -> None:

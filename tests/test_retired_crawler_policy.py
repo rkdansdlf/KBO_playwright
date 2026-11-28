@@ -63,6 +63,7 @@ class _FakeRecordPage:
         self.timeouts = []
         self.query_selectors = []
         self.change_dispatches = []
+        self.function_waits = []
 
     async def goto(self, url, wait_until, timeout):
         self.goto_calls.append((url, wait_until, timeout))
@@ -79,10 +80,15 @@ class _FakeRecordPage:
     async def wait_for_timeout(self, timeout):
         self.timeouts.append(timeout)
 
+    async def wait_for_function(self, script, arg=None, timeout=None):
+        self.function_waits.append((script, arg, timeout))
+
     async def evaluate(self, _script, selector=None):
         if selector is not None:
             self.change_dispatches.append(selector)
             return True
+        if "table tbody tr" in _script:
+            return "Hitter1" if self.page_index == 0 else "Hitter3"
         if self.page_index == 0:
             return {"10001": "Hitter1", "10002": "Hitter2"}
         return {"20001": "Hitter3"}
@@ -171,7 +177,8 @@ def test_retired_listing_uses_flexible_selectors_and_paginates(monkeypatch):
         ("load", 10000),
         ("load", 10000),
     ]
-    assert page.timeouts == [1000, 500, 1000]
+    assert page.timeouts == [1000, 500]
+    assert len(page.function_waits) == 1
     assert "div.paging span.on, div.paging a.on" in page.query_selectors
     assert "div.paging a:has-text('2')" in page.query_selectors
     assert throttle.calls == 2
@@ -195,6 +202,7 @@ def test_retired_listing_uses_next_button_when_numeric_page_is_absent(monkeypatc
     )
 
     assert ids == {"10001": "Hitter1", "10002": "Hitter2", "20001": "Hitter3"}
+    assert len(page.function_waits) == 1
     assert "div.paging a:has-text('2')" in page.query_selectors
     assert "div.paging a[id$='btnNext']" in page.query_selectors
     assert "div.paging a:has(img[alt='다음'])" in page.query_selectors

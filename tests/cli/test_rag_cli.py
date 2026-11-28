@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.cli.kbo import main as kbo_main
@@ -173,3 +174,19 @@ def test_kbo_master_cli_rag_dispatch(capsys) -> None:
         res_eval = kbo_main(["rag", "evaluate", "--strict"])
         assert res_eval == 0
         mock_eval.assert_called_once_with(["--strict"])
+
+
+def test_kbo_master_cli_dispatches_rag_necessity() -> None:
+    """The necessity audit is reachable from the master CLI, not only as a module."""
+    with patch("src.cli.rag.audit_retrieval_necessity.main", return_value=0) as mock_necessity:
+        assert kbo_main(["rag", "necessity", "--json"]) == 0
+    mock_necessity.assert_called_once_with(["--json"])
+
+
+def test_the_necessity_dispatch_reaches_the_real_audit(capsys) -> None:
+    """Dispatch must run the audit itself, not a placeholder that always succeeds."""
+    dataset = Path(__file__).resolve().parents[2] / "Docs" / "references" / "rag_golden_queries.json"
+    assert kbo_main(["rag", "necessity", "--dataset", str(dataset)]) == 0
+    out = capsys.readouterr().out
+    assert "verdict=" in out
+    assert "prose=" in out

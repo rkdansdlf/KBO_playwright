@@ -319,7 +319,7 @@ def _refuse_new_game_without_season(
     """Return True when a new game would be created with ``season_id`` NULL.
 
     That happens for a postseason game whose stage nothing can name (KBO page
-    "3,4,5,7" option, no calendar window, no kbo_seasons span). The 04:45
+    "3,4,5,7" option, no calendar window, no kbo_seasons span). The 01:45
     integrity check and /api/matches/range reject such rows; the Naver path
     (id prefix) saves the game instead.
     """
@@ -974,6 +974,25 @@ def _execute_realtime_quality_gate(
     return True
 
 
+def _sync_player_game_stats(session: Session, game_id: str) -> None:
+    try:
+        from src.repositories.player_game_stats import (
+            aggregate_game_batting,
+            aggregate_game_pitching,
+            upsert_player_game_batting,
+            upsert_player_game_pitching,
+        )
+
+        agg_batting = aggregate_game_batting(session, game_id)
+        if agg_batting:
+            upsert_player_game_batting(session, agg_batting)
+        agg_pitching = aggregate_game_pitching(session, game_id)
+        if agg_pitching:
+            upsert_player_game_pitching(session, agg_pitching)
+    except SQLAlchemyError, RuntimeError, ValueError, TypeError, AttributeError, KeyError:
+        logger.warning("Optional player_game_stats sync failed for %s", game_id, exc_info=True)
+
+
 def save_game_detail(  # noqa: PLR0913
     game_data: dict[str, Any],
     *,
@@ -1136,6 +1155,8 @@ def save_game_detail(  # noqa: PLR0913
             source_crawler=source_crawler,
         ),
     )
+
+    _sync_player_game_stats(session, game_id)
 
     session.flush()
     return True

@@ -243,10 +243,24 @@ class RetiredPlayerListingCrawler:
                             break
 
                 if next_page_btn:
+                    prev_first = await page.evaluate("""() => {
+                        const row = document.querySelector('table tbody tr');
+                        return row ? (row.querySelector('a')?.textContent || '').trim() : '';
+                    }""")
                     await self._wait()
                     await next_page_btn.click()
                     await page.wait_for_load_state("load", timeout=SHORT_TIMEOUT)
-                    await page.wait_for_timeout(1000)
+                    with contextlib.suppress(TimeoutError):
+                        await page.wait_for_function(
+                            """({ prevFirst }) => {
+                                const row = document.querySelector('table tbody tr');
+                                if (!row) return true;
+                                const curr = (row.querySelector('a')?.textContent || '').trim();
+                                return prevFirst ? curr !== prevFirst : Boolean(curr);
+                            }""",
+                            arg={"prevFirst": prev_first},
+                            timeout=SHORT_TIMEOUT,
+                        )
                     page_num += 1
                 else:
                     break

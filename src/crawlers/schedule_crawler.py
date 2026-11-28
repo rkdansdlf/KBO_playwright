@@ -493,7 +493,7 @@ class ScheduleCrawler(BasePlaywrightCrawler):
                         }
                         return false;
                     }""",
-                    month_str,
+                    arg=month_str,
                     timeout=timeout,
                 )
         except SCHEDULE_CRAWLER_EXCEPTIONS:

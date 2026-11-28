@@ -2,25 +2,17 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import re
-import subprocess
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_, select
 
-from src.constants import KST
 from src.models.award import Award
 from src.models.futures_schedule import FuturesGameSchedule
 from src.models.game import Game, GameHighlight, GamePlayByPlay
 from src.models.kbo_press_release import KboPressRelease
-from src.models.player import PlayerMovement
+from src.models.player import PlayerMovement, PlayerSeasonBatting, PlayerSeasonPitching
 from src.models.player_milestone import PlayerMilestone
 from src.models.player_splits_stat import PlayerSplitsStat
 from src.models.team_event import TeamEvent
@@ -33,11 +25,14 @@ from src.services.rag_index_identity import (
     stable_milestone_source_row_id,
     stable_pbp_source_row_id,
     stable_player_movement_source_row_id,
+    stable_player_season_batting_source_row_id,
+    stable_player_season_pitching_source_row_id,
     stable_press_release_source_row_id,
     stable_splits_source_row_id,
     stable_team_event_source_row_id,
     stable_team_history_source_row_id,
 )
+from src.services.rag_rekey_manifest import build_manifest
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -57,11 +52,20 @@ R2_SOURCE_TABLES = (
     "game_highlights",
     "team_events",
     "press_release",
+    "player_season_batting",
+    "player_season_pitching",
 )
 R2_MANIFEST_VERSION = "r2-identity-census-v1"
 R2_INDEX_VERSION = "rag-v2"
 
 _REGULAR_SEASON_CODE = 0
+#: The builder only indexes the KBO1 level of the season aggregates, and
+#: ``level`` is part of their source unique key — so the census has to filter on
+#: it too, or it would compute natural keys the generator never writes.
+_KBO1_LEVEL = "KBO1"
+#: The prefix an older loader put in front of a source row's autoincrement id.
+#: Both ``id=8207`` and ``8207`` name the same row; see `_legacy_numeric_value`.
+_LEGACY_ID_PREFIX = "id="
 _PBP_KEYWORDS = (
     "홈런",
     "적시타",
@@ -205,68 +209,15 @@ class IdentityCensusReport:
 
     def to_manifest_dict(self) -> dict[str, object]:
         """Serialize the complete manifest for a later apply-gated rekey."""
-        entries_data = [entry.to_dict() for entry in self.entries]
-        totals = self.totals()
-        disposition_counts = Counter(e.disposition for e in self.entries)
-
-        # Build manifest header
-        header = self._build_manifest_header(len(self.entries), dict(disposition_counts))
-
-        return {
-            "manifest_header": header,
-            "manifest_version": self.manifest_version,
-            "target_index_version": self.target_index_version,
-            "read_only": True,
-            "source_tables": list(self.source_tables),
-            "totals": totals,
-            "unsafe_entry_count": self.unsafe_entry_count,
-            "sources": [summary.to_dict() for summary in self.summaries],
-            "entries": entries_data,
-        }
-
-    def _build_manifest_header(self, entry_count: int, disposition_counts: dict[str, int]) -> dict[str, object]:
-        """Build manifest header with metadata for validation."""
-        # Compute manifest SHA (excluding header)
-        manifest_content = json.dumps(
-            {
-                "manifest_version": self.manifest_version,
-                "target_index_version": self.target_index_version,
-                "read_only": True,
-                "source_tables": list(self.source_tables),
-                "totals": self.totals(),
-                "unsafe_entry_count": self.unsafe_entry_count,
-                "sources": [summary.to_dict() for summary in self.summaries],
-                "entries": [entry.to_dict() for entry in self.entries],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        manifest_sha = hashlib.sha256(manifest_content).hexdigest()
-
-        # Get current git SHA
-        try:
-            git_sha = subprocess.run(
-                ["/usr/bin/git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path.cwd()
-            ).stdout.strip()
-        except subprocess.CalledProcessError, FileNotFoundError, OSError:
-            git_sha = "unknown"
-
-        # Database fingerprint
-        db_url = os.getenv("DATABASE_URL", "")
-        safe_url = re.sub(r"://[^:]+:[^@]+@", "://***:***@", db_url)
-        fp_content = f"{safe_url}|{os.getenv('RAG_INDEX_VERSION', 'rag-v1')}".encode()
-        db_fingerprint = hashlib.sha256(fp_content).hexdigest()[:16]
-
-        return {
-            "manifest_schema_version": "r2-rekey-manifest-v1",
-            "identity_schema_version": "r2",
-            "generated_at": datetime.now(KST).isoformat(),
-            "database_fingerprint": db_fingerprint,
-            "git_commit_sha": git_sha,
-            "manifest_sha256": manifest_sha,
-            "expected_entry_count": entry_count,
-            "expected_disposition_counts": disposition_counts,
-        }
+        return build_manifest(
+            manifest_version=self.manifest_version,
+            target_index_version=self.target_index_version,
+            source_tables=list(self.source_tables),
+            totals=self.totals(),
+            unsafe_entry_count=self.unsafe_entry_count,
+            sources=[summary.to_dict() for summary in self.summaries],
+            entries=[entry.to_dict() for entry in self.entries],
+        )
 
 
 def _regular_season_ids(season: int) -> Select:
@@ -358,6 +309,7 @@ def _movement_records(session: Session, season: int | None) -> Iterator[SourceId
     statement = select(
         PlayerMovement.id,
         PlayerMovement.movement_date,
+        PlayerMovement.canonical_team_id,
         PlayerMovement.team_code,
         PlayerMovement.player_name,
         PlayerMovement.section,
@@ -368,7 +320,51 @@ def _movement_records(session: Session, season: int | None) -> Iterator[SourceId
         yield SourceIdentityRecord(
             "player_movements",
             str(row[0]),
-            stable_player_movement_source_row_id(row[1], row[2], row[3], row[4]),
+            stable_player_movement_source_row_id(row[1], row[2] or row[3], row[4], row[5]),
+        )
+
+
+def _batting_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield season-batting identities for exactly the rows the builder indexes.
+
+    The builder filters ``level == 'KBO1'``, and ``level`` is part of the source
+    unique key, so a row in another level would produce a natural key the
+    generator never writes. That filter is what keeps the census's natural-key
+    set equal to the generator's.
+    """
+    statement = select(
+        PlayerSeasonBatting.id,
+        PlayerSeasonBatting.player_id,
+        PlayerSeasonBatting.season,
+        PlayerSeasonBatting.team_code,
+        PlayerSeasonBatting.league,
+    ).where(PlayerSeasonBatting.level == _KBO1_LEVEL)
+    if season is not None:
+        statement = statement.where(PlayerSeasonBatting.season == season)
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "player_season_batting",
+            str(row[0]),
+            stable_player_season_batting_source_row_id(row[1], row[2], row[3], row[4]),
+        )
+
+
+def _pitching_records(session: Session, season: int | None) -> Iterator[SourceIdentityRecord]:
+    """Yield season-pitching identities for exactly the rows the builder indexes."""
+    statement = select(
+        PlayerSeasonPitching.id,
+        PlayerSeasonPitching.player_id,
+        PlayerSeasonPitching.season,
+        PlayerSeasonPitching.team_code,
+        PlayerSeasonPitching.league,
+    ).where(PlayerSeasonPitching.level == _KBO1_LEVEL)
+    if season is not None:
+        statement = statement.where(PlayerSeasonPitching.season == season)
+    for row in session.execute(statement).yield_per(1_000):
+        yield SourceIdentityRecord(
+            "player_season_pitching",
+            str(row[0]),
+            stable_player_season_pitching_source_row_id(row[1], row[2], row[3], row[4]),
         )
 
 
@@ -487,6 +483,8 @@ def iter_source_identity_records(
         "game_highlights": _highlight_records,
         "team_events": _team_event_records,
         "press_release": _press_release_records,
+        "player_season_batting": _batting_records,
+        "player_season_pitching": _pitching_records,
     }
     try:
         builder = record_builders[source_table]
@@ -496,9 +494,29 @@ def iter_source_identity_records(
     yield from builder(session, season)
 
 
+def _legacy_numeric_value(source_row_id: str) -> str | None:
+    """Return the source-row id a legacy key names, or None when it names none.
+
+    Two spellings exist in the live index. An older loader wrote ``id=8207``;
+    the census was written expecting the bare ``8207``. Both name the same source
+    row, so the prefix is stripped before the value is judged.
+
+    The stripped value is also what the source-row lookup has to use. Judging the
+    prefixed form as "not legacy" did not merely miscount — it made every
+    ``id=N`` chunk invisible to the census, which reported ``safe_rekey_candidates:
+    0`` for a source holding 2,572 of them. Measured 2026-11-01: the index holds
+    78,640 ``id=N`` keys and 7,095 bare ones.
+
+    ``id=1096#part1`` is deliberately **not** legacy: a split key names a piece of
+    a row rather than the row, and re-keying it would collide with its siblings.
+    """
+    value = source_row_id.removeprefix(_LEGACY_ID_PREFIX)
+    return value if value.isascii() and value.isdecimal() else None
+
+
 def _is_legacy_numeric_id(source_row_id: str) -> bool:
-    """Return whether an identity is an ASCII autoincrement-style value."""
-    return source_row_id.isascii() and source_row_id.isdecimal()
+    """Return whether an identity names a source row's autoincrement key."""
+    return _legacy_numeric_value(source_row_id) is not None
 
 
 def _is_legacy_candidate(source_row_id: str, natural_keys: frozenset[str]) -> bool:
@@ -654,7 +672,19 @@ def _source_entries(
     for legacy in sorted(existing_rows, key=lambda row: (row.source_row_id, row.chunk_id)):
         if not _is_legacy_candidate(legacy.source_row_id, natural_keys):
             continue
-        candidates = source_by_id.get(legacy.source_row_id, [])
+        # The source projection keys on the bare id, so a legacy key carrying the
+        # older ``id=`` prefix has to be stripped before the lookup — otherwise
+        # every prefixed row is reported as ORPHAN_SOURCE_ROW instead of re-keyed.
+        #
+        # CAUTION: this lookup assumes ``id=N`` names the source row whose primary
+        # key is N. Measured 2026-11-02 on the live index, it does not:
+        # ``player_movements:id=3901`` describes 구자욱 2022-05-04 while that table's
+        # ``id=3901`` is 권혁경 2022-07-21, and ``awards:id=130`` describes the 2021
+        # Golden Glove catcher while ``awards.id=130`` is the 1987 first baseman.
+        # A numeric match is therefore not an identity match, and the SAFE_REKEY
+        # verdict it produces must not be applied without pairing the chunk by its
+        # content. ``RAG_IDENTITY_PHASE_B_PLAN.md`` §2-B carries the measurements.
+        candidates = source_by_id.get(_legacy_numeric_value(legacy.source_row_id) or legacy.source_row_id, [])
         if not candidates:
             entries.append(
                 IdentityCensusEntry(

@@ -179,6 +179,93 @@ def test_postgresql_search_uses_bounded_tsvector_candidates() -> None:
     assert "LIMIT" in compiled
 
 
+def test_postgresql_search_does_not_transfer_embeddings() -> None:
+    """Skip the 1536-dimension vector when loading lexical candidates.
+
+    The vector is ~6KB per row, so a 1,000-candidate fetch moves ~6MB from the
+    remote store. Measured on the production index: 2.2-3.4s as a full entity
+    against 0.2-0.3s with the column deferred. Scoring reads only
+    title/content/meta, so the dense column has no part in this path — the
+    Oracle path already deferred it for the same reason.
+    """
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = [
+        RagChunk(
+            id=1,
+            source_table="press_release",
+            source_row_id="1",
+            title="올스타전",
+            content="올스타전 개최",
+        )
+    ]
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    statement = session.execute.call_args_list[0].args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "to_tsvector" in compiled
+    assert "embedding" not in compiled
+
+
+def test_legacy_substring_fallback_also_skips_embeddings() -> None:
+    """Keep the substring fallback as lean as the indexed candidate query.
+
+    The fallback runs exactly when the tsvector step finds nothing, which is
+    also when a common keyword would otherwise pull its full 1,000-row limit.
+    """
+    session = MagicMock()
+    session.get_bind.return_value = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    session.execute.return_value.scalars.return_value.all.return_value = []
+
+    RagSearchEngine(session).search("올스타전", top_k=5)
+
+    assert session.execute.call_count == 2, "expected tsvector step plus substring fallback"
+    fallback = session.execute.call_args_list[1].args[0]
+    compiled = str(fallback.compile(dialect=postgresql.dialect()))
+    assert "embedding" not in compiled
+    assert "LIKE" in compiled.upper()
+
+
+def test_document_type_filter_matches_the_indexed_column() -> None:
+    """Match a document_type filter against the column, not only the metadata label.
+
+    On this table the two disagree: ``meta.category`` carries the document's own
+    grouping (``kbo_knowledge``, ``rulebook``, ``game_rules``) while the column
+    carries the chunk kind. Reading ``meta`` first rejected every chunk that had
+    a category, so filtering ``markdown_doc`` matched almost nothing.
+    """
+    chunk = RagChunk(
+        id=1,
+        source_table="kbo_regulations",
+        source_row_id="kbo_rulebook/baseball_rules/README.md_5",
+        title="KBO 야구 규칙 (Part 6)",
+        content="ABS 판정 기준은 3차원 스트라이크 존 통과 여부다.",
+        document_type="markdown_doc",
+    )
+    chunk.meta = {"category": "game_rules"}
+
+    assert RagSearchEngine._matches_category(chunk, "markdown_doc") is True
+    # The metadata label keeps working too — this is a superset, not a swap.
+    assert RagSearchEngine._matches_category(chunk, "game_rules") is True
+    assert RagSearchEngine._matches_category(chunk, "award") is False
+
+
+def test_meta_only_labels_still_match_when_the_column_is_empty() -> None:
+    """Keep metadata-labelled chunks retrievable where the column was never backfilled."""
+    chunk = RagChunk(
+        id=2,
+        source_table="press_release",
+        source_row_id="9641",
+        title="공지",
+        content="내용",
+    )
+    chunk.meta = {"document_type": "press_release"}
+
+    assert RagSearchEngine._matches_category(chunk, "press_release") is True
+    assert RagSearchEngine._matches_category(chunk, "highlight") is False
+
+
 def test_oracle_search_uses_bounded_candidates_without_vectors(monkeypatch) -> None:
     """Bound Oracle sparse candidates and avoid transferring dense embeddings."""
     monkeypatch.setenv("RAG_ORACLE_SPARSE_MODE", "legacy")

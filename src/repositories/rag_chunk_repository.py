@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, insert, select, update
@@ -17,6 +17,89 @@ from src.services.rag_sparse_terms import build_term_rows
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+def _parse_game_date(value: object) -> date | None:
+    """Parse game date value into date object safely."""
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _parse_published_at(value: object) -> datetime | None:
+    """Parse published_at timestamp safely."""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        return value
+    return None
+
+
+def _extract_chunk_metadata(chunk_data: dict[str, Any]) -> dict[str, Any]:
+    """Extract and normalize metadata dictionary for a RAG chunk."""
+    meta = dict(chunk_data.get("meta") or {})
+    for meta_key in ("document_type", "source_url", "language", "game_date"):
+        if chunk_data.get(meta_key) is not None:
+            meta_value = chunk_data[meta_key]
+            if hasattr(meta_value, "isoformat"):
+                meta_value = meta_value.isoformat()
+            meta.setdefault(meta_key, meta_value)
+    return meta
+
+
+def _populate_rag_chunk(  # noqa: PLR0913
+    chunk: RagChunk,
+    *,
+    title: str | None,
+    content: str,
+    embedding: object | None,
+    meta: dict[str, Any],
+    season_year: int | None,
+    season_id: int | None,
+    league_type_code: int | None,
+    team_id: str | None,
+    player_id: str | None,
+    document_type: str | None,
+    game_date: date | None,
+    published_at: datetime | None,
+    source_url: str | None,
+    language: str | None,
+    content_hash: str | None,
+    index_version: str | None,
+    index_status: str,
+    indexed_at: datetime,
+    updated_at: datetime,
+) -> None:
+    """Set properties on a RagChunk instance."""
+    chunk.title = title
+    chunk.content = content
+    chunk.embedding = embedding
+    chunk.meta = meta
+    chunk.season_year = season_year
+    chunk.season_id = season_id
+    chunk.league_type_code = league_type_code
+    chunk.team_id = team_id
+    chunk.player_id = player_id
+    chunk.document_type = document_type
+    chunk.game_date = game_date
+    chunk.published_at = published_at
+    chunk.source_url = source_url
+    chunk.language = language
+    chunk.content_hash = content_hash
+    chunk.index_version = index_version
+    chunk.index_status = index_status
+    chunk.indexed_at = indexed_at
+    chunk.updated_at = updated_at
 
 
 class RagChunkRepository:
@@ -52,7 +135,7 @@ class RagChunkRepository:
                 return self._upsert_chunks(managed_session, payloads)
         return self._upsert_chunks(session, payloads)
 
-    def _upsert_chunks(  # noqa: PLR0915
+    def _upsert_chunks(
         self,
         session: Session,
         chunks: list[dict[str, Any]],
@@ -66,15 +149,8 @@ class RagChunkRepository:
         for chunk_data in chunks:
             title = chunk_data.get("title", "")
             content = chunk_data.get("content", "")
-            meta = dict(chunk_data.get("meta") or {})
+            meta = _extract_chunk_metadata(chunk_data)
             embedding = chunk_data.get("embedding")
-
-            for meta_key in ("document_type", "source_url", "language", "game_date"):
-                if chunk_data.get(meta_key) is not None:
-                    meta_value = chunk_data[meta_key]
-                    if hasattr(meta_value, "isoformat"):
-                        meta_value = meta_value.isoformat()
-                    meta.setdefault(meta_key, meta_value)
 
             source_table = chunk_data.get("source_table", meta.get("source_table", meta.get("category", "unknown")))
             source_row_id = chunk_data.get("source_row_id", meta.get("source_row_id", ""))
@@ -88,53 +164,50 @@ class RagChunkRepository:
             team_id = chunk_data.get("team_id", meta.get("team_id"))
             player_id = chunk_data.get("player_id", meta.get("player_id"))
 
+            document_type = chunk_data.get("document_type", meta.get("document_type"))
+            game_date = _parse_game_date(chunk_data.get("game_date", meta.get("game_date")))
+            published_at = _parse_published_at(chunk_data.get("published_at", meta.get("published_at")))
+            source_url = chunk_data.get("source_url", meta.get("source_url"))
+            language = chunk_data.get("language", meta.get("language"))
+
             # Check if chunk exists by source_table & source_row_id
             stmt = select(RagChunk).where(
                 RagChunk.source_table == source_table,
                 RagChunk.source_row_id == source_row_id,
             )
-            existing_chunk = session.scalar(stmt)
+            managed_chunk = session.scalar(stmt)
 
-            if existing_chunk:
-                # Update fields
-                existing_chunk.title = title
-                existing_chunk.content = content
-                existing_chunk.embedding = embedding
-                existing_chunk.meta = meta
-                existing_chunk.season_year = season_year
-                existing_chunk.season_id = season_id
-                existing_chunk.league_type_code = league_type_code
-                existing_chunk.team_id = team_id
-                existing_chunk.player_id = player_id
-                existing_chunk.content_hash = content_hash
-                existing_chunk.index_version = index_version
-                existing_chunk.index_status = index_status
-                existing_chunk.indexed_at = now
-                existing_chunk.updated_at = now
-                managed_chunk = existing_chunk
-            else:
-                # Insert new chunk
-                new_chunk = RagChunk(
-                    title=title,
-                    content=content,
+            if managed_chunk is None:
+                managed_chunk = RagChunk(
                     source_table=source_table,
                     source_row_id=source_row_id,
-                    embedding=embedding,
-                    meta=meta,
-                    season_year=season_year,
-                    season_id=season_id,
-                    league_type_code=league_type_code,
-                    team_id=team_id,
-                    player_id=player_id,
-                    content_hash=content_hash,
-                    index_version=index_version,
-                    index_status=index_status,
-                    indexed_at=now,
+                    content=content,
                     created_at=now,
-                    updated_at=now,
                 )
-                session.add(new_chunk)
-                managed_chunk = new_chunk
+                session.add(managed_chunk)
+
+            _populate_rag_chunk(
+                managed_chunk,
+                title=title,
+                content=content,
+                embedding=embedding,
+                meta=meta,
+                season_year=season_year,
+                season_id=season_id,
+                league_type_code=league_type_code,
+                team_id=team_id,
+                player_id=player_id,
+                document_type=document_type,
+                game_date=game_date,
+                published_at=published_at,
+                source_url=source_url,
+                language=language,
+                content_hash=content_hash,
+                index_version=index_version,
+                index_status=index_status,
+                indexed_at=now,
+                updated_at=now,
+            )
 
             if terms_enabled:
                 session.flush()

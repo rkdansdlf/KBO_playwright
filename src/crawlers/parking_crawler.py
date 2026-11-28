@@ -58,12 +58,12 @@ TEAM_PARKING_SOURCES: dict[str, dict[str, Any]] = {
     "SS": {
         "source_key": "daegu_parking",
         "stadium_id": "DAEGU",
-        "url": "https://www.samsunglions.com/stadium/waytocome",
+        "url": "https://www.samsunglions.com/m/intro/intro05.asp",
     },
 }
 
 PARKING_FEE_PATTERN = re.compile(
-    r"(기본|추가|일일|행사|경기|무료)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)",
+    r"(기본|추가|일일|행사|경기|무료|소형|대형|일반|선불|후불|버스|회원|정액)\s*(?:요금|시간|금액)?\s*:?\s*(\d{1,3}(?:,\d{3})*)\s*(?:원)",
 )
 
 
@@ -298,15 +298,18 @@ class ParkingCrawler(BaseHttpCrawler):
             return []
 
         html = result.data
-        self._raw_pages.append(
-            {
-                "source_key": info["source_key"],
-                "url": info["url"],
-                "html": html,
-                "status_code": result.http_status,
-            },
-        )
+        snapshot = {
+            "source_key": info["source_key"],
+            "url": info["url"],
+            "html": html,
+            "status_code": result.http_status,
+        }
+        self._raw_pages.append(snapshot)
         lots = self._parse_parking_page(html, info)
+        # The count the drift check re-parses against. Without it the row is reported
+        # as ``unknown_baseline`` and nothing is measured; a parse that raises writes
+        # nothing, which is the honest record.
+        snapshot["capture_metadata"] = {"parsed_records": len(lots)}
         if not any(entry.get("fee_rules") for entry in lots):
             # The lot row is kept on purpose -- a stadium that publishes its
             # hours but not its prices is still a real parking lot, and

@@ -87,6 +87,11 @@ def validate_game_data(
     _validate_score_totals(away, "away", warnings)
     _validate_runs_match_scores(game_data, warnings)
 
+    from src.validators.boxscore_verifier import verify_boxscore_sums
+
+    _, boxscore_discrepancies = verify_boxscore_sums(game_data, game_data.get("team_totals"))
+    warnings.extend(boxscore_discrepancies)
+
     return (len(errors) == 0, errors, warnings)
 
 

@@ -1300,6 +1300,7 @@ def _measure_declared(
     stale_after_days: int,
     cadence: dict[str, Cadence] | None = None,
     window_hours: int = RUN_WINDOW_HOURS,
+    now: datetime | None = None,
 ) -> tuple[
     dict[str, tuple[TableMeasurement, ...]],
     dict[str, int],
@@ -1311,6 +1312,14 @@ def _measure_declared(
 
     One session for all of it: the readings are independent, and reconnecting per
     table would make the report's own runtime the dominant cost.
+
+    Args:
+        session_factory: Opens the session the readings run in.
+        stale_after_days: Default age at which a table is reported stale.
+        cadence: Optional schedule map for per-crawler thresholds.
+        window_hours: How far back to read the run ledger.
+        now: Reference instant forwarded to every table measurement.
+
     """
     measurements: dict[str, tuple[TableMeasurement, ...]] = {}
     chunks: dict[str, int] = {}
@@ -1332,6 +1341,7 @@ def _measure_declared(
                     table,
                     column=declaration.freshness_column,
                     stale_after_days=threshold,
+                    now=now,
                 )
                 for table in declaration.tables
             )
@@ -1466,13 +1476,14 @@ def _collect_findings(
     return drift, advisories
 
 
-def build_inventory(
+def build_inventory(  # noqa: PLR0913 - keyword-only options; callers rely on names
     *,
     session_factory: Callable[[], Session] | None = None,
     crawler_dir: Path = CRAWLER_DIR,
     robots_dir: Path = ROBOTS_DIR,
     stale_after_days: int = 30,
     window_hours: int = RUN_WINDOW_HOURS,
+    now: datetime | None = None,
 ) -> SourceInventory:
     """Build the inventory, reading the database when one is reachable.
 
@@ -1483,6 +1494,9 @@ def build_inventory(
         robots_dir: Directory holding robots snapshots.
         stale_after_days: Default age at which a table is reported stale.
         window_hours: How far back to read the run ledger.
+        now: Reference instant for table freshness, defaulting to the wall clock.
+            Tests pin it so fixtures stamped once against a reference do not age
+            out of their thresholds as the calendar moves.
 
     Returns:
         The inventory, with its own coverage gaps attached.
@@ -1493,6 +1507,7 @@ def build_inventory(
         session_factory,
         stale_after_days=stale_after_days,
         window_hours=window_hours,
+        now=now,
     )
     rows = _build_rows(
         sources=_Sources(verdicts=verdicts, crawler_dir=crawler_dir, policy_dir=robots_dir),

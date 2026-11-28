@@ -105,6 +105,7 @@ def test_backfill_runs_phase2_when_detail_backfilled_but_pbp_still_missing(monke
             return False
 
     import src.db.engine as engine
+    from src.config.historical_backfill_policy import HistoricalBackfillPolicy
 
     detail_calls = {"count": 0}
     update_calls = []
@@ -114,6 +115,12 @@ def test_backfill_runs_phase2_when_detail_backfilled_but_pbp_still_missing(monke
         return ["20260603"] if detail_calls["count"] == 1 else []
 
     monkeypatch.setattr(engine, "SessionLocal", FakeSession)
+    # Isolate from committed historical_backfill_dates.yaml so approved historical
+    # dates do not get merged into the phase lists during this unit test.
+    monkeypatch.setattr(
+        "src.scheduler.jobs.daily.load_historical_backfill_policy",
+        HistoricalBackfillPolicy,
+    )
     monkeypatch.setattr("scripts.scheduler._find_detail_gaps", fake_find_detail_gaps)
     monkeypatch.setattr("scripts.scheduler._find_pbp_gaps", lambda _session, _start_date: ["20260603"])
     monkeypatch.setattr("scripts.scheduler._find_preview_gaps", lambda _session, _start_date: [])

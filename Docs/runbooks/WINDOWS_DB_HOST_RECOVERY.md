@@ -1,4 +1,4 @@
-# Windows DB 호스트 복구 런북 (ch806-08)
+# Windows DB 호스트 복구 런북 (돈통 · 구 ch806-08)
 
 > 이 문서는 **Windows 서버 앞(또는 사내망 PC)에서** 실행할 절차다.
 > 원격(Mac 등 다른 tailnet 기기)에서는 이 서버로 들어갈 원격 채널(SSH·RDP·WinRM)이 모두 닫혀 있어 대신 실행할 수 없다(2026-10 관측).
@@ -6,14 +6,18 @@
 > **크롤러 스케줄러도 이 Windows 서버에서 돈다**(2026-10-18 운영자 확인). PostgreSQL만 Windows에 있고 스케줄러는 Mac(launchd)에서 돈다는 이전 설명은 더 이상 맞지 않다.
 > 스케줄러 실행·재시작·로그 위치·작업 스케줄러 등록은 [`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)를 본다.
 > DB 복구 후 스케줄러 확인 절차는 §7에 있다. §9 이후는 Mac에서 관측·작업하던 시기의 기록이라 "Mac" 표현을 그대로 둔다.
+>
+> ⚠️ **주소 정본은 §18.1 이다.** 2026-11-20 에 호스트가 `ch806-08`(`100.81.73.13`)에서
+> `돈통`(`100.108.105.65`)으로 옮겨졌다. §2~§17 본문에 남은 옛 주소는 **당시 기록**이며,
+> 그 명령을 그대로 복사해 실행하면 죽은 호스트를 본다.
 
 ## 1. 대상과 현재 증상
 
 | 항목 | 값 |
 |---|---|
-| 호스트 | `ch806-08` (Windows) |
-| 네트워크 주소 | Tailscale `100.81.73.13` |
-| 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.81.73.13:5432`) — BEGA 백엔드와 공유 |
+| 호스트 | `ch806-08` (Windows) → 2026-11-20부터 **`돈통`** (§18.1) |
+| 네트워크 주소 | Tailscale `100.81.73.13` → **`100.108.105.65`** (§18.1) |
+| 역할 | KBO_playwright 운영 PostgreSQL (`DATABASE_URL=postgresql://<user>@100.108.105.65:5432`) — BEGA 백엔드와 공유 |
 | 역할 (스케줄러) | 크롤러 스케줄러 `scripts/scheduler.py` — Windows 작업 스케줄러로 상주 ([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md)) |
 | 서버 앞 접근 | RDP(3389)·SSH(22)·WinRM(5985/5986) **무응답** → 사내망 PC의 RDP 또는 물리 접근 필요 |
 
@@ -25,6 +29,9 @@
 | 3389 (RDP) / 22 (SSH) / 5985·5986 (WinRM) | 무응답 |
 | 445 (SMB) / 135 (RPC) | **OPEN** |
 | Tailscale ping | **정상 (29ms)** |
+
+> **2026-11-09 재측정에서 445·139·3389 는 닫혔다.** 위 표는 10-05 시점의 기록이다.
+> 현재 상태와 전 채널 실측은 **§17.3** 을 본다.
 
 해석: 네트워크 계층(Tailscale)은 정상이고, **Windows 쪽 방화벽 DROP 또는 PostgreSQL 서비스 미기동**이다.
 `RST`가 아니라 timeout이라는 점은 "서비스가 죽어서 거부"보다 **방화벽이 먼저 버리는 경우**와 일치한다
@@ -798,3 +805,525 @@ pass(0), `game_result_without_body` warn(8,281, 변동 없음).
 `self._tmpdir` 로 고치고, 잘못 추가된 13개 디렉터리를 인덱스와 디스크에서 제거했다.
 재발 방지는 픽스처가 아니라 호출부의 경로 표현이 문제였으므로 경로 자체를 고치는 것으로
 충분하다.
+
+## 17. Docker 백엔드 정지 — 원격 복구 수단 없음 (2026-11-09)
+
+§14 는 "전 컨테이너 PostgreSQL 무응답"을 호스트 전역 가능성으로 남겼고, 그 뒤 다른 세션이
+`bega_prod` 컨테이너 init 실패로 정정했다. 이번 것은 **그때와 다른 형태**다. 컨테이너 하나가
+죽은 것이 아니라 **Windows 의 사용자 영역 프로세스가 광범위하게 멈췄고**, 원격에서 되살릴
+채널이 하나도 남지 않았다.
+
+### 17.1 확정된 상태
+
+| 계층 | 관측 | 판정 |
+| --- | --- | --- |
+| Tailscale | `ch806-08` online/active, ping 정상 | 네트워크 정상 |
+| Windows 커널·네이티브 서비스 | RPC 135 `bind_ack`, WSDAPI 5357 `HTTP/1.1 503` | **생존** |
+| Docker 백엔드 | 5432·5435 `SSLRequest` 10초 무응답, 8000 `/health`·9090 `/-/healthy`·3000 `/api/health` 10초 무응답 | **멈춤** |
+| Chrome 원격 데스크톱 | Google 릴레이 **오프라인** | 원격 화면 없음 |
+| 원격 접속 계열 | 3389·445·139·5985·5986·47001·22 전부 사용 불가(§17.3) | **없음** |
+
+**5432 가 SYN-ACK 를 돌려준다는 점이 핵심이다.** 프로세스가 죽으면 리스너도 함께 닫힌다.
+리스너를 쥔 프로세스가 살아 있다는 뜻이므로, 이 상태는 "서비스 정지"가 아니라
+**백엔드를 기다리며 멈춘(hung)** 것이다. 그래서 `Get-Service` 로 시작시키는 §2 카드가
+듣지 않는다 — 서비스는 이미 Running 이다.
+
+### 17.2 진단 정정 — "0바이트 수신"은 정지의 증거가 아니다
+
+§14 에서 "응답 없음"을 `recv()` 가 0바이트를 돌려주는 것으로 판정했다. **그 측정으로는
+정지와 정상을 구분할 수 없다.** PostgreSQL 과 HTTP 는 둘 다 **클라이언트가 먼저 말하는**
+프로토콜이다. 아무것도 보내지 않고 `recv()` 하면 정상 서버도 타임아웃으로 0바이트를 준다.
+
+PostgreSQL 은 `SSLRequest` 로 묻는다. 응답이 오면 살아 있고, 침묵하면 멈춘 것이다.
+
+```python
+import socket
+import struct
+
+s = socket.create_connection(("100.81.73.13", 5432), timeout=10)
+s.sendall(struct.pack("!II", 8, 80877103))  # SSLRequest
+print(s.recv(1))  # b"S" 지원 / b"N" 미지원 / 침묵 = 정지
+```
+
+HTTP 는 요청을 보내야 한다. `000` 은 응답 없음이다.
+
+```bash
+curl -m 5 -sS -o /dev/null -w '%{http_code}\n' http://100.81.73.13:8000/health
+```
+
+이 방법으로 5432·5435·8000·9090·3000 을 다시 재었고, **다섯 곳 모두 침묵**했다.
+
+### 17.3 원격 채널 전수 실측 (2026-11-09)
+
+| 채널 | 포트 | 결과 |
+| --- | --- | --- |
+| RDP | 3389 | 닫힘 |
+| SMB (원격 `sc`) | 445 / 139 | 닫힘 |
+| SSH | 22 | 연결됨, **25초간 배너 없음** → sshd 아님 |
+| WinRM | 5985 / 5986 / 47001 | 닫힘 |
+| Docker API | 2375 / 2376 | 닫힘 |
+| Intel AMT / IPMI | 16992~16995 / 623 / 664 | 닫힘 |
+| HTTPS·HTTP | 443 / 80 / 8888 | 닫힘 |
+| VNC | 5900 / 5901 / 5800 | 닫힘 |
+| HP iLO / rpcbind / NFS | 17988 / 111 / 2049 | 닫힘 |
+| Chrome 원격 데스크톱 | Google 릴레이 | 오프라인 |
+
+살아 있는 것은 **135(RPC) 와 5357(WSDAPI)** 뿐이다. §1 의 2026-10-05 표는 445·135 를
+OPEN 으로 적고 있는데, **445 는 지금 닫혀 있다.** 그 표는 10-05 시점의 기록으로 읽고,
+현재 상태는 이 표를 본다.
+
+### 17.4 DCOM/WMI — 도달하지만 인증에서 막힌다
+
+RPC 가 살아 있어 마지막 후보로 `Win32_Process` 원격 기동(재부팅용 `shutdown /r`)을 시도했다.
+결과는 **도달 성공, 인증 실패**다.
+
+- `DCOMConnection` 생성과 OXID 해석까지 성공한다.
+- `Win32_Process` 활성화에서 `rpc_s_access_denied`.
+- 원인은 자격증명 부재다. 계정 암호가 없고, Windows 의
+  `Accounts: Limit local account use of blank passwords to console logon only` 정책이
+  **빈 암호의 네트워크 로그온을 거부**한다. PIN 은 계정 암호가 아니므로 대체되지 않는다.
+
+**추측 대입은 하지 않는다.** 계정 잠금 정책이 걸려 있으면 남은 채널까지 함께 닫힌다.
+즉 이 경로는 "자격증명을 아는 사람"만 쓸 수 있고, 그것이 없다면 폐쇄다.
+
+### 17.5 왜 재부팅 외에 수단이 없는가
+
+서로 무관한 서비스가 **동시에** 멈췄다 — Docker Desktop, WSL2 백엔드, Chrome 원격 데스크톱
+호스트. 커널과 네이티브 서비스만 응답한다. 개별 서비스 재시작으로 풀리는 형태가 아니고,
+원격에서 새 사용자 세션을 만들 채널도 전부 닫혀 있다.
+
+강제 차단의 위험은 이 시점에 낮다. 며칠째 쓰기를 받지 못해 **진행 중인 트랜잭션이 없다.**
+다만 스케줄러도 같은 호스트에서 돌므로([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md))
+야간 파이프라인과 DLQ 잡도 함께 멈춰 있다. 복구 후 밀린 날짜를 한꺼번에 재실행하지 않는다
+(§17.7-5).
+
+### 17.6 현장 절차
+
+1. 모니터·키보드가 붙어 있으면 `Ctrl+Alt+Del` → 우하단 전원 → **다시 시작**.
+   정상 종료 경로라 가장 안전하다.
+2. 화면이 뜨지 않으면 전원 버튼을 **5초 길게** 눌러 차단 → 10초 대기 → 다시 눌러 켠다.
+3. 부팅 후 확인할 것 두 가지: **자동 로그인**이 되는지, 트레이에 **Docker Desktop** 이
+   떠 있는지. 둘 중 하나가 아니면 백엔드는 다시 올라오지 않는다.
+
+원격 콘센트로 전원을 내리는 경우에도 같다. 재인가 후 자동 로그인과 Docker 자동 시작이
+걸려 있어야 스스로 올라온다(§17.9).
+
+### 17.7 복구 직후 확인 순서
+
+Mac 에서 위에서부터 실행한다.
+
+1. **연결 판정** — §17.2 의 `SSLRequest`. `b"S"` 또는 `b"N"` 이면 살아 있다.
+2. **마이그레이션** — `python3 -m src.cli.apply_postgres_migrations --check` → exit 0.
+3. **골든셋** —
+   `python3 -m src.cli.evaluate_rag_retrieval --dataset Docs/references/rag_golden_queries.json --variant bm25 --top-k 5`
+   기대값(2026-11-07 기준): Recall@5 **0.9462** · MRR **0.8511** · hit **0.9667** · p95 **130ms**.
+4. **감사** — `python3 -m src.cli.audit_rag_index --json --require-nonempty --require-postings`
+   → `damage 0`, `consistent true`. 미완성(`embedding_missing`·`stale_keys`)은 실패가 아니다.
+5. **밀린 크롤** — 스케줄러 로그에서 `crawl_daily_games` 의 마지막 성공 날짜를 확인하고,
+   그 다음 날부터가 백필 대상인지 **판단해서** 실행한다. 일괄 재실행은 하지 않는다.
+
+### 17.8 대체 DB 는 없다 (실측)
+
+대기 중 골든셋 재측정이나 인덱스 작업이 가능한지 확인했고, **불가능**하다.
+
+| 후보 | 실측 | 판정 |
+| --- | --- | --- |
+| 로컬 PostgreSQL 15.19 (Homebrew) | DB 23개, 최대 `bega` **13MB** | 운영 데이터 없음 |
+| `data/kbo_dev.db` (SQLite, 1.2GB) | `rag_chunks` **162행** | 인덱스 대체 불가 |
+| 덤프 파일 | `data/` 내 5MB 초과 `.dump`·`.sql` **0건** | 없음 |
+
+따라서 이 구간에 할 수 있는 것은 코드·테스트·문서뿐이다. DB 를 요구하는 RAG 작업은
+복구 후로 미룬다.
+
+### 17.9 재발 방지 (복구 후 적용)
+
+| 항목 | 명령·경로 | 이유 |
+| --- | --- | --- |
+| OpenSSH Server + 키 인증 | `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0` → `Set-Service sshd -StartupType Automatic` | 이번에 시도할 수 있었던 비상구가 **없었다** |
+| Chrome 원격 데스크톱 자동 시작 | `Set-Service chromoting -StartupType Automatic` | 수동이면 재부팅 후 원격 화면이 없다 |
+| Docker Desktop 자동 시작 | Settings → General → *Start Docker Desktop when you sign in* | 재부팅 후 백엔드가 스스로 올라온다 |
+| 자동 로그인 | `netplwiz` | 사용자 세션이 올라와야 Docker 가 뜬다 |
+| WSL2 메모리 상한 | `%UserProfile%\.wslconfig` → `[wsl2]` `memory=8GB` | 이번 정지가 메모리 압박이라면 재발을 막는다 |
+| 커밋 시각 추적 | `ALTER SYSTEM SET track_commit_timestamp = on` 후 **재시작** | §10 의 `xmin` 판정이 상대 순서만 가능한 이유 |
+
+우선순위는 **SSH** 다. 나머지는 재부팅 후 자동 복구를 돕는 것이고, SSH 는 다음 장애에서
+사람이 개입할 수 있는 유일한 경로다.
+
+### 17.10 진단 중 발견한 함정 — 로컬 VPN 킬스위치
+
+이번에 Mac 이 DB 에 붙지 못한 원인 **하나**는 원격이 아니라 로컬이었다. NordVPN(NordLynx)의
+`killSwitchEnabled=true` 가 Tailscale 인터페이스(utun7)의 TCP 를 차단했다.
+**Disconnect 만으로는 부족하고 앱을 완전히 종료해야** 풀린다.
+
+이 상태에서는 정상 서비스도 무응답으로 보이므로, 원격 장애를 판정하기 전에 로컬 VPN
+킬스위치를 먼저 확인한다. 다만 이번 건은 킬스위치를 끈 뒤에도 §17.3 의 실측이 그대로
+재현됐다 — **로컬 문제와 호스트 정지가 함께 있었다.**
+
+> **2026-11-23 재확인 — 판별 신호와 해제 명령.** 이번에는 인터페이스가 **`utun6`** 이었고,
+> 앱을 종료하는 대신 `scutil --nc stop "NordVPN - NordLynx"` 로 utun6 을 제거하자 기본 경로가
+> `en1` 로 돌아오며 **즉시** 복구됐다(`100.108.105.65:5432` 14ms OPEN). 판별 신호는
+> **"ICMP·TSMP 는 통과하는데 모든 TCP SYN 이 죽는다"** 이고, 이때 테일넷 자체 주소
+> (`100.100.100.100:80`)까지 죽으므로 **원격을 의심하기 전에 로컬 VPN 을 먼저 본다.**
+> 인터페이스 번호(`utunN`)는 부팅마다 달라지므로 번호로 판정하지 말고 `scutil --nc list` 로 본다.
+
+### 17.11 외부 하트비트 — 감시 대상 밖에서 보는 유일한 신호
+
+이번 장애에서 **아무 경보도 나가지 않았다.** Prometheus 는
+`monitoring/prometheus/prometheus.yml` 에서 `scheduler:8000`·`api-server:8000` 을 스크레이프하고,
+Alertmanager 도 **같은 Docker 스택**에 있다. 호스트가 멈추면 감시자와 피감시자가 함께 멈추므로,
+"감시 대상이 죽었다"를 말해 줄 주체가 그 안에 없다.
+
+죽은 자의 스위치(dead-man's switch)는 방향을 뒤집는다. 서비스가 **바깥으로** 핑을 보내고,
+**핑이 끊긴 것**이 경보다. 관측자가 감시 대상 밖에 있으므로 이번 형태의 정지를 견딘다.
+
+#### 동작 계약
+
+| 항목 | 값 | 위치 |
+| --- | --- | --- |
+| 잡 | `heartbeat_ping` (`heartbeat_ping_job`) | `src/scheduler/jobs/sentinel.py` |
+| 주기 | 10분 (`minute="*/10"`) | `src/scheduler/registry.py::job_specs` |
+| 설정 | `KBO_HEARTBEAT_URL` — **비어 있으면 잡이 즉시 반환** | `src/monitoring/heartbeat.py` |
+| 성공 판정 | **2xx 만** 성공 | 〃 |
+| 타임아웃 | 10초 | `HEARTBEAT_TIMEOUT_SECONDS` |
+
+- **리다이렉트를 따라가지 않는다.** URL 자체가 자격증명이라 3xx 를 따라가면 그 자격증명을
+  응답이 지목한 곳으로 넘기게 된다. 따라서 3xx 는 실패다 — 스위치가 기록하지 못한 것이 맞다.
+- **URL 은 비밀값이다.** 이 URL 을 가진 사람은 호스트를 대신해 핑을 보내 스위치를 조용하게
+  만들 수 있다. 요청 **전에** `src.utils.log_masking.register_secret` 에 등록되므로
+  `httpx` 가 INFO 로 남기는 전체 URL 에서도 `***` 로 치환된다. 실패 로그는 **예외 클래스명만**
+  남기고 URL 과 `str(exc)` 는 남기지 않는다.
+- **인시던트를 만들지 않는다.** `apply_incidents` 가 쓰는 원장은 이 잡이 살아남아야 하는 바로 그
+  DB 안에 있고, 경보 주체는 외부 스위치다. `alert_warning`/`alert_success` 도 호출하지 않는다.
+- **DB 게이트를 걸지 않는다.** `_with_db_fail_fast_guard` 를 붙이면 DB 장애 때 핑이 멈춰
+  **"호스트 사망"으로 잘못 보고**된다. DB 장애는 `src.monitoring.db_availability` 계열이 맡는다.
+  이 계약은 `tests/monitoring/test_heartbeat.py::test_it_pings_while_the_database_is_down` 이
+  행동으로 고정한다(데코레이터를 추가하면 실패한다).
+
+#### 설정 절차 (복구 후 1회)
+
+1. healthchecks.io(또는 동등한 서비스)에서 체크를 만든다.
+   - **Period 10분 / Grace 15분.** 경보는 마지막 핑으로부터 **25분** 뒤에 온다.
+     한 번 걸러진 틱으로 호출이 울리지 않게 하려는 것이고, 호스트가 30분 멈춰 있으면 울린다.
+2. 발급된 ping URL 을 서버의 `.env` 에 넣는다. **이 값을 티켓·채팅·로그에 붙이지 않는다.**
+
+   ```dotenv
+   KBO_HEARTBEAT_URL=https://hc-ping.com/<uuid>
+   ```
+
+3. 스케줄러를 재시작한다([`WINDOWS_SCHEDULER.md`](WINDOWS_SCHEDULER.md) §5).
+   컨테이너로 돌리는 구성이라면 재생성으로 확실히 반영한다.
+
+   ```powershell
+   docker compose -f docker-compose.prod.yml up -d --force-recreate scheduler
+   ```
+
+4. 대시보드에서 **`Last Ping` 이 10분 이내**인지 확인한다. 계속 "never" 면 잡이 실패하고 있다.
+   로그에서 아래 문구를 찾는다.
+
+   ```
+   [Heartbeat] ping failed (<예외 클래스명>)
+   [Heartbeat] switch did not record the ping (HTTP <코드>)
+   ```
+
+5. 체크에 **알림 채널을 연결**한다. 아무도 받지 않는 경보는 경보가 아니다.
+
+#### 경보를 읽는 법
+
+| 하트비트 | DB(5432 `SSLRequest`)·HTTP(8000/9090) | 판정 | 조치 |
+| --- | --- | --- | --- |
+| 끊김 | 침묵 | **호스트 정지** | §17.6 현장 절차 |
+| 끊김 | 응답 | 스케줄러 프로세스만 정지 | 스케줄러 재시작(§5) |
+| 정상 | 침묵 | DB 만 정지 | 하트비트는 **정상이다** — 설계대로다. DB 경보 경로를 본다 |
+
+#### 한계 (정직하게 남긴다)
+
+- 이 핑은 **스케줄러 프로세스의 생존**을 말한다. 호스트의 모든 하위 시스템을 말하지 않는다.
+  스케줄러가 살아 있고 DB 가 죽은 상태에서도 핑은 계속 나가며, 그건 의도된 동작이다.
+- URL 이 틀렸거나 만료되면 **10분마다 WARNING 만 남고 경보는 울리지 않는다.**
+  설정 직후 대시보드에서 한 번 확인하는 이유가 이것이다.
+- 경보는 정지 **즉시**가 아니라 유예를 포함해 약 25분 뒤에 온다. 즉시성이 필요하면
+  Period 를 줄이되, 스케줄러 재시작 한 번으로 오탐이 나지 않는 범위에서 정한다.
+- 계획된 유지보수로 스케줄러를 내릴 때는 URL 을 지우지 말고 **체크를 일시정지**한다.
+  지우면 복구 후 다시 설정해야 하고, 그 사이 공백은 아무도 모른다.
+
+### 17.12 GitHub Actions 워치독 — 호스트 밖에서 DB 응답 자체를 본다 (2026-11-09 추가, 11-15 갱신)
+
+§17.11 의 하트비트는 **설정을 마쳐야** 울리고(복구 후 1회), 구조적으로 **DB 만 침묵하는
+상태**는 보지 못한다(스케줄러가 살아 있으면 핑은 계속 나간다 — 17.11 의 한계 1). 이번
+주말(11-07~09)에는 두 구멍이 겹쳐 아무 신호도 없었다. 보완으로
+`.github/workflows/db_availability_watchdog.yml` 을 추가했다 — **GitHub Actions(호스트
+밖)** 에서 30분마다 DB 의 응답 자체를 확인한다.
+
+- 경로: 주간 live 검증과 동일 — `LIVE_DB_READONLY_URL`(읽기 전용 역할) + Tailscale `tag:ci`.
+- 프로브: `scripts/verification/check_db_availability.py` — TCP + **PostgreSQL 핸드셰이크**.
+  사유를 구분한다: `tcp_unreachable`(호스트/방화벽) vs `postgres_silent`(포트는 열리고
+  PG 가 침묵 — §17.1 이 실측한 바로 그 형태).
+- 알림은 전이에만, **두 종류의 trouble 을 따로 기억**한다:
+  - `db-watchdog-outage` — DB 미응답: 첫 실패 1건 + 회복 1건.
+  - `db-watchdog-selfcheck` — 워치독 자체 고장(시크릿·Tailscale·의존성 설치): 1건,
+    기전이 다시 돌면 조용히 해제.
+  - 두 상태를 나눈 이유: 설정을 고친 뒤에도 DB 가 죽어 있으면 "DB 장애"를 알려야 하는데,
+    한 상태로 합치면 "이미 알렸다"로 상속돼 침묵한다.
+- 상태 캐시를 읽지 못하는 실행은 알림하지 않는다(모르고 "첫 실패"를 외치면 그게 스팸이다).
+  실패가 이어지는 동안 각 실행은 red 로 끝나므로 실행 이력이 장애 기간을 남긴다.
+
+**실측 기록 1 (2026-11-15)**: 저장소 시크릿 `TS_OAUTH_CLIENT_ID`·`TS_OAUTH_SECRET`·
+`LIVE_DB_READONLY_URL` 이 **없다**(`gh secret list` 확인). 그래서
+- 주간 `live_db_verification` 은 매주 "Check required secrets" 게이트에서 실패 중이고,
+- 워치독의 첫 버전은 자체 고장 경로에 상태가 없어 **11-09~15 동안 30분마다
+  "watchdog could not run" 알림을 보냈다**(~300건). 지금은 `selfcheck` 캐시로 1회만 보낸다.
+  같은 실수를 반복하지 않으려면: **모든 "1회성" 알림에는 그 1회를 기억할 상태가 있어야 한다.**
+
+**실측 기록 2 (2026-11-15): 크론 정밀도는 30분이 아니다.** `*/30` 을 요청했지만
+11-09~15 6.1일 동안 실제 발화는 **22회 — 하루 3~4회, 간격 4~8시간**이었다(GitHub
+schedule 의 best-effort 특성). 즉 이 워치독의 탐지 지연은 수 분이 아니라 **수 시간**이며,
+그래도 이번 같은 다일 장애는 잡는다. 더 빠른 층이 필요하면 §17.11 하트비트(10분,
+설정 후)가 그 역할이고, 30분급을 끝까지 원하면 외부 크론이 `workflow_dispatch` API 를
+호출하는 업그레이드가 있다(토큰이 필요해 저장소 밖 설정이다).
+
+**게이팅 실증 (같은 날, 수동 dispatch 2회)**: #1 → 자체고장 알림 **1건** + 캐시
+`db-watchdog-selfcheck` 저장(`14:25:27Z`), #2 → 같은 고장인데 알림 스텝 **전부
+skipped**(상태 히트). 스팸 수정이 실제로 동작한다.
+
+**설정 절차 (DB 복구 후) — 실행 체크리스트**
+
+사전 확인 (2026-11-20 실측): `gh secret list`에는 `DATABASE_URL`, `KBO_*`, `OCI_*`, `ORACLE_*`, `TELEGRAM_*`만 있고
+`TS_OAUTH_CLIENT_ID` · `TS_OAUTH_SECRET` · `LIVE_DB_READONLY_URL` 3종이 없다. 워치독은 11-17~19 연속 failure(최근 실행 11-19 09:14 UTC)였고
+로그는 전부 `Secret ... is not set`(self-check 게이트)였다. 즉 DB가 복구됐는지 **밖에서 확인할 수 없는 상태**다.
+Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 터미널에서 해야 한다(에이전트는 비밀 값을 읽지 않는다).
+
+- [ ] **1. DB 호스트 복구 확인.** 역할 생성은 DB가 살아 있어야 하므로 복구가 선행 조건이다.
+      사용자 영역 프로세스가 멈춘 상태라면 §17.6~17.7(현장 재부팅)이 유일한 수단이고 코드로 해결되지 않는다.
+- [ ] **2. Tailscale `tag:ci` OAuth 클라이언트 + 네트워크 경로.**
+      - 관리 콘솔에서 OAuth 클라이언트 생성, scope `auth_keys` write, `tag:ci` 사용
+      - ACL이 `tag:ci` → `100.108.105.65:5432`를 허용하는지 확인 (§18.1 — 옛 `100.81.73.13` 은 11-19부터 오프라인)
+      - Windows 호스트(`돈통`) 방화벽이 tailnet 대역의 5432를 허용하는지 확인
+- [ ] **3. 읽기 전용 역할 생성** (`bega_prod`, 쓰기 권한 없음):
+      ```sql
+      CREATE ROLE kbo_ci_ro LOGIN PASSWORD '<생성한 비밀번호>';
+      GRANT CONNECT ON DATABASE bega_prod TO kbo_ci_ro;
+      GRANT pg_read_all_data TO kbo_ci_ro;
+      ```
+      `pg_read_all_data`는 PostgreSQL 14+의 전역 읽기 권한(운영 DB 16.x). 이 역할로 DML/DDL이 되면 안 된다 —
+      쓰기 가능한 역할을 쓰면 5번의 `--require-readonly-role`이 실패한다.
+- [ ] **4. 저장소 시크릿 3종 등록.** 값은 stdin으로 넘겨 argv에 남기지 않는다:
+      ```bash
+      # read -p 는 zsh 에서 "no coprocess" 로 실패하므로 printf 프롬프트를 쓴다 (bash/zsh 공통).
+      printf 'TS_OAUTH_CLIENT_ID: ' >&2;    read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_CLIENT_ID; unset V
+      printf 'TS_OAUTH_SECRET: ' >&2;       read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_SECRET; unset V
+      printf 'LIVE_DB_READONLY_URL: ' >&2; read -rs V; printf '%s' "$V" | gh secret set LIVE_DB_READONLY_URL; unset V
+      gh secret list   # 이름만 출력됨; 3종이 추가됐는지 확인
+      ```
+      URL 형식:
+      `postgresql+psycopg://kbo_ci_ro:<pw>@100.108.105.65:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`
+      `&`가 포함되므로 반드시 따옴표로 감싼다. keepalives를 빼면 유휴 연결이 도중에 끊겨 spurious
+      `PERSIST_TIMEOUT`으로 보고된다. **`DATABASE_URL`(쓰기 역할)을 절대 대입하지 않는다.**
+- [ ] **5. CI 전에 로컬에서 읽기 전용 검사:**
+      ```bash
+      LIVE_DB_URL='postgresql+psycopg://kbo_ci_ro:…@100.108.105.65:5432/bega_prod' \
+        venv/bin/python scripts/verification/verify_live_postgres.py --require-readonly-role
+      ```
+      exit 0 통과 / 1 실패 / 2 설정 오류.
+- [ ] **6. 워치독 수동 dispatch 2회 연속** (Actions → DB Availability Watchdog → Run workflow):
+      - 1회차: self-check 게이트를 통과해야 한다(로그에 `Secret ... is not set`가 없어야 함). DB가 죽어 있으면
+        `db-watchdog-outage` 첫 알림 1건, 살아 있으면 조용한 성공.
+      - 2회차: 같은 상태라면 알림 스텝이 전부 **skipped**여야 한다(캐시 히트). 여기서 알림이 또 오면 스팸 수정이 퇴행한 것이다.
+      - 복구 직후 `db-watchdog-outage` 캐시가 없다면 첫 성공은 조용히 지나간다 — 알릴 장애가 없었으므로 그게 맞다.
+- [ ] **7. `live_db_verification` 수동 1회** 실행해 통과 확인(주간 cron은 reviewed schedule이라 자동으로 안 돈다).
+- [ ] **8. 스트릭 종료 확인:**
+      `gh run list --workflow db_availability_watchdog.yml --limit 5`에서 failure 연속이 끊겼는지 본다.
+
+## 18. 호스트 이전과 자격증명 분기 (2026-11-23)
+
+§17 이 기록한 정지(11-07~) 뒤 호스트가 **다른 Windows 기기로 옮겨졌다**. 그래서 §17.12 의
+체크리스트가 가리키던 주소(`100.81.73.13`)는 이제 죽은 주소다. 이 절은 새 호스트의 실측과,
+그 과정에서 드러난 **자격증명 분기**를 남긴다.
+
+### 18.1 새 호스트
+
+| 항목 | 값 |
+| --- | --- |
+| 이름 | `돈통` — `node.tail2a897d.ts.net` |
+| 주소 | **`100.108.105.65`** |
+| 상태 | Tailscale online/active, `CurAddr 192.168.35.209:41641`, relay `tok` |
+| 이전 호스트 | `ch806-08` / `100.81.73.13` — 11-19 무렵부터 무응답 |
+| 전환 시각 | 이 저장소 `.env` 의 mtime 이 **11-20 02:41** |
+
+이전이 **호스트만** 바뀌었다는 증거: `.env.bak_20261120_tailscale_new_host`(이전 사본)와 현행
+`.env` 는 **같은 역할(`bega_prod_user`)·같은 비밀번호 지문**을 갖고 있고 주소만 다르다. 즉
+그 시점에 비밀번호는 바뀌지 않았고, 두 값이 갈라진 것은 **그 뒤 호스트 쪽에서** 일어났다.
+
+### 18.2 포트 실측 (2026-11-23, 이 Mac 기준)
+
+| 포트 | 상태 | 정체 |
+| --- | --- | --- |
+| 5432 | **OPEN** (14ms) | `kbo_postgres` — api-server 실측 `inet_server_addr()=172.18.0.4`, `current_database()=bega_prod` |
+| 8000 | **OPEN** (21ms) | `kbo_api_server` — KBO Playwright Platform v1.5.0, 54 paths, `/openapi.json` 공개 |
+| 3000 | **OPEN** | `browserless/chromium` |
+| 445 | OPEN | SMB — `smbutil view -N` 인증 거부 |
+| 22 · 3389 · 5985 · 5986 · 2375 · 2376 · 6379 · 9090 | 닫힘/타임아웃 | **원격 셸 경로 없음** — §17.5 의 결론이 유지된다 |
+
+### 18.3 API 는 DB 자격증명 없이도 쓰는 관측 지점이다
+
+자격증명이 틀려도 `:8000` 은 **실데이터를 서빙**한다. 호스트에 들어가지 못하는 상황에서
+이것이 유일한 읽기 경로다.
+
+| 경로 | 돌려주는 것 |
+| --- | --- |
+| `/status` | `games_count 26,525` · `players_count 8,066` · `latest_game_date 2026-11-11` · 락 상태 |
+| `/api/v1/health/healing-status` | `score_inconsistent_count 42`, `discrepant_seasons [2026]` |
+| `/api/rag/search` · `/api/v1/rag/search` | 청크 + `source_table` · `source_row_id` |
+| `/api/v1/rag/ask` | 답변 + `provenance.record_key`(=`<table>:<pk>`) — **구조화 경로의 도메인 PK** |
+
+즉 "인덱스 신원 ↔ 도메인 신원" 대조의 일부는 **HTTP 만으로** 가능하다(§18.5 의 신원 규약
+주의 참조). 반대로 테이블 전체 분포(예: `embedding IS NULL` 잔량)는 여전히 SQL 이 필요하다.
+
+`/api/pipeline/defects` 는 500 과 함께 **SQL 전문을 반환**한다(DSN 은 노출하지 않는다).
+진단에는 유용하지만 응답 본문을 그대로 옮길 때는 내용을 확인할 것.
+
+### 18.4 자격증명 분기 — 서버는 정상, 이 Mac 의 값이 낡았다
+
+증상: 같은 `.env` 의 `bega_prod_user` 가 **호스트에서는 통과**하고(같은 host:port), **이 Mac
+에서는 `28P01`** 로 거부된다. 이 조합은 둘로만 설명된다 — (A) 값이 서로 다르다, (B) 클라이언트가
+값을 변형해 보낸다.
+
+판별은 **드라이버를 쓰지 않는 SCRAM 핸드셰이크**로 한다. psycopg/libpq 를 거치지 않으므로
+"클라이언트 버그"라는 가설이 판정에 섞이지 않는다.
+
+```python
+# 요지: client-first-message 는 gs2 헤더("n,,")를 포함해야 한다. 빠뜨리면 서버가
+# "malformed SCRAM message" 로 거절하는데, 이는 인증 실패와 구별되지 않는다.
+nonce = b64encode(os.urandom(18)).decode()
+bare  = f"n=,r={nonce}"
+send(b"p", b"SCRAM-SHA-256\x00" + pack("!I", len("n,," + bare)) + ("n,," + bare).encode())
+# server-first → salted = pbkdf2_hmac("sha256", pw, salt, iters)
+# ClientProof = ClientKey XOR HMAC(SHA256(ClientKey), f"{bare},{server_first},{final_no_proof}")
+# 판정: R/12(SASLFinal) + R/0(Ok) = 통과, E/28P01 = 값 불일치
+```
+
+실측 결과:
+
+| 후보 | 결과 |
+| --- | --- |
+| `.env` 의 값 (len 40, 대문자13·소문자19·숫자8·기호0) | **`28P01`** |
+| 같은 값의 기계적 변형 17종 (줄바꿈·CRLF·앞뒤 공백·따옴표·`unquote`·재인코딩·대소문자·1~2자 절단·base64 디코드) | **전부 `28P01`** |
+| 고의로 틀린 값 / 존재하지 않는 역할 | `28P01` (구별 불가 — §18.5) |
+
+호스트 쪽 실측은 반대다: 같은 host:port 에 `bega_prod_user` 로 **exit 0**, `kbo_readonly` 로도
+exit 0. 따라서 **(B) 는 기각**되고, **이 저장소 `.env` 의 값이 낡았다**는 결론만 남는다.
+
+### 18.5 "password authentication failed" 가 말하지 않는 것
+
+- **역할 부재와 비밀번호 불일치를 구별하지 못한다.** 존재하지 않는 역할도 `28P01` 이다.
+  이 문구만 보고 "역할을 만들어야 한다"로 가면 틀린 조치를 한다.
+- **서버가 죽었다는 뜻이 아니다.** SCRAM 교환이 성립했다는 것은 서버가 살아서 verifier 를
+  계산했다는 뜻이다(§17.1 이 실측한 `postgres_silent` 와 정반대 상태).
+- **포트 매핑 오류일 수도 있다**(`docker-compose.local.yml` 이 기록한 11-05 사고). 이번에는
+  `inet_server_addr()=172.18.0.4` 로 `kbo_postgres` 임을 확인해 기각했다. 순서는 항상
+  **(1) 핸드셰이크 성립 여부 → (2) 어느 인스턴스인가 → (3) 값이 맞는가**.
+- **인덱스 신원 규약은 폐기 저장소와 다르다.** 현행 빌더의 `source_row_id` 는 자연키다
+  (`game_lineups` → `20260515LGSK0_away`, `pbp` → `<game_id>_content_<sha256>`). 2026-10-17 에
+  기록한 "`game` 0/6,199" 같은 숫자 PK 불일치는 **폐기 저장소**의 규약이며, 현재 코드로 만든
+  인덱스에 그 기준을 적용하면 없는 불일치를 만든다.
+
+### 18.6 조치 순서
+
+1. **호스트의 정본 값을 이 Mac 으로 가져온다.** 값을 채팅·셸 히스토리에 남기지 않으려면
+   `getpass` 로 받아 `.env` 를 in-place 갱신한다. 갱신 대상은 **host·port·role 이 모두 일치하는
+   URL 만**이다(이 저장소는 `DATABASE_URL`·`PGVECTOR_URL`·`PGVECTOR_URL_DOCKER` 3개;
+   `LOCAL_PG_URL` 은 `127.0.0.1:5434`/`postgres` 라 제외).
+2. **바꾸기 전에 검증한다.** 저장 **전에** SCRAM 으로 통과를 확인하고, 실패하면 `.env` 를
+   건드리지 않는다. 백업은 `.env.bak_<UTC>` 로 남긴다.
+3. **회전을 권한다.** 이 저장소의 값은 11-03 이후 바뀌지 않았고 그 사이 진단 과정에서 한 번
+   노출됐다. 회전은 호스트에서 한다:
+   ```cmd
+   docker exec -it kbo_postgres psql -U postgres -d bega_prod -c "ALTER ROLE bega_prod_user WITH PASSWORD '<새 값>'"
+   ```
+   (공식 이미지의 `pg_hba.conf` 는 **로컬 소켓을 trust** 로 두므로 컨테이너 안 `psql` 은
+   비밀번호 없이 들어간다. 호스트 `.env` 도 함께 바꾸고 `api-server`·`scheduler` 를 재기동한다.)
+4. **CI 시크릿도 함께 본다.** `gh secret list` 의 `DATABASE_URL` 은 **2026-10-20** 에 설정된
+   값이라 11-20 이전 주소를 가리킨다. 즉 CI 는 지금 **죽은 호스트**를 본다. 값이 확보되면
+   `gh secret set DATABASE_URL` 로 갱신하고, 읽기 전용 경로는 §17.12 체크리스트를 따른다.
+
+### 18.7 하지 않은 것
+
+- **호스트의 `.env` 를 읽지 못했다.** SMB(445)는 인증 거부, SSH/RDP/WinRM/Docker API 는 닫힘.
+  값을 옮기는 일은 사람이 한 번 해야 한다.
+- **비밀번호를 추측으로 맞히지 않았다.** 보유한 92조합 + 기계적 변형 17종이 전부 실패했고,
+  더 넓히는 것은 브루트포스이므로 하지 않는다.
+- **`pg_hba.conf` 를 trust 로 열지 않았다.** tailnet 전체에 무비밀번호 접근을 여는 것은 이
+  장애의 해결책이 아니라 다음 장애의 원인이다.
+
+### 18.8 로컬 접속 복구 뒤 재검증에서 드러난 것 (2026-11-28)
+
+11-28에 이 Mac의 `.env`를 갱신해 접속이 복구됐고(`set_db_password.py`, 저장 전 SCRAM 검증),
+`current_user=bega_prod_user` · `current_database()=bega_prod` · game 26,525건이 확인됐다.
+그 상태에서 돌린 게이트는 **호스트 11-23 결과와 달랐다**:
+
+| 게이트 | 11-23 호스트 | 11-28 로컬 |
+| --- | --- | --- |
+| `rag_chunks` 총계 | 380,477 | **380,356** |
+| `audit_rag_index` | `consistent true` | **exit 1** — `missing_search_indexes` |
+| `audit_rag_coverage` | `missing 0` | **exit 1** — `missing 3` (2026 KS) |
+
+원인은 **11-26 18:33 UTC의 PostgreSQL 재시작·재구성**이다(`pg_postmaster_start_time()` 실측).
+`schema_migrations`에는 068·069가 11-01 `applied`로 남아 있지만, 카탈로그에는
+`vector_cosine_ops` 인덱스가 **하나도 없다** — HNSW(10-31)와 ivfflat(068)이 둘 다 사라졌다.
+이력 테이블만 보는 `apply_postgres_migrations --check`는 exit 0이고, 인덱스의 실체를 보는
+`audit_rag_index`만 실패한다. **이 둘은 서로를 대신할 수 없다.**
+
+`coverage missing 3`도 실제다: `20261106KTSS0` · `20261107KTSS0` · `20261108KTSS0`은
+`COMPLETED`에 점수까지 있는데 `source_table='games'` 청크가 0건이다.
+
+`census unsafe 8,956`은 11-23의 8,959와 같은 자리다. 이번에는 `existing_natural_target`
+가 **8,956으로 정확히 일치**했다 — 즉 "재키할 수 없음"이 아니라 **자연키 청크가 이미
+있음**이고, 실제 대기 대상은 `safe_rekey_candidates 51`건뿐이다.
+
+운영 교훈:
+
+- **마이그레이션 이력은 인덱스의 존재를 증명하지 않는다.** 재구성·복원 뒤에는
+  `apply_postgres_migrations --check`와 `audit_rag_index`를 **둘 다** 돌린다.
+- **ivfflat 빌드는 `maintenance_work_mem`을 요구한다.** 380K×1536차원·`lists=400`에서
+  기본 64MB는 `memory required is 120 MB`로 즉시 거부된다. 세션에 512MB를 준 뒤
+  `CREATE INDEX CONCURRENTLY`로 재생성한다(쓰기 차단 없음).
+- **`CONCURRENTLY` 실패는 무효 인덱스를 남긴다.** `IF NOT EXISTS`가 그 이름에 매칭해
+  다음 실행을 조용히 건너뛰므로, `pg_index.indisvalid`까지 확인해야 한다.
+
+#### 11-28 인덱스 재생성 시도와 중단
+
+`lists=400`·`maintenance_work_mem=512MB`로 `CREATE INDEX CONCURRENTLY`를 시도했고,
+약 10분 뒤 서버가 연결을 끊었다. 호스트 로그의 `server process exited with exit code 2`
+는 **backend 종료**였고 postmaster는 살아 있었다 — `pg_postmaster_start_time()`이 시도
+전후 모두 **2026-11-26 18:33 UTC**로 동일하다(전체 재부팅이 아니라 나머지 backend
+재초기화). 약 2분간 새 연결이 `database system is in recovery mode`로 거부됐다.
+같은 날 **11-27 17:34 UTC**에도 동일 패턴이 한 번 더 있었다(이번 시도와 무관한 상시
+불안정 신호).
+
+제약은 컨테이너가 아니라 **WSL VM 전체**다: `.wslconfig` `memory=3GB`·`processors=2`,
+`vmmemWSL` private bytes 3,117MB, 호스트 가용 물리메모리 639MB/6GB, E: 디스크 약 10MB/s.
+postgres 컨테이너自身는 307MB/2.84GB로 여유가 있어도 VM 상한이 먼저 걸린다.
+
+시도 후 남은 상태: `idx_rag_chunks_embedding_ivfflat` **416MB, `indisvalid=false`**.
+첫 시도(64MB 거부)가 만든 무효 인덱스는 스크립트가 DROP했고, 지금 것은 두 번째 시도가
+만든 것이다. **이 인덱스는 플래너가 쓰지 않고, `IF NOT EXISTS`만 속인다.**
+다시 만들기 전에 반드시 정리해야 하며, 메모리 여유가 생기기 전에는 재시도하지 않는다.
+
+**11-28 처리**: 운영자 승인으로 `DROP INDEX CONCURRENTLY`를 실행했다. 실행 전
+`indisvalid=false`와 `vector_cosine_ops` 정의를 가드로 확인했고, DROP 후 같은 이름의
+인덱스는 0개다. 데이터는 변경되지 않았다. **인덱스 자체는 여전히 없으므로
+`audit_rag_index`의 `missing_search_indexes` 실패는 그대로다** — 이것은 숨길 것이 아니라
+메모리 여유가 생길 때까지의 알려진 상태다.
+
+같은 날 누락된 KS 3경기도 재인덱싱했다. 먼저 `--dry-run`으로 정확히 3청크임을 확인하고
+(임베딩 API 200, `write_enabled=False`), 그 뒤 쓰기 가드
+(`RAG_TARGET_ENV=production` + `RAG_INDEX_ALLOW_WRITE=1` +
+`RAG_INDEX_ALLOW_PRODUCTION_WRITE=1`)로 실행했다. 결과:
+
+- `rag_chunks` **380,356 → 380,359** (`primary = vector` 유지)
+- `audit_rag_coverage --require-recent 2` **exit 0, `missing 0`, `gaps []`**
+- `audit_rag_index` **exit 1** — 유일한 사유는 `missing_search_indexes`;
+  `damage 0`, `incomplete 5,708`은 그대로
+
+즉 **데이터 갭은 닫혔고, 남은 것은 물리 인덱스 하나다.** 인덱스가 없는 동안 dense
+검색은 exact scan으로 동작하므로 정확도는 유지되지만 지연이 크게 늘어난다. 메모리
+여유가 생기면 `lists`를 낮춘 소규모 ivfflat을 유지보수 창에 감시를 붙여 시도한다.

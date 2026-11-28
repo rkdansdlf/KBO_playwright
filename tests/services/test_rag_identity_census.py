@@ -10,12 +10,14 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.services.rag_identity_census import (
+    R2_SOURCE_TABLES,
     IdentityCensusReport,
     SourceIdentityRecord,
     ExistingIdentityRow,
     IdentityCensusEntry,
     SourceIdentitySummary,
     _is_legacy_numeric_id,
+    _legacy_numeric_value,
     _target_disposition,
     build_identity_census,
     validate_source_tables,
@@ -52,6 +54,28 @@ class TestIsLegacyNumericId:
         assert not _is_legacy_numeric_id("abc")
         assert not _is_legacy_numeric_id("2025_2001_KIA_REGULAR")
         assert not _is_legacy_numeric_id("20260401OBHT0")
+
+    def test_the_id_prefix_the_older_loader_wrote_is_legacy(self) -> None:
+        """``id=8207`` and ``8207`` name the same row, and only one was recognized.
+
+        The live index holds 78,640 ``id=N`` keys and 7,095 bare ones. Accepting
+        only the bare form made the census report zero re-key candidates for
+        sources whose legacy chunks are all prefixed.
+        """
+        assert _is_legacy_numeric_id("id=8207")
+        assert _is_legacy_numeric_id("id=1")
+        assert _legacy_numeric_value("id=8207") == "8207"
+        assert _legacy_numeric_value("8207") == "8207"
+
+    def test_a_split_key_is_not_legacy(self) -> None:
+        """A ``#part`` key names a piece of a row; re-keying it would collide."""
+        assert not _is_legacy_numeric_id("id=1096#part1")
+        assert _legacy_numeric_value("id=1096#part1") is None
+
+    def test_a_prefixed_non_id_key_is_not_legacy(self) -> None:
+        """Stripping the prefix must not turn arbitrary text into an identity."""
+        assert not _is_legacy_numeric_id("id=abc")
+        assert not _is_legacy_numeric_id("id=")
 
 
 class TestTargetDisposition:
@@ -313,6 +337,63 @@ class TestIterSourceIdentityRecords:
         mock_session = Mock()
         with pytest.raises(ValueError, match="unsupported R2 source table"):
             list(iter_source_identity_records(mock_session, "invalid_table"))
+
+    def test_the_season_aggregates_are_declared_sources(self) -> None:
+        """2,900 legacy season-aggregate rows are only re-keyable if the census knows them.
+
+        Every source in ``R2_SOURCE_TABLES`` needs a matching entry in
+        ``iter_source_identity_records``; a source listed without one raises
+        ``ValueError`` instead of re-keying, so the two lists are checked
+        together rather than trusting that they were edited in step.
+        """
+        assert "player_season_batting" in R2_SOURCE_TABLES
+        assert "player_season_pitching" in R2_SOURCE_TABLES
+        assert validate_source_tables(["player_season_batting", "player_season_pitching"]) == (
+            "player_season_batting",
+            "player_season_pitching",
+        )
+
+    def test_movement_identities_use_the_canonical_club_code(self) -> None:
+        """The census must compute the key the builder writes, or the re-key misses.
+
+        ``player_movements.team_code`` holds Korean names and era codes, so reading
+        that column here would produce identities the index does not contain --
+        measured 2026-11-05, 3,479 of 6,401 movement chunks were keyed that way.
+        """
+        from datetime import date
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        from src.models.player import PlayerMovement
+
+        engine = create_engine("sqlite://")
+        PlayerMovement.__table__.create(engine)
+        with Session(engine) as session:
+            session.add(
+                PlayerMovement(
+                    movement_date=date(2024, 7, 18),
+                    section="부상자 명단",
+                    team_code="기아",
+                    canonical_team_id="KIA",
+                    player_name="이우성(외야수)",
+                ),
+            )
+            session.commit()
+
+            records = list(iter_source_identity_records(session, "player_movements"))
+
+        assert len(records) == 1
+        assert "_KIA_" in records[0].natural_source_row_id
+        assert "기아" not in records[0].natural_source_row_id
+
+    def test_the_season_aggregate_builders_are_registered(self) -> None:
+        """A declared source with no builder raises on the first row request."""
+        mock_session = Mock()
+        mock_session.execute.side_effect = AssertionError("builder reached the database")
+        for source in ("player_season_batting", "player_season_pitching"):
+            with pytest.raises(AssertionError, match="builder reached the database"):
+                list(iter_source_identity_records(mock_session, source))
 
 
 class TestReportSerialization:

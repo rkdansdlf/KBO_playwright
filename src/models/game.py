@@ -195,7 +195,7 @@ class GameBattingStat(Base, TimestampMixin):
 
     __tablename__ = "game_batting_stats"
     __table_args__ = (
-        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_batting_player"),
+        UniqueConstraint("game_id", "player_id", name="uq_game_batting_player"),
         Index("idx_gbs_player_id", "player_id"),
     )
 
@@ -246,7 +246,7 @@ class GamePitchingStat(Base, TimestampMixin):
 
     __tablename__ = "game_pitching_stats"
     __table_args__ = (
-        UniqueConstraint("game_id", "player_id", "appearance_seq", name="uq_game_pitching_player"),
+        UniqueConstraint("game_id", "player_id", name="uq_game_pitching_player"),
         Index("idx_gps_player_id", "player_id"),
     )
 

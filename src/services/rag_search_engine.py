@@ -268,6 +268,12 @@ class RagSearchEngine:
         for ts_query in ts_queries:
             stmt = (
                 select(RagChunk)
+                # 1536차원 벡터는 행당 6KB다. 후보 1,000행이면 6MB를 원격에서
+                # 끌어오고, 그 전송이 후보 조회 자체보다 오래 걸린다(실측:
+                # 전체 엔티티 2.2~3.4초 vs embedding 지연 0.2~0.3초). 스코어링은
+                # title/content/meta만 읽으므로 embedding을 지연시킨다 —
+                # `_oracle_candidates`가 같은 이유로 이미 그렇게 한다.
+                .options(defer(RagChunk.embedding))
                 .where(search_vector.op("@@")(ts_query))
                 .where(
                     or_(
@@ -299,7 +305,7 @@ class RagSearchEngine:
             )
             for keyword in keywords
         ]
-        stmt = select(RagChunk).where(or_(*conditions))
+        stmt = select(RagChunk).options(defer(RagChunk.embedding)).where(or_(*conditions))
         if filters and filters.get("source_table"):
             stmt = stmt.where(RagChunk.source_table == filters["source_table"])
         if candidate_limit is not None:
@@ -330,8 +336,21 @@ class RagSearchEngine:
 
     @staticmethod
     def _matches_category(chunk: RagChunk, category: str) -> bool:
-        """Match the public category against legacy and indexed document labels."""
-        actual = (chunk.meta or {}).get("category") or (chunk.meta or {}).get("document_type")
+        """Match the requested category against the indexed column and the legacy label.
+
+        The column and ``meta`` disagree on this table: ``meta.category`` holds a
+        document's own grouping (``kbo_knowledge``, ``rulebook``, ``game_rules``)
+        while the ``document_type`` column holds the chunk kind
+        (``markdown_doc``). Reading only ``meta`` — with ``category`` first —
+        rejected every chunk that carried one, so a ``document_type`` filter
+        matched almost nothing. Measured on the golden set: 9 of the 20 filtered
+        queries found no answer, three of them recover with this change
+        (Recall@5 0.700 → 0.800, MRR 0.611 → 0.684, p50 628 ms → 192 ms) and no
+        query regressed.
+
+        Accepting either label keeps the column backfill (78% of rows) effective
+        without dropping chunks that only carry the metadata label.
+        """
         aliases = {
             "press_release": {"press_release", "notice"},
             "milestone": {"milestone", "player_milestone"},
@@ -339,7 +358,10 @@ class RagSearchEngine:
             "player_splits": {"player_splits", "split", "player_split"},
             "stadium_facility": {"stadium_facility", "stadium_food", "stadium_ticket"},
         }
-        return actual in aliases.get(category, {category})
+        accepted = aliases.get(category, {category})
+        meta = chunk.meta or {}
+        meta_label = meta.get("category") or meta.get("document_type")
+        return chunk.document_type in accepted or meta_label in accepted
 
     @staticmethod
     def _source_key(source_table: str, source_row_id: str) -> str:

@@ -121,11 +121,20 @@ def _existing_keys(session: Session, keys: Sequence[str]) -> set[str]:
 
 
 def _lookup_rows(session: Session, table: str, row_ids: Sequence[str]) -> Sequence[str]:
-    """Return which ``row_ids`` the store holds for one source table."""
+    """Return which ``row_ids`` the store can still retrieve for one source table.
+
+    ``index_status`` is part of the question, not a detail: a chunk that was
+    re-keyed or purged is still a row, but search never returns it, so a golden set
+    pointing at it is broken in exactly the way this check exists to reveal.
+    Measured 2026-11-05: the movement cleanup deleted 7,227 rows and the coverage
+    check stayed green while one of them was a golden-set answer -- recall fell and
+    nothing said why.
+    """
     placeholders = ", ".join(f":row_{i}" for i in range(len(row_ids)))
-    # Only the generated ":row_N" bind names are interpolated; every value stays bound.
     statement = text(
-        f"SELECT source_row_id FROM rag_chunks WHERE source_table = :table AND source_row_id IN ({placeholders})"  # noqa: S608
+        # Only the generated ":row_N" bind names are interpolated; every value stays bound.
+        f"SELECT source_row_id FROM rag_chunks WHERE source_table = :table "  # noqa: S608
+        f"AND index_status = 'ACTIVE' AND source_row_id IN ({placeholders})"
     )
     params = {"table": table, **{f"row_{i}": value for i, value in enumerate(row_ids)}}
     return session.execute(statement, params).scalars().all()

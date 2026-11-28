@@ -414,3 +414,14 @@ def test_surrogate_filter_maps_when_target_name_matches():
         assert resolver._filter_surrogate_ids({101, 99999}, "동일선수") == {50101, 99999}
     finally:
         session.close()
+
+
+def test_resolve_kiwoom_lee_juhyung_by_position():
+    session = _build_resolver_session()
+    try:
+        resolver = PlayerIdResolver(session)
+        assert resolver.resolve_id("이주형", "KH", 2025, position="중") == 50167
+        assert resolver.resolve_id("이주형", "KH", 2025, position="지") == 51302
+        assert resolver.resolve_id("이주형", "KH", 2025, uniform_no="2") == 50167
+    finally:
+        session.close()

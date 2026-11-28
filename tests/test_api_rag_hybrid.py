@@ -38,6 +38,7 @@ def test_hybrid_search_keeps_source_metadata() -> None:
     with (
         patch("src.api.routers.rag.get_db_session") as get_db,
         patch("src.api.routers.rag.HybridRetriever.retrieve", return_value=[_result()]),
+        patch("src.api.routers.rag._get_answer_service", return_value=None),
     ):
         get_db.return_value.__enter__.return_value = MagicMock()
         response = client.post(
@@ -57,6 +58,7 @@ def test_rag_ask_uses_hybrid_results_and_structured_sources() -> None:
     with (
         patch("src.api.routers.rag.get_db_session") as get_db,
         patch("src.api.routers.rag.HybridRetriever.retrieve", return_value=[_result()]),
+        patch("src.api.routers.rag._get_answer_service", return_value=None),
     ):
         get_db.return_value.__enter__.return_value = MagicMock()
         response = client.post(
@@ -100,6 +102,7 @@ def test_rag_ask_routes_stat_question_to_structured_retrieval() -> None:
         patch("src.api.routers.rag.get_db_session") as get_db,
         patch("src.api.routers.rag.QueryRouter.plan", return_value=plan),
         patch("src.api.routers.rag.StructuredRetriever.retrieve", return_value=[structured]),
+        patch("src.api.routers.rag._get_answer_service", return_value=None),
     ):
         get_db.return_value.__enter__.return_value = MagicMock()
         response = client.post(
@@ -114,3 +117,64 @@ def test_rag_ask_routes_stat_question_to_structured_retrieval() -> None:
     assert data["retrieval"]["mode"] == "structured"
     assert data["chunks"][0]["category"] == "structured_stat"
     assert data["chunks"][0]["provenance"]["type"] == "structured_db"
+
+
+class _StubAnswerService:
+    """Stands in for the chat model so the endpoint contract stays off the wire."""
+
+    def __init__(self, answer: str = "2004년 MVP는 배영수입니다.", llm_used: bool = True) -> None:
+        self._answer = answer
+        self._llm_used = llm_used
+
+    def answer(self, query: str, chunks: list) -> object:
+        from src.services.rag_answer_service import RagAnswer
+
+        return RagAnswer(
+            answer=self._answer,
+            sources=[],
+            llm_used=self._llm_used,
+            fallback_reason=None if self._llm_used else "no_api_key",
+        )
+
+
+def test_rag_ask_returns_the_generated_answer_not_a_listing() -> None:
+    """The endpoint answers; it does not hand back a ranked list with bold text."""
+    with (
+        patch("src.api.routers.rag.get_db_session") as get_db,
+        patch("src.api.routers.rag.HybridRetriever.retrieve", return_value=[_result()]),
+        patch("src.api.routers.rag._get_answer_service", return_value=_StubAnswerService()),
+    ):
+        get_db.return_value.__enter__.return_value = MagicMock()
+        response = client.post(
+            "/api/v1/rag/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "2004년 MVP", "top_k": 1},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "2004년 MVP는 배영수입니다."
+    # Retrieval metadata is unchanged by having an answer layer.
+    assert data["chunk_count"] == 1
+    assert data["sources"][0]["source_url"] == "https://example.com/notice/100"
+
+
+def test_rag_ask_says_it_cannot_tell_when_nothing_was_retrieved() -> None:
+    with (
+        patch("src.api.routers.rag.get_db_session") as get_db,
+        patch("src.api.routers.rag.HybridRetriever.retrieve", return_value=[]),
+        patch(
+            "src.api.routers.rag._get_answer_service",
+            return_value=_StubAnswerService(answer="제공된 기록에서 확인할 수 없습니다.", llm_used=False),
+        ),
+    ):
+        get_db.return_value.__enter__.return_value = MagicMock()
+        response = client.post(
+            "/api/v1/rag/ask",
+            headers=AUTH_HEADERS,
+            json={"query": "2005년 5월 3일 경기 점수", "top_k": 3},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "제공된 기록에서 확인할 수 없습니다."
+    assert response.json()["chunk_count"] == 0

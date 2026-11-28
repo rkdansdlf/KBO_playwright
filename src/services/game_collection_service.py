@@ -9,10 +9,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sqlalchemy import or_
+from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.constants import DATE_STR_LEN
+from src.constants import DATE_STR_LEN, FINAL_PBP_MARKER
 from src.crawlers.failure_taxonomy import FailureCode, classify_persist_failure, stage_for_code
 from src.crawlers.game_detail_outcome import (
     PARTIAL_DETAIL_REASON,
@@ -25,6 +25,7 @@ from src.crawlers.game_detail_outcome import (
 )
 from src.crawlers.relay_outcome import RelayAttempt, RelayStatus
 from src.db.engine import SessionLocal
+from src.models.crawl_dead_letter import SETTLED_DLQ_STATUSES, CrawlDeadLetter
 from src.models.game import Game, GameBattingStat, GameEvent, GamePitchingStat, GamePlayByPlay
 from src.monitoring.crawler_metrics import (
     LEDGER_OPERATION_FINALIZE,
@@ -69,6 +70,11 @@ GAME_SAVE_EXCEPTIONS = (SQLAlchemyError, TimeoutError, OSError, RuntimeError, Va
 LAST_MONTH_OF_YEAR = 12
 #: 경기가 열리지 않아 상세(boxscore)가 존재할 수 없는 상태. 범위 조회의 크롤 대상에서
 #: 빼지 않으면 크롤이 FETCH_HTTP_ERROR 로 실패해 DLQ 에 pending 으로 쌓인다(2026-10-19).
+#:
+#: 예외가 하나 있다: 릴레이가 종료 마커를 쓴 경기는 상태가 CANCELLED 라도 경기가 실제로
+#: 치러졌다는 뜻이므로 제외하지 않는다. 그렇지 않으면 20261026HTSS0 처럼 잘못 취소된 경기가
+#: 다시는 수집되지 않는다 -- 상세를 못 받아서 취소로 남고, 취소라서 다시 시도하지 않는
+#: 순환이 된다. 그 경기는 릴레이 582행과 9회 종료 마커를 갖고 있었다.
 DETAIL_IMPOSSIBLE_STATUSES = (GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED)
 ROW_FIELD_COUNT = 2
 
@@ -284,6 +290,129 @@ def build_game_id_range(year: int, month: int | None) -> tuple[str, str]:
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
+def _settled_dead_letter_exists() -> object:
+    """Return the correlated ``EXISTS`` identifying a game whose letter is settled.
+
+    A dead letter that reached ``exhausted`` or ``ignored`` is the record of an
+    answered question: the source could not supply this game. Selecting it again
+    re-spends the retry budget and refills the queue -- on 2026-10-30 the four 2024
+    Premier12 games that had been settled the day before were back in ``exhausted``
+    with five more attempts each, because the repair path filtered on this tuple and
+    the collection path did not. ``requeue`` is the way back in: it returns a letter
+    to ``pending``, which this does not match.
+
+    Returns:
+        A SQLAlchemy ``EXISTS`` correlated with the enclosing ``game`` row.
+
+    """
+    return exists().where(
+        CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
+        CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
+        or_(
+            CrawlDeadLetter.game_id == Game.game_id,
+            CrawlDeadLetter.target_id == Game.game_id,
+        ),
+        CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+    )
+
+
+def settled_game_ids(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the subset of ``game_ids`` whose game_detail dead letter is settled.
+
+    The same rule as :func:`_settled_dead_letter_exists`, for callers that already
+    hold a list of ids rather than a query over ``game``. The detail-recovery queue
+    is one of those: it is a file and knows nothing about dead letters, so a game an
+    operator settled on one day was re-queued on the next -- measured 2026-11-02,
+    ``20241110PRUS0`` and four others came back for another five attempts each while
+    their ``ignored`` rows sat in ``crawl_dead_letters``. The queue is right not to
+    read this table; the caller that drains it is the right place for the rule.
+
+    Args:
+        session: Session the dead letters are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids whose letter is ``exhausted`` or ``ignored``.
+
+    """
+    wanted = {gid for gid in game_ids if gid}
+    if not wanted:
+        return set()
+    rows = session.execute(
+        select(CrawlDeadLetter.game_id, CrawlDeadLetter.target_id)
+        .where(
+            CrawlDeadLetter.target_type == GAME_DETAIL_TARGET_TYPE,
+            CrawlDeadLetter.crawler == GAME_DETAIL_CRAWLER_NAME,
+            CrawlDeadLetter.status.in_(SETTLED_DLQ_STATUSES),
+            or_(
+                CrawlDeadLetter.game_id.in_(list(wanted)),
+                CrawlDeadLetter.target_id.in_(list(wanted)),
+            ),
+        )
+        .distinct(),
+    ).all()
+    return {gid for row in rows for gid in row if gid in wanted}
+
+
+def relay_finished_game_ids(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the subset of ``game_ids`` whose relay reached its closing marker.
+
+    The companion to :func:`settled_game_ids` for callers that apply the collection
+    path's ``or_(~settled_dead_letter, finished_relay)`` rule to a list of ids rather
+    than an ``EXISTS`` over ``game``. A settled letter says an earlier attempt gave
+    up; a finished relay says the game happened anyway and its data is still wanted,
+    and the relay outranks the giving-up (``20261026HTSS0``).
+
+    Args:
+        session: Session the play-by-play rows are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids with a play-by-play row carrying the closing marker.
+
+    """
+    wanted = {gid for gid in game_ids if gid}
+    if not wanted:
+        return set()
+    rows = session.execute(
+        select(GamePlayByPlay.game_id)
+        .where(
+            GamePlayByPlay.game_id.in_(list(wanted)),
+            GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+        )
+        .distinct(),
+    ).all()
+    return {row[0] for row in rows if row[0] in wanted}
+
+
+def settled_unless_relay_finished(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the ids whose game_detail letter is settled and whose relay has not finished.
+
+    This is the exclusion an automatic pass applies: a settled letter is the record
+    of an answered question -- the source could not supply this game -- and asking
+    again spends the retry budget and writes another letter. The collection loader
+    writes the same rule as ``or_(~settled_dead_letter, finished_relay)``; this is
+    for callers that already hold a list of ids (the healer's anomaly sets, the
+    post-crawl audit's heal targets).
+
+    ``requeue`` remains the way back in -- it returns a letter to ``pending``, which
+    this does not match -- and a finished relay keeps the game in front of the
+    caller even though an earlier attempt gave up.
+
+    Args:
+        session: Session the dead letters and play-by-play rows are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids to leave out: settled and without a finished relay.
+
+    """
+    settled = settled_game_ids(session, game_ids)
+    if not settled:
+        return set()
+    return settled - relay_finished_game_ids(session, settled)
+
+
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
     """Load game targets from db.
 
@@ -300,6 +429,15 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
 
     """
     start_id, end_id = build_game_id_range(year, month)
+    # A relay that reached its closing marker outranks the status column: the feed
+    # saw the game end. Asking the status alone is what made a wrongly cancelled
+    # game unrecoverable -- the reason it was cancelled is that its detail never
+    # arrived, and the exclusion then guaranteed it never would.
+    finished_relay = exists().where(
+        GamePlayByPlay.game_id == Game.game_id,
+        GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+    )
+    settled_dead_letter = _settled_dead_letter_exists()
 
     with SessionLocal() as session:
         rows = (
@@ -310,7 +448,13 @@ def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameC
                 or_(
                     Game.game_status.is_(None),
                     Game.game_status.notin_(DETAIL_IMPOSSIBLE_STATUSES),
+                    finished_relay,
                 ),
+                # The relay exception outranks the dead letter for the same reason it
+                # outranks the status: a feed that ran to its closing marker says the
+                # game happened and its boxscore is still wanted, whether or not an
+                # earlier attempt gave up on it (``20261026HTSS0``).
+                or_(~settled_dead_letter, finished_relay),
             )
             .order_by(Game.game_id.asc())
             .all()

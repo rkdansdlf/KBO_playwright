@@ -92,10 +92,57 @@ def stable_player_movement_source_row_id(
     player_name: str,
     section: str,
 ) -> str:
-    """Build a natural key from the player movement source unique tuple."""
+    """Build a natural key from the player movement source unique tuple.
+
+    ``team_code`` must be the **canonical** club code (``player_movements.canonical_team_id``),
+    not the raw ``team_code`` column. That column holds Korean names (``롯데``, ``삼성``) and
+    era codes (``HT``, ``SK``) as well, so reading it directly spread one fact across three
+    spellings of the same key -- measured 2026-11-05, the 6,401 movement chunks used 2,922
+    canonical keys, 2,724 Korean-name keys and 755 era-code keys, and 1,504 of them were the
+    same movement stored twice. Callers that read the raw column should pass
+    ``canonical_team_id or team_code``.
+    """
     parts = tuple(_identity_part(value) for value in (movement_date, team_code, player_name, section))
     readable = "_".join(parts)
     return f"{readable}_{_identity_digest(parts)[:16]}"
+
+
+def _player_season_source_row_id(
+    player_id: int | str,
+    season: int,
+    team_code: str | None,
+    league: str | None,
+) -> str:
+    """Compose a season-aggregate key exactly as the generator always has.
+
+    This deliberately does **not** normalise its parts through ``_identity_part``
+    the way the other ``stable_*`` helpers do. The key has been written by
+    ``build_rag_index`` as an inline expression all along, and a re-key only
+    works when the census recomputes it byte for byte — normalising here would
+    move every key rather than swap the legacy ones. ``team_code or 'NA'`` and
+    ``league or 'UNKNOWN'`` are part of that formula, empty string included.
+    """
+    return f"{player_id}_{season}_{team_code or 'NA'}_{league or 'UNKNOWN'}"
+
+
+def stable_player_season_batting_source_row_id(
+    player_id: int | str,
+    season: int,
+    team_code: str | None,
+    league: str | None,
+) -> str:
+    """Build the natural key for one player-season batting chunk (``level='KBO1'``)."""
+    return _player_season_source_row_id(player_id, season, team_code, league)
+
+
+def stable_player_season_pitching_source_row_id(
+    player_id: int | str,
+    season: int,
+    team_code: str | None,
+    league: str | None,
+) -> str:
+    """Build the natural key for one player-season pitching chunk (``level='KBO1'``)."""
+    return _player_season_source_row_id(player_id, season, team_code, league)
 
 
 @dataclass(frozen=True, slots=True)

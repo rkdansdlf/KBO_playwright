@@ -215,3 +215,186 @@ class TestSaveToDb:
 
         mock_session.rollback.assert_called_once()
         assert crawler._raw_pages == []
+
+
+class TestTheSnapshotCarriesTheParserOutcome:
+    """``parsed_records`` has to be written where the drift check reads it.
+
+    ``snapshot_drift_check`` re-parses a stored artifact and compares the record count
+    against ``capture_metadata["parsed_records"]``. Without that number the row is
+    reported as ``unknown_baseline`` and the drift is never measured -- measured
+    2026-11-01: **0 of the most recent 100 snapshots had one**, and 76 of those 100
+    came from this crawler. The check was asking a question no row could answer.
+
+    The count belongs to the page it came from, so it is written onto that page's
+    snapshot dict rather than once at the end: a two-page sweep has two artifacts
+    with two different counts.
+    """
+
+    def _config(self) -> dict:
+        return {"url": "https://lg.com/page={page}", "link_prefix": "https://lg.com"}
+
+    @mark.asyncio
+    async def test_the_count_lands_on_the_page_it_came_from(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events") as mock_parse,
+        ):
+            mock_parse.side_effect = [
+                [{"team_id": "LG", "title": "A", "source_url": "https://lg.com/1"}],
+                [
+                    {"team_id": "LG", "title": "B", "source_url": "https://lg.com/2"},
+                    {"team_id": "LG", "title": "C", "source_url": "https://lg.com/3"},
+                ],
+                [],
+            ]
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html><div>event</div></html>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        counts = [page["capture_metadata"]["parsed_records"] for page in pages]
+        # Three pages were fetched: two carried events and the third parsed to an
+        # empty list, which is a real count (0) rather than a missing one -- the
+        # sweep ends after it, but the artifact was captured and its parse happened.
+        assert counts == [1, 2, 0]
+
+    @mark.asyncio
+    async def test_every_captured_page_gets_one(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events") as mock_parse,
+        ):
+            mock_parse.return_value = []
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert pages, "the page was captured"
+        assert all("capture_metadata" in page for page in pages)
+
+    @mark.asyncio
+    async def test_a_parse_that_raises_records_no_count(self, crawler):
+        """Absence is the honest record: there was no count to compare against."""
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", side_effect=ValueError("bad html")),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            with pytest.raises(ValueError, match="bad html"):
+                await crawler._crawl_team("LG", self._config())
+
+        assert pages, "the artifact itself is still captured"
+        assert "capture_metadata" not in pages[-1]
+
+    @mark.asyncio
+    async def test_a_failed_page_records_nothing(self, crawler):
+        """A page that never arrived has no artifact to attach a baseline to."""
+        pages: list[dict] = []
+        with patch.object(crawler, "_raw_pages", pages):
+            crawler._fetch_page = AsyncMock(
+                return_value=_failure(CrawlOutcome.RETRYABLE_ERROR, "fetch_http_error", 503)
+            )
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert crawler._raw_pages == []
+
+
+class TestTheScheduleTableWaitSignature:
+    """``Page.wait_for_function`` takes the script argument as a keyword in this
+    Playwright version, and passing it positionally raises ``TypeError`` — which
+    ``SCHEDULE_CRAWLER_EXCEPTIONS`` swallows and turns into
+    ``return False, "schedule_empty"``. The KBO schedule fallback therefore could
+    never pass its month check: every run logged "[WARN] Schedule table wait
+    failed" and came back empty, which is how the November 2026 Korean-Series
+    schedule was never captured while the Naver api-gw outage was running.
+    """
+
+    def test_the_month_reaches_the_script_as_a_keyword_argument(self) -> None:
+        from src.crawlers.schedule_crawler import ScheduleCrawler
+
+        recorded: dict[str, object] = {}
+
+        class _FakePage:
+            async def wait_for_selector(self, selector: str, *, timeout: int) -> bool:
+                return True
+
+            async def wait_for_function(self, expression: str, **kwargs: object) -> None:
+                recorded["expression"] = expression
+                recorded["kwargs"] = kwargs
+
+        crawler = ScheduleCrawler()
+        import asyncio
+
+        ok, reason = asyncio.run(crawler._wait_for_schedule_table(_FakePage(), expected_month=11))
+
+        assert (ok, reason) == (True, "ok")
+        assert recorded["kwargs"].get("arg") == "11"
+        assert "timeout" in recorded["kwargs"]
+
+
+class TestTheParseWindowTravelsWithTheCount:
+    """The conditions a count was produced under have to be stored beside it.
+
+    The drift check re-parses weeks later. Without the window the parser falls back
+    to ``datetime.now(KST)`` and the parser's own ``CUTOFF_DAYS`` default (60) — the
+    crawler uses ``days_back`` (30) — so a page whose events are all older than 30
+    days re-parses as a different count and the gate calls the calendar drift.
+    """
+
+    def _config(self) -> dict:
+        return {"url": "https://lg.com/page={page}", "link_prefix": "https://lg.com"}
+
+    @mark.asyncio
+    async def test_the_cutoff_days_are_recorded(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", return_value=[]),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert pages[0]["capture_metadata"]["cutoff_days"] == crawler.days_back
+
+    @mark.asyncio
+    async def test_the_fetch_time_is_recorded(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", return_value=[]),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        fetched = pages[0]["capture_metadata"]["fetched_at"]
+        assert isinstance(fetched, str) and fetched, "the window's anchor is a timestamp, not a flag"
+
+    @mark.asyncio
+    async def test_the_stored_time_is_the_one_the_parser_was_given(self, crawler):
+        """A different timestamp on the row than in the parse would anchor nothing."""
+        pages: list[dict] = []
+        seen: list[dict] = []
+
+        def _capture(html, source_key, metadata):
+            seen.append(dict(metadata))
+            return []
+
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", side_effect=_capture),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert pages[0]["capture_metadata"]["fetched_at"] == seen[0]["fetched_at"]
+        assert pages[0]["capture_metadata"]["cutoff_days"] == seen[0]["cutoff_days"], (
+            "the stored window must be the parsed window, not a second expression of it"
+        )

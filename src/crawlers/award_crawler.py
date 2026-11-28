@@ -485,7 +485,16 @@ class AwardCrawler:
         all_rows = table.find_all("tr")
         if not all_rows:
             return [], []
-        headers = [re.sub(r"\s+", " ", cell.get_text(strip=True)) for cell in all_rows[0].find_all(["th", "td"])]
+        # A header cell that spans columns labels every column it covers. The
+        # 골든글러브 table declares ``외야수`` and ``지명 타자`` with ``colspan=4``
+        # each while its rows carry twelve cells, so taking the header's *cell*
+        # count as the grid width truncated the row after the first outfielder --
+        # the third outfielder and the DH were dropped, and the second outfielder
+        # was labelled ``지명 타자`` because that header sat at index 8.
+        headers: list[str] = []
+        for cell in all_rows[0].find_all(["th", "td"]):
+            label = re.sub(r"\s+", " ", cell.get_text(strip=True))
+            headers.extend([label] * max(int(str(cell.get("colspan") or 1)), 1))
         header_cells = len(headers)
         if header_cells == 0:
             headers = [f"col{i}" for i in range(max(len(r.find_all(["th", "td"])) for r in all_rows[1:]))]
@@ -619,7 +628,11 @@ class AwardCrawler:
             year = _extract_year(row[0])
             if year is None:
                 continue
-            for col in range(1, min(len(row), len(headers))):
+            # ``_render_table`` pads and truncates every row to the grid width, so
+            # ``headers[col]`` is in range for the whole row. Reading the label by
+            # index is why the grid width cannot be a guess: a shorter row would
+            # raise here rather than silently pair a player with the wrong position.
+            for col in range(1, len(headers)):
                 cell_text = row[col]
                 if not cell_text or cell_text in ("-", "—"):
                     continue
@@ -740,6 +753,18 @@ class AwardCrawler:
     def _dedup(records: list[AwardRecord]) -> list[AwardRecord]:
         """Deduplicate by (year, award_type, category, player).
 
+        The category is compared with its spaces removed. The two sources spell
+        the same position differently -- Wikipedia writes 지명 타자 and yagoonara
+        writes 지명타자 -- and comparing the strings verbatim let the same winner
+        through twice, with a different team_name on each row (``KIA`` vs
+        ``KIA 타이거즈``), so the unique constraint did not catch it either. Measured
+        2026-11-04: four rows (2022 이대호, 2023 손아섭, 2024·2025 최형우).
+
+        Only spaces are folded here. The RAG matcher folds more (좌익수/중견수/
+        우익수 into 외야수) because the legacy chunks name only ``OF``, but this
+        table keeps 수비상's three outfield positions distinct -- collapsing them
+        at crawl time would destroy what the source says.
+
         Args:
             records: Raw records.
 
@@ -752,12 +777,53 @@ class AwardCrawler:
         for rec in records:
             if not rec.player_name:
                 continue
-            key = (rec.year, rec.award_type, rec.category, rec.player_name)
+            key = (
+                rec.year,
+                rec.award_type,
+                rec.category.replace(" ", "") if rec.category else rec.category,
+                rec.player_name,
+            )
             if key in seen:
                 continue
             seen.add(key)
             deduped.append(rec)
-        return deduped
+        return AwardCrawler._prefer_the_record_with_a_category(deduped)
+
+    @staticmethod
+    def _prefer_the_record_with_a_category(records: list[AwardRecord]) -> list[AwardRecord]:
+        """Drop a category-less record when another source names the category.
+
+        yagoonara does not carry a position for the MVP and 신인상 tables, so its
+        rows enter as ``category=None`` and the key in :meth:`_dedup` cannot see that
+        Wikipedia already recorded the same winner with a position: measured
+        2026-11-04, five rows (2022 이정후·정철원, 2023 문동주, 2024 김도영·김택연)
+        would otherwise be stored twice, once with ``외야수``/``투수``/``3루수`` and
+        once without.
+
+        The first record survives when neither side names a category, so source
+        order still decides -- Wikipedia is read first and carries the fuller name.
+        That order does not fix the name spellings the two sources disagree on
+        (``에릭 페디`` vs ``페디``); those stay two rows and are recorded as a known
+        limit rather than guessed at here.
+
+        Args:
+            records: Records already deduplicated by category.
+
+        Returns:
+            The records, without the category-less duplicates.
+
+        """
+        with_category = {(r.year, r.award_type, r.player_name) for r in records if r.category is not None}
+        seen_category_less: set[tuple[int, str, str]] = set()
+        kept: list[AwardRecord] = []
+        for rec in records:
+            key = (rec.year, rec.award_type, rec.player_name)
+            if rec.category is None:
+                if key in with_category or key in seen_category_less:
+                    continue
+                seen_category_less.add(key)
+            kept.append(rec)
+        return kept
 
     async def save(self, records: list[AwardRecord], *, raise_on_error: bool = False) -> tuple[int, int]:
         """Persist new award records (unique: year+type+player).

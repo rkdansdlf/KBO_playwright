@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
+from src.crawlers.run_origin import current_run_origin
 from src.models.crawl_execution import (
     RUN_STATUS_FAILED,
     RUN_STATUS_PARTIAL,
@@ -94,9 +95,11 @@ class CrawlRunSpec:
     snapshot_id: int | None = None
     evidence_id: int | None = None
     run_id: str | None = None
-    #: Which subsystem started this run, from :class:`CrawlRunOrigin`. Left
-    #: ``None`` when the caller does not identify itself, which is honest for a
-    #: row that predates this field and for a caller nobody classified yet.
+    #: Which subsystem started this run, from :class:`CrawlRunOrigin`. An
+    #: explicit value beats the ambient claim (:func:`use_run_origin`) and is
+    #: what the replay paths set; ``None`` still means nobody identified itself,
+    #: which is honest for a row that predates this field or a caller nobody
+    #: classified yet.
     origin: str | None = None
 
 
@@ -125,7 +128,11 @@ class CrawlExecutionRepository:
             replay_of_run_id=spec.replay_of_run_id,
             snapshot_id=spec.snapshot_id,
             evidence_id=spec.evidence_id,
-            origin=spec.origin,
+            # The spec's own value is the caller speaking for this run; the
+            # ambient claim is the entry point speaking for everything beneath
+            # it. Both are the caller identifying itself -- neither is a guess,
+            # which is why unclaimed rows still stay NULL.
+            origin=spec.origin or current_run_origin(),
         )
         self.session.add(run)
         self.session.flush()

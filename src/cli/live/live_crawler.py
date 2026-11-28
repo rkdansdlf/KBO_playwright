@@ -76,6 +76,7 @@ _ACTIVE_DETAIL_SNAPSHOT_LOCK = Lock()
 
 from src.crawlers.game_detail_crawler import GameDetailCrawler
 from src.crawlers.naver_relay_crawler import NaverRelayCrawler
+from src.crawlers.run_origin import CrawlRunOrigin, use_run_origin
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.db.engine import SessionLocal
 from src.notifications.standalone import send_notification
@@ -815,6 +816,18 @@ async def run_live_crawler_cycle(
         detail_snapshot_background: Detail Snapshot Background.
 
     """
+    with use_run_origin(CrawlRunOrigin.LIVE_CRAWLER):
+        return await _run_live_crawler_cycle(
+            max_active_games=max_active_games,
+            detail_snapshot_background=detail_snapshot_background,
+        )
+
+
+async def _run_live_crawler_cycle(
+    *,
+    max_active_games: int | None = None,
+    detail_snapshot_background: bool = False,
+) -> dict[str, Any]:
     seoul_tz = ZoneInfo("Asia/Seoul")
 
     now = datetime.now(seoul_tz)

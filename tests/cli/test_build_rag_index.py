@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.cli import build_rag_index
 from src.models.game import Game, GameLineup
+from src.models.player import PlayerMovement
 from src.models.rag_chunk import RagChunk
 from src.models.rankings import StatRanking
 from src.models.team import Team
@@ -1972,3 +1973,68 @@ def test_inning_score_chunk_keeps_the_existing_identity_and_shape() -> None:
     assert chunk["document_type"] == "game_line_score"
     assert chunk["meta"]["kind"] == "game_line_score"
     assert chunk["content"].startswith("경기 라인스코어\n경기: 20180313LGLT0\n경기일: 2018-03-13\n")
+
+
+class TestMovementKeysUseTheCanonicalClubCode:
+    """``player_movements.team_code`` holds Korean names and era codes as well.
+
+    Reading it directly spread one fact across three spellings of the same key.
+    Measured 2026-11-05: the 6,401 movement chunks used 2,922 canonical keys,
+    2,724 Korean-name keys (``롯데``) and 755 era-code keys (``HT``), and 1,504 of
+    them were the same movement stored twice.
+    """
+
+    def _session(self):
+        from sqlalchemy.orm import Session
+
+        engine = create_engine("sqlite://")
+        PlayerMovement.__table__.create(engine)
+        return Session(engine)
+
+    @staticmethod
+    def _movement(**overrides):
+        values = {
+            "movement_date": date(2024, 7, 18),
+            "section": "부상자 명단",
+            "team_code": "기아",
+            "player_name": "이우성(외야수)",
+        }
+        values.update(overrides)
+        return PlayerMovement(**values)
+
+    def test_the_key_reads_the_canonical_code_not_the_raw_one(self) -> None:
+        """The raw column can hold the Korean name; the key must not learn it."""
+        from src.cli.rag.build_rag_index import _iter_movement_chunks
+
+        session = self._session()
+        session.add(self._movement(canonical_team_id="KIA"))
+        session.commit()
+
+        chunk = next(iter(_iter_movement_chunks(session, None, None)))
+
+        assert "_KIA_" in chunk["source_row_id"]
+        assert "기아" not in chunk["source_row_id"]
+
+    def test_a_row_without_a_canonical_code_falls_back_to_the_raw_column(self) -> None:
+        from src.cli.rag.build_rag_index import _iter_movement_chunks
+
+        session = self._session()
+        session.add(self._movement(canonical_team_id=None))
+        session.commit()
+
+        chunk = next(iter(_iter_movement_chunks(session, None, None)))
+
+        assert "_기아_" in chunk["source_row_id"]
+
+    def test_two_spellings_of_one_club_produce_one_key(self) -> None:
+        """The era code and the Korean name must not be two identities."""
+        from src.cli.rag.build_rag_index import _iter_movement_chunks
+
+        session = self._session()
+        session.add(self._movement(canonical_team_id="KIA", team_code="기아"))
+        session.add(self._movement(canonical_team_id="KIA", team_code="HT"))
+        session.commit()
+
+        keys = {chunk["source_row_id"] for chunk in _iter_movement_chunks(session, None, None)}
+
+        assert len(keys) == 1

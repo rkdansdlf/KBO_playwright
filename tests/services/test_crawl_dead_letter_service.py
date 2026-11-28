@@ -95,6 +95,50 @@ class TestEnqueue:
         assert first.id == second.id
         assert session.query(CrawlDeadLetter).count() == 1
 
+    def test_settled_letter_is_not_replaced_by_a_new_failure(self, session: Session) -> None:
+        """A settled letter closes the question; a new run_id must not reopen it.
+
+        The uniqueness key includes ``original_run_id``, so without this rule a
+        source that keeps failing under fresh run ids refills the retry queue with
+        pending rows for a game already judged unrecoverable. Each new row spends
+        another retry budget and holds ``MAINTENANCE_LOCK`` for the full crawl
+        timeout, which is how a settled 2024 game kept stalling the nightly chain.
+        """
+        service = CrawlDeadLetterService(session)
+        first = service.enqueue(_spec())
+        service.repository.mark_exhausted(first, error_message="source absent")
+
+        second = service.enqueue(_spec(original_run_id="run-b"))
+
+        assert second.id == first.id
+        assert second.status == DlqStatus.EXHAUSTED.value
+        assert session.query(CrawlDeadLetter).count() == 1
+
+    def test_ignored_letter_is_not_replaced_by_a_new_failure(self, session: Session) -> None:
+        """An operator's ignored decision is as settled as an exhausted budget."""
+        service = CrawlDeadLetterService(session)
+        first = service.enqueue(_spec())
+        service.repository.mark_ignored(first, reason="source does not publish this game")
+
+        second = service.enqueue(_spec(original_run_id="run-b"))
+
+        assert second.id == first.id
+        assert second.status == DlqStatus.IGNORED.value
+        assert session.query(CrawlDeadLetter).count() == 1
+
+    def test_requeue_is_the_only_way_back(self, session: Session) -> None:
+        """An explicit operator requeue makes the target eligible again."""
+        service = CrawlDeadLetterService(session)
+        first = service.enqueue(_spec())
+        service.repository.mark_exhausted(first, error_message="source absent")
+        service.requeue(first.dlq_id)
+
+        second = service.enqueue(_spec(original_run_id="run-b"))
+
+        assert second.id == first.id
+        assert second.status == DlqStatus.PENDING.value
+        assert session.query(CrawlDeadLetter).count() == 1
+
     def test_enqueue_failure_uses_self_managed_session(
         self,
         session_factory: sessionmaker,
