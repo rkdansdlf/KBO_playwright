@@ -1554,6 +1554,226 @@ def test_season_batting_chunk_uses_the_id_instead_of_a_sentinel_player_name() ->
     assert "ID:91523" in chunk["content"]
 
 
+def _pitching_chunks(rows: list[tuple[SimpleNamespace, SimpleNamespace | None]]) -> list[dict]:
+    """Run the season-pitching generator over in-memory rows instead of a live session."""
+
+    class _Query:
+        def all(self):
+            return []
+
+        def join(self, *args, **kwargs):
+            return self
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def limit(self, size):
+            return self
+
+        def yield_per(self, size):
+            return iter(rows)
+
+    class _Session:
+        def query(self, *models):
+            return _Query()
+
+    return list(build_rag_index._iter_pitching_chunks(_Session(), None, None))
+
+
+def test_season_batting_chunk_includes_sabermetrics_korean_team_and_postseason_league(monkeypatch) -> None:
+    """Natural-key batting chunks carry structured prose, sabermetrics, and rich metadata."""
+    monkeypatch.setattr(build_rag_index, "_team_name_map", lambda session: {"SS": "삼성 라이온즈"})
+    batting = SimpleNamespace(
+        player_id=95549,
+        season=2002,
+        team_code="SS",
+        league="KOREAN_SERIES",
+        level="KBO1",
+        games=6,
+        plate_appearances=28,
+        at_bats=24,
+        runs=4,
+        hits=11,
+        doubles=1,
+        triples=0,
+        home_runs=3,
+        rbi=10,
+        stolen_bases=0,
+        caught_stealing=0,
+        walks=3,
+        intentional_walks=0,
+        hbp=1,
+        strikeouts=2,
+        sacrifice_flies=0,
+        sacrifice_hits=0,
+        gdp=0,
+        avg=0.458,
+        obp=0.536,
+        slg=0.875,
+        ops=1.411,
+        iso=0.417,
+        babip=0.400,
+        extra_stats={"wrc_plus": 284.0, "ops_plus": 193.2, "war": 0.69},
+    )
+
+    chunk = _batting_chunks([(batting, SimpleNamespace(name="마해영"))])[0]
+
+    assert chunk["source_row_id"] == "95549_2002_SS_KOREAN_SERIES"
+    assert chunk["league_type_code"] == 5
+    assert "한국시리즈" in chunk["title"]
+    assert "[TL;DR]" in chunk["content"]
+    assert "[핵심 문장]" in chunk["content"]
+    assert "[상세]" in chunk["content"]
+    assert "삼성 라이온즈" in chunk["content"]
+    assert "타석(PA): 28" in chunk["content"]
+    assert "순수장타율(ISO): 0.417" in chunk["content"]
+    assert "인플레이 타구 타율(BABIP): 0.400" in chunk["content"]
+    assert "추정 득점(XR):" in chunk["content"]
+    assert "wRC+: 284.0" in chunk["content"]
+    assert "WAR: 0.69" in chunk["content"]
+    assert chunk["meta"]["avg"] == 0.458
+    assert chunk["meta"]["hr"] == 3
+    assert chunk["meta"]["rbi"] == 10
+    assert chunk["meta"]["ops"] == 1.411
+    assert chunk["meta"]["pa"] == 28
+    assert chunk["meta"]["iso"] == 0.417
+    assert chunk["meta"]["babip"] == 0.400
+    assert chunk["meta"]["xr"] > 0
+    assert chunk["meta"]["wrc_plus"] == 284.0
+    assert chunk["meta"]["war"] == 0.69
+    assert "삼성 라이온즈" in chunk["meta"]["aliases"]
+    assert "SS" in chunk["meta"]["aliases"]
+
+
+def test_season_batting_chunk_derives_iso_babip_xr_when_columns_missing() -> None:
+    """Missing derived batting columns fall back to BattingStatCalculator when AB > 0."""
+    batting = SimpleNamespace(
+        player_id=62234,
+        season=2023,
+        team_code="SS",
+        league="REGULAR",
+        level="KBO1",
+        games=40,
+        at_bats=100,
+        hits=30,
+        doubles=6,
+        triples=1,
+        home_runs=5,
+        rbi=20,
+        runs=15,
+        stolen_bases=2,
+        walks=10,
+        strikeouts=20,
+        avg=0.300,
+        obp=0.364,
+        slg=0.530,
+        ops=0.894,
+        iso=None,
+        babip=None,
+        extra_stats=None,
+    )
+
+    chunk = _batting_chunks([(batting, SimpleNamespace(name="류지혁"))])[0]
+
+    assert "순수장타율(ISO): 0.230" in chunk["content"]
+    assert "인플레이 타구 타율(BABIP): 0.333" in chunk["content"]
+    assert "추정 득점(XR):" in chunk["content"]
+    assert chunk["meta"]["iso"] == pytest.approx(0.230)
+    assert chunk["meta"]["babip"] == pytest.approx(0.333)
+    assert chunk["meta"]["xr"] is not None
+
+
+def test_season_pitching_chunk_includes_sabermetrics_and_postseason_league(monkeypatch) -> None:
+    """Natural-key pitching chunks carry FIP/K9/BB9/K-BB%, Korean club names, and role."""
+    monkeypatch.setattr(build_rag_index, "_team_name_map", lambda session: {"DB": "두산 베어스"})
+    pitching = SimpleNamespace(
+        player_id=68240,
+        season=2018,
+        team_code="DB",
+        league="KOREAN_SERIES",
+        level="KBO1",
+        games=2,
+        games_started=0,
+        wins=1,
+        losses=1,
+        saves=0,
+        holds=0,
+        innings_pitched=13.0,
+        innings_outs=39,
+        era=1.38,
+        whip=0.85,
+        fip=1.33,
+        k_per_nine=13.15,
+        bb_per_nine=2.08,
+        kbb=6.33,
+        strikeouts=19,
+        walks_allowed=3,
+        home_runs_allowed=0,
+        hit_batters=2,
+        tbf=56,
+        extra_stats={"metrics": {"era_minus": 33.7, "fip_minus": 31.7}},
+    )
+
+    chunk = _pitching_chunks([(pitching, SimpleNamespace(name="후랭코프"))])[0]
+
+    assert chunk["source_row_id"] == "68240_2018_DB_KOREAN_SERIES"
+    assert chunk["league_type_code"] == 5
+    assert "한국시리즈" in chunk["title"]
+    assert "[TL;DR]" in chunk["content"]
+    assert "[핵심 문장]" in chunk["content"]
+    assert "[상세]" in chunk["content"]
+    assert "두산 베어스" in chunk["content"]
+    assert "FIP: 1.33" in chunk["content"]
+    assert "9이닝당 탈삼진(K/9): 13.15" in chunk["content"]
+    assert "9이닝당 볼넷(BB/9): 2.08" in chunk["content"]
+    assert "삼진/볼넷 비율(K/BB): 6.33" in chunk["content"]
+    assert "K-BB%: 28.6%" in chunk["content"]
+    assert "ERA-: 33.7" in chunk["content"]
+    assert "FIP-: 31.7" in chunk["content"]
+    assert chunk["meta"]["role"] == "RP"
+    assert chunk["meta"]["fip"] == 1.33
+    assert chunk["meta"]["k_per_nine"] == 13.15
+    assert chunk["meta"]["bb_per_nine"] == 2.08
+    assert chunk["meta"]["k_bb_ratio"] == 6.33
+    assert chunk["meta"]["kbb_pct"] == pytest.approx(28.57)
+    assert "두산 베어스" in chunk["meta"]["aliases"]
+
+
+def test_season_pitching_chunk_handles_minimal_row_without_fabricating_zero_metrics() -> None:
+    """Minimal pitching rows render without errors or synthetic 0.00 sabermetrics."""
+    pitching = SimpleNamespace(
+        player_id=67703,
+        season=2023,
+        team_code="WE",
+        league="REGULAR",
+        level="KBO1",
+        games=1,
+        games_started=0,
+        wins=0,
+        losses=0,
+        saves=0,
+        holds=0,
+        innings_pitched=None,
+        innings_outs=None,
+        era=0.0,
+        whip=None,
+        fip=None,
+        k_per_nine=None,
+        bb_per_nine=None,
+        kbb=None,
+        strikeouts=0,
+        walks_allowed=0,
+        extra_stats=None,
+    )
+
+    chunk = _pitching_chunks([(pitching, SimpleNamespace(name="박상원"))])[0]
+
+    assert "[TL;DR]" in chunk["content"]
+    assert "- 기본 기록:" in chunk["content"]
+    assert "- 세이버메트릭스:" not in chunk["content"]
+    assert "fip" not in chunk["meta"]
+
+
 def _player_chunks(monkeypatch, players, *, team_labels=None, duplicated=frozenset()):
     """Run the player generator over in-memory rows instead of a live session."""
 

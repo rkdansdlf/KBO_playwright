@@ -31,7 +31,7 @@ from scripts.maintenance.purge_orphan_rag_chunks import (
     restore_from_backup,
 )
 from src.cli.rag import build_rag_index
-from src.models.game import Game, GameLineup
+from src.models.game import Game, GameInningScore, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_lifecycle import can_transition
 
@@ -43,13 +43,14 @@ def session() -> Iterator[Session]:
     RagChunk.__table__.create(engine)
     Game.__table__.create(engine)
     GameLineup.__table__.create(engine)
+    GameInningScore.__table__.create(engine)
     with sessionmaker(bind=engine)() as session:
         yield session
 
 
-def _game(session: Session, game_id: str) -> Game:
-    """Put the parent game row in place, with no lineup rows under it."""
-    row = Game(game_id=game_id, game_date=date(2018, 3, 16), is_primary=True)
+def _game(session: Session, game_id: str, *, status: str | None = None) -> Game:
+    """Put the parent game row in place, with no child rows under it."""
+    row = Game(game_id=game_id, game_date=date(2018, 3, 16), is_primary=True, game_status=status)
     session.add(row)
     return row
 
@@ -62,6 +63,18 @@ def _lineup_source(session: Session, game_id: str, *, side: str = "away") -> Gam
         player_name="홍길동",
         appearance_seq=1,
         batting_order=1,
+    )
+    session.add(row)
+    return row
+
+
+def _inning_score_source(session: Session, game_id: str, *, side: str = "away") -> GameInningScore:
+    """Put one real inning-score row in the source table the rule reads."""
+    row = GameInningScore(
+        game_id=game_id,
+        team_side=side,
+        inning=1,
+        runs=0,
     )
     session.add(row)
     return row
@@ -219,6 +232,69 @@ class TestSourceAbsence:
 
         assert absent_source_identity(session, "game_lineups", ["nounderscore"]) == frozenset()
 
+    @pytest.mark.parametrize("status", ["CANCELLED", "POSTPONED"])
+    def test_a_cancelled_or_postponed_game_without_lineups_is_absent(self, session: Session, status: str) -> None:
+        _game(session, "20210328LTHH0", status=status)
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20210328LTHH0_away", "20210328LTHH0_home"])
+
+        assert absent == frozenset({"20210328LTHH0_away", "20210328LTHH0_home"})
+
+    def test_a_cancelled_game_with_lineup_rows_is_left_alone(self, session: Session) -> None:
+        _game(session, "20210328LTHH0", status="CANCELLED")
+        _lineup_source(session, "20210328LTHH0", side="away")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_lineups", ["20210328LTHH0_away"])
+
+        assert absent == frozenset()
+
+    def test_an_inning_score_with_source_rows_or_active_game_is_left_alone(self, session: Session) -> None:
+        _inning_score_source(session, "20261017LGHT0")
+        _game(session, "20261018LGHT0", status="COMPLETED")
+        session.commit()
+
+        absent = absent_source_identity(
+            session,
+            "game_inning_scores",
+            ["20261017LGHT0_line", "20261018LGHT0_line"],
+        )
+
+        assert absent == frozenset()
+
+    @pytest.mark.parametrize("status", ["CANCELLED", "POSTPONED"])
+    def test_a_cancelled_or_postponed_game_without_inning_scores_is_absent(
+        self,
+        session: Session,
+        status: str,
+    ) -> None:
+        _game(session, "20210328LTHH0", status=status)
+        session.commit()
+
+        absent = absent_source_identity(session, "game_inning_scores", ["20210328LTHH0_line"])
+
+        assert absent == frozenset({"20210328LTHH0_line"})
+
+    def test_an_inning_score_with_no_source_game_is_absent(self, session: Session) -> None:
+        _inning_score_source(session, "20261017LGHT0")
+        session.commit()
+
+        absent = absent_source_identity(session, "game_inning_scores", ["20180403KTWO0_line"])
+
+        assert absent == frozenset({"20180403KTWO0_line"})
+
+    def test_an_unparseable_inning_score_key_is_never_judged_absent(self, session: Session) -> None:
+        _inning_score_source(session, "20261017LGHT0")
+        session.commit()
+
+        assert absent_source_identity(session, "game_inning_scores", ["20180403KTWO0"]) == frozenset()
+
+    def test_empty_inning_score_and_game_tables_are_not_evidence_of_absence(self, session: Session) -> None:
+        session.commit()
+
+        assert absent_source_identity(session, "game_inning_scores", ["20180403KTWO0_line"]) == frozenset()
+
 
 class TestTheLifecyclePathIsOneTheContractAllows:
     """A delete is reached through transitions, not by assigning DELETED."""
@@ -329,6 +405,38 @@ class TestPurgeWrites:
                 select(RagChunk.index_status).where(RagChunk.source_table == "game_lineups"),
             ).scalar_one()
         assert status == "DELETED"
+
+    def test_an_inning_score_with_no_source_game_is_retired_with_backup(
+        self,
+        session: Session,
+        tmp_path: Path,
+    ) -> None:
+        _inning_score_source(session, "20261017LGHT0")
+        _chunk(session, "game_inning_scores", "20180403KTWO0_line")
+        session.commit()
+        target = tmp_path / "inning_orphans.csv"
+
+        report = purge_unregenerable(session, apply=True, backup_path=target)
+
+        assert report.orphan_count == 1
+        assert report.marked == 1
+        assert report.by_reason == {"source_rows_absent": 1}
+        assert report.by_table == {"game_inning_scores": 1}
+        with sessionmaker(bind=session.get_bind())() as reader:
+            status = reader.execute(
+                select(RagChunk.index_status).where(RagChunk.source_table == "game_inning_scores"),
+            ).scalar_one()
+        assert status == "DELETED"
+        with target.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows == [
+            {
+                "source_table": "game_inning_scores",
+                "source_row_id": "20180403KTWO0_line",
+                "reason": "source_rows_absent",
+                "previous_status": "ACTIVE",
+            },
+        ]
 
     def test_the_report_counts_each_reason_and_table(self, session: Session) -> None:
         _chunk(session, "game_metadata", "20261025HTSS0")

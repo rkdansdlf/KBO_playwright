@@ -71,6 +71,7 @@ from src.services.rag_index_identity import (
     stable_player_season_pitching_source_row_id,
     stable_team_history_source_row_id,
 )
+from src.services.stat_calculator import BattingStatCalculator, PitchingStatCalculator
 from src.utils.season_classification import (
     POSTSEASON_STAGES,
     REGULAR,
@@ -731,10 +732,344 @@ def _iter_player_chunks(session: Session, _season: int | None, limit: int | None
         }
 
 
+_SEASON_LEAGUE_METADATA: dict[str, tuple[str, int]] = {
+    "REGULAR": ("정규시즌", 0),
+    "KBO": ("정규시즌", 0),
+    "EXHIBITION": ("시범경기", 1),
+    "WILDCARD": ("와일드카드", 2),
+    "SEMI_PLAYOFF": ("준플레이오프", 3),
+    "PLAYOFF": ("플레이오프", 4),
+    "KOREAN_SERIES": ("한국시리즈", 5),
+}
+
+
+def _season_league_metadata(league: str | None) -> tuple[str, int]:
+    """Return ``(korean_label, league_type_code)`` for a season record's league."""
+    key = (league or "REGULAR").strip().upper()
+    return _SEASON_LEAGUE_METADATA.get(key, (key, _REGULAR_SEASON_CODE))
+
+
+def _numeric_or_none(value: object) -> float | None:
+    """Return ``float(value)`` for real numbers, excluding booleans and ``None``."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _format_team_with_code(team_names: Mapping[str, str], team_code: str | None) -> tuple[str, str]:
+    """Return ``(team_name, display_label)`` resolving team codes to Korean club names."""
+    code = team_code or "-"
+    team_name = team_names.get(code, code)
+    if team_code and team_name != team_code:
+        return team_name, f"{team_name}({code})"
+    return team_name, team_name
+
+
+def _build_aliases(name: str, team_name: str, team_code: str | None, player_id: object) -> list[str]:
+    """Return deduplicated non-empty search aliases for a player season record."""
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for candidate in (name, team_name, team_code, str(player_id) if player_id is not None else None):
+        if not candidate:
+            continue
+        cleaned = str(candidate).strip()
+        if not cleaned or cleaned == "-" or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        aliases.append(cleaned)
+    return aliases
+
+
+def _format_stat(val: float | None, decimals: int) -> str:
+    """Format a floating-point statistic or return '-' when missing."""
+    return f"{val:.{decimals}f}" if val is not None else "-"
+
+
+def _non_none_entries(mapping: Mapping[str, object]) -> dict[str, object]:
+    """Return a dict excluding entries whose value is ``None``."""
+    return {key: value for key, value in mapping.items() if value is not None}
+
+
+@dataclass(frozen=True, slots=True)
+class _SeasonRecordContext:
+    """Resolved player, league, and club labels shared by season chunk builders."""
+
+    player_name: str
+    league_label: str
+    league_code: int
+    team_name: str
+    team_display: str
+
+
+def _resolve_season_context(
+    record: object,
+    player: object | None,
+    team_names: Mapping[str, str],
+) -> _SeasonRecordContext:
+    """Resolve display labels and league code for one season batting/pitching row."""
+    player_name = _player_label(player, getattr(record, "player_id", None))
+    league_label, league_code = _season_league_metadata(getattr(record, "league", None))
+    team_name, team_display = _format_team_with_code(team_names, getattr(record, "team_code", None))
+    return _SeasonRecordContext(
+        player_name=player_name,
+        league_label=league_label,
+        league_code=league_code,
+        team_name=team_name,
+        team_display=team_display,
+    )
+
+
+def _derive_batting_metrics(batting: object) -> dict[str, float | None]:
+    """Compute stored-first batting ratio and sabermetric metrics for one row."""
+    pa_num = _numeric_or_none(getattr(batting, "plate_appearances", None))
+    ab_num = _numeric_or_none(getattr(batting, "at_bats", None))
+    avg_num = _numeric_or_none(getattr(batting, "avg", None))
+    obp_num = _numeric_or_none(getattr(batting, "obp", None))
+    slg_num = _numeric_or_none(getattr(batting, "slg", None))
+    ops_num = _numeric_or_none(getattr(batting, "ops", None))
+    raw_extra = getattr(batting, "extra_stats", None)
+    extra: dict[str, Any] = raw_extra if isinstance(raw_extra, dict) else {}
+
+    hits = getattr(batting, "hits", None)
+    doubles = getattr(batting, "doubles", None)
+    triples = getattr(batting, "triples", None)
+    home_runs = getattr(batting, "home_runs", None)
+    walks = getattr(batting, "walks", None)
+    ibb = getattr(batting, "intentional_walks", None)
+    hbp = getattr(batting, "hbp", None)
+    sf = getattr(batting, "sacrifice_flies", None)
+    sh = getattr(batting, "sacrifice_hits", None)
+    strikeouts = getattr(batting, "strikeouts", None)
+    sb = getattr(batting, "stolen_bases", None)
+    cs = getattr(batting, "caught_stealing", None)
+    gdp = getattr(batting, "gdp", None)
+
+    has_pa_or_ab = (ab_num is not None and ab_num > 0) or (pa_num is not None and pa_num > 0)
+    ratios: dict[str, float | None] = {}
+    if has_pa_or_ab:
+        ratios = BattingStatCalculator.calculate_ratios(
+            {
+                "at_bats": ab_num or 0,
+                "hits": hits or 0,
+                "doubles": doubles or 0,
+                "triples": triples or 0,
+                "home_runs": home_runs or 0,
+                "walks": walks or 0,
+                "intentional_walks": ibb or 0,
+                "hbp": hbp or 0,
+                "sacrifice_flies": sf or 0,
+                "sacrifice_hits": sh or 0,
+                "strikeouts": strikeouts or 0,
+                "stolen_bases": sb or 0,
+                "caught_stealing": cs or 0,
+                "gdp": gdp or 0,
+            }
+        )
+
+    if avg_num is None and ab_num is not None and ab_num > 0 and hits is not None:
+        avg_num = ratios.get("avg")
+    if obp_num is None and has_pa_or_ab:
+        obp_num = ratios.get("obp")
+    if slg_num is None and has_pa_or_ab and (ab_num or 0) > 0:
+        slg_num = ratios.get("slg")
+    if ops_num is None and obp_num is not None and slg_num is not None:
+        ops_num = round(obp_num + slg_num, 3)
+
+    iso = _numeric_or_none(getattr(batting, "iso", None))
+    if iso is None and has_pa_or_ab:
+        iso = ratios.get("iso")
+    if iso is None and slg_num is not None and avg_num is not None:
+        iso = round(slg_num - avg_num, 3)
+
+    babip = _numeric_or_none(getattr(batting, "babip", None))
+    if babip is None and has_pa_or_ab:
+        babip = ratios.get("babip")
+
+    xr = _numeric_or_none(extra.get("xr"))
+    if xr is None and has_pa_or_ab and (hits is not None or walks is not None or hbp is not None):
+        xr = ratios.get("xr")
+
+    return {
+        "pa": pa_num,
+        "ab": ab_num,
+        "avg": avg_num,
+        "obp": obp_num,
+        "slg": slg_num,
+        "ops": ops_num,
+        "iso": iso,
+        "babip": babip,
+        "xr": xr,
+        "wrc_plus": _numeric_or_none(extra.get("wrc_plus")),
+        "ops_plus": _numeric_or_none(extra.get("ops_plus")),
+        "war": _numeric_or_none(extra.get("war")),
+        "woba": _numeric_or_none(extra.get("woba")),
+    }
+
+
+def _format_batting_content(
+    batting: object,
+    context: _SeasonRecordContext,
+    metrics: Mapping[str, float | None],
+) -> str:
+    """Render structured markdown prose for a season batting chunk."""
+    name = context.player_name
+    league_label = context.league_label
+    team_name = context.team_name
+    team_display = context.team_display
+    games = getattr(batting, "games", None) or 0
+    hits = getattr(batting, "hits", None) or 0
+    hr = getattr(batting, "home_runs", None) or 0
+    rbi = getattr(batting, "rbi", None) or 0
+    runs = getattr(batting, "runs", None) or 0
+    sb = getattr(batting, "stolen_bases", None) or 0
+    bb = getattr(batting, "walks", None) or 0
+    so = getattr(batting, "strikeouts", None) or 0
+    pa = getattr(batting, "plate_appearances", None)
+    ab = getattr(batting, "at_bats", None)
+    optional_counts = (
+        ("타석(PA)", pa),
+        ("타수(AB)", ab),
+        ("안타", hits),
+        ("2루타", getattr(batting, "doubles", None)),
+        ("3루타", getattr(batting, "triples", None)),
+        ("홈런", hr),
+        ("타점", rbi),
+        ("득점", runs),
+        ("도루", sb),
+        ("볼넷", bb),
+        ("고의4구", getattr(batting, "intentional_walks", None)),
+        ("사구", getattr(batting, "hbp", None)),
+        ("삼진", so),
+        ("희생플라이", getattr(batting, "sacrifice_flies", None)),
+    )
+    avg_str = _format_stat(metrics["avg"], 3)
+    obp_str = _format_stat(metrics["obp"], 3)
+    slg_str = _format_stat(metrics["slg"], 3)
+    ops_str = _format_stat(metrics["ops"], 3)
+
+    basic_parts = [
+        f"선수: {name}",
+        f"시즌: {getattr(batting, 'season', '')}년({league_label})",
+        f"팀: {team_display}",
+        f"경기: {games}",
+        *(f"{label}: {val}" for label, val in optional_counts if val is not None),
+        f"타율: {avg_str}",
+        f"출루율: {obp_str}",
+        f"장타율: {slg_str}",
+        f"OPS: {ops_str}",
+    ]
+    saber_specs = (
+        ("순수장타율(ISO)", "iso", 3),
+        ("인플레이 타구 타율(BABIP)", "babip", 3),
+        ("추정 득점(XR)", "xr", 2),
+        ("wRC+", "wrc_plus", 1),
+        ("OPS+", "ops_plus", 1),
+        ("WAR", "war", 2),
+        ("wOBA", "woba", 3),
+    )
+    saber_parts = [
+        f"{label}: {val:.{decimals}f}" for label, key, decimals in saber_specs if (val := metrics.get(key)) is not None
+    ]
+
+    season = getattr(batting, "season", "")
+    lines = [
+        (
+            f"[TL;DR] {season}년 {league_label} {team_name} {name}: "
+            f"{games}경기 타율 {avg_str} 출루율 {obp_str} 장타율 {slg_str} "
+            f"OPS {ops_str} 홈런 {hr} 타점 {rbi} 도루 {sb}"
+        ),
+        (
+            f"[핵심 문장] {season}년 {league_label} {team_name} {name}은(는) "
+            f"{games}경기 타율 {avg_str}, OPS {ops_str}, 안타 {hits}, 홈런 {hr}, 타점 {rbi}, "
+            f"득점 {runs}, 도루 {sb}, 볼넷 {bb}, 삼진 {so}을(를) 기록했습니다."
+        ),
+        "[상세]",
+        "- 기본 기록: " + ", ".join(basic_parts),
+    ]
+    if saber_parts:
+        lines.append("- 세이버메트릭스: " + ", ".join(saber_parts))
+    return "\n".join(lines)
+
+
+def _build_batting_chunk(
+    batting: object,
+    player: object | None,
+    team_names: Mapping[str, str],
+) -> dict[str, Any]:
+    """Build one rich RAG payload for a ``PlayerSeasonBatting`` record."""
+    player_id = getattr(batting, "player_id", None)
+    season = getattr(batting, "season", None)
+    team_code = getattr(batting, "team_code", None)
+    league = getattr(batting, "league", None)
+    context = _resolve_season_context(batting, player, team_names)
+    metrics = _derive_batting_metrics(batting)
+    content = _format_batting_content(batting, context, metrics)
+    title = (
+        f"{context.player_name} {season}시즌 타격기록"
+        if context.league_code == _REGULAR_SEASON_CODE
+        else f"{context.player_name} {season}시즌 {context.league_label} 타격기록"
+    )
+    meta: dict[str, Any] = {
+        "kind": "batting_season",
+        "season": season,
+        "league": league,
+        "team": context.team_name,
+        "team_code": team_code,
+        "player_id": player_id,
+        "player_name": context.player_name,
+        "aliases": _build_aliases(context.player_name, context.team_name, team_code, player_id),
+        "avg": getattr(batting, "avg", None) if getattr(batting, "avg", None) is not None else metrics["avg"],
+        "hr": getattr(batting, "home_runs", None),
+        "rbi": getattr(batting, "rbi", None),
+        "ops": getattr(batting, "ops", None) if getattr(batting, "ops", None) is not None else metrics["ops"],
+        "hits": getattr(batting, "hits", None),
+        "runs": getattr(batting, "runs", None),
+        "steals": getattr(batting, "stolen_bases", None),
+        "walks": getattr(batting, "walks", None),
+        "strikeouts": getattr(batting, "strikeouts", None),
+    }
+    optional_fields = {
+        "pa": getattr(batting, "plate_appearances", None),
+        "ab": getattr(batting, "at_bats", None),
+        "obp": metrics["obp"],
+        "slg": metrics["slg"],
+        "iso": metrics["iso"],
+        "babip": metrics["babip"],
+        "xr": metrics["xr"],
+        "doubles": getattr(batting, "doubles", None),
+        "triples": getattr(batting, "triples", None),
+        "intentional_walks": getattr(batting, "intentional_walks", None),
+        "hbp": getattr(batting, "hbp", None),
+        "sacrifice_flies": getattr(batting, "sacrifice_flies", None),
+        "wrc_plus": metrics["wrc_plus"],
+        "ops_plus": metrics["ops_plus"],
+        "war": metrics["war"],
+        "woba": metrics["woba"],
+    }
+    meta.update(_non_none_entries(optional_fields))
+    return {
+        "source_table": "player_season_batting",
+        "source_row_id": stable_player_season_batting_source_row_id(player_id, season, team_code, league),
+        "title": title,
+        "content": content,
+        "team_id": team_code,
+        "player_id": str(player_id),
+        "season_year": season,
+        "document_type": "season_batting",
+        "game_date": None,
+        "published_at": None,
+        "source_url": None,
+        "language": _DEFAULT_LANGUAGE,
+        "league_type_code": context.league_code,
+        "meta": meta,
+    }
+
+
 def _iter_batting_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """player_season_batting에서 타자 시즌 기록 청크를 생성합니다."""
     from src.models.player import PlayerBasic, PlayerSeasonBatting
 
+    team_names = _team_name_map(session)
     query = session.query(PlayerSeasonBatting, PlayerBasic).join(
         PlayerBasic, PlayerSeasonBatting.player_id == PlayerBasic.player_id, isouter=True
     )
@@ -745,58 +1080,247 @@ def _iter_batting_chunks(session: Session, season: int | None, limit: int | None
         query = query.limit(limit)
 
     for batting, player in query.yield_per(200):
-        name = _player_label(player, batting.player_id)
+        yield _build_batting_chunk(batting, player, team_names)
 
-        def _fmt(val: float | None, decimals: int = 3) -> str:
-            return f"{val:.{decimals}f}" if val is not None else "-"
 
-        parts = [
-            f"선수: {name}",
-            f"시즌: {batting.season}년",
-            f"팀: {batting.team_code or '-'}",
-            f"경기: {batting.games or 0}",
-            f"타율: {_fmt(batting.avg)}",
-            f"출루율: {_fmt(batting.obp)}",
-            f"장타율: {_fmt(batting.slg)}",
-            f"OPS: {_fmt(batting.ops)}",
-            f"안타: {batting.hits or 0}",
-            f"홈런: {batting.home_runs or 0}",
-            f"타점: {batting.rbi or 0}",
-            f"득점: {batting.runs or 0}",
-            f"도루: {batting.stolen_bases or 0}",
-            f"삼진: {batting.strikeouts or 0}",
-            f"볼넷: {batting.walks or 0}",
-        ]
-        content = f"{name} {batting.season}시즌 타격기록: " + ", ".join(parts)
-        yield {
-            "source_table": "player_season_batting",
-            "source_row_id": stable_player_season_batting_source_row_id(
-                batting.player_id, batting.season, batting.team_code, batting.league
-            ),
-            "title": f"{name} {batting.season}시즌 타격기록",
-            "content": content,
-            "team_id": batting.team_code,
-            "player_id": str(batting.player_id),
-            "season_year": batting.season,
-            "document_type": "season_batting",
-            "game_date": None,
-            "published_at": None,
-            "source_url": None,
-            "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
-            "meta": {
-                "avg": batting.avg,
-                "hr": batting.home_runs,
-                "rbi": batting.rbi,
-                "ops": batting.ops,
-            },
-        }
+def _derive_pitching_metrics(pitching: object) -> dict[str, Any]:
+    """Compute stored-first pitching ratio, sabermetric, and role fields for one row."""
+    raw_extra = getattr(pitching, "extra_stats", None)
+    extra: dict[str, Any] = raw_extra if isinstance(raw_extra, dict) else {}
+    raw_metrics = extra.get("metrics")
+    metrics: dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
+
+    innings_outs = getattr(pitching, "innings_outs", None)
+    if innings_outs is None:
+        innings_outs = extra.get("innings_outs")
+    innings_outs_num = _numeric_or_none(innings_outs)
+    ip_col_num = _numeric_or_none(getattr(pitching, "innings_pitched", None))
+    ip_decimal = innings_outs_num / 3.0 if innings_outs_num and innings_outs_num > 0 else (ip_col_num or 0.0)
+    if ip_decimal < 0:
+        ip_decimal = 0.0
+
+    so = getattr(pitching, "strikeouts", None)
+    bb = getattr(pitching, "walks_allowed", None)
+    hits_allowed = getattr(pitching, "hits_allowed", None)
+    earned_runs = getattr(pitching, "earned_runs", None)
+    hr_allowed = getattr(pitching, "home_runs_allowed", None)
+    hit_batters = getattr(pitching, "hit_batters", None)
+    tbf = getattr(pitching, "tbf", None)
+
+    derived: dict[str, float | None] = {}
+    if ip_decimal > 0:
+        derived = PitchingStatCalculator.calculate_ratios(
+            {
+                "innings_outs": round(ip_decimal * 3),
+                "earned_runs": earned_runs or 0,
+                "hits_allowed": hits_allowed or 0,
+                "walks_allowed": bb or 0,
+                "strikeouts": so or 0,
+                "home_runs_allowed": hr_allowed or 0,
+                "hit_batters": hit_batters or 0,
+            }
+        )
+
+    whip = _numeric_or_none(getattr(pitching, "whip", None))
+    if whip is None and ip_decimal > 0 and hits_allowed is not None and bb is not None:
+        whip = derived.get("whip")
+
+    fip = _numeric_or_none(getattr(pitching, "fip", None)) or _numeric_or_none(metrics.get("fip_adj"))
+    if fip is None and ip_decimal > 0 and hr_allowed is not None and bb is not None and so is not None:
+        fip = derived.get("fip")
+
+    k_per_nine = _numeric_or_none(getattr(pitching, "k_per_nine", None))
+    if k_per_nine is None and ip_decimal > 0 and so is not None:
+        k_per_nine = round((so / ip_decimal) * 9, 2)
+
+    bb_per_nine = _numeric_or_none(getattr(pitching, "bb_per_nine", None))
+    if bb_per_nine is None and ip_decimal > 0 and bb is not None:
+        bb_per_nine = round((bb / ip_decimal) * 9, 2)
+
+    k_bb_ratio = _numeric_or_none(getattr(pitching, "kbb", None))
+    if k_bb_ratio is None and so is not None and bb is not None and bb > 0:
+        k_bb_ratio = round(so / bb, 2)
+
+    kbb_pct = round(((so - bb) / tbf) * 100, 2) if tbf and tbf > 0 and so is not None and bb is not None else None
+    games = getattr(pitching, "games", None) or 0
+    gs = getattr(pitching, "games_started", None) or 0
+    role = "SP" if gs > 0 and gs * 2 >= games else ("RP" if games > 0 else None)
+
+    return {
+        "era": _numeric_or_none(getattr(pitching, "era", None)),
+        "ip_display": ip_col_num if ip_col_num is not None else (ip_decimal if ip_decimal > 0 else None),
+        "whip": whip,
+        "fip": fip,
+        "k_per_nine": k_per_nine,
+        "bb_per_nine": bb_per_nine,
+        "k_bb_ratio": k_bb_ratio,
+        "kbb_pct": kbb_pct,
+        "era_minus": _numeric_or_none(metrics.get("era_minus") or extra.get("era_minus")),
+        "fip_minus": _numeric_or_none(metrics.get("fip_minus") or extra.get("fip_minus")),
+        "war": _numeric_or_none(metrics.get("war") or extra.get("war")),
+        "role": role,
+    }
+
+
+def _format_pitching_content(
+    pitching: object,
+    context: _SeasonRecordContext,
+    metrics: Mapping[str, Any],
+) -> str:
+    """Render structured markdown prose for a season pitching chunk."""
+    name = context.player_name
+    league_label = context.league_label
+    team_name = context.team_name
+    team_display = context.team_display
+    games = getattr(pitching, "games", None) or 0
+    gs = getattr(pitching, "games_started", None) or 0
+    wins = getattr(pitching, "wins", None) or 0
+    losses = getattr(pitching, "losses", None) or 0
+    saves = getattr(pitching, "saves", None) or 0
+    holds = getattr(pitching, "holds", None) or 0
+    so_val = getattr(pitching, "strikeouts", None) or 0
+    bb_val = getattr(pitching, "walks_allowed", None) or 0
+    era_str = _format_stat(metrics["era"], 2)
+    ip_str = _format_stat(metrics["ip_display"], 2)
+    whip_str = _format_stat(metrics["whip"], 2)
+
+    extra_counts = (
+        ("상대타자(TBF)", getattr(pitching, "tbf", None)),
+        ("피안타", getattr(pitching, "hits_allowed", None)),
+        ("자책점", getattr(pitching, "earned_runs", None)),
+        ("피홈런", getattr(pitching, "home_runs_allowed", None)),
+        ("사구", getattr(pitching, "hit_batters", None)),
+    )
+    basic_parts = [
+        f"선수: {name}",
+        f"시즌: {getattr(pitching, 'season', '')}년({league_label})",
+        f"팀: {team_display}",
+        f"경기: {games}",
+        f"선발: {gs}",
+        f"승: {wins}",
+        f"패: {losses}",
+        f"세이브: {saves}",
+        f"홀드: {holds}",
+        f"이닝: {ip_str}",
+        f"ERA: {era_str}",
+        f"WHIP: {whip_str}",
+        f"삼진: {so_val}",
+        f"볼넷: {bb_val}",
+        *(f"{label}: {val}" for label, val in extra_counts if val is not None),
+    ]
+    saber_specs = (
+        ("FIP", "fip", 2, ""),
+        ("9이닝당 탈삼진(K/9)", "k_per_nine", 2, ""),
+        ("9이닝당 볼넷(BB/9)", "bb_per_nine", 2, ""),
+        ("삼진/볼넷 비율(K/BB)", "k_bb_ratio", 2, ""),
+        ("K-BB%", "kbb_pct", 1, "%"),
+        ("ERA-", "era_minus", 1, ""),
+        ("FIP-", "fip_minus", 1, ""),
+        ("WAR", "war", 2, ""),
+    )
+    saber_parts = [
+        f"{label}: {val:.{decimals}f}{suffix}"
+        for label, key, decimals, suffix in saber_specs
+        if (val := metrics.get(key)) is not None
+    ]
+
+    season = getattr(pitching, "season", "")
+    lines = [
+        (
+            f"[TL;DR] {season}년 {league_label} {team_name} {name}: "
+            f"{games}경기 {ip_str}이닝 평균자책점(ERA) {era_str} "
+            f"{wins}승 {losses}패 {saves}세이브 {holds}홀드"
+        ),
+        (
+            f"[핵심 문장] {season}년 {league_label} {team_name} {name}은(는) "
+            f"{games}경기(선발 {gs}) {ip_str}이닝 ERA {era_str}, WHIP {whip_str}, "
+            f"{wins}승 {losses}패 {saves}세이브 {holds}홀드, 탈삼진 {so_val}, 볼넷 {bb_val}을(를) 기록했습니다."
+        ),
+        "[상세]",
+        "- 기본 기록: " + ", ".join(basic_parts),
+    ]
+    if saber_parts:
+        lines.append("- 세이버메트릭스: " + ", ".join(saber_parts))
+    return "\n".join(lines)
+
+
+def _build_pitching_chunk(
+    pitching: object,
+    player: object | None,
+    team_names: Mapping[str, str],
+) -> dict[str, Any]:
+    """Build one rich RAG payload for a ``PlayerSeasonPitching`` record."""
+    player_id = getattr(pitching, "player_id", None)
+    season = getattr(pitching, "season", None)
+    team_code = getattr(pitching, "team_code", None)
+    league = getattr(pitching, "league", None)
+    context = _resolve_season_context(pitching, player, team_names)
+    metrics = _derive_pitching_metrics(pitching)
+    content = _format_pitching_content(pitching, context, metrics)
+    title = (
+        f"{context.player_name} {season}시즌 투구기록"
+        if context.league_code == _REGULAR_SEASON_CODE
+        else f"{context.player_name} {season}시즌 {context.league_label} 투구기록"
+    )
+    meta: dict[str, Any] = {
+        "kind": "pitching_season",
+        "season": season,
+        "league": league,
+        "team": context.team_name,
+        "team_code": team_code,
+        "player_id": player_id,
+        "player_name": context.player_name,
+        "aliases": _build_aliases(context.player_name, context.team_name, team_code, player_id),
+        "era": getattr(pitching, "era", None),
+        "wins": getattr(pitching, "wins", None),
+        "losses": getattr(pitching, "losses", None),
+        "saves": getattr(pitching, "saves", None),
+        "games": getattr(pitching, "games", None),
+        "games_started": getattr(pitching, "games_started", None),
+        "holds": getattr(pitching, "holds", None),
+        "ip": getattr(pitching, "innings_pitched", None),
+        "strikeouts": getattr(pitching, "strikeouts", None),
+        "walks_allowed": getattr(pitching, "walks_allowed", None),
+    }
+    optional_fields = {
+        "role": metrics["role"],
+        "whip": metrics["whip"],
+        "fip": metrics["fip"],
+        "k_per_nine": metrics["k_per_nine"],
+        "bb_per_nine": metrics["bb_per_nine"],
+        "k_bb_ratio": metrics["k_bb_ratio"],
+        "kbb_pct": metrics["kbb_pct"],
+        "hit_batters": getattr(pitching, "hit_batters", None),
+        "home_runs_allowed": getattr(pitching, "home_runs_allowed", None),
+        "tbf": getattr(pitching, "tbf", None),
+        "era_minus": metrics["era_minus"],
+        "fip_minus": metrics["fip_minus"],
+        "war": metrics["war"],
+    }
+    meta.update(_non_none_entries(optional_fields))
+    return {
+        "source_table": "player_season_pitching",
+        "source_row_id": stable_player_season_pitching_source_row_id(player_id, season, team_code, league),
+        "title": title,
+        "content": content,
+        "team_id": team_code,
+        "player_id": str(player_id),
+        "season_year": season,
+        "document_type": "season_pitching",
+        "game_date": None,
+        "published_at": None,
+        "source_url": None,
+        "language": _DEFAULT_LANGUAGE,
+        "league_type_code": context.league_code,
+        "meta": meta,
+    }
 
 
 def _iter_pitching_chunks(session: Session, season: int | None, limit: int | None) -> Iterator[dict[str, Any]]:
     """player_season_pitching에서 투수 시즌 기록 청크를 생성합니다."""
     from src.models.player import PlayerBasic, PlayerSeasonPitching
 
+    team_names = _team_name_map(session)
     query = session.query(PlayerSeasonPitching, PlayerBasic).join(
         PlayerBasic, PlayerSeasonPitching.player_id == PlayerBasic.player_id, isouter=True
     )
@@ -807,51 +1331,7 @@ def _iter_pitching_chunks(session: Session, season: int | None, limit: int | Non
         query = query.limit(limit)
 
     for pitching, player in query.yield_per(200):
-        name = _player_label(player, pitching.player_id)
-
-        def _fmt(val: float | None, decimals: int = 2) -> str:
-            return f"{val:.{decimals}f}" if val is not None else "-"
-
-        parts = [
-            f"선수: {name}",
-            f"시즌: {pitching.season}년",
-            f"팀: {pitching.team_code or '-'}",
-            f"경기: {pitching.games or 0}",
-            f"선발: {pitching.games_started or 0}",
-            f"승: {pitching.wins or 0}",
-            f"패: {pitching.losses or 0}",
-            f"세이브: {pitching.saves or 0}",
-            f"홀드: {pitching.holds or 0}",
-            f"ERA: {_fmt(pitching.era)}",
-            f"이닝: {_fmt(pitching.innings_pitched)}",
-            f"WHIP: {_fmt(pitching.whip)}",
-            f"삼진: {pitching.strikeouts or 0}",
-            f"볼넷: {pitching.walks_allowed or 0}",
-        ]
-        content = f"{name} {pitching.season}시즌 투구기록: " + ", ".join(parts)
-        yield {
-            "source_table": "player_season_pitching",
-            "source_row_id": stable_player_season_pitching_source_row_id(
-                pitching.player_id, pitching.season, pitching.team_code, pitching.league
-            ),
-            "title": f"{name} {pitching.season}시즌 투구기록",
-            "content": content,
-            "team_id": pitching.team_code,
-            "player_id": str(pitching.player_id),
-            "season_year": pitching.season,
-            "document_type": "season_pitching",
-            "game_date": None,
-            "published_at": None,
-            "source_url": None,
-            "language": _DEFAULT_LANGUAGE,
-            "league_type_code": _REGULAR_SEASON_CODE,
-            "meta": {
-                "era": pitching.era,
-                "wins": pitching.wins,
-                "losses": pitching.losses,
-                "saves": pitching.saves,
-            },
-        }
+        yield _build_pitching_chunk(pitching, player, team_names)
 
 
 def _game_result_text(game: Game) -> str:

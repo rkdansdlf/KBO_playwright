@@ -30,10 +30,12 @@ The three rules below name the second kind, and name why:
     keyed ``{player}_{year}_{team}_{series}``; 1,534 rows are keyed ``id=1096``.
 ``source_rows_absent``
     The key is the shape the generator still produces, but the source table holds
-    no row for it. 523 ``game_lineups`` chunks name games with no lineup rows at
-    all -- the only rule whose evidence has to be measured rather than read off
-    the key, which is why it lives in :func:`absent_source_identity` instead of
-    :func:`classify_unregenerable`.
+    no row for it (or its parent game was cancelled/postponed without source rows).
+    523 ``game_lineups`` chunks name games with no lineup rows at all -- the only
+    rule whose evidence has to be measured rather than read off the key, which is
+    why it lives in :func:`absent_source_identity` instead of
+    :func:`classify_unregenerable`. Registered for ``game_lineups`` and
+    ``game_inning_scores``.
 
 Only the first rule is allowed to speak about a table the build does not read.
 Everything else requires a match. ``source_rows_absent`` is the narrow exception
@@ -90,12 +92,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select, tuple_, update
+from sqlalchemy import func, or_, select, tuple_, update
 
 from src.cli.rag.build_rag_index import _SOURCE_TABLE_BY_SOURCE
 from src.constants import KST
 from src.db.engine import SessionLocal
-from src.models.game import Game, GameLineup
+from src.models.game import Game, GameInningScore, GameLineup
 from src.models.rag_chunk import RagChunk
 from src.services.rag_index_lifecycle import IndexLifecycleStatus, can_transition
 
@@ -129,6 +131,10 @@ _WINDOWS_ABSOLUTE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 #: not carry one is a parse failure rather than a game whose side is unknown.
 _LINEUP_SIDES = frozenset({"home", "away"})
 
+#: Game statuses for games that were never played and therefore cannot emit
+#: lineup or inning-score chunks when their child source tables are empty.
+_NON_PLAYED_GAME_STATUSES: frozenset[str] = frozenset({"CANCELLED", "POSTPONED"})
+
 _BACKUP_COLUMNS = ("source_table", "source_row_id", "reason", "previous_status")
 
 #: A restore records what it changed, so the restore is auditable the same way
@@ -156,41 +162,73 @@ def _game_id_from_lineup_key(key: str) -> str | None:
     return game_id
 
 
-def _lineup_source_presence(session: Session, identities: set[str]) -> set[str] | None:
-    """Return the game ids that could still emit a lineup chunk for this key.
+def _game_id_from_inning_score_key(key: str) -> str | None:
+    """Return the game an inning-score chunk key names, or ``None`` when unreadable.
 
-    Two things count, and the second one is the whole reason this rule is not a
-    key-shape test. A game that already holds lineup rows has a source. A game
-    that exists with no lineup rows *yet* counts too: the generator writes
-    ``{game_id}_{team_side}``, so crawling that season later emits this exact
-    key again. Retiring it now would strand the row that arrives, because
-    ``DELETED`` is terminal to the incremental selector -- it blocks the key
-    instead of re-embedding it, and the reactivation path is only reached from
-    an upsert the selector never produces.
+    ``_iter_inning_score_chunks`` writes ``{game_id}_line``. Any key not ending in
+    ``_line`` fails the parse instead of guessing a game id from its prefix.
+
+    Args:
+        key: The chunk's ``source_row_id``.
+
+    Returns:
+        The game id, or ``None``.
+
+    """
+    game_id, separator, suffix = key.rpartition("_")
+    if not separator or not game_id or suffix != "line":
+        return None
+    return game_id
+
+
+def _game_child_source_presence(
+    session: Session,
+    child_model: type[GameLineup] | type[GameInningScore],
+    identities: set[str],
+) -> set[str] | None:
+    """Return game ids that already hold child rows or belong to playable games.
+
+    A game that already holds child rows (``GameLineup`` or ``GameInningScore``)
+    has a source. A game row with no child rows *yet* counts only when it is not
+    ``CANCELLED`` or ``POSTPONED``: cancelled/postponed games with empty child
+    tables will never emit chunks, whereas scheduled/completed games may still
+    have child rows loaded later.
 
     Args:
         session: Session the source tables are read through.
+        child_model: Source child table (``GameLineup`` or ``GameInningScore``).
         identities: Game ids the candidate keys name.
 
     Returns:
-        The ids that could still produce a row, or ``None`` when the question
-        cannot be answered because neither table holds anything at all.
+        The ids that could still produce a row, or ``None`` when both tables are
+        completely empty.
 
     """
-    if not session.execute(select(func.count()).select_from(GameLineup)).scalar_one():
-        # An empty table says "nothing is loaded", not "no game has lineups".
-        # Reading it as absence would retire every lineup chunk in one run and
-        # report it as housekeeping.
+    if not session.execute(select(func.count()).select_from(child_model)).scalar_one():
+        # An empty table says "nothing is loaded", not "no game has child rows".
         if not session.execute(select(func.count()).select_from(Game)).scalar_one():
             return None
-    lineups = session.execute(
-        select(GameLineup.game_id).where(GameLineup.game_id.in_(identities)),
+    children = session.execute(
+        select(child_model.game_id).where(child_model.game_id.in_(identities)),
     ).scalars()
-    present = {str(game_id) for game_id in lineups}
+    present = {str(game_id) for game_id in children}
     games = session.execute(
-        select(Game.game_id).where(Game.game_id.in_(identities)),
+        select(Game.game_id).where(
+            Game.game_id.in_(identities),
+            or_(Game.game_status.is_(None), Game.game_status.notin_(_NON_PLAYED_GAME_STATUSES)),
+        ),
     ).scalars()
     return present | {str(game_id) for game_id in games}
+
+
+def _lineup_source_presence(session: Session, identities: set[str]) -> set[str] | None:
+    """Return game ids that could still emit a lineup chunk for this key."""
+    return _game_child_source_presence(session, GameLineup, identities)
+
+
+def _inning_score_source_presence(session: Session, identities: set[str]) -> set[str] | None:
+    """Return game ids that could still emit an inning-score chunk for this key."""
+    return _game_child_source_presence(session, GameInningScore, identities)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +254,10 @@ class SourceKeyRule:
 #: writes deletes.
 _SOURCE_KEY_RULES: dict[str, SourceKeyRule] = {
     "game_lineups": SourceKeyRule(parse_key=_game_id_from_lineup_key, presence=_lineup_source_presence),
+    "game_inning_scores": SourceKeyRule(
+        parse_key=_game_id_from_inning_score_key,
+        presence=_inning_score_source_presence,
+    ),
 }
 
 
