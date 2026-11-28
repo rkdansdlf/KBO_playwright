@@ -33,6 +33,11 @@ class RetrievalRoute(StrEnum):
     MIXED = "MIXED"
 
 
+#: Explicit source filters the structured retriever can answer from a table.
+#: An unrecognized source must not be promoted to STRUCTURED.
+STRUCTURED_SOURCE_TABLES: frozenset[str] = frozenset({"awards", "game", "team_history", "teams"})
+
+
 STAT_TERMS = (
     "타율",
     "출루율",
@@ -207,6 +212,11 @@ class QueryRouter:
             route = RetrievalRoute.MIXED
         else:
             route = RetrievalRoute.DOCUMENT
+
+        # An explicit, supported source_table filter is a statement about where
+        # the answer lives; free-text classification alone cannot see it.
+        if explicit_filters.get("source_table") in STRUCTURED_SOURCE_TABLES:
+            route = RetrievalRoute.STRUCTURED
 
         return QueryPlan(
             query=query,

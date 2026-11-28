@@ -285,6 +285,53 @@ pgvector 0.8의 `hnsw.iterative_scan`이나 (팀·시즌·경기일) → ID 집�
 
 ---
 
+## 부록 C. SQL 분기 확장 결과 (2026-11-28)
+
+§1의 권고("검색기 교체가 아니라 `StructuredRetriever` 확장")를 실행했다.
+`src/services/structured_retriever.py`에 `awards`·`game`·`team_history`·`teams`
+네 분기를 추가했고, `QueryRouter`는 **명시적** `filters.source_table`이 이 네 값 중
+하나일 때만 `STRUCTURED`로 승격한다(모르는 테이블은 승격하지 않음).
+
+| 지표 | 확장 전 (11-20) | 확장 후 (11-28) |
+| --- | --- | --- |
+| `sql_covered` | 16 / 30 | **24 / 30 = 0.80** |
+| `relational_no_template` | 11 | 7 |
+| `prose` | 3 | 3 (변경 없음) |
+| `uncovered_tables` | 8종 | **`game_highlights`·`game_play_by_play`·`player_movements`** 3종 |
+| `verdict` | `sql_expansion_warranted` | 동일 — 판정은 **산문 비율**로 정하지 SQL 커버리지로 정하지 않는다 |
+
+측정은 여전히 읽기 전용이다(DB 접속 없음). 재측정:
+
+```
+./venv/bin/python -m src.cli.rag.audit_retrieval_necessity --json
+```
+
+### C.1 구현 중 발견한 함정
+
+`resolve_kbo_entities`가 "2025년 KBO MVP **수상자**는 누구야?"에서 `player_name="수상자"`
+를 뽑는다. 이 값을 상 수상자 필터에 쓰면 실제 수상자가 전부 필터링된다. 그래서
+`awards` 분기는 **호출자가 명시한 `filters.player_name`만** 신뢰한다(10개 계약 테스트 중
+1건이 이 경로를 고정).
+
+`game` 분기는 두 팀이 모두 일치해야 한다. 한 팀만 일치하는 같은 날 경기를 함께
+넣어 "either-team"으로 약화하는 뮤테이션을 잡았다.
+
+### C.2 이 수치가 아직 말하지 않는 것
+
+**80%는 "SQL 템플릿이 존재하고 명시적 필터로 도달 가능하다"는 뜻이지, 자연어 질문의
+80%가 이제 SQL로 간다는 뜻이 아니다.** 라우팅 골든셋의 `GAME_QUERY` 16건은 여전히
+`DOCUMENT`로 분류되고, 자유 텍스트 질문에는 `filters.source_table`이 없다. 라우팅을
+바꾸면 `route_accuracy=1.0` 계약과 100건 표본을 함께 다시 정의해야 하므로 이번 범위에
+넣지 않았다. 다음 단계는 "분기 존재"가 아니라 **자연어 → 분기 연결**이다.
+
+### C.3 검증
+
+신규 계약 테스트 10건, 기존 측정 도구 테스트 4건 갱신(새로 커버된 테이블을 예시로
+쓰던 것을 미커버 테이블로 교체), 뮤테이션 5건 전부 실패 생성, 관련 테스트 85건,
+전체 스위트 **15,716 passed / 20 skipped**, `ruff check`/`ruff format --check` 통과.
+
+---
+
 ## 관련 문서
 
 - `Docs/references/RAG_EVALUATION.md` — 검색 아키텍처와 측정 방법

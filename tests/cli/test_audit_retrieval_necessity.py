@@ -139,8 +139,12 @@ class TestClassification:
     def test_a_table_with_a_retriever_branch_is_sql_covered(self) -> None:
         assert necessity.classify_source_table("player_season_batting") is necessity.RetrievalNecessity.SQL_COVERED
 
+    @pytest.mark.parametrize("table", ["awards", "game", "team_history", "teams"])
+    def test_the_four_added_sources_are_sql_covered(self, table: str) -> None:
+        assert necessity.classify_source_table(table) is necessity.RetrievalNecessity.SQL_COVERED
+
     def test_an_indexed_table_without_a_branch_needs_one(self) -> None:
-        assert necessity.classify_source_table("team_history") is necessity.RetrievalNecessity.RELATIONAL_NO_TEMPLATE
+        assert necessity.classify_source_table("game_highlights") is necessity.RetrievalNecessity.RELATIONAL_NO_TEMPLATE
 
     def test_a_table_the_build_never_writes_is_unknown(self) -> None:
         assert necessity.classify_source_table("not_a_real_table") is necessity.RetrievalNecessity.UNKNOWN
@@ -160,8 +164,8 @@ class TestClassification:
         assert verdicts[0].necessity is necessity.RetrievalNecessity.UNKNOWN
 
     def test_a_case_that_declares_a_table_carries_it_through(self) -> None:
-        verdicts = necessity.classify_queries([_case("awards", "award_1")])
-        assert verdicts[0].source_table == "awards"
+        verdicts = necessity.classify_queries([_case("player_movements", "award_1")])
+        assert verdicts[0].source_table == "player_movements"
         assert verdicts[0].necessity is necessity.RetrievalNecessity.RELATIONAL_NO_TEMPLATE
 
     def test_a_case_without_an_id_still_gets_a_stable_one(self) -> None:
@@ -223,7 +227,7 @@ class TestTheSharesAreTakenOverClassifiedCases:
             [
                 _case("kbo_regulations"),
                 _case("player_basic"),
-                _case("awards"),
+                _case("player_movements"),
                 _case(None),
             ]
         )
@@ -240,9 +244,9 @@ class TestTheSharesAreTakenOverClassifiedCases:
         assert report.verdict is necessity.NecessityVerdict.UNDETERMINED
 
     def test_the_uncovered_tables_exclude_the_ones_already_covered(self) -> None:
-        cases = necessity.classify_queries([_case("player_basic"), _case("awards"), _case("kbo_definitions")])
+        cases = necessity.classify_queries([_case("player_basic"), _case("game_highlights"), _case("kbo_definitions")])
         report = necessity.build_report(cases, dataset="mem")
-        assert report.uncovered_tables == ("awards",)
+        assert report.uncovered_tables == ("game_highlights",)
 
     def test_a_table_the_index_never_writes_is_not_called_uncovered(self) -> None:
         """``uncovered`` means "needs a branch", not "we have never heard of it".
@@ -272,9 +276,9 @@ class TestTheReportSerializes:
         }
 
     def test_a_case_carries_its_verdict_and_its_table(self) -> None:
-        report = necessity.build_report(necessity.classify_queries([_case("awards", "a1")]), dataset="mem")
+        report = necessity.build_report(necessity.classify_queries([_case("player_movements", "a1")]), dataset="mem")
         assert report.to_dict()["cases"] == [
-            {"case_id": "a1", "query": "q", "source_table": "awards", "necessity": "relational_no_template"}
+            {"case_id": "a1", "query": "q", "source_table": "player_movements", "necessity": "relational_no_template"}
         ]
 
     def test_the_routing_summary_is_absent_unless_asked_for(self) -> None:
@@ -336,7 +340,7 @@ class TestTheCommandLine:
     ) -> None:
         dataset = _write_dataset(
             tmp_path / "g.json",
-            [{"id": "a", "query": "q", "filters": {"source_table": "awards"}}],
+            [{"id": "a", "query": "q", "filters": {"source_table": "player_movements"}}],
         )
         assert necessity.main(["--dataset", str(dataset), "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
