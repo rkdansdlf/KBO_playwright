@@ -1253,3 +1253,38 @@ exit 0. 따라서 **(B) 는 기각**되고, **이 저장소 `.env` 의 값이 �
   더 넓히는 것은 브루트포스이므로 하지 않는다.
 - **`pg_hba.conf` 를 trust 로 열지 않았다.** tailnet 전체에 무비밀번호 접근을 여는 것은 이
   장애의 해결책이 아니라 다음 장애의 원인이다.
+
+### 18.8 로컬 접속 복구 뒤 재검증에서 드러난 것 (2026-11-28)
+
+11-28에 이 Mac의 `.env`를 갱신해 접속이 복구됐고(`set_db_password.py`, 저장 전 SCRAM 검증),
+`current_user=bega_prod_user` · `current_database()=bega_prod` · game 26,525건이 확인됐다.
+그 상태에서 돌린 게이트는 **호스트 11-23 결과와 달랐다**:
+
+| 게이트 | 11-23 호스트 | 11-28 로컬 |
+| --- | --- | --- |
+| `rag_chunks` 총계 | 380,477 | **380,356** |
+| `audit_rag_index` | `consistent true` | **exit 1** — `missing_search_indexes` |
+| `audit_rag_coverage` | `missing 0` | **exit 1** — `missing 3` (2026 KS) |
+
+원인은 **11-26 18:33 UTC의 PostgreSQL 재시작·재구성**이다(`pg_postmaster_start_time()` 실측).
+`schema_migrations`에는 068·069가 11-01 `applied`로 남아 있지만, 카탈로그에는
+`vector_cosine_ops` 인덱스가 **하나도 없다** — HNSW(10-31)와 ivfflat(068)이 둘 다 사라졌다.
+이력 테이블만 보는 `apply_postgres_migrations --check`는 exit 0이고, 인덱스의 실체를 보는
+`audit_rag_index`만 실패한다. **이 둘은 서로를 대신할 수 없다.**
+
+`coverage missing 3`도 실제다: `20261106KTSS0` · `20261107KTSS0` · `20261108KTSS0`은
+`COMPLETED`에 점수까지 있는데 `source_table='games'` 청크가 0건이다.
+
+`census unsafe 8,956`은 11-23의 8,959와 같은 자리다. 이번에는 `existing_natural_target`
+가 **8,956으로 정확히 일치**했다 — 즉 "재키할 수 없음"이 아니라 **자연키 청크가 이미
+있음**이고, 실제 대기 대상은 `safe_rekey_candidates 51`건뿐이다.
+
+운영 교훈:
+
+- **마이그레이션 이력은 인덱스의 존재를 증명하지 않는다.** 재구성·복원 뒤에는
+  `apply_postgres_migrations --check`와 `audit_rag_index`를 **둘 다** 돌린다.
+- **ivfflat 빌드는 `maintenance_work_mem`을 요구한다.** 380K×1536차원·`lists=400`에서
+  기본 64MB는 `memory required is 120 MB`로 즉시 거부된다. 세션에 512MB를 준 뒤
+  `CREATE INDEX CONCURRENTLY`로 재생성한다(쓰기 차단 없음).
+- **`CONCURRENTLY` 실패는 무효 인덱스를 남긴다.** `IF NOT EXISTS`가 그 이름에 매칭해
+  다음 실행을 조용히 건너뛰므로, `pg_index.indisvalid`까지 확인해야 한다.
