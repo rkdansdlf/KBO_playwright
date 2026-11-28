@@ -1288,3 +1288,22 @@ exit 0. 따라서 **(B) 는 기각**되고, **이 저장소 `.env` 의 값이 �
   `CREATE INDEX CONCURRENTLY`로 재생성한다(쓰기 차단 없음).
 - **`CONCURRENTLY` 실패는 무효 인덱스를 남긴다.** `IF NOT EXISTS`가 그 이름에 매칭해
   다음 실행을 조용히 건너뛰므로, `pg_index.indisvalid`까지 확인해야 한다.
+
+#### 11-28 인덱스 재생성 시도와 중단
+
+`lists=400`·`maintenance_work_mem=512MB`로 `CREATE INDEX CONCURRENTLY`를 시도했고,
+약 10분 뒤 서버가 연결을 끊었다. 호스트 로그의 `server process exited with exit code 2`
+는 **backend 종료**였고 postmaster는 살아 있었다 — `pg_postmaster_start_time()`이 시도
+전후 모두 **2026-11-26 18:33 UTC**로 동일하다(전체 재부팅이 아니라 나머지 backend
+재초기화). 약 2분간 새 연결이 `database system is in recovery mode`로 거부됐다.
+같은 날 **11-27 17:34 UTC**에도 동일 패턴이 한 번 더 있었다(이번 시도와 무관한 상시
+불안정 신호).
+
+제약은 컨테이너가 아니라 **WSL VM 전체**다: `.wslconfig` `memory=3GB`·`processors=2`,
+`vmmemWSL` private bytes 3,117MB, 호스트 가용 물리메모리 639MB/6GB, E: 디스크 약 10MB/s.
+postgres 컨테이너自身는 307MB/2.84GB로 여유가 있어도 VM 상한이 먼저 걸린다.
+
+시도 후 남은 상태: `idx_rag_chunks_embedding_ivfflat` **416MB, `indisvalid=false`**.
+첫 시도(64MB 거부)가 만든 무효 인덱스는 스크립트가 DROP했고, 지금 것은 두 번째 시도가
+만든 것이다. **이 인덱스는 플래너가 쓰지 않고, `IF NOT EXISTS`만 속인다.**
+다시 만들기 전에 반드시 정리해야 하며, 메모리 여유가 생기기 전에는 재시도하지 않는다.
