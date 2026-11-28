@@ -70,7 +70,9 @@ def build_matrix(
 
     state_cols = ["inning", "is_bottom", "score_diff_clipped", "outs", "runners_str"]
     we_matrix = df.groupby(state_cols)["home_won"].agg(["mean", "count"]).reset_index()
-    we_matrix.rename(columns={"mean": "win_prob", "count": "sample_size"}, inplace=True)
+    # PDEP-8 removes ``rename(inplace=True)`` in a future pandas version; the
+    # reassignment keeps the same frame and is warning-free today.
+    we_matrix = we_matrix.rename(columns={"mean": "win_prob", "count": "sample_size"})
     we_matrix = we_matrix[we_matrix["sample_size"] >= min_sample_size]
 
     result: WinExpectancyMatrix = {}

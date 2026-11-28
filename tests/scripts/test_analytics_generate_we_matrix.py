@@ -1,3 +1,4 @@
+import warnings
 from unittest.mock import MagicMock, patch
 
 from scripts.analytics.generate_we_matrix import build_arg_parser, build_matrix, parse_runners, write_matrix
@@ -50,6 +51,33 @@ class TestBuildMatrix:
 
         result = build_matrix(max_inning=9, score_cap=7, min_sample_size=1)
         assert isinstance(result, dict)
+
+    @patch("scripts.analytics.generate_we_matrix.SessionLocal")
+    @patch("scripts.analytics.generate_we_matrix.pd.read_sql")
+    def test_rename_does_not_warn_about_inplace(self, mock_read_sql, mock_session_local):
+        """Pandas 3.1 deprecates ``rename(inplace=True)`` (PDEP-8)."""
+        import pandas as pd
+
+        mock_session = MagicMock()
+        mock_session.__enter__.return_value = mock_session
+        mock_session_local.return_value = mock_session
+        mock_read_sql.return_value = pd.DataFrame(
+            {
+                "inning": [1, 1],
+                "inning_half": ["TOP", "BOT"],
+                "score_diff": [0, 1],
+                "outs": [0, 1],
+                "bases_before": ["---", "1--"],
+                "home_won": [1, 0],
+            },
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            build_matrix(max_inning=9, score_cap=7, min_sample_size=1)
+
+        deprecations = [str(item.message) for item in caught if "inplace" in str(item.message)]
+        assert deprecations == []
 
 
 class TestWriteMatrix:
