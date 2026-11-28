@@ -167,6 +167,7 @@ SEASON_DATE_RULES: dict[int, list[tuple[str, str, str]]] = {
 
 #: Regular-season span per season, used to write ``kbo_seasons`` start/end.
 REGULAR_SEASON_SPANS: dict[int, tuple[str, str]] = {
+    2025: ("2025-03-22", "2025-10-04"),
     2026: ("2026-03-28", "2026-10-12"),
 }
 
@@ -290,6 +291,25 @@ def has_season_calendar(year: int) -> bool:
     return year in SEASON_DATE_RULES
 
 
+TEN_TEAMS_ERA_START_YEAR = 2015
+
+
+def regular_season_games_per_team(year: int) -> int | None:
+    """Return the scheduled regular-season games per team for a season year.
+
+    Args:
+        year: Season year.
+
+    Returns:
+        144 for seasons >= 2015 (KBO 10-team era, 144 games per team);
+        None for earlier seasons (unknown or different quotas).
+
+    """
+    if year >= TEN_TEAMS_ERA_START_YEAR:
+        return 144
+    return None
+
+
 def season_type_from_naver_game_id(raw_game_id: object) -> str | None:
     """Return the postseason/all-star type a Naver game id prefix encodes.
 
@@ -389,6 +409,7 @@ __all__ = [
     "normalize_season_type",
     "ongoing_postseason_stage",
     "postseason_window_of",
+    "regular_season_games_per_team",
     "resolve_effective_season_type",
     "season_payload_type",
     "season_type_from_kbo_series",

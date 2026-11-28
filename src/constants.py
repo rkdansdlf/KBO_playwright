@@ -26,6 +26,10 @@ KBO_MID_90S_ERA_END = 1995
 KBO_90S_ERA_END = 1999
 KBO_MILLENNIUM_ERA_END = 2000
 KBO_2000S_ERA_END = 2001
+#: First season whose game bodies (boxscores, play-by-play) were collected.
+#: Seasons before it hold a score and no body, so anything that needs per-game
+#: counts for them must read the schedule instead.
+KBO_COLLECTED_START_YEAR = 2001
 KBO_PLAYOFF_ERA_END = 2006
 KBO_SEMI_PLAYOFF_ERA_END = 2014
 KBO_QUALITY_AUDIT_START_YEAR = 2020
@@ -69,4 +73,17 @@ VENUE_TO_STADIUM_ID: dict[str, str] = {
 
 IP_FRAC_THIRD = 33
 IP_FRAC_TWO_THIRDS = 66
-# Test build cache
+
+#: The row the relay feed writes to close a finished game.
+#:
+#: It is the strongest local evidence that a game was played to the end: the feed
+#: itself says so, whatever the stored innings or the status column claim. Two
+#: readers depend on it -- the relay completion judge, and the status derivation
+#: that would otherwise call a relay-only game cancelled -- so the literal lives
+#: here rather than in either of them. Copies drift; a shared constant cannot.
+#:
+#: It also separates a game that stopped early from one whose
+#: ``game_inning_scores`` carry trailing zero innings: every 2025-03-22 game is
+#: recorded to the 12th inning while its play-by-play ends at the 9th with this
+#: marker, so an inning-count test alone calls 736 healthy 2025 games incomplete.
+FINAL_PBP_MARKER = "====================================="

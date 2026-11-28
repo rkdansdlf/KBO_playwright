@@ -9,9 +9,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+from datetime import date as dt_date
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.vector_engine import get_vector_session, is_pgvector_available
@@ -35,7 +36,134 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEARCH_EXCEPTIONS = (SQLAlchemyError, RuntimeError, ValueError, TypeError)
-_DATE_SCOPED_SOURCE_TABLES = frozenset({"game", "game_highlights", "game_play_by_play"})
+
+#: How many ids an ``IN`` narrowing may carry. Above this the scalar filter is not
+#: selective enough for the list to help: the approximate index has plenty of
+#: candidates that satisfy it, and a 20k-element ``IN`` costs more than it saves.
+_MAX_EXACT_ID_FILTER = 20_000
+
+#: How many IVF lists a search visits. pgvector's default is 1 -- one list out of
+#: the 100 the index is built with. Measured against the live index (377k rows,
+#: lists=100) on 2026-10-29: probes=1 returned the wrong chunks and missed the
+#: season-stat row entirely at 1,684ms, while probes=5 found it in the top 3 at
+#: 1,663ms -- the same cost. probes=10 and 20 cost 6-7x more for one place of
+#: ranking. Recall is the point of a search; the default was sampling.
+ANN_PROBES = 5
+
+#: How many candidates the HNSW graph search explores. This is the HNSW equivalent of
+#: ``ANN_PROBES`` and it has to be set for the same reason: pgvector's default is 40,
+#: and on the index built 2026-10-31 (m=8, ef_construction=32, 2.9 GB) that default
+#: returned **0 of the exact top 15** for a real query. Measured on the same query:
+#: default 40 -> 0/15 at 66 ms; 100 -> 0/15; **200 -> 15/15 at 88 ms**; 400 -> 15/15.
+#: The two index kinds are chosen by the planner, so both parameters are set -- a
+#: search that silently runs on HNSW's default is a search that returns the wrong
+#: rows quickly, which is worse than the slow one it replaced.
+ANN_EF_SEARCH = 200
+
+
+def _configure_ann_probes(session: Session) -> None:
+    """Raise this transaction's ANN search effort for whichever index is used.
+
+    ``SET`` is only accepted once the vector extension is loaded in the session, so
+    the first statement on a fresh connection can be rejected. That is not fatal --
+    the query still runs with the server default -- but the server default is *not*
+    a safe fallback: ``ivfflat.probes=1`` visits one list out of a hundred, and
+    ``hnsw.ef_search=40`` returned none of the correct rows in the measurement above.
+    Loading a value first registers the GUCs, and then both settings apply to the
+    query that follows.
+
+    Args:
+        session: The session the search will run on.
+
+    """
+    try:
+        session.execute(text("SELECT NULL::vector"))
+    except SQLAlchemyError:
+        logger.warning("vector extension not loadable in this session; ANN settings not applied")
+        return
+    for setting, value in (("ivfflat.probes", ANN_PROBES), ("hnsw.ef_search", ANN_EF_SEARCH)):
+        try:
+            session.execute(text(f"SET LOCAL {setting} = {value}"))
+        except SQLAlchemyError:
+            logger.warning("%s not applied; the search will use pgvector's default", setting)
+
+
+def _scalar_filter_conditions(source_table: str | None, game_date: str | None) -> list[object] | None:
+    """Return the conditions an ``IN`` narrowing would read ids through, or None.
+
+    ``None`` means there is no scalar filter, so there is nothing to narrow by and
+    the caller should run its statement unchanged.
+
+    Args:
+        source_table: Source-table filter, if the search carried one.
+        game_date: Game-date filter, if the search carried one.
+
+    Returns:
+        Bound conditions for ``select(RagChunkVector.id)``, or None.
+
+    """
+    if source_table is None:
+        return None
+    conditions: list[object] = [
+        RagChunkVector.source_table == source_table,
+        RagChunkVector.embedding.is_not(None),
+    ]
+    if game_date:
+        parsed = _coerce_game_date(game_date)
+        if parsed is not None:
+            conditions.append(RagChunkVector.game_date == parsed)
+    return conditions
+
+
+def _filtered_ids(session: Session, conditions: list[object]) -> list[int] | None:
+    """Return the ids the conditions select, or None when they select too many.
+
+    Args:
+        session: Session the ids are read from.
+        conditions: Conditions built by :func:`_scalar_filter_conditions`.
+
+    Returns:
+        The matching ids, or None when the filter is not selective enough.
+
+    """
+    total = session.execute(select(func.count()).select_from(RagChunkVector).where(*conditions)).scalar()
+    if not total or total > _MAX_EXACT_ID_FILTER:
+        return None
+    return list(session.execute(select(RagChunkVector.id).where(*conditions)).scalars().all())
+
+
+def _coerce_game_date(value: object) -> dt_date | None:
+    """Turn a ``game_date`` filter value into the date the column stores.
+
+    The parameter is documented and typed as a ``YYYY-MM-DD`` string, but the
+    column is ``DATE`` -- so binding the string straight into the comparison
+    produced ``operator does not exist: date = character varying`` and every
+    search failed, exactly as the missing-column error had before it. The
+    string form is kept at the API boundary because that is what callers pass;
+    the conversion belongs here, next to the column.
+
+    An unusable value returns ``None`` so the caller can drop the filter rather
+    than fail the whole search: a mistyped date should narrow the results, not
+    turn a working query into an error. The caller warns when it drops one.
+
+    Args:
+        value: A ``date``, a ``YYYY-MM-DD`` string (optionally with a time), or None.
+
+    Returns:
+        The date, or None when it cannot be read as one.
+
+    """
+    if value is None:
+        return None
+    if isinstance(value, dt_date):
+        return value
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+    try:
+        return dt_date.fromisoformat(text_value[:10])
+    except ValueError:
+        return None
 
 
 def _has_tombstone_marker(existing: RagChunkVector | None) -> bool:
@@ -218,6 +346,8 @@ class VectorSearchRepository:
         player_id: str | None,
         index_version: str | None,
     ) -> list[dict[str, Any]]:
+        _configure_ann_probes(session)
+
         # cosine_distance: 0 = 동일, 2 = 반대 → score = 1 - distance
         distance_expr = RagChunkVector.embedding.cosine_distance(query_vector)
         score_expr = (1 - distance_expr).label("score")
@@ -237,7 +367,13 @@ class VectorSearchRepository:
         if document_type:
             stmt = stmt.where(RagChunkVector.document_type == document_type)
         if game_date:
-            stmt = stmt.where(RagChunkVector.game_date == game_date)
+            parsed_game_date = _coerce_game_date(game_date)
+            if parsed_game_date is None:
+                # Drop the filter rather than fail the search: a mistyped date
+                # should narrow results, not turn a working query into an error.
+                logger.warning("Ignoring unusable game_date filter: %r", game_date)
+            else:
+                stmt = stmt.where(RagChunkVector.game_date == parsed_game_date)
         if index_version:
             stmt = stmt.where(RagChunkVector.index_version == index_version)
 
@@ -293,21 +429,37 @@ class VectorSearchRepository:
         source_table: str | None,
         game_date: str | None,
     ) -> list[dict[str, Any]]:
-        """Load filtered rows with exact fallback for pgvector ANN gaps."""
-        if source_table in _DATE_SCOPED_SOURCE_TABLES and game_date:
-            # Date-scoped game rows are small enough for an exact filtered scan
-            # and avoid approximate HNSW candidate loss within one day.
-            session.execute(text("SET LOCAL enable_indexscan = off"))
-            return cls._load_search_results(session, stmt)
+        """Load the rows a filtered vector search selects, without disabling indexes.
 
-        results = cls._load_search_results(session, stmt)
-        if not results and source_table:
-            # Older pgvector HNSW builds can discard all filtered candidates
-            # before applying the source predicate. Prefer correctness for the
-            # rare empty filtered result over returning no relevant document.
-            session.execute(text("SET LOCAL enable_indexscan = off"))
-            results = cls._load_search_results(session, stmt)
-        return results
+        This used to run ``SET LOCAL enable_indexscan = off`` when the filter was a
+        date-scoped source with a ``game_date``, so that the day's rows were scanned
+        exactly instead of approximately. Measured 2026-10-30, that trade was worse
+        than the approximation it avoided:
+
+        * the same predicate through ``idx_rag_chunks_game_date`` costs **0.049 ms**
+          with index scans on and **91.7 ms** with them off -- ``enable_indexscan``
+          does not stop a bitmap scan, so the day still came through
+          ``idx_rag_chunks_game_date``, just through the slower path;
+        * when the filter carried no ``game_date``, nothing could be bitmapped and
+          the scan became a sequential read of the whole 3.1 GB heap: measured
+          **300 s timeout** on the production table.
+
+        The exactness it was buying is available by a cheaper route: read the ids the
+        scalar predicate selects (through the same B-tree, ~0.05 ms), then hand them
+        to the distance query as an ``IN`` list. The planner keeps every index, the
+        distance is computed only for rows the filter actually admits, and no
+        approximation is involved -- so the fallback retry is gone with it.
+
+        A filter that admits more rows than ``_MAX_EXACT_ID_FILTER`` is not selective
+        enough for an ``IN`` list to help; the statement runs unchanged and the
+        approximate index chooses among enough candidates for that to be fine.
+        """
+        conditions = _scalar_filter_conditions(source_table, game_date)
+        if conditions is not None:
+            ids = _filtered_ids(session, conditions)
+            if ids is not None:
+                stmt = stmt.where(RagChunkVector.id.in_(ids))
+        return cls._load_search_results(session, stmt)
 
     def upsert_chunk(self, session: Session, chunk_data: dict[str, Any]) -> None:
         """단일 RAG 청크를 upsert합니다 (source_table + source_row_id 기준).

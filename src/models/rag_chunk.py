@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import array
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Date, DateTime, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.dialects.oracle import VECTOR, VectorStorageFormat, VectorStorageType
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -98,6 +98,13 @@ class RagChunk(Base, TimestampMixin):
     )
     team_id: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Associated team code")
     player_id: Mapped[str | None] = mapped_column(String(20), nullable=True, comment="Associated player person ID")
+    document_type: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, comment="Document type (player_profile/season_batting/...)"
+    )
+    game_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="Target date (game_date/event_date)")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="Published timestamp")
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="Original source URL")
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True, comment="Language code (default ko)")
     source_table: Mapped[str] = mapped_column(
         Text().with_variant(String(100), "oracle"),
         nullable=False,

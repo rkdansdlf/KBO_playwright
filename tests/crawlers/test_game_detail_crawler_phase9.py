@@ -219,7 +219,16 @@ class TestDeriveHitterStatsFromInningCells:
     def test_empty_values(self):
         cells = {"1": "", "2": "&nbsp;"}
         result = GameDetailCrawler._derive_hitter_stats_from_inning_cells(cells)
-        assert result == {"strikeouts": 0, "walks": 0, "hbp": 0, "sacrifice_hits": 0, "sacrifice_flies": 0}
+        assert result == {
+            "strikeouts": 0,
+            "walks": 0,
+            "hbp": 0,
+            "sacrifice_hits": 0,
+            "sacrifice_flies": 0,
+            "doubles": 0,
+            "triples": 0,
+            "home_runs": 0,
+        }
 
 
 class TestPopulateHitterStats:

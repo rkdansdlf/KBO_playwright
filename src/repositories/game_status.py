@@ -20,7 +20,9 @@ from src.config.historical_backfill_policy import (
     HistoricalBackfillPolicy,
     load_historical_backfill_policy,
 )
+from src.constants import FINAL_PBP_MARKER
 from src.db.engine import get_db_session
+from src.models.audit_trail import CorrectionAuditTrail
 from src.models.game import (
     Game,
     GameBattingStat,
@@ -28,6 +30,7 @@ from src.models.game import (
     GameLineup,
     GameMetadata,
     GamePitchingStat,
+    GamePlayByPlay,
 )
 from src.repositories.game_helpers import (
     _canonicalize_game_id,
@@ -46,12 +49,18 @@ AUDIT_SOURCE = "refresh_game_status"
 #: name it did not actually consult.
 AUDIT_RAW_SOURCE = "stored_game_status"
 
+#: ``corrected_source`` for a single-row status move, used when the caller states no
+#: reason. The refresh path writes ``AUDIT_SOURCE`` because it decides from evidence;
+#: this one names the function, because that is all it knows.
+STATUS_AUDIT_SOURCE = "update_game_status"
+
 _EVIDENCE_KEYS = (
     "has_metadata",
     "has_inning_scores",
     "has_lineups",
     "has_batting",
     "has_pitching",
+    "has_finished_relay",
 )
 
 
@@ -107,7 +116,12 @@ def automatic_write_allowed(game_year: int | None, season_year: int) -> bool:
 
 
 def update_game_status(
-    game_id: str, status: str, session: Session | None = None, *, allow_historical: bool = False
+    game_id: str,
+    status: str,
+    session: Session | None = None,
+    *,
+    allow_historical: bool = False,
+    reason: str = "",
 ) -> bool:
     """Update one game's status.
 
@@ -119,6 +133,8 @@ def update_game_status(
         status: Status.
         session: DB Session.
         allow_historical: Opt in to writes outside the current season.
+        reason: Why the caller is moving the status. Recorded on the audit trail and
+            used as the row's ``corrected_source``; it names this function when empty.
 
     """
     if session is None:
@@ -146,9 +162,60 @@ def update_game_status(
             status,
         )
         return False
-    game.game_status = status
-    session.flush()
+    if game.game_status != status:
+        previous = game.game_status
+        game.game_status = status
+        session.flush()
+        _record_status_change(session, game=game, previous=previous, status=status, reason=reason)
+    # A move that does not move is not recorded: ``updated_at`` would not change
+    # either, and an entry for a no-op is the noise that hides the entries that matter.
     return True
+
+
+def _record_status_change(
+    session: Session,
+    *,
+    game: Game,
+    previous: str | None,
+    status: str,
+    reason: str,
+) -> None:
+    """Record one status move on the audit trail, in the caller's transaction.
+
+    This is the only guarded way to move a single game's status, and until now it
+    moved it without leaving a record. Measured 2026-11-01: ``20261027HTSS0`` reads
+    ``COMPLETED`` while the trail's last entry for it is ``SCHEDULED -> CANCELLED``,
+    and three of the six call sites write no entry at all -- ``auto_healer.py`` (the
+    CLI) is the one that does, which is why its 8,558 rows are the bulk of the table.
+    A reader could see the status change and nothing about who decided it or why.
+
+    The row goes in through the caller's session rather than a second one, so the
+    status and its record commit or roll back together. An audit row that survived a
+    rolled-back status write would be worse than no row.
+
+    Args:
+        session: Caller-owned session.
+        game: The row whose status moved.
+        previous: The status before the move.
+        status: The status after it.
+        reason: Why the caller moved it. Names the caller when it is empty.
+
+    """
+    source = reason or STATUS_AUDIT_SOURCE
+    session.add(
+        CorrectionAuditTrail(
+            game_id=game.game_id,
+            entity_type="game",
+            entity_id=game.game_id,
+            field_name="game_status",
+            raw_value=previous,
+            raw_source=STATUS_AUDIT_SOURCE,
+            corrected_value=status,
+            corrected_source=source,
+            correction_reason=source,
+            confidence=1.0,
+        ),
+    )
 
 
 def _record_transition_audits(session: Session, transitions: Iterable[StatusTransition], target_date: str) -> int:
@@ -231,6 +298,38 @@ def _fill_scores_from_innings(session: Session, game: Game) -> None:
     game.home_score = int(inning_totals["home"] or 0)
 
 
+def _has_finished_relay(session: Session, game_id: str) -> bool:
+    """Return whether the relay feed closed this game.
+
+    Only the feed's own marker counts. ``pbp_complete_game_ids`` also accepts
+    "the stored play-by-play reached the last stored inning", which is the right
+    reading when the question is whether a *finished* game's feed was fully
+    captured, but the wrong one here: an in-progress game's relay reaches the
+    inning it is playing, and this flag feeds a terminal-status decision.
+
+    Args:
+        session: Session the game's rows are read from.
+        game_id: Game whose play-by-play is inspected.
+
+    Returns:
+        True when the stored play-by-play carries the closing marker.
+
+    """
+    try:
+        marker_row = (
+            session.query(GamePlayByPlay.game_id)
+            .filter(
+                GamePlayByPlay.game_id == game_id,
+                GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+            )
+            .first()
+        )
+    except SQLAlchemyError:
+        return False
+    else:
+        return marker_row is not None
+
+
 @dataclass(frozen=True)
 class _EvaluationContext:
     """Per-run facts every game evaluation needs."""
@@ -269,6 +368,7 @@ def _evaluate_game(session: Session, game: Game, context: _EvaluationContext) ->
     has_lineup = _has_game_child_rows(session, GameLineup, game.game_id)
     has_batting = _has_game_child_rows(session, GameBattingStat, game.game_id)
     has_pitching = _has_game_child_rows(session, GamePitchingStat, game.game_id)
+    has_finished_relay = _has_finished_relay(session, game.game_id)
     if (
         context.write
         and game.game_date < context.today
@@ -286,12 +386,13 @@ def _evaluate_game(session: Session, game: Game, context: _EvaluationContext) ->
         has_lineups=has_lineup,
         has_batting=has_batting,
         has_pitching=has_pitching,
+        has_finished_relay=has_finished_relay,
         today=context.today,
     )
     evidence = dict(
         zip(
             _EVIDENCE_KEYS,
-            (has_metadata, has_inning, has_lineup, has_batting, has_pitching),
+            (has_metadata, has_inning, has_lineup, has_batting, has_pitching, has_finished_relay),
             strict=True,
         ),
         home_score=game.home_score,

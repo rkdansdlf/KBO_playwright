@@ -485,11 +485,19 @@ class PlayerSearchCrawler(BasePlaywrightCrawler):
         else:
             return True
 
-    async def _wait_after_nav(self, page: Page, prev_v: str, _first_b: str) -> None:
+    async def _wait_after_nav(self, page: Page, prev_v: str, first_b: str) -> None:
         with contextlib.suppress(TimeoutError):
             await page.wait_for_function(
-                "([s, v]) => document.querySelector(s)?.value !== v",
-                arg=[HFPAGE, prev_v],
+                """([hfSelector, rowSelector, prevV, prevFirst]) => {
+                    const hf = document.querySelector(hfSelector);
+                    const row = document.querySelector(rowSelector);
+                    if (!row) return true;
+                    const currFirst = (row.querySelector('td:nth-child(2)')?.textContent || '').trim();
+                    const hfChanged = !prevV || (hf && hf.value !== prevV);
+                    const rowChanged = !prevFirst || (currFirst && currFirst !== prevFirst);
+                    return hfChanged && rowChanged;
+                }""",
+                arg=[HFPAGE, TABLE_ROWS, prev_v, first_b],
                 timeout=SHORT_TIMEOUT,
             )
         await asyncio.sleep(self.request_delay)

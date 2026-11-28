@@ -58,34 +58,23 @@ def _parse_lotte_giants_food(
 
 def _parse_jamsil_parking(html: str, _source_key: str, _metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Parse Jamsil stadium parking page (stadium.seoul.go.kr)."""
+    from src.crawlers.parking_crawler import PARKING_FEE_PATTERN
+
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(separator=" ", strip=True)
 
-    sections = []
-    seen = set()
+    fees = []
+    for match in PARKING_FEE_PATTERN.finditer(text):
+        label, amount = match.group(1), match.group(2).replace(",", "")
+        fees.append({"label": label, "amount": int(amount)})
 
-    patterns = [
-        re.compile(r"([가-힣]+(?:구역|주차|장|zone|Zone))"),
-        re.compile(r"(P\d+|[A-Z]\d+)"),
+    return [
+        {
+            "stadium_id": "JAMSIL",
+            "lot_name": "JAMSIL 주차장",
+            "fee_rules": fees,
+        },
     ]
-
-    for pattern in patterns:
-        for match in pattern.finditer(text):
-            name = match.group(0).strip()
-            if name in seen or len(name) < _MIN_SECTION_NAME_LENGTH:
-                continue
-            seen.add(name)
-            sections.append(
-                {
-                    "stadium_id": "JAMSIL",
-                    "section_name": name,
-                    "section_code": name,
-                    "capacity": None,
-                    "zone_type": "parking",
-                },
-            )
-
-    return sections
 
 
 PARSER_REGISTRY: dict[str, ParserFunc] = {

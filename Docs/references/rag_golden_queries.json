@@ -185,17 +185,19 @@
     "id": "prod_highlight_027",
     "query": "2026년 6월 26일 한화와 SSG 경기의 빅플레이는?",
     "relevantChunkIds": [
-      "game_highlights:1",
-      "game_highlights:2",
-      "game_highlights:4",
-      "game_highlights:5",
-      "game_highlights:8",
-      "game_highlights:9",
-      "game_highlights:10",
-      "game_highlights:12",
-      "game_highlights:13",
-      "game_highlights:14",
-      "game_highlights:15"
+      "game_highlights:20260626HHSK0_BIG_PLAY_25",
+      "game_highlights:20260626HHSK0_BIG_PLAY_27",
+      "game_highlights:20260626HHSK0_BIG_PLAY_32",
+      "game_highlights:20260626HHSK0_BIG_PLAY_41",
+      "game_highlights:20260626HHSK0_BIG_PLAY_44",
+      "game_highlights:20260626HHSK0_BIG_PLAY_45",
+      "game_highlights:20260626HHSK0_BIG_PLAY_50",
+      "game_highlights:20260626HHSK0_BIG_PLAY_53",
+      "game_highlights:20260626HHSK0_BIG_PLAY_54",
+      "game_highlights:20260626HHSK0_BIG_PLAY_65",
+      "game_highlights:20260626HHSK0_BIG_PLAY_66",
+      "game_highlights:20260626HHSK0_BIG_PLAY_67",
+      "game_highlights:20260626HHSK0_BIG_PLAY_75"
     ],
     "filters": {"source_table": "game_highlights", "document_type": "highlight"},
     "tags": ["game"]
@@ -210,7 +212,7 @@
   {
     "id": "prod_move_029",
     "query": "2018년 12월 김동엽 선수 트레이드 내용은?",
-    "relevantChunkIds": ["player_movements:2018-12-07_삼성_김동엽(외야수)_트레이드_53ef4827f2294e4a"],
+    "relevantChunkIds": ["player_movements:2018-12-07_SS_김동엽(외야수)_트레이드_42f3d3a6605c5578"],
     "filters": {"source_table": "player_movements", "document_type": "player_movement"},
     "tags": ["player"]
   },

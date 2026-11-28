@@ -59,7 +59,16 @@ def _run_ingestion(ctx: dict[str, Any]) -> StageExecutionResult:
             stage_id="ingestion",
             status=StageExecutionStatus.COMPLETED,
             records_processed=game_count or 1,
-            artifacts={"ingestion_result": result},
+            artifacts={
+                "ingestion_result": result,
+                # Forwarded to the downstream stages by execute_workflow. step 8 of
+                # run_daily_update already computes these from the same day's data;
+                # an absent list means that step was skipped or failed, so the DAG
+                # keeps its own computation as the fallback.
+                "derived_refresh_completed": tuple(result.get("derived_refresh") or ())
+                if isinstance(result, dict)
+                else (),
+            },
         )
     except Exception as exc:
         logger.exception("Ingestion stage failed")
@@ -72,6 +81,13 @@ def _run_ingestion(ctx: dict[str, Any]) -> StageExecutionResult:
 
 def _run_processing(ctx: dict[str, Any]) -> StageExecutionResult:
     year = _extract_target_year(ctx)
+    if "standings" in (ctx.get("derived_refresh_completed") or ()):
+        return StageExecutionResult(
+            stage_id="processing",
+            status=StageExecutionStatus.COMPLETED,
+            records_processed=0,
+            artifacts={"skipped_reason": "already_refreshed_by_ingestion"},
+        )
     try:
         from src.cli.calc.calculate_standings import StandingsCalculator
         from src.db.engine import get_db_session
@@ -97,6 +113,13 @@ def _run_processing(ctx: dict[str, Any]) -> StageExecutionResult:
 
 def _run_analytics(ctx: dict[str, Any]) -> StageExecutionResult:
     year = _extract_target_year(ctx)
+    if "stat_rankings" in (ctx.get("derived_refresh_completed") or ()):
+        return StageExecutionResult(
+            stage_id="analytics",
+            status=StageExecutionStatus.COMPLETED,
+            records_processed=0,
+            artifacts={"skipped_reason": "already_refreshed_by_ingestion"},
+        )
     try:
         from src.analytics.sabermetrics import SabermetricsEngine
         from src.cli.calc.calculate_rankings import rebuild_rankings

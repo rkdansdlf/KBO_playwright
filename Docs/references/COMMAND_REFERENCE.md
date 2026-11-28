@@ -538,7 +538,7 @@ python3 -m scripts.maintenance.audit_pa_formula --fix-year 2020
 # PBP 기반 SH/SF 백필
 python3 -m scripts.maintenance.backfill_sh_sf_from_pbp --year 2020
 
-# 월간 자동 감사 (APScheduler가 매월 1일 03:00 KST 실행)
+# 월간 자동 감사 (APScheduler가 매월 1일 04:45 KST 실행)
 python3 -m src.cli.monthly_unified_audit
 python3 -m src.cli.monthly_unified_audit --team-only
 python3 -m src.cli.monthly_pa_audit
@@ -734,12 +734,46 @@ env RAG_TARGET_ENV=production RAG_INDEX_ALLOW_WRITE=1 RAG_INDEX_ALLOW_PRODUCTION
 `candidate_count`가 `0`인지 확인하고 `audit_rag_index --require-postings`를
 재실행합니다.
 
+### 2-2. 검색 필요성 측정 (audit_retrieval_necessity)
+
+골든셋의 각 질문이 **SQL로 답할 수 있었는지**를 분해합니다. DB에 연결하지 않고,
+인덱스도 쓰지 않습니다. 입력은 골든셋과 코드뿐입니다.
+
+```bash
+# 비율 측정
+python3 -m src.cli.rag.audit_retrieval_necessity \
+  --dataset Docs/references/rag_golden_queries.json \
+  --routing-dataset Docs/references/rag_routing_golden_queries.json \
+  --json
+
+# 회귀 게이트 — SQL 커버리지가 줄었거나 분류 불가 케이스가 생기면 exit 1
+python3 -m src.cli.rag.audit_retrieval_necessity --require-sql-covered 0.50 --fail-on-unknown
+
+# Master CLI 경유
+python3 -m src.cli.kbo rag necessity --json
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--dataset` | 분류할 골든셋 (기본 `Docs/references/rag_golden_queries.json`) |
+| `--routing-dataset` | 선택. `expectedRoute` 분포를 함께 보고 |
+| `--require-sql-covered R` | `sql_covered` 비율이 R 미만이면 exit 1 |
+| `--fail-on-unknown` | `filters.source_table`을 선언하지 않은 케이스가 있으면 exit 1 |
+| `--json` | `thresholds`를 수치와 함께 출력 |
+
+버킷 경계는 손으로 적지 않고 소유한 코드에서 유도합니다 — 산문은
+`build_rag_index._MARKDOWN_SOURCE_TABLES`, SQL 커버리지는
+`structured_retriever.py`의 `source_table=` 리터럴, 나머지는
+`_SOURCE_TABLE_BY_SOURCE`입니다. 현재 측정값과 결정 규칙은
+`Docs/references/RAG_NECESSITY.md`를 참고하세요.
+
 ### 3. 일일 자동 파이프라인 (스케줄러 등록)
 
 | 시각(KST) | 잡 | 역할 |
 | --- | --- | --- |
-| 05:00 | `sync_rag_incremental_job` | 최신 소스 → chunk/vector 발행 (terms 기본으로 posting 동시 유지) |
-| 05:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
+| 00:00 | `crawl_daily_games` | 직전 KST 날짜 경기 확정 → 파생 집계·RAG 체인 시작 (이후 15~30분 간격) |
+| 02:00 | `sync_rag_incremental_job` | 최신 소스 → chunk/vector 발행 (terms 기본으로 posting 동시 유지) |
+| 02:40 | `sparse_terms_catchup_job` | 발행 누락분 insert-only catch-up |
 | 06:05 | `rag_audit_sentinel_job` | 커버리지 게이트 실패 시 Telegram/Slack 경보 |
 
 스케줄러는 Windows 서버의 작업 스케줄러로 도는 상주 프로세스이며, **잡 추가 후에는 재시작해야 반영**됩니다.
@@ -924,7 +958,7 @@ print(f"수집된 선수 수: {len(results)}")
 5. **시범경기** (`exhibition`): 참고용 데이터
 
 ### 크롤링 빈도 권장사항
-- **정규시즌 중**: 매일 03:00 KST
+- **정규시즌 중**: 매일 00:00 KST
 - **포스트시즌**: 경기 후 즉시
 - **비시즌**: 주 1회 (일요일 05:00 KST)
 - **역사 데이터**: 월 1회 검증

@@ -1,6 +1,6 @@
 # Known Data Limitations
 
-Last updated: 2026-08-23
+Last updated: 2026-11-01
 
 This document tracks known data quality issues and their current status.
 
@@ -317,7 +317,154 @@ collection.
 
 ## Historical Data Coverage (2001-2009)
 
-**Status**: Schedule coverage backfilled; detail/stat completeness remains unverified
+**Status**: Schedule coverage backfilled; scores and detail are source-limited (see below)
+
+### 2001~2010 game scores are absent, and no reachable source has them (confirmed 2026-10-30)
+
+2,712 completed games from 2001~2010 have `away_score`/`home_score` NULL. They also
+have **no inning rows and no events** — so the score cannot be derived from what is
+stored (a game id is all there is). The 126~248 games per season that do carry detail
+are a different set; they have scores already.
+
+Sources checked for the missing scores, and why each fails:
+
+| Source | Result |
+| --- | --- |
+| KBO GameCenter | Has the scores; `robots.txt` is `User-agent: * / Disallow: /` |
+| Naver record / schedule / relay | 404 / `games=0` / empty — those seasons were never served |
+| 나무위키 team season docs | Season page holds a month-by-month fixture list but **no scores** (measured: `KIA 타이거즈/2005년`, 0 date strings, 2 score patterns) |
+| 위키백과 (`2005년 한국 프로 야구`) | 92KB, 4 tables, **9 score-like patterns** — standings and finals, not game results |
+| Wayback Machine | 48 game pages total (2003: 3, 2004: 45) |
+| LOPES `KBO_light.csv` | Repository covers **2008~2022** only; the HUF `lopes.hufs.ac.kr` host is unreachable |
+| 야구나라 | Game pages exist from **2025-05-01** onward |
+| 스태티즈 | `Allow: /` and `Disallow: /` both present for `*`; RFC 9309 takes the more restrictive rule, and AI crawlers are named and refused |
+
+**Consequence**: a score for these games requires an outside source — the printed
+yearbook (library reading room), a Sports2i licence, or news box scores (BigKinds).
+`scripts/maintenance/import_season_boxscores.py` converts such a source into the
+archive payload `src.cli.collection.ingest_historical_archive` reads; see
+`Docs/runbooks/HISTORICAL_IMPORT.md`. Until then the `game` chunks render these as
+**"결과 미상"** (result unknown) rather than inventing a score, and the answer layer
+returns "제공된 기록에서 확인할 수 없습니다".
+
+#### The window closed on 2026-08-05 (measured 2026-10-30)
+
+The scores were reachable and were not collected. `www.koreabaseball.com/robots.txt`
+as recorded in `Docs/robots/`:
+
+| Snapshot | `User-agent: *` |
+| --- | --- |
+| 2026-06-26 | `Disallow: /Manager` — the GameCenter pages were **allowed** |
+| **2026-08-05 21:48** | **`Disallow: /`** — everything is refused |
+| 2026-10-29 | `Disallow: /` (unchanged) |
+
+During the allowed window (2026-06-29 ~ 07-18) the crawler visited those pages and
+stored what it was asked for: `game_metadata.source_payload` holds `stadium`,
+`attendance`, `start_time`, `end_time`, `game_time`. **It holds no score field** —
+the score was never part of what that pass collected. So the data was available for
+about seven weeks and the pass that ran then did not ask for it.
+
+Nothing in the repository may collect it now. `compliance.is_allowed` refuses the
+whole host, and `KBO_ALLOW_ROBOTS_OVERRIDE` / `KBO_IGNORE_ROBOTS_TXT` are **not** set
+in `.env` — turning them on would be a policy decision, not a bug fix.
+
+**Corrected 2026-10-30 — the ledger's 1,737 rows are not 1,737 calls.** An earlier
+note in this file said the repository "called the refused host 1,737 times". That
+reading was of `source_url`, and it was wrong. Measured:
+
+| Rows | `checkpoint.outcome` | `records_read` | Reality |
+| --- | --- | --- | --- |
+| 1,048 (10-10 ~ 10-29) | **`source_limited`**, reason `kbo_robots_blocked` | 0 | **Never fetched.** `preview_crawler` checks `compliance.is_allowed` before fetching, records the refusal as a checkpoint and returns without a request — "A policy refusal is not a data outcome and not a failure: the source was never consulted." That wording is in the code because this used to land as `FETCH_HTTP_ERROR` with a retryable dead letter (BUG-015, 77 exhausted letters that could never succeed). |
+
+So the repository does respect the refusal, and `source_url` on a ledger row means
+"the URL this run was about", not "a request that was made". Re-confirmed live:
+`compliance.is_allowed` returns False for both `GetKboGameList` and the GameCenter
+page, and logs the block.
+
+#### The 690 rows: a fixed defect, measured (2026-10-30)
+
+The note that used to sit here called these rows unexplained. They are explained, and
+the explanation is **not** "the refusal went undetected".
+
+**They are the pre-fix classification of a block.** `fe612367` (2026-10-10 17:37 KST)
+is titled "record a policy refusal as a policy refusal, not a fetch error", and its
+diff shows the pre-fix `_fetch_api_json` **already** checked
+`compliance.is_allowed(url)` and returned `None` before touching the transport. The
+defect was that the refusal left no marker, so the caller read `None` as "no preview
+data", `_date_is_confirmed_empty` returned False, and `track_crawl_run` recorded
+`FETCH_HTTP_ERROR` with a retryable dead letter.
+
+**No request was made — 689 of 690 runs took under 5 seconds.** Measured on the same
+period:
+
+| Group | Runs | p50 | max |
+| --- | --- | --- | --- |
+| `failed` (the 690) | 690 | **0.01 s** | 23.05 s |
+| `source_limited` (post-fix) | 1,048 | 0.04 s | 11.17 s |
+| `schedule` (a crawler that really fetches) | 564 | — | avg **32.93 s** |
+
+A blocked call is an in-memory `can_fetch` after the policy is loaded; a real request
+against this host costs tens of seconds. 689 runs sit in the 0–5 s bucket.
+
+**One run cannot be resolved from the ledger** (`id=1155`, 23.05 s, 2026-10-09
+14:15:10 UTC). Its immediate neighbour took 3.75 s while every other run took
+hundredths of a second, which is the shape of a cold start (first `robots.txt` fetch,
+10 s timeout, plus pool/DB setup) rather than of a completed request — a completed
+request would have produced previews, and the checkpoint says `previews: 0`. The
+scheduler's own log would settle it; that log lives on the scheduler host, not here.
+
+**It was three dates, retried.** The 690 runs cover only **20261010, 20261011 and
+20261012** — the same three dates every five minutes for two days, all of which hold
+games. 115 preview dead letters were produced and are now `ignored`.
+
+**The fix was deployed between 16:50 and 18:37 UTC on 2026-10-10.** Last `failed` row
+is 16:50:00 UTC; first `source_limited` row is 18:37:39 UTC. Since then: **1,055
+`source_limited` runs, 0 failures, for 20 days** (re-measured 2026-10-30 09:30 KST; the
+count grows by roughly one run per 30-minute cycle). The defect is historical, not
+reproducible.
+
+**No bypass path exists today, re-verified independently (2026-10-30).** `src/crawlers/`
+holds 32 modules that name `koreabaseball.com`; 29 of them call the policy
+(`is_allowed` / `is_allowed_sync`), and the three that do not are not crawlers
+(`http_client.py` is the transport, `selectors.py` and `run_vocabulary.py` are
+constant tables). Checked the other way round, against the ledger: five crawlers
+other than `preview` have run with a KBO URL as their target since the fix
+(`game_detail` 37 runs, `schedule` 35, `roster_transactions` 23, `player_movement` 20,
+`team_history` 1) and **all five consult the policy** before fetching
+(`game_detail_crawler.py:588,1376`, `schedule_crawler.py:439,453`,
+`roster_transaction_crawler.py:184,591`, `player_movement_crawler.py:104`,
+`team_history_crawler.py:110`). A row's `source_url` names the run's target, not a
+request that was made -- that is the same reading error the 1,737 figure came from.
+
+The policy fails closed: Python 3.14's `RobotFileParser.can_fetch` returns **False** on
+an unparsed file, and `_ensure_loaded` parses `Disallow: /` when the fetch returns a
+non-200 or raises.
+
+**What is structural rather than guaranteed**: the check lives in each crawler, not in
+`CrawlerHttpClient`. The shared transport validates the URL and redirect targets but
+never asks the policy (`grep compliance src/crawlers/http_client.py` returns nothing), so
+a new crawler that forgets the guard would fetch. Nothing is violating that today; it is
+the reason the per-crawler check has to be part of review rather than assumed from the
+transport. **A regression test could close this specific gap** -- assert that every module
+under `src/crawlers/` naming a KBO host also calls `is_allowed`/`is_allowed_sync`, the way
+`tests/monitoring/test_selector_gate_follows_the_crawlers.py` binds selectors to code.
+Not added here: the measured state is correct and the constraint was no further changes.
+
+**The scope limit is a separate, deliberate gap**: `compliance.is_allowed` answers only
+for `koreabaseball.com`. `_is_same_site` returns False for every other host and the method
+then returns `True`, so a club site or a stadium page is treated as allowed because
+nothing looked (`src/utils/host_policy.py` records those policies and says so in its own
+docstring: "That is an assumption reported as a fact"). Enforcing the recorded policies is
+a policy decision with its own consequences, not part of this finding.
+
+**The 1,737 → 1,738 difference was a new run, not a counting change.** Row `id=9794`
+(`target 20261030`, 2026-10-29 18:13:15 UTC) was written between two measurements taken
+minutes apart. Every row for this URL is after 2026-08-05, so the earlier "1,737 since
+08-05" figure was simply a snapshot taken one run earlier.
+
+**Remaining options**: a KBO data permission, or an outside dataset (yearbook OCR,
+Sports2i licence, news box scores). A robots change on KBO's side would reopen the
+crawler path as-is.
 
 **Result**: The 2026-07-19 schedule backfill increased parent game rows from 1,430 to
 4,688 across 2001-2009. Annual counts are now 504-544, with no duplicate game IDs and
@@ -395,6 +542,42 @@ an explicit completeness predicate and an alternate historical source.
 - SM, CB, TP → HU (현대, historical)
 
 **Reference**: `team_code_map` table (459 entries, complete since 2026-06-28)
+
+### `game` rows carry both era and current codes in 2011~2020 (accepted 2026-10-28)
+
+**Status**: Accepted — deliberately left as it is
+
+**What it is**: inside one `game` row the team columns can disagree on spelling
+while naming the same franchise. Measured for 2018:
+
+| Column | Era codes | Current codes |
+| --- | --- | --- |
+| `away_team` / `home_team` | `SK` 146, `KH` 142 | `SSG` 27, `NX` 24 |
+| `winning_team` | `SK` 89, `NX` 83 | 0 |
+
+So `20181112SKOB0` reads `away=SSG, home=DB, winning_team=SK`. 638 decided games
+over 2011~2020 (71~89 per season) have a `winning_team` that does not equal the
+winner's `away_team`/`home_team` string.
+
+**`season_team_code` does not settle it**: the function rewrites only the
+technical tokens (`HT`/`OB`/`SK`/`WO`) and returns any other code untouched, so
+`season_team_code("SSG", 2018)` is `SSG`, not `SK`. Neither spelling is
+normalised to the other automatically.
+
+**Why it is accepted**: franchise identity is already resolved in
+`away_franchise_id` / `home_franchise_id` / `winning_franchise_id`, so anything
+that groups by franchise is unaffected. Only paths that group or filter on the
+code *string* see the difference. Rewriting either side would touch 4,253 rows
+in the 2011~2020 range that standings and the rankings snapshot read, for no
+gain in the aggregate paths.
+
+**If you need to compare codes**: resolve through `team_code_map` or the
+franchise id rather than comparing strings.
+
+**Related**: `winning_team` was backfilled from the final score for 418 games
+that had none (2026-10-28, `data/repair_backups/winning_team_derived_20261028T132911.csv`).
+Those rows copy the winner's own `away_team`/`home_team` value, so they stay
+consistent with the rest of their row.
 
 ---
 
@@ -505,6 +688,64 @@ but whether the block is *acceptable* has not been decided:
 Until one of those is recorded, treat the alert as unresolved rather than as
 noise.
 
+### The 2026 postseason is missing two pieces, and both sources are closed (2026-11-01)
+
+**Status**: Blocked on sources. The Korean Series schedule is absent and one
+playoff game has no data; neither can be fetched today.
+
+`api-gw.sports.naver.com` — the host `ScheduleCrawler` tries first — has answered
+nothing since roughly 2026-10-27. Measured 2026-11-01: **HTTP 000** (20 s
+timeout, zero bytes received) on three attempts over ten minutes, and a month
+sweep failed **31 of 31 days for October and 30 of 30 for November** with
+`FETCH_TIMEOUT`. KBO's endpoint is the fallback and it is behind `Disallow: /`
+(latest snapshot 2026-10-30). Naver's mobile pages are not an alternative either:
+`m.sports.naver.com/robots.txt` is `Disallow: /` with only `/$` and `/index`
+allowed. Three paths, all closed.
+
+**What is missing now**
+
+* **`20261031HTSS0`** (KIA @ SS) is `CANCELLED` with zero child rows. This is a
+  **defect, not a postponement**: the playoff stands at **2–2** (10-26 KIA 5:1,
+  10-27 SS 3:8, 10-29 SS 6:4, 10-30 KIA 2:4), so a fifth game was required, and
+  10-31 is it. Its result also decides which team reached the Korean Series.
+  Measured 2026-11-02: `game_events` = **0** (no finished relay to recover from),
+  `game_date = 2026-10-31`, all score fields NULL, `game.cancelled` not set — so
+  no relay-based recovery path (`scripts/maintenance/recover_game_result_from_relay.py`)
+  has anything to read either.
+* **The Korean Series (2026-11-02 ~ 11-10) has no `game` rows at all.** Only
+  `kbo_seasons` knows the window exists. The KS roster it produces is therefore
+  unknown: with PO 2–2, either KIA or SSG won 10-31's decisive fifth game.
+
+**The five `CANCELLED` games in the same window are not defects.**
+`20261015OBLG0`, `20261021HTLG0`, `20261023LGHT0`, `20261025HTSS0` and
+`20261028SSHT0` all have zero child rows and null scores, and the series that
+continued past them are consistent with postponements: the wild card finished
+10-14, the semi-playoff ran 10-17/18/20 and then stopped, and the playoff began
+10-26 after 10-25 was lost. Nothing in the ledger claims they were played.
+
+**How the 10-31 decision was made (audited, not silent)**. The 11-02 03:00 KST
+nightly chain found the game still terminal-less. `correction_audit_trail` records
+two rows on 2026-11-02 03:27/03:29 KST (`--source 20261031` semantics):
+
+```
+id=9101  auto_healer:naver_record_unavailable  SCHEDULED      -> UNRESOLVED_MISSING
+id=9102  refresh_game_status                    UNRESOLVED_MISSING -> CANCELLED
+```
+
+`refresh_game_status_for_date` then extended that to the four sibling games that
+still had no rows (they were `CANCELLED` before). The evidence is "no boxscore,
+no PBP, no relay, no metadata: cannot assert the game happened" — the
+`has_metadata and not has_any_detail` branch, deliberately not a claim that the
+game was cancelled. A **false** `CANCELLED` costs one re-crawl; a **false**
+`COMPLETED` would fabricate scores, so fail-closed is correct. The fix needs the
+source to speak: a successful `game_detail` run for that date, or a relay that
+still terminates, re-derives the row (see §R4 and the 2026-10-26 HTSS0 recovery path).
+
+**Reopening**: the nightly `schedule` job keeps polling and records `success`
+with `records_read=0`; the moment `api-gw` answers, the October and November
+sweeps fill both gaps without intervention. Every other route is closed by
+robots rather than by failure.
+
 ### Measured impact by crawler (2026-10-11)
 
 `python -m src.cli.reports.crawler_source_inventory` reports **51 crawlers, 36
@@ -589,3 +830,30 @@ Two things this entry does not settle:
 
 Until the decision above is recorded, treat the alert as unresolved rather than
 as noise.
+
+#### PBP NULL player_id — 행 타입 구조이지 결함이 아니다 (2026-11-03)
+
+`game_play_by_play`의 `player_id` NULL은 시즌별로 65~100%다(2024는 100%).
+2026-11-03에 2026년분(338,998행)을 해부한 결과 **세 종류**로 나뉘며, 그중
+**결함은 아니다**:
+
+| 행 타입 | 행수(2026) | `batter_name` | 성격 |
+| --- | --- | --- | --- |
+| 투구 행 (`event_type='unknown'`) | 255,085 | NULL | 릴레이의 **개별 투구**("1구 파울") — 타자가 행에 명시되지 않는다 |
+| 이닝 헤더 (`inning_header`) | 79,327 | NULL | 이닝 시작 행 — 타자가 없다 |
+| 타석·주자·비디오 등 | 4,586 | 있음 | resolver 미실행분 — 해결 가능 |
+
+`player_id`는 **타석 행에서 타자**를 뜻한다(성공 행 전부 `batter_name` 일치로
+확인). 투구 행과 이닝 헤더는 타자가 없으므로 NULL이 **구조적으로 자연스럽다**.
+
+**주의 — 일괄 fill-forward는 오염이다.** PBP의 `batter_name`은 행 타입마다 다른
+것을 담는다: 타석 행은 타자, 주자 행(`steal`/`runner_*`)은 **주자**("2루주자
+정준재"), 비디오 판독 행은 **릴레이 줄 전문**("1회초 2번타순 5구 후 19"). 직전
+이름 행을 상속하는 fill-forward는 투구 행에 **주자 이름이나 줄 전문**을 넣을 수
+있다 — 실제로 시험 백필의 드라이런이 resolver에 "1회초 2번타순 1구 후 18"을
+이름으로 넘기는 것을 보여주었다. 시험 백필은 삭제했다.
+
+해결이 필요한 잔여는 두 가지뿐이다: `no_match` 1,781건(동명이인 — 등록부 보강
+후)과 `unknown`+이름있음 4,176건(resolver 미실행 — 동일 백필로 해결). 그리고
+**`player_id`가 필요한 행은 타석 행뿐**이고 그것은 이미 해결돼 있다 — 투구 행을
+채우는 것은 검색에는 불필요하고(텍스트 매칭), 집계에는 의미가 불분명하다.

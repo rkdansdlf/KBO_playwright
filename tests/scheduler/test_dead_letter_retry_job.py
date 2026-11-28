@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from src.scheduler.jobs import maintenance
 from src.services.crawl_dead_letter_worker import DlqWorkerSummary
 
@@ -27,6 +29,12 @@ def _patch_alerts():
         patch("src.scheduler.jobs.maintenance.alert_warning"),
         patch("src.scheduler.jobs.maintenance.alert_success"),
     )
+
+
+@pytest.fixture(autouse=True)
+def _database_gate_is_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep these job-unit tests off the SQLite test database."""
+    monkeypatch.setattr("src.scheduler.locks._db_gate", lambda urls=None: True)
 
 
 def test_nothing_due_returns_without_alert(monkeypatch) -> None:
@@ -110,6 +118,54 @@ def test_retry_job_is_registered_in_scheduler() -> None:
     from src.scheduler import registry
 
     assert hasattr(registry, "crawl_dead_letter_retry_job")
+
+
+def test_retry_job_uses_a_bounded_default_batch(monkeypatch) -> None:
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.delenv("DLQ_RETRY_BATCH_SIZE", raising=False)
+    summary = DlqWorkerSummary()
+    warn_patch, success_patch = _patch_alerts()
+    with (
+        patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary) as retry,
+        patch.object(maintenance, "_refresh_dlq_metrics"),
+        warn_patch,
+        success_patch,
+    ):
+        maintenance.crawl_dead_letter_retry_job()
+
+    retry.assert_called_once_with(limit=5)
+
+
+def test_retry_job_honors_a_positive_batch_size_override(monkeypatch) -> None:
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.setenv("DLQ_RETRY_BATCH_SIZE", "3")
+    summary = DlqWorkerSummary()
+    warn_patch, success_patch = _patch_alerts()
+    with (
+        patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary) as retry,
+        patch.object(maintenance, "_refresh_dlq_metrics"),
+        warn_patch,
+        success_patch,
+    ):
+        maintenance.crawl_dead_letter_retry_job()
+
+    retry.assert_called_once_with(limit=3)
+
+
+def test_retry_job_clamps_non_positive_batch_size(monkeypatch) -> None:
+    monkeypatch.setattr(maintenance, "_scheduler_job_lock", _NullLock)
+    monkeypatch.setenv("DLQ_RETRY_BATCH_SIZE", "0")
+    summary = DlqWorkerSummary()
+    warn_patch, success_patch = _patch_alerts()
+    with (
+        patch("src.services.crawl_dead_letter_worker.retry_due_dead_letters", return_value=summary) as retry,
+        patch.object(maintenance, "_refresh_dlq_metrics"),
+        warn_patch,
+        success_patch,
+    ):
+        maintenance.crawl_dead_letter_retry_job()
+
+    retry.assert_called_once_with(limit=1)
 
 
 def test_batch_failure_is_retried_by_tenacity(monkeypatch) -> None:

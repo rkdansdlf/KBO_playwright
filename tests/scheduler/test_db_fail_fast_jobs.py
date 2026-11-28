@@ -486,7 +486,7 @@ class TestEveryDatabaseBoundJobIsGated:
         recognised by taking a lock rather than by its name. ``crawl_daily_games``,
         ``crawl_live_refresh`` and ``crawl_pregame_refresh`` are registered jobs
         without the ``_job`` suffix, so a name-based filter skipped all three --
-        and ``crawl_daily_games`` is the 03:00 job the rest of the day hangs off.
+        and ``crawl_daily_games`` is the 00:00 job the rest of the day hangs off.
         """
         source = pathlib.Path(module_path).read_text(encoding="utf-8")
         jobs: dict[str, str] = {}

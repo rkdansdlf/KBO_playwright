@@ -11,7 +11,7 @@ APScheduler를 사용하여 정규시즌과 퓨처스리그 데이터 수집을 
 ### 2.1. 정규시즌 경기 크롤링 (`crawl_games_regular`)
 - **목적:** 매일 진행되는 정규시즌 경기의 상세 데이터를 수집하고, 시즌 통계를 롤업합니다.
 - **실행 빈도:** **높음 (매일)**
-- **권장 시간:** 매일 새벽 3시 (모든 경기가 종료된 후)
+- **권장 시간:** 매일 자정 00:00 (모든 경기가 종료된 후, 파생 집계·RAG 체인이 이어짐)
 - **표준 엔트리포인트:** `src.cli.run_daily_update`를 사용합니다. 이 작업은 월간 스케줄 upsert, 당일 상세 재확정, 릴레이 복구(`scripts/fetch_kbo_pbp.py`), 리뷰/WPA 생성, P0 비경기 데이터(구단 이벤트/티켓), 파생 테이블 재계산을 순서대로 수행합니다.
 
 ### 2.1.1. P0 비경기 크롤링 (`crawl_p0_non_game`)
@@ -82,8 +82,8 @@ scheduler.start()
 | 락 | 보호 대상 작업 | 설명 |
 |------|-------|------|
 | `LIVE_LOCK` | `crawl_live_refresh`, `crawl_pregame_refresh`, `crawl_transit_time`, `crawl_congestion` | 고빈도 실시간 작업 (1~5분 간격) |
-| `DAILY_LOCK` | `crawl_daily_games`(03:00, `run_daily_update`), `compute_standings`(03:30), `crawl_p0_non_game`(06:20), `crawl_p1p2_data`(06:45), `crawl_operation_notices`(09:00/11:30), `crawl_operation_notices_naver`(09:30/13:00) | 핵심 일일 데이터 파이프라인 — `ForceProcessLock` (stale lock 자동 정리) |
-| `MAINTENANCE_LOCK` | `crawl_all_futures_profiles`, `recalc_team_stats`, `recalc_player_stats`, 리포트 생성 | 장기 실행 유지보수 작업 (수시간 소요 가능) — `ForceProcessLock` |
+| `DAILY_LOCK` | `crawl_daily_games`(00:00, `run_daily_update`), `crawl_p0_non_game`(06:20), `crawl_p1p2_data`(06:45), `crawl_operation_notices`(09:00/11:30), `crawl_operation_notices_naver`(09:30/13:00) | 핵심 일일 데이터 파이프라인 — `ForceProcessLock` (stale lock 자동 정리) |
+| `MAINTENANCE_LOCK` | 야간 체인 `compute_standings`(00:30)·`aggregate_team_defense`(00:45)·`compute_rankings`(01:00)·`auto_heal_games`(01:15)·`heal_pbp`(01:30)·`data_integrity_check`(01:45)·`sync_rag_incremental`(02:00)·`source_coverage`(02:10)·`rag_vector_backfill`(02:30)·`sparse_terms_catchup`(02:40), 주간·월간 유지보수(일 03:00~04:00, 1일 04:15/04:45), `crawl_all_futures_profiles`, `recalc_team_stats`, `recalc_player_stats`, 리포트 생성 | 장기 실행 유지보수 작업 (수시간 소요 가능) — `ForceProcessLock`. **체인 간격은 계약**: 60초 안에 락을 못 잡으면 밀리지 않고 스킵된다 |
 
 - **구현:** `threading.Lock` 기반 `ProcessLock`/`ForceProcessLock`을 사용하며, `_scheduler_job_lock` 컨텍스트 매니저가 tier lock + `SQLITE_WRITE_LOCK`을 함께 획득합니다. Tier lock 획득은 `SQLITE_WRITE_LOCK_TIMEOUT_SECONDS`(기본 60s) 데드라인을 가지며, 타임아웃 시 `_LockSkipped`로 skip(경고 로그, 크래시 아님)됩니다.
 - **단일 인스턴스 guard:** `scripts/scheduler.py`는 `data/locks/scheduler.pid`로 중복 스케줄러 프로세스/컨테이너 실행을 차단합니다. 살아있는 PID가 있으면 두 번째 인스턴스는 `exit 1`, 죽은 PID는 stale로 간주하고 정리합니다. (2026-07 `crawl_p1p2_data_job` `LockAcquisitionError`의 근본 원인이었던 중복 실행 방지)

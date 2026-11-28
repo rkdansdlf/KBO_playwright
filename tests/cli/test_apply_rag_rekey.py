@@ -25,9 +25,11 @@ def _row(
     content_hash: str = "h1",
     status: str = "ACTIVE",
     index_version: str = "r2",
+    matched_source_pk: int | None = 999,
+    proof: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a manifest entry dict."""
-    return {
+    entry = {
         "chunk_id": chunk_id,
         "legacy_source_row_id": legacy_id,
         "natural_source_row_id": natural_id,
@@ -36,6 +38,18 @@ def _row(
         "legacy_content_hash": content_hash,
         "index_version": index_version,
     }
+    if matched_source_pk is not None:
+        entry["matched_source_pk"] = matched_source_pk
+    if proof is not None:
+        entry["proof"] = proof
+    else:
+        entry["proof"] = {
+            "matched_fields": ["year", "award_type", "player"],
+            "candidate_count": 1,
+            "source_snapshot_hash": "snap_hash_1",
+            "chunk_content_hash": content_hash,
+        }
+    return entry
 
 
 def _tombstone_row(
@@ -163,6 +177,7 @@ def _make_manifest(entries: list[dict]) -> dict:
     manifest["manifest_header"] = {
         "manifest_schema_version": "r2-rekey-manifest-v1",
         "identity_schema_version": "r2",
+        "match_schema_version": "content-proof-v1",
         "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "database_fingerprint": db_fingerprint,
         "git_commit_sha": current_git_sha,
@@ -658,6 +673,104 @@ class TestApplyRekey:
             output = json.loads(capsys.readouterr().out)
             assert output["rekeyed"] == 2
             assert output["tombstoned"] == 1
+        finally:
+            del os.environ["RAG_INDEX_ALLOW_WRITE"]
+            del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
+
+    def test_apply_rejects_manifest_without_match_schema_version(
+        self,
+        mock_session: Mock,
+        mock_lock: Mock,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Old manifest without content-proof-v1 is rejected unconditionally under --apply."""
+        import os
+
+        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
+        os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
+
+        try:
+            entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
+            manifest = _make_manifest(entries)
+            del manifest["manifest_header"]["match_schema_version"]
+            manifest["manifest_header"]["manifest_sha256"] = _compute_manifest_sha(manifest)
+            path = tmp_path / "legacy_manifest.json"
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            exit_code = main(["--manifest", str(path), "--apply", "--json"])
+            assert exit_code == 2
+            err = capsys.readouterr().err
+            assert "unsupported match schema" in err
+        finally:
+            del os.environ["RAG_INDEX_ALLOW_WRITE"]
+            del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
+
+    def test_apply_rejects_manifest_missing_proof_metadata(
+        self,
+        mock_session: Mock,
+        mock_lock: Mock,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Manifest entry lacking proof metadata is rejected under --apply."""
+        import os
+
+        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
+        os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
+
+        try:
+            entry = _row(100, "1", "2025_골든글러브_투수_원태in")
+            del entry["proof"]
+            manifest = _make_manifest([entry])
+            path = tmp_path / "no_proof.json"
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            exit_code = main(["--manifest", str(path), "--apply", "--json"])
+            assert exit_code == 2
+            err = capsys.readouterr().err
+            assert "missing proof metadata" in err
+        finally:
+            del os.environ["RAG_INDEX_ALLOW_WRITE"]
+            del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]
+
+    def test_apply_rejects_destination_natural_key_already_occupied(
+        self,
+        mock_session: Mock,
+        mock_lock: Mock,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """When destination natural key is already occupied by another active chunk, fail CAS."""
+        import os
+
+        os.environ["RAG_INDEX_ALLOW_WRITE"] = "1"
+        os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"] = "1"
+
+        try:
+            target_chunk = _FakeRow(chunk_id=100, source_row_id="1")
+            existing_occupied_chunk = _FakeRow(
+                chunk_id=999,
+                source_row_id="2025_골든글러브_투수_원태in",
+                index_status="ACTIVE",
+            )
+
+            # First query is for chunk 100, second is check for existing natural key
+            mock_session.execute.side_effect = [
+                _FakeResult(row=target_chunk),
+                _FakeResult(row=existing_occupied_chunk),
+            ]
+
+            entries = [_row(100, "1", "2025_골든글러브_투수_원태in")]
+            manifest = _make_manifest(entries)
+            path = tmp_path / "manifest.json"
+            path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            exit_code = main(["--manifest", str(path), "--apply", "--json"])
+            assert exit_code == 1
+            output = json.loads(capsys.readouterr().out)
+            assert output["skipped"] == 1
+            assert "target natural key already occupied" in output["skipped_entries"][0]["reason"]
         finally:
             del os.environ["RAG_INDEX_ALLOW_WRITE"]
             del os.environ["RAG_INDEX_ALLOW_PRODUCTION_WRITE"]

@@ -42,6 +42,7 @@ from src.models.season import KboSeason
 from src.repositories.safe_batting_repository import save_batting_stats_safe
 from src.urls import HITTER_BASIC1
 from src.utils.compliance import compliance
+from src.utils.crawler_failure_logger import record_crawl_failure
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
@@ -64,13 +65,26 @@ DEBUG_ROW_LIMIT = 3
 TEAM_FILTER_REFRESH_WAIT_MS = 3000
 BATTING_TEAM_SELECTOR = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
 BATTING_TEAM_REFRESH_SCRIPT = """
-    ({ value, label }) => {
+    ({ value, label, prevPlayer }) => {
         const selector = document.querySelector(
             'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
         );
         if (!selector || selector.value !== value) return false;
+        const row = document.querySelector('table.tData01 tbody tr');
+        if (!row) return true;
+        const link = row.querySelector('a');
+        let currPlayer = '';
+        if (link) {
+            currPlayer = link.getAttribute('href') || link.textContent.trim();
+        } else {
+            const cell = row.querySelector('td:nth-child(2)');
+            currPlayer = cell ? (cell.textContent || '').trim() : '';
+        }
+        if (prevPlayer && currPlayer && currPlayer === prevPlayer) {
+            return false;
+        }
         const rows = Array.from(document.querySelectorAll('table.tData01 tbody tr'));
-        return rows.length > 0 && rows.every(row => row.textContent.includes(label));
+        return rows.length > 0 && rows.some(r => r.textContent.includes(label));
     }
 """
 
@@ -503,9 +517,41 @@ def go_to_next_page(page: Page, current_page_num: int, policy: RequestPolicy | N
         if policy:
             policy.delay()
 
+        # 이전 페이지의 첫 번째 행 데이터 캡처
+        prev_first_player = page.evaluate("""() => {
+            const row = document.querySelector('table.tData01 tbody tr');
+            if (!row) return '';
+            const link = row.querySelector('a');
+            if (link) return link.getAttribute('href') || link.textContent.trim();
+            const cell = row.querySelector('td:nth-child(2)');
+            return cell ? (cell.textContent || '').trim() : '';
+        }""")
+
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
-        page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
+
+        # 다음 페이지 번호 클릭 후 표 첫 번째 행의 선수 데이터가 달라질 때까지 Explicit Wait (행 갱신 필수 검증)
+        try:
+            page.wait_for_function(
+                """({ prevPlayer }) => {
+                    const row = document.querySelector('table.tData01 tbody tr');
+                    if (!row) return false;
+                    const link = row.querySelector('a');
+                    let currPlayer = '';
+                    if (link) {
+                        currPlayer = link.getAttribute('href') || link.textContent.trim();
+                    } else {
+                        const cell = row.querySelector('td:nth-child(2)');
+                        currPlayer = cell ? (cell.textContent || '').trim() : '';
+                    }
+                    if (!currPlayer) return false;
+                    return prevPlayer ? currPlayer !== prevPlayer : true;
+                }""",
+                arg={"prevPlayer": prev_first_player},
+                timeout=SEL_TIMEOUT,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning("페이지 이동 후 테이블 갱신 대기 타임아웃 (%sp -> next), 계속 진행합니다", current_page_num)
     except CRAWLER_EXCEPTIONS:
         logger.exception("❌ 페이지 이동 실패 (%sp -> next)", current_page_num)
         return False
@@ -1084,6 +1130,14 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
     if by_team and tm["value"]:
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
+            prev_first_player = page.evaluate("""() => {
+                const row = document.querySelector('table.tData01 tbody tr');
+                if (!row) return '';
+                const link = row.querySelector('a');
+                if (link) return link.getAttribute('href') || link.textContent.trim();
+                const cell = row.querySelector('td:nth-child(2)');
+                return cell ? (cell.textContent || '').trim() : '';
+            }""")
             page.select_option(
                 BATTING_TEAM_SELECTOR,
                 tm["value"],
@@ -1092,7 +1146,7 @@ def _select_team_if_needed(page: Page, tm: dict, *, by_team: bool, policy: Reque
             page.wait_for_timeout(TEAM_FILTER_REFRESH_WAIT_MS)
             page.wait_for_function(
                 BATTING_TEAM_REFRESH_SCRIPT,
-                arg={"value": tm["value"], "label": tm["text"].strip()},
+                arg={"value": tm["value"], "label": tm["text"].strip(), "prevPlayer": prev_first_player},
                 timeout=NAV_TIMEOUT,
             )
             policy.delay()
@@ -1253,7 +1307,7 @@ class BattingSeriesCrawlRequest:
     limit: int | None = None
     save_to_db: bool = False
     headless: bool = False
-    by_team: bool = False
+    by_team: bool = True
     preserve_team_splits: bool = False
     browser: Browser | None = None
 
@@ -1358,8 +1412,15 @@ def _execute_batting_crawl(ctx: BattingSeriesExecutionContext) -> list[dict]:
 
         logger.info("✅ %s 데이터 수집 완료", ctx.series_info["name"])
 
-    except DB_SAVE_EXCEPTIONS:
+    except DB_SAVE_EXCEPTIONS as e:
         logger.exception("❌ 크롤링 중 오류")
+        record_crawl_failure(
+            "player_batting_series",
+            f"{ctx.year}_{ctx.series_key}",
+            HITTER_BASIC1,
+            "crawl_error",
+            error=e,
+        )
         if ctx.recorder is not None and not ctx.all_players_data:
             # The broad catch above turns a raised crawl into "no rows", which is
             # also what a season that has not started returns. Saying so here is
@@ -1518,7 +1579,7 @@ def crawl_all_series(
     *,
     save_to_db: bool = False,
     headless: bool = False,
-    by_team: bool = False,
+    by_team: bool = True,
 ) -> dict[str, list[dict]]:
     """모든 시리즈의 타자 기록을 크롤링.
 
@@ -1527,7 +1588,7 @@ def crawl_all_series(
         limit: Limit.
         save_to_db: Save To Db.
         headless: Whether to run the browser in headless mode.
-        by_team: By Team.
+        by_team: By Team (기본값 True: 10개 구단 순회로 규정타석 미달 선수도 누락 없이 수집).
 
     Returns:
         시리즈별 수집된 데이터 딕셔너리
@@ -1572,7 +1633,18 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="수집할 선수 수 제한")
     parser.add_argument("--save", action="store_true", help="DB에 저장")
     parser.add_argument("--headless", action="store_true", help="헤드리스 모드로 실행")
-    parser.add_argument("--by-team", action="store_true", help="팀별로 순회하여 모든 선수(비규정타석 포함) 수집")
+    parser.add_argument(
+        "--by-team",
+        action="store_true",
+        default=True,
+        help="팀별로 순회하여 모든 선수(비규정타석 포함) 수집 (기본값: True)",
+    )
+    parser.add_argument(
+        "--no-by-team",
+        action="store_false",
+        dest="by_team",
+        help="팀별 순회 해제 (규정타석 충족 선수만 수집)",
+    )
 
     args = parser.parse_args()
 

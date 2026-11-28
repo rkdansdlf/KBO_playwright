@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import urllib.robotparser
 from datetime import datetime
@@ -26,6 +27,24 @@ from src.constants import KST
 
 logger = logging.getLogger(__name__)
 KBO_ROBOTS_BLOCKED_REASON = "kbo_robots_blocked"
+
+#: The two names an operator can set. ``KBO_IGNORE_ROBOTS_TXT`` is the older one and
+#: both are deployed, so both are accepted.
+ROBOTS_OVERRIDE_ENV_VARS = ("KBO_ALLOW_ROBOTS_OVERRIDE", "KBO_IGNORE_ROBOTS_TXT")
+
+
+def _robots_override_enabled() -> bool:
+    """Return whether the operator has opted out of robots checks for this run.
+
+    One helper rather than the same two ``os.getenv`` calls written into both
+    ``is_allowed`` and ``is_allowed_sync``: they are read by the crawlers'
+    synchronous and asynchronous paths, and a change applied to one of two copies
+    is a change applied to half the crawlers. The override is intentional and
+    operational (KBO serves ``Disallow: /`` while its pages remain the only source
+    for some collections), so it stays an opt-in that lives in the deployment's
+    ``.env`` where it is visible, rather than a check deleted from the code.
+    """
+    return any(os.getenv(name) == "1" for name in ROBOTS_OVERRIDE_ENV_VARS)
 
 
 def log_source_limited(source: str, url: str) -> str:
@@ -127,10 +146,11 @@ class ComplianceChecker:
         Args:
             url: Url.
             user_agent: User Agent.
-            url: Url.
-            user_agent: User Agent.
 
         """
+        if _robots_override_enabled():
+            return True
+
         if not self._is_same_site(url):
             return True
 
@@ -147,10 +167,11 @@ class ComplianceChecker:
         Args:
             url: Url.
             user_agent: User Agent.
-            url: Url.
-            user_agent: User Agent.
 
         """
+        if _robots_override_enabled():
+            return True
+
         if not self._is_same_site(url):
             return True
 

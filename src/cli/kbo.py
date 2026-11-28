@@ -283,6 +283,37 @@ def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.
     )
     p_rag_census.add_argument("--json", action="store_true", help="Render the summary as JSON")
 
+    p_rag_nec = rag_subs.add_parser(
+        "necessity",
+        help="Measure how much retrieval is standing in for a SQL lookup (read-only).",
+    )
+    p_rag_nec.add_argument(
+        "--dataset",
+        "-g",
+        type=str,
+        default="Docs/references/rag_golden_queries.json",
+        help="Golden query JSON array to classify.",
+    )
+    p_rag_nec.add_argument(
+        "--routing-dataset",
+        type=str,
+        default=None,
+        help="Optional routing golden set whose expectedRoute distribution is also reported.",
+    )
+    p_rag_nec.add_argument(
+        "--require-sql-covered",
+        type=float,
+        default=None,
+        metavar="RATIO",
+        help="Exit 1 when the share of already SQL-servable cases falls below RATIO (0..1).",
+    )
+    p_rag_nec.add_argument(
+        "--fail-on-unknown",
+        action="store_true",
+        help="Exit 1 when any case omits the source_table that decides its bucket.",
+    )
+    p_rag_nec.add_argument("--json", action="store_true", help="Output JSON format.")
+
     # 12. Simulate
 
     # 12. Simulate
@@ -441,6 +472,29 @@ def _add_cert_and_lineage_subparsers(subparsers: argparse._SubParsersAction[argp
     p_form.add_argument("--json", action="store_true", help="Output result in JSON format.")
 
 
+def _add_repair_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add boxscore repair subparser."""
+    p_repair = subparsers.add_parser(
+        "repair-boxscore",
+        aliases=["repair_boxscore"],
+        help="Auto-discover and repair missing or inconsistent KBO games.",
+    )
+    p_repair.add_argument(
+        "--source",
+        choices=["all", "integrity", "dlq", "log"],
+        default="all",
+        help="Source to discover repair candidates from (default: all).",
+    )
+    p_repair.add_argument("--date", type=str, default=None, help="Target game date (YYYYMMDD or YYYY-MM-DD).")
+    p_repair.add_argument("--game-id", type=str, default=None, help="Target specific KBO game_id.")
+    p_repair.add_argument(
+        "--apply",
+        action="store_true",
+        help="Persist repaired game details and resolve DLQ entries (default: dry-run).",
+    )
+    p_repair.add_argument("--json", action="store_true", help="Output results in JSON format.")
+
+
 def build_master_parser() -> argparse.ArgumentParser:
     """Build root command-line parser with all platform subcommands."""
     parser = argparse.ArgumentParser(
@@ -455,6 +509,7 @@ def build_master_parser() -> argparse.ArgumentParser:
     _add_crawl_and_snapshot_subparsers(subparsers)
     _add_advanced_subparsers(subparsers)
     _add_cert_and_lineage_subparsers(subparsers)
+    _add_repair_subparser(subparsers)
 
     return parser
 
@@ -462,7 +517,7 @@ def build_master_parser() -> argparse.ArgumentParser:
 def _rag_dispatcher(sub_args: list[str]) -> int:
     """Dispatch the ``kbo rag`` sub-subcommands lazily."""
     if not sub_args:
-        print("Usage: kbo rag <query|evaluate|census> [options]")
+        print("Usage: kbo rag <query|evaluate|census|necessity> [options]")
         return 1
     subcmd = sub_args[0]
     rest = sub_args[1:]
@@ -478,7 +533,11 @@ def _rag_dispatcher(sub_args: list[str]) -> int:
         from src.cli.rag.census_rag_identity import main as census_main
 
         return census_main(rest)
-    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")
+    if subcmd == "necessity":
+        from src.cli.rag.audit_retrieval_necessity import main as necessity_main
+
+        return necessity_main(rest)
+    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', 'census', or 'necessity'.")
     return 1
 
 
@@ -570,6 +629,7 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
     from src.cli.formula import main as form_main
     from src.cli.generate_reports import main as rep_main
     from src.cli.predict_matchups import main as pred_main
+    from src.cli.repair_boxscore_failures import main as repair_boxscore_main
     from src.cli.run_maintenance import main as maint_main
     from src.cli.run_workflow import main as wf_main
     from src.cli.seed_synthetic_data import main as seed_main
@@ -607,6 +667,8 @@ def _get_dispatcher_map() -> dict[str, Callable[[list[str]], int]]:
         "crawl": _lazy_crawl,
         "snapshot": _lazy_snapshot,
         "formula": form_main,
+        "repair-boxscore": repair_boxscore_main,
+        "repair_boxscore": repair_boxscore_main,
     }
 
 

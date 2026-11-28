@@ -34,10 +34,10 @@ dependencies = [
     "pydantic>=2.5.0",
     "PyYAML>=6.0",
     "beautifulsoup4>=4.12.3",
-    "soupsieve>=2.10",  # ReDoS fixed in 2.9.0; audited by pip-audit
+    "soupsieve>=4.0.0",  # CVE-2026-126190 (ReDoS descendant combinator) fixed in 4.0.0; audited by pip-audit
     "html5lib>=1.1",
     "lxml>=5.2.1",
-    "pypdf>=6.21.2",
+    "pypdf>=6.21.4",
     "tzdata>=2024.1",
     # Database. DATABASE_URL is the single application database; the dialect is
     # read from the URL itself. PostgreSQL is what this deployment runs, Oracle
@@ -81,6 +81,13 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-xdist>=3.8.0",
+]
+
+[tool.uv]
+# Security floor: prevent future `uv lock` from resolving back to vulnerable versions.
+# opentelemetry-api <1.45.2: CVE-2026-126360 (ReDoS in TraceContextTextMapPropagator.extract)
+constraint-dependencies = [
+    "opentelemetry-api>=1.45.2",
 ]
 
 [tool.setuptools.packages.find]

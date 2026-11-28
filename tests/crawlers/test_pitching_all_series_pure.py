@@ -555,12 +555,62 @@ class TestPitchingPageParsers:
             patch("src.crawlers.player_pitching_all_series_crawler.save_pitching_stats_to_db", return_value=1) as save,
         ):
             result = crawl_pitcher_series(
-                PitchingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=False),
+                PitchingSeriesCrawlRequest(
+                    year=2025, series_key="regular", save_to_db=True, headless=False, by_team=False
+                ),
             )
 
         assert result == [stats]
         playwright.chromium.launch.assert_called_once_with(headless=False)
         collect_basic2.assert_called_once()
+        save.assert_called_once_with([stats.to_repository_payload()])
+        browser.close.assert_called_once()
+
+    def test_crawl_pitcher_series_orchestrates_by_team_default_skips_basic2(self):
+        page = MagicMock()
+        browser = MagicMock()
+        context = MagicMock()
+        context.new_page.return_value = page
+        browser.new_context.return_value = context
+        playwright = MagicMock()
+        playwright.chromium.launch.return_value = browser
+        manager = MagicMock()
+        manager.__enter__.return_value = playwright
+        manager.__exit__.return_value = False
+        stats = PitcherStats(player_id=123, season=2025, league="REGULAR", player_name="홍길동")
+
+        def _collect_basic1(ctx):
+            ctx.pitchers[123] = stats
+
+        request = PitchingSeriesCrawlRequest(year=2025, series_key="regular", save_to_db=True, headless=False)
+        assert request.by_team is True
+
+        with (
+            patch("src.crawlers.player_pitching_all_series_crawler.sync_playwright", return_value=manager),
+            patch("src.crawlers.player_pitching_all_series_crawler.compliance.is_allowed_sync", return_value=True),
+            patch("src.crawlers.player_pitching_all_series_crawler.setup_pitcher_page", return_value=True),
+            patch(
+                "src.crawlers.player_pitching_all_series_crawler._get_pitcher_team_options",
+                return_value=[{"value": "", "text": "전체"}],
+            ),
+            patch(
+                "src.crawlers.player_pitching_all_series_crawler._collect_pitcher_basic1_loop",
+                side_effect=_collect_basic1,
+            ),
+            patch(
+                "src.crawlers.player_pitching_all_series_crawler._collect_pitcher_basic2_additional"
+            ) as collect_basic2,
+            patch(
+                "src.crawlers.player_pitching_all_series_crawler.build_pitching_crawl_summary",
+                return_value=({"filtered_rows": 0}, [stats]),
+            ),
+            patch("src.crawlers.player_pitching_all_series_crawler.save_pitching_stats_to_db", return_value=1) as save,
+        ):
+            result = crawl_pitcher_series(request)
+
+        assert result == [stats]
+        playwright.chromium.launch.assert_called_once_with(headless=False)
+        collect_basic2.assert_not_called()
         save.assert_called_once_with([stats.to_repository_payload()])
         browser.close.assert_called_once()
 

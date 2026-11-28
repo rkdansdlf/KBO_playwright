@@ -284,3 +284,57 @@ class TestSavePlayerBasic:
         assert result == 1
 
         assert session.query(PlayerBasic).filter_by(player_id=1001).first() is not None
+
+
+class TestTheBatchIsChunkedToTheBindLimit:
+    """The repository splits a batch that could cross the dialect's ceiling.
+
+    ``insert(PlayerBasic).values(rows)`` compiles to ONE statement costing
+    ``rows x columns`` bind parameters; PostgreSQL refuses more than 65,535 and
+    SQLite 32,766, and the refusal is an error for the whole batch. The proof here
+    lowers the limit through the module constant — read at call time — and watches
+    the statement builder get called once per chunk.
+    """
+
+    def test_every_row_lands_when_the_batch_is_split(self, session, monkeypatch):
+        monkeypatch.setattr("src.db.bulk_insert.MAX_BIND_PARAMS_PER_STATEMENT", 12)
+        players = [{"player_id": 5000 + i, "name": f"P{i}", "team": "LG"} for i in range(10)]
+        repo = PlayerBasicRepository(session)
+
+        count = repo.upsert_players(players)
+        session.flush()
+
+        assert count == 10
+        assert session.query(PlayerBasic).count() == 10
+
+    def test_the_statement_builder_is_called_once_per_chunk(self, session, monkeypatch):
+        monkeypatch.setattr("src.db.bulk_insert.MAX_BIND_PARAMS_PER_STATEMENT", 5)
+        original = PlayerBasicRepository._build_upsert_stmt
+        calls: list[int] = []
+
+        def _spy(self, values):
+            calls.append(1 if isinstance(values, dict) else len(values))
+            return original(self, values)
+
+        monkeypatch.setattr(PlayerBasicRepository, "_build_upsert_stmt", _spy)
+        players = [{"player_id": 6000 + i, "name": f"Q{i}", "team": "LG"} for i in range(10)]
+
+        PlayerBasicRepository(session).upsert_players(players)
+
+        assert sum(calls) == 10, "no row may be dropped by the split"
+        assert len(calls) > 1, "the limit was lowered; one statement would mean no chunking"
+
+    def test_a_single_chunk_still_uses_one_statement(self, session, monkeypatch):
+        """Chunking must not turn the ordinary small batch into N statements."""
+        original = PlayerBasicRepository._build_upsert_stmt
+        calls: list[int] = []
+
+        def _spy(self, values):
+            calls.append(1 if isinstance(values, dict) else len(values))
+            return original(self, values)
+
+        monkeypatch.setattr(PlayerBasicRepository, "_build_upsert_stmt", _spy)
+
+        PlayerBasicRepository(session).upsert_players([{"player_id": 7001, "name": "R", "team": "LG"}])
+
+        assert calls == [1]

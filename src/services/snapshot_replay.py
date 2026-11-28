@@ -13,6 +13,7 @@ that).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ from src.services.crawl_run_service import track_crawl_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
     from sqlalchemy.orm import Session
 
@@ -53,6 +55,17 @@ class SnapshotNotFoundError(SnapshotReplayError):
         """Initialize with the missing snapshot id."""
         self.snapshot_id = snapshot_id
         super().__init__(f"Snapshot not found: {snapshot_id}")
+
+
+class SnapshotNotReplayableError(SnapshotReplayError):
+    """Raised when this repository cannot replay the snapshot, not that it failed.
+
+    The distinction is the one the audit keeps rediscovering: a check that cannot
+    be run and a check that ran and failed are different findings. ``snapshot
+    drift`` counted both, so two seat sources with no registered parser -- a source
+    this repository has never supported -- appeared as two parse failures on every
+    run. They are not: nothing was parsed and nothing was expected to be.
+    """
 
 
 @dataclass(frozen=True)
@@ -103,6 +116,10 @@ class SnapshotValidationResult:
     drifted: bool
     success: bool
     error: str | None = None
+    #: True when this repository has no way to replay the snapshot at all -- no
+    #: registered parser, no linked data source. It is not a parse failure: nothing
+    #: ran. The drift gate reports it and does not count it against ``fail_max``.
+    unmeasurable: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +132,10 @@ class SnapshotDriftSummary:
     matched: int = 0
     unknown_baseline: int = 0
     failed: int = 0
+    #: Snapshots this repository cannot replay (no parser, no data source). Counted
+    #: apart from ``failed`` because a gate that mixes them reports its own missing
+    #: coverage as a parser defect, and the two need different responses.
+    unmeasurable: int = 0
     drifted_ids: tuple[int, ...] = ()
     failed_ids: tuple[int, ...] = ()
     ok: bool = True
@@ -128,6 +149,7 @@ class SnapshotDriftSummary:
             "matched": self.matched,
             "unknown_baseline": self.unknown_baseline,
             "failed": self.failed,
+            "unmeasurable": self.unmeasurable,
             "drifted_ids": list(self.drifted_ids),
             "failed_ids": list(self.failed_ids),
             "ok": self.ok,
@@ -157,6 +179,10 @@ class _SnapshotView:
     content_hash: str | None
     parser_version: str | None
     baseline_count: int | None
+    #: The parse conditions the baseline count was produced under, replayed on
+    #: re-parse so a time-windowed parser reads the same window twice.
+    capture_metadata: dict | None = None
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -165,12 +191,97 @@ class _ParserResult:
     error: str | None
 
 
+def _anchored_on_root(raw_path: str, root: Path) -> Path | None:
+    r"""Return the artifact inside ``root`` for a path recorded against another one.
+
+    Snapshots captured before 2026-10-29 store an absolute path, so one artifact
+    is recorded as ``D:\\server-data\\...\\crawl_evidence\\raw\\<hash>`` by the
+    Windows host and as ``/app/data/crawl_evidence/raw/<hash>`` by the container.
+    Only one of those is readable from any given process, and the snapshot drift
+    check reported the unreadable ones as parse failures -- 21 rows whose only
+    defect was where the path had been written from.
+
+    The recovery re-anchors on the part that is the same everywhere: everything
+    below the evidence directory, which is content-addressed. The candidate is
+    then held to the same containment rule as a path that already pointed inside
+    the root, so a ``..`` in the stored value still cannot reach outside it.
+
+    Args:
+        raw_path: The stored path, in whatever form it was recorded.
+        root: The evidence root this process resolves against.
+
+    Returns:
+        The resolved path when it exists inside ``root``, otherwise None.
+
+    Raises:
+        SnapshotReplayError: The path names something outside ``root``. That is
+            the traversal the guard exists for, and it is reported as such rather
+            than as a missing file.
+
+    """
+    segments = [segment for segment in re.split(r"[\\/]+", raw_path) if segment]
+    positions = [index for index, segment in enumerate(segments) if segment == root.name]
+    if not positions:
+        return None
+    tail = segments[positions[-1] + 1 :]
+    if not tail:
+        return None
+    candidate = root.joinpath(*tail).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        msg = f"snapshot artifact is outside the evidence root: {candidate}"
+        raise SnapshotReplayError(msg) from exc
+    return candidate if candidate.is_file() else None
+
+
+def _resolve_stored_path(raw_path: str, root: Path) -> Path:
+    """Return the readable artifact a stored path names, or say why it cannot be read.
+
+    Args:
+        raw_path: The stored path.
+        root: The evidence root this process resolves against.
+
+    Returns:
+        The artifact's path.
+
+    Raises:
+        SnapshotReplayError: The file is missing, or points outside the root and
+            cannot be re-anchored inside it.
+
+    """
+    stored = Path(raw_path).expanduser()
+    if not stored.is_absolute():
+        # What this repository writes now: relative to the root, so the row means
+        # the same thing to every process that reads it.
+        stored = root / stored
+    resolved = stored.resolve()
+    if resolved.is_file():
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            anchored = _anchored_on_root(raw_path, root)
+            if anchored is None:
+                msg = f"snapshot artifact is outside the evidence root: {resolved}"
+                raise SnapshotReplayError(msg) from exc
+            return anchored
+        return resolved
+    anchored = _anchored_on_root(raw_path, root)
+    if anchored is None:
+        msg = f"stored snapshot artifact not found: {resolved}"
+        raise SnapshotReplayError(msg)
+    return anchored
+
+
 def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None) -> str:
     """Load the stored snapshot artifact as text.
 
     Rejects URL-style paths and, by default, any file outside the configured
     evidence root so a corrupted ``raw_html_or_json_path`` cannot turn replay
-    into an arbitrary local file read.
+    into an arbitrary local file read. A path recorded against a different root
+    is re-anchored inside this one when the artifact is there (see
+    ``_anchored_on_root``), which is what makes a row captured on another host
+    measurable instead of permanently failed.
     """
     if not raw_path:
         msg = "snapshot has no stored artifact path"
@@ -179,17 +290,20 @@ def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None
     if lowered.startswith((*_URL_PREFIXES, "file://")):
         msg = f"snapshot artifact is a URL, not a replayable file: {raw_path}"
         raise SnapshotReplayError(msg)
-    resolved = Path(raw_path).expanduser().resolve()
-    if not resolved.is_file():
-        msg = f"stored snapshot artifact not found: {resolved}"
-        raise SnapshotReplayError(msg)
     root = (allowed_root or evidence_root()).expanduser().resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        msg = f"snapshot artifact is outside the evidence root: {resolved}"
-        raise SnapshotReplayError(msg) from exc
+    resolved = _resolve_stored_path(raw_path, root)
     return resolved.read_text(encoding="utf-8", errors="replace")
+
+
+#: Parse-condition keys a crawler records in ``capture_metadata`` and the drift
+#: check replays. ``team_event_parser`` derives its cutoff window from
+#: ``fetched_at`` and ``cutoff_days``; without them a re-parse reads *today's*
+#: window against a weeks-old artifact and reports the calendar moving as drift.
+#: Measured 2026-11-04: 6 of 8 drifted snapshots were exactly this -- the crawler
+#: parses with ``days_back=30`` while the parser's default is ``CUTOFF_DAYS=60``,
+#: so a page whose events are all older than 30 days crawls as 0 records and
+#: re-parses as N.
+REPLAYED_PARSE_CONTEXT_KEYS = ("fetched_at", "cutoff_days")
 
 
 def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _ParserResult:
@@ -201,6 +315,14 @@ def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _Pars
             "content_hash": view.content_hash,
             "target_domain": view.target_domain,
         }
+        captured = dict(view.capture_metadata or {})
+        if "fetched_at" not in captured and view.created_at is not None:
+            captured["fetched_at"] = view.created_at.isoformat()
+        if "cutoff_days" not in captured:
+            captured["cutoff_days"] = 30
+        for key in REPLAYED_PARSE_CONTEXT_KEYS:
+            if captured.get(key) is not None:
+                metadata[key] = captured[key]
         parsed = parser(text, view.source_key or "", metadata)
     except SnapshotReplayError as exc:
         return _ParserResult((), str(exc))
@@ -231,17 +353,19 @@ def _load_view(session: Session, snapshot_id: int) -> _SnapshotView:
         content_hash=snapshot.content_hash,
         parser_version=snapshot.parser_version,
         baseline_count=_baseline_count(snapshot.capture_metadata),
+        capture_metadata=snapshot.capture_metadata,
+        created_at=snapshot.created_at,
     )
 
 
 def _resolve_parser(view: _SnapshotView) -> Callable[..., list[dict]]:
     if view.source_key is None:
         msg = f"snapshot {view.snapshot_id} has no linked data source"
-        raise SnapshotReplayError(msg)
+        raise SnapshotNotReplayableError(msg)
     parser = get_parser(view.source_key)
     if parser is None:
         msg = f"no parser registered for source_key={view.source_key}"
-        raise SnapshotReplayError(msg)
+        raise SnapshotNotReplayableError(msg)
     return parser
 
 
@@ -355,6 +479,22 @@ def validate_recent_snapshots(
     for snapshot_id in snapshot_ids:
         try:
             results.append(validate_snapshot(snapshot_id, session_factory=factory))
+        except SnapshotNotReplayableError as exc:
+            # Caught before its parent: this is the repository saying it has no way
+            # to replay the snapshot, which is reported and not counted as failure.
+            results.append(
+                SnapshotValidationResult(
+                    snapshot_id=snapshot_id,
+                    source_key=None,
+                    baseline_count=None,
+                    replayed_count=0,
+                    delta=None,
+                    drifted=False,
+                    success=False,
+                    error=str(exc),
+                    unmeasurable=True,
+                ),
+            )
         except SnapshotReplayError as exc:
             results.append(
                 SnapshotValidationResult(
@@ -381,16 +521,23 @@ def summarize_snapshot_drift(
     """Summarize validation results into a gate-friendly drift report.
 
     ``unknown_baseline`` snapshots are reported but never counted as drift, since
-    they simply predate ``parsed_records`` capture. Both ``drifted_ids`` and
-    ``failed_ids`` are capped at ``sample_size`` so an alert stays readable.
+    they simply predate ``parsed_records`` capture. ``unmeasurable`` snapshots --
+    those this repository has no parser for -- are reported the same way: they are
+    not parse failures, and counting them made the gate carry a permanent backstop
+    of its own unsupported sources. Both ``drifted_ids`` and ``failed_ids`` are
+    capped at ``sample_size`` so an alert stays readable.
     """
     failed = 0
     with_baseline = 0
     drifted = 0
     unknown_baseline = 0
+    unmeasurable = 0
     drifted_ids: list[int] = []
     failed_ids: list[int] = []
     for result in results:
+        if result.unmeasurable:
+            unmeasurable += 1
+            continue
         if not result.success:
             failed += 1
             if len(failed_ids) < sample_size:
@@ -412,6 +559,7 @@ def summarize_snapshot_drift(
         matched=matched,
         unknown_baseline=unknown_baseline,
         failed=failed,
+        unmeasurable=unmeasurable,
         drifted_ids=tuple(drifted_ids),
         failed_ids=tuple(failed_ids),
         ok=drifted <= drift_max and failed <= fail_max,

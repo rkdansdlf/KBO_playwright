@@ -43,6 +43,7 @@ from src.models.player import PlayerBasic
 from src.models.season import KboSeason
 from src.repositories.player_season_pitching_repository import save_pitching_stats_to_db
 from src.utils.compliance import compliance
+from src.utils.crawler_failure_logger import record_crawl_failure
 from src.utils.fallback_monitor import FallbackMonitor
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
 from src.utils.player_stats_helpers import extract_rows_fast
@@ -76,11 +77,24 @@ BASIC1_URL = PITCHER_BASIC1
 BASIC2_URL = PITCHER_BASIC2
 PITCHER_TEAM_SELECTOR = 'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
 PITCHER_TEAM_REFRESH_SCRIPT = """
-    ({ value, label }) => {
+    ({ value, label, prevPlayer }) => {
         const selector = document.querySelector(
             'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]',
         );
         if (!selector || selector.value !== value) return false;
+        const row = document.querySelector('table.tData01 tbody tr');
+        if (!row) return true;
+        const link = row.querySelector('a');
+        let currPlayer = '';
+        if (link) {
+            currPlayer = link.getAttribute('href') || link.textContent.trim();
+        } else {
+            const cell = row.querySelector('td:nth-child(2)');
+            currPlayer = cell ? (cell.textContent || '').trim() : '';
+        }
+        if (prevPlayer && currPlayer && currPlayer === prevPlayer) {
+            return false;
+        }
         const rows = Array.from(document.querySelectorAll('table.tData01 tbody tr'));
         return rows.length > 0 && rows.every(row => row.textContent.includes(label));
     }
@@ -283,8 +297,41 @@ def go_to_next_page(page: Page, current_page: int, policy: RequestPolicy | None 
         if policy:
             policy.delay()
 
+        # 이전 페이지의 첫 번째 행 데이터 캡처
+        prev_first_player = page.evaluate("""() => {
+            const row = document.querySelector('table.tData01 tbody tr');
+            if (!row) return '';
+            const link = row.querySelector('a');
+            if (link) return link.getAttribute('href') || link.textContent.trim();
+            const cell = row.querySelector('td:nth-child(2)');
+            return cell ? (cell.textContent || '').trim() : '';
+        }""")
+
         page.click(selector, timeout=SEL_TIMEOUT)
         page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
+
+        # 다음 페이지 번호 클릭 후 표 첫 번째 행의 선수 데이터가 달라질 때까지 Explicit Wait (행 갱신 필수 검증)
+        try:
+            page.wait_for_function(
+                """({ prevPlayer }) => {
+                    const row = document.querySelector('table.tData01 tbody tr');
+                    if (!row) return false;
+                    const link = row.querySelector('a');
+                    let currPlayer = '';
+                    if (link) {
+                        currPlayer = link.getAttribute('href') || link.textContent.trim();
+                    } else {
+                        const cell = row.querySelector('td:nth-child(2)');
+                        currPlayer = cell ? (cell.textContent || '').trim() : '';
+                    }
+                    if (!currPlayer) return false;
+                    return prevPlayer ? currPlayer !== prevPlayer : true;
+                }""",
+                arg={"prevPlayer": prev_first_player},
+                timeout=SEL_TIMEOUT,
+            )
+        except PlaywrightTimeout:
+            logger.warning("페이지 이동 후 테이블 갱신 대기 타임아웃 (%sp -> next), 계속 진행합니다", current_page)
 
         # 페이지 이동 후 테이블 대기
         wait_for_table(page)
@@ -1095,6 +1142,14 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
     if by_team and tm["value"]:
         logger.info("🔍 팀 선택: %s (%s)", tm["text"], tm["value"])
         try:
+            prev_first_player = page.evaluate("""() => {
+                const row = document.querySelector('table.tData01 tbody tr');
+                if (!row) return '';
+                const link = row.querySelector('a');
+                if (link) return link.getAttribute('href') || link.textContent.trim();
+                const cell = row.querySelector('td:nth-child(2)');
+                return cell ? (cell.textContent || '').trim() : '';
+            }""")
             page.select_option(
                 PITCHER_TEAM_SELECTOR,
                 tm["value"],
@@ -1103,7 +1158,7 @@ def _select_pitcher_team_if_needed(page: Page, tm: dict, *, by_team: bool, polic
             page.wait_for_load_state("networkidle", timeout=LONG_TIMEOUT)
             page.wait_for_function(
                 PITCHER_TEAM_REFRESH_SCRIPT,
-                arg={"value": tm["value"], "label": tm["text"].strip()},
+                arg={"value": tm["value"], "label": tm["text"].strip(), "prevPlayer": prev_first_player},
                 timeout=LONG_TIMEOUT,
             )
             policy.delay()
@@ -1208,7 +1263,7 @@ class PitchingSeriesCrawlRequest:
     limit: int | None = None
     headless: bool = True
     save_to_db: bool = False
-    by_team: bool = False
+    by_team: bool = True
     preserve_team_splits: bool = False
 
 
@@ -1268,6 +1323,7 @@ def crawl_pitcher_series(
         if not setup_pitcher_page(page, BASIC1_URL, year, series_info["value"], policy=policy):
             reason = "Basic1 page setup failed (possible KBO site error)"
             logger.error("❌ Basic1 페이지 설정 실패. %s. DB에서 직접 집계하여 폴백(Fallback)을 시도합니다.", reason)
+            record_crawl_failure("player_pitching_series", f"{year}_{series_key}", BASIC1_URL, reason)
             browser.close()
             stats = _handle_pitching_fallback(year, series_key, reason, save_to_db=save_to_db)
             _report_pitching_fallback(recorder, stats, "page_setup_failed")
@@ -1420,7 +1476,18 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="DB에 저장",
     )
-    parser.add_argument("--by-team", action="store_true", help="팀별로 순회하여 모든 선수(비규정타석 포함) 수집")
+    parser.add_argument(
+        "--by-team",
+        action="store_true",
+        default=True,
+        help="팀별로 순회하여 모든 선수(비규정이닝 포함) 수집 (기본값: True)",
+    )
+    parser.add_argument(
+        "--no-by-team",
+        action="store_false",
+        dest="by_team",
+        help="팀별 순회 해제 (규정이닝 충족 선수만 수집)",
+    )
     return parser.parse_args()
 
 

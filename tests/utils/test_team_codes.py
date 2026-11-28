@@ -116,3 +116,20 @@ class TestGameIdTeamCodes:
         assert "SSG" in KBO_GAME_ID_TEAM_CODES
         assert "OB" in KBO_GAME_ID_TEAM_CODES
         assert "SK" in KBO_GAME_ID_TEAM_CODES
+
+
+class TestToKboSiteGameId:
+    def test_mappings(self):
+        from src.utils.team_codes import to_kbo_site_game_id
+
+        assert to_kbo_site_game_id("20141003NXLG0") == "20141003WOLG0"
+        assert to_kbo_site_game_id("20141005NXLG0") == "20141005WOLG0"
+        assert to_kbo_site_game_id("20050505HULG0") == "20050505HDLG0"
+        assert to_kbo_site_game_id("20260418SSGNC0") == "20260418SKNC0"
+        assert to_kbo_site_game_id("20260418DBNC0") == "20260418OBNC0"
+        assert to_kbo_site_game_id("20260418KIANC0") == "20260418HTNC0"
+        assert to_kbo_site_game_id("20260418KHNC0") == "20260418WONC0"
+        # Already site-canonical
+        assert to_kbo_site_game_id("20260418SKNC0") == "20260418SKNC0"
+        assert to_kbo_site_game_id("") == ""
+        assert to_kbo_site_game_id("SHORT") == "SHORT"

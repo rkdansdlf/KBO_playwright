@@ -20,11 +20,17 @@ from typing import Any
 
 import httpx
 
+from src.utils.log_masking import install_secret_masking
 from src.utils.metrics import record_notification_dispatch
 
 logger = logging.getLogger(__name__)
 
 ALERTING_EXCEPTIONS = (httpx.HTTPError, OSError, TimeoutError, ValueError, TypeError)
+
+# The module below builds the send URL, so it owns the rule about not logging the
+# token that URL carries. Installing here means every entry point that can alert
+# is covered, including the ones that configure logging themselves.
+install_secret_masking()
 GAP_ALERT_DETAIL_LIMIT = 15
 
 DEFAULT_ALERT_DELIVERY_ATTEMPTS = 3

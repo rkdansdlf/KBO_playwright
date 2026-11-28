@@ -49,6 +49,7 @@ from src.services.game_collection_service import (
     GameCollectionConfig,
     GameCollectionItemResult,
     crawl_and_save_game_details,
+    settled_unless_relay_finished,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.services.player_id_resolver import PlayerIdResolver
@@ -62,7 +63,7 @@ from src.utils.game_status import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from sqlalchemy.orm import Session
 
@@ -334,6 +335,49 @@ def _apply_heal_outcome(
     return "unresolved"
 
 
+def _settled_recovery_blocklist(game_ids: Iterable[str]) -> set[str]:
+    """Return the target ids an automatic healing pass must leave out.
+
+    A ``game_detail`` dead letter that reached ``exhausted``/``ignored`` is the
+    record of an answered question: the source could not supply this game. Asking
+    again does not simply fail -- it opens a fresh letter (a new ``original_run_id``
+    never collides with the old one), spends five more attempts, and returns the
+    same game here tomorrow. Measured 2026-11-01..05: about 40 letters a night for
+    40 past-season games (2011/2015 and the 2024 Premier12) whose only new
+    information each night was that Naver still does not serve their records. The
+    collection loader, the detail-recovery queue and the boxscore repair already
+    honour the same rule; the healer's own target list did not.
+
+    The relay exception is the collection path's: a game whose relay ran to its
+    closing marker is still wanted even though an earlier attempt gave up
+    (``20261026HTSS0``). ``requeue`` returns a letter to ``pending``, which this
+    does not match, so an operator who knows the source has recovered can put the
+    game back in front of the healer.
+
+    A read that fails blocks nothing: the filter is an addition to the healing
+    pass, and a filter that cannot run must not silently drop the work itself.
+
+    Args:
+        game_ids: Candidate game ids from this run's anomaly sets.
+
+    Returns:
+        The ids to leave out of this pass.
+
+    """
+    wanted = {game_id for game_id in game_ids if game_id}
+    if not wanted:
+        return set()
+    try:
+        with SessionLocal() as session:
+            blocked = settled_unless_relay_finished(session, wanted)
+    except SQLAlchemyError:
+        logger.exception("Could not check settled dead letters; keeping every recovery target")
+        return set()
+    if blocked:
+        logger.info("⏭️  Leaving %s game(s) out of recovery: their game_detail dead letter is settled", len(blocked))
+    return blocked
+
+
 def _find_recovery_targets(
     target_game_ids: list[str] | None,
 ) -> tuple[list[Game], list[Game], list[Game], list[Game]]:
@@ -350,6 +394,17 @@ def _find_recovery_targets(
     stuck_games = [game for game in _find_stuck_games() if automatic_write_allowed(game_year_of(game), season_year)]
     inconsistent_games = _find_inconsistent_games()
     pa_formula_games = _find_pa_formula_inconsistent_games()
+
+    # Stuck games are deliberately left out of the settled check: the healer owns a
+    # terminal write for them (UNRESOLVED_MISSING), so a settled letter does not trap
+    # them in a loop, and the recent-retry window (issue #55) has to keep working
+    # while their source is still being chased. The other two sets have no such
+    # exit -- their only remedy is another crawl -- so for them the letter is it.
+    blocked = _settled_recovery_blocklist([game.game_id for game in inconsistent_games + pa_formula_games])
+    if blocked:
+        inconsistent_games = [game for game in inconsistent_games if game.game_id not in blocked]
+        pa_formula_games = [game for game in pa_formula_games if game.game_id not in blocked]
+
     all_found = sorted(
         {game.game_id: game for game in (stuck_games + inconsistent_games + pa_formula_games)}.values(),
         key=lambda game: game.game_id,
@@ -419,6 +474,46 @@ def _log_anomaly_summary(
         logger.info("  - %s", anomaly_date)
 
 
+#: Every incident the healer opens carries this prefix; the trailing segment is
+#: the earliest anomaly date of the run that opened it.
+_HEALER_ANOMALY_PREFIX = "auto_healer:anomaly:"
+
+
+def _superseded_anomaly_keys(current_key: str | None) -> list[str]:
+    """Return open healer anomaly incidents this run supersedes.
+
+    The alert is a point-in-time summary keyed by the run's earliest anomaly
+    date, so the key moves when the set does: the summary was
+    ``auto_healer:anomaly:2011-07-23`` on 2026-10-30 and
+    ``auto_healer:anomaly:2011-10-25`` by 11-01. Nothing ever closed the earlier
+    key, and each re-key left another OPEN incident behind -- the same "incident
+    outlives its cause" shape the integrity-window revalidation and the
+    detail-recovery keys already fixed. A run that reaches the point of
+    publishing (or of finding nothing at all) is the current truth, so every
+    other open key under the prefix is returned for resolution.
+
+    The listing is additive, and a read that fails returns nothing: a
+    bookkeeping read must not cost the run the alert it was about to send.
+
+    Args:
+        current_key: The key this run publishes, or ``None`` when it publishes
+            none (nothing detected). Never returned.
+
+    Returns:
+        The keys to resolve via ``apply_incidents(resolve_keys=...)``.
+
+    """
+    from src.notifications.incident import IncidentManager
+
+    try:
+        with SessionLocal() as session:
+            keys = [incident.incident_key for incident in IncidentManager(session).active_incidents()]
+    except SQLAlchemyError:
+        logger.exception("Could not list open auto-healer incidents; leaving them for the next run")
+        return []
+    return [key for key in keys if key.startswith(_HEALER_ANOMALY_PREFIX) and key != current_key]
+
+
 def _send_healer_start_alert(
     total: int,
     stuck_games: list[Game],
@@ -435,6 +530,7 @@ def _send_healer_start_alert(
         summary_parts.append(f"*{len(pa_formula_games)}* PA formula violation games")
 
     date_range = f"`{anomaly_dates[0]}`" if len(anomaly_dates) == 1 else f"`{anomaly_dates[0]}` ~ `{anomaly_dates[-1]}`"
+    current_key = f"{_HEALER_ANOMALY_PREFIX}{anomaly_dates[0]}"
     apply_incidents(
         [
             AlertEvent(
@@ -443,7 +539,7 @@ def _send_healer_start_alert(
                 severity=AlertSeverity.WARNING,
                 title=f"Pipeline Anomaly: {total} games detected for auto-healing.",
                 message=f"Found {' and '.join(summary_parts)} for auto-healing.\nAffected dates: {date_range}",
-                incident_key=f"auto_healer:anomaly:{anomaly_dates[0]}",
+                incident_key=current_key,
                 metadata={
                     "total": total,
                     "stuck": len(stuck_games),
@@ -452,6 +548,10 @@ def _send_healer_start_alert(
                 },
             ),
         ],
+        # The summary is keyed by the earliest anomaly date, so a changed set
+        # publishes under a new key; the run that supersedes the previous one is
+        # also the one that closes it.
+        resolve_keys=_superseded_anomaly_keys(current_key),
     )
 
 
@@ -693,6 +793,14 @@ async def run_healer_async(
         if recovered_quarantines:
             logger.info("✅ Recovered %s quarantined record(s) via reconciliation.", recovered_quarantines)
         recovery_mgr.clear()
+        # A run that finds nothing is the current truth: whatever an earlier
+        # summary reported has either been healed or been answered (settled),
+        # and a key left open would outlive its cause.
+        if not dry_run:
+            superseded = _superseded_anomaly_keys(None)
+            if superseded:
+                logger.info("✅ Closing %s superseded auto-healer incident(s).", len(superseded))
+                apply_incidents([], resolve_keys=superseded)
         return 0
 
     if not all_found:

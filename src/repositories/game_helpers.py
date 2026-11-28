@@ -62,6 +62,7 @@ from src.utils.team_codes import (
     team_code_from_game_id_segment,
 )
 from src.utils.team_history import FRANCHISE_CANONICAL_CODE, find_team_history_entry
+from src.utils.type_helpers import safe_float_or_none, safe_int_or_none
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -113,6 +114,10 @@ class DerivedGameStatusInput:
     has_batting: bool
     has_pitching: bool
     today: date
+    #: The relay feed wrote its closing marker for this game, so it was played to
+    #: the end. Defaults to False so every caller that predates the evidence
+    #: keeps the answer it had; a caller that knows better says so.
+    has_finished_relay: bool = False
 
 
 @dataclass(frozen=True)
@@ -821,6 +826,7 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
         and (
             status_input.has_batting
             or status_input.has_pitching
+            or status_input.has_finished_relay
             or (
                 status_input.game_date
                 and status_input.game_date < status_input.today
@@ -828,6 +834,12 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
             )
         )
     ):
+        # A finished relay counts as a body even when no boxscore row landed. The
+        # three tests above it all read collected detail, so a game whose only
+        # surviving evidence is the relay fell past this branch -- and the
+        # metadata heuristic below then called it CANCELLED. 20261026HTSS0 is
+        # that case: the feed closed a 9-inning game (KIA 5:1) while the row read
+        # cancelled, and every later re-derivation read the same rows and agreed.
         return _resolve_terminal_status(status_input.home_score, status_input.away_score)
     if status_input.game_date and status_input.game_date > status_input.today:
         return GAME_STATUS_SCHEDULED
@@ -835,11 +847,17 @@ def _derive_game_status(status_input: DerivedGameStatusInput | None = None, **kw
 
 
 def _derive_in_progress_status(status_input: DerivedGameStatusInput) -> str:
+    # Play-by-play belongs here. Leaving it out made "has no detail" true for a
+    # game the relay had carried to its closing marker, which is not an absence
+    # of detail -- it is the detail of a game that finished. The two branches
+    # that read this flag then did the rest: the stored CANCELLED was preserved,
+    # and the metadata heuristic would have re-derived it anyway.
     has_any_detail = (
         status_input.has_inning_scores
         or status_input.has_lineups
         or status_input.has_batting
         or status_input.has_pitching
+        or status_input.has_finished_relay
     )
     if status_input.current_status in {GAME_STATUS_CANCELLED, GAME_STATUS_POSTPONED} and not has_any_detail:
         return status_input.current_status
@@ -1100,6 +1118,47 @@ def _ensure_player_basic_stubs(session: Session, mappings: Iterable[dict[str, An
     return True
 
 
+def _deduplicate_mappings(model: type[Any], mappings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate records by unique key keeping the latest entry to prevent duplicate writes."""
+    if not mappings:
+        return []
+    if model in (GameBattingStat, GamePitchingStat):
+        seen: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for m in mappings:
+            pid = m.get("player_id")
+            if pid is not None:
+                seen[(m.get("game_id"), pid)] = m
+            else:
+                seen[(m.get("game_id"), m.get("player_name"), m.get("appearance_seq"))] = m
+        return list(seen.values())
+    if model == GameInningScore:
+        seen_inn = {(m.get("game_id"), m.get("team_side"), m.get("inning")): m for m in mappings}
+        return list(seen_inn.values())
+    if model == GameLineup:
+        seen_lineup = {(m.get("game_id"), m.get("team_side"), m.get("appearance_seq")): m for m in mappings}
+        return list(seen_lineup.values())
+    return mappings
+
+
+def _insert_mappings_with_timestamps(
+    session: Session,
+    model: type[Any],
+    mappings: list[dict[str, Any]],
+) -> None:
+    if not mappings:
+        return
+    now = datetime.now(UTC).replace(tzinfo=None)
+    has_created_at = "created_at" in model.__table__.columns
+    has_updated_at = "updated_at" in model.__table__.columns
+    if has_created_at or has_updated_at:
+        for mapping in mappings:
+            if has_created_at and not mapping.get("created_at"):
+                mapping["created_at"] = now
+            if has_updated_at and not mapping.get("updated_at"):
+                mapping["updated_at"] = now
+    session.execute(model.__table__.insert(), mappings)
+
+
 def _replace_records(
     session: Session,
     model: type[Any],
@@ -1107,6 +1166,7 @@ def _replace_records(
     mappings: list[dict[str, Any]],
     ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    mappings = _deduplicate_mappings(model, mappings)
     source = ctx.source if ctx else None
     write_contract = ctx.write_contract if ctx else None
     dataset = model.__tablename__
@@ -1119,17 +1179,7 @@ def _replace_records(
 
     if existing_rows:
         _delete_records(session, model, model.game_id == game_id)
-    if mappings:
-        now = datetime.now(UTC).replace(tzinfo=None)
-        has_created_at = "created_at" in model.__table__.columns
-        has_updated_at = "updated_at" in model.__table__.columns
-        if has_created_at or has_updated_at:
-            for mapping in mappings:
-                if has_created_at and not mapping.get("created_at"):
-                    mapping["created_at"] = now
-                if has_updated_at and not mapping.get("updated_at"):
-                    mapping["updated_at"] = now
-        session.execute(model.__table__.insert(), mappings)
+    _insert_mappings_with_timestamps(session, model, mappings)
     if source and write_contract:
         write_contract.dataset_replaced(game_id, source, dataset, len(mappings))
     return True
@@ -1141,6 +1191,7 @@ def _replace_records_for_side(
     mappings: list[dict[str, Any]],
     ctx: RecordReplaceContext | None = None,
 ) -> bool:
+    mappings = _deduplicate_mappings(record_key.model, mappings)
     source = ctx.source if ctx else None
     write_contract = ctx.write_contract if ctx else None
     dataset = f"{record_key.model.__tablename__}.{record_key.team_side}"
@@ -1161,17 +1212,7 @@ def _replace_records_for_side(
             record_key.model.game_id == record_key.game_id,
             record_key.model.team_side == record_key.team_side,
         )
-    if mappings:
-        now = datetime.now(UTC).replace(tzinfo=None)
-        has_created_at = "created_at" in record_key.model.__table__.columns
-        has_updated_at = "updated_at" in record_key.model.__table__.columns
-        if has_created_at or has_updated_at:
-            for mapping in mappings:
-                if has_created_at and not mapping.get("created_at"):
-                    mapping["created_at"] = now
-                if has_updated_at and not mapping.get("updated_at"):
-                    mapping["updated_at"] = now
-        session.execute(record_key.model.__table__.insert(), mappings)
+    _insert_mappings_with_timestamps(session, record_key.model, mappings)
     if source and write_contract:
         write_contract.dataset_replaced(record_key.game_id, source, dataset, len(mappings))
     return True
@@ -1268,23 +1309,12 @@ def _normalize_record_for_compare(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _stat_int(stats: dict[str, Any], key: str) -> int:
-    value = stats.get(key)
-    if value in (None, ""):
-        return 0
-    try:
-        return int(value)
-    except TypeError, ValueError:
-        return 0
+    val = safe_int_or_none(stats.get(key))
+    return val if val is not None else 0
 
 
 def _stat_float(stats: dict[str, Any], key: str) -> float | None:
-    value = stats.get(key)
-    if value in (None, ""):
-        return None
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        return None
+    return safe_float_or_none(stats.get(key))
 
 
 def _normalize_player_id(value: object) -> int | None:

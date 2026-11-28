@@ -150,6 +150,49 @@ class CrawlDeadLetterRepository:
         )
         return self.session.execute(stmt).scalar_one_or_none()
 
+    def find_open_for_target(
+        self,
+        *,
+        crawler: str,
+        target_type: str,
+        target_id: str | None,
+    ) -> CrawlDeadLetter | None:
+        """Return a letter for this target that has not been resolved.
+
+        ``original_run_id`` is part of the uniqueness key so one target can have
+        one row per failing run. That is useful for auditing, but it also lets a
+        source that keeps failing under fresh run ids rebuild the retry queue: each
+        new row is ``pending`` and spends another full crawl timeout holding
+        ``MAINTENANCE_LOCK`` even after the target was judged unrecoverable.
+
+        Treating every non-resolved row as open closes that loop. ``exhausted`` and
+        ``ignored`` are settled decisions; ``pending`` and ``retrying`` are live
+        work; a ``requeue`` returns a settled row to ``pending`` and its row then
+        owns the target again. Only ``resolved`` means the target was deliberately
+        closed after success, so a later failure is a new incident.
+
+        Args:
+            crawler: Crawler name the letter belongs to.
+            target_type: Type of the target (``game``, ``award_history``, ...).
+            target_id: Target identifier, or ``None`` when the letter has none.
+
+        Returns:
+            The most recently updated open letter, or ``None`` when the target has
+            no claim on it.
+
+        """
+        stmt = select(CrawlDeadLetter).where(
+            CrawlDeadLetter.crawler == crawler,
+            CrawlDeadLetter.target_type == target_type,
+            CrawlDeadLetter.status != DlqStatus.RESOLVED.value,
+        )
+        stmt = (
+            stmt.where(CrawlDeadLetter.target_id.is_(None))
+            if target_id is None
+            else stmt.where(CrawlDeadLetter.target_id == target_id)
+        )
+        return self.session.execute(stmt.order_by(CrawlDeadLetter.updated_at.desc())).scalar_one_or_none()
+
     def get_pending(self, *, limit: int = 100) -> list[CrawlDeadLetter]:
         """Return pending letters ordered by their next retry time."""
         stmt = (

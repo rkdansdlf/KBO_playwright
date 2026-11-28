@@ -106,7 +106,7 @@ def _rag_vector_backend_configured() -> bool:
     retry_error_callback=alert_failure,
 )
 def crawl_retired_players_job(limit: int | None = None) -> None:
-    """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 02:00 KST."""
+    """Monthly job: Crawl retired/inactive player statistics. Runs on 1st of month at 04:15 KST."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Monthly Retired Player Crawl ===")
         try:
@@ -195,7 +195,7 @@ def compute_standings_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def aggregate_team_defense_job() -> None:
-    """Aggregate daily team defense statistics. Runs daily at 03:45 KST.
+    """Aggregate daily team defense statistics. Runs daily at 00:45 KST.
 
     The daily pipeline already aggregates team defense right after it refreshes the
     player fielding/baserunning lines. This job stays as a safety net for days when
@@ -288,7 +288,7 @@ def _integrity_target_dates() -> list[str]:
 
     Incident keys are date-scoped (``integrity:<check>:<YYYYMMDD>``) and the job
     only ever evaluated the previous day. A check that failed transiently -- for
-    example when it ran before the 03:00 crawl landed, or against a briefly stale
+    example when it ran before the 00:00 crawl landed, or against a briefly stale
     database -- therefore had no later chance to pass, so its incident stayed OPEN
     forever and the dashboard never cleared. Re-checking a short trailing window
     re-evaluates those keys so a genuine recovery resolves the incident by itself.
@@ -300,7 +300,7 @@ def _integrity_target_dates() -> list[str]:
     from src.utils.date_helpers import parse_date_str_lenient
 
     # The window is anchored to the previous KST day, so that is also the
-    # fallback: defaulting to KST today would re-check a day whose 03:00 crawl
+    # fallback: defaulting to KST today would re-check a day whose 00:00 crawl
     # has not landed yet and open a fresh incident against incomplete data.
     yesterday = (datetime.now(KST) - timedelta(days=1)).date()
     newest = parse_date_str_lenient(_previous_day_kst(), fallback=yesterday)
@@ -396,7 +396,7 @@ def _revalidate_stale_integrity_incidents(evaluated_dates: set[str], resolve_key
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def data_integrity_check_job() -> None:
-    """Run post-crawl data integrity validation (daily at 04:45 KST)."""
+    """Run post-crawl data integrity validation (daily at 01:45 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Data Integrity Check ===")
         try:
@@ -445,7 +445,7 @@ def data_integrity_check_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def source_coverage_job() -> None:
-    """Publish the blocked-source incident (daily at 05:10 KST).
+    """Publish the blocked-source incident (daily at 02:10 KST).
 
     Runs after ``data_integrity_check`` so a day whose integrity problems were
     already explained does not also arrive as a source problem. The gap it
@@ -510,6 +510,15 @@ def _rag_target_urls() -> tuple[str, ...]:
 #: every source that came after it.
 _NIGHTLY_EXCLUDED_SOURCES: frozenset[str] = frozenset({"staging_rag_chunks"})
 
+#: Sources whose past is still being corrected, so ``--season <this year>`` would only re-read this
+#: year and leave every earlier one untouched. ``awards`` and ``team_history`` are each one row per
+#: (year, winner) or (year, club) that describe the whole history in one cursor; unlike games and
+#: plays, an award or a franchise record from 1982 can still be fixed today. Measured 2026-11-04:
+#: the crawler's `colspan` bug had dropped ~80 award rows across 1982-2021 and the nightly sync had
+#: never revisited them, so 87 award chunks were missing from the index while the job reported
+#: success. Both sources are small (564 and 385 rows), so reading them whole costs little.
+_SEASONLESS_SOURCES: frozenset[str] = frozenset({"awards", "team_history"})
+
 
 def rag_incremental_invocations(year: int) -> list[list[str]]:
     """Return the builder argument lists for one nightly RAG sync.
@@ -525,7 +534,10 @@ def rag_incremental_invocations(year: int) -> list[list[str]]:
     others = [name for name in rag_all_source_names() if name != "pbp" and name not in _NIGHTLY_EXCLUDED_SOURCES]
     invocations = []
     for name in others:
-        argv = ["--source", name, "--season", season, "--skip-existing"]
+        argv = ["--source", name]
+        if name not in _SEASONLESS_SOURCES:
+            argv += ["--season", season]
+        argv.append("--skip-existing")
         if name in mapped:
             argv += ["--vector-presence", "--content-presence"]
         invocations.append(argv)
@@ -605,7 +617,7 @@ def sync_rag_incremental_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def sparse_terms_catchup_job() -> None:
-    """Sparse postings catch-up for chunks published after the last build (daily 05:40 KST)."""
+    """Sparse postings catch-up for chunks published after the last build (daily 02:40 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Sparse Terms Catch-up ===")
         try:
@@ -631,7 +643,7 @@ def sparse_terms_catchup_job() -> None:
 
 @_with_lock_skip_guard
 def backup_db_job() -> None:
-    """Weekly SQLite Backup & Integrity Check Job (Sunday 02:00 KST)."""
+    """Weekly SQLite Backup & Integrity Check Job (Sunday 03:00 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Weekly SQLite Backup & Integrity Check ===")
         try:
@@ -787,7 +799,7 @@ def cleanup_stale_data_job() -> None:
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def notification_retention_job() -> None:
-    """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:00 KST)."""
+    """Weekly prune of delivery audit rows and recovered incidents (Sunday 03:45 KST)."""
     with _scheduler_job_lock(MAINTENANCE_LOCK):
         logger.info("=== Starting Notification Retention Job ===")
         try:
@@ -972,7 +984,7 @@ def _drift_alert_severity(drifts: Sequence[object]) -> AlertSeverity:
 def relay_state_cleanup_job() -> None:
     """Weekly relay source state audit job.
 
-    Runs Sunday 02:15 KST to audit relay source states.
+    Runs Sunday 03:15 KST to audit relay source states.
     All remediation actions run in dry-run mode (observation only, no writes).
     Uses --sample-size 10000 for performance on large databases.
     """
@@ -1162,7 +1174,9 @@ def crawl_dead_letter_retry_job() -> None:
         try:
             from src.services.crawl_dead_letter_worker import retry_due_dead_letters
 
-            summary = retry_due_dead_letters()
+            batch_limit = max(1, _env_int("DLQ_RETRY_BATCH_SIZE", 5))
+            logger.info("Dead letter retry batch limit: %d", batch_limit)
+            summary = retry_due_dead_letters(limit=batch_limit)
             _refresh_dlq_metrics()
             if summary.attempted == 0:
                 logger.info("=== Dead Letter Retry: nothing due ===")
@@ -1187,6 +1201,42 @@ def crawl_dead_letter_retry_job() -> None:
 SNAPSHOT_DRIFT_INCIDENT_KEY = "drift:snapshot"
 
 
+def _warn_when_drift_is_unmeasurable(summary: object) -> None:
+    """Say so when the check ran but had nothing to compare against.
+
+    ``ok`` is true when nothing drifted and nothing failed, which is also what a
+    check with no baselines reports: ``validate_snapshot`` cannot judge a re-parse
+    against a record count that was never stored, so it reports ``unknown_baseline``
+    and moves on. Measured 2026-11-01: **0 of the most recent 100 snapshots carried
+    a baseline**, so every run for as long as that has been true has been reporting
+    a clean gate for a drift it was not measuring.
+
+    This is a warning and not an incident on purpose. The incident key belongs to
+    real drift, and a condition no run can clear is the kind of alert this repository
+    has already learned to stop reading -- ``rag_coverage_sentinel`` needed
+    ``--require-recent`` for exactly this reason. The fix for this one is in the
+    crawlers (they now record ``capture_metadata['parsed_records']``), not in an
+    operator's hands, so it is reported where a maintainer will see it and nowhere
+    else.
+
+    Args:
+        summary: The ``SnapshotDriftSummary`` the run just produced.
+
+    """
+    total = getattr(summary, "total", 0)
+    with_baseline = getattr(summary, "with_baseline", 0)
+    if not total or with_baseline:
+        return
+    logger.warning(
+        "Snapshot drift is unmeasurable: %d of %d sampled snapshots carry no "
+        "parsed_records baseline, so a clean result means nothing was compared. "
+        "The crawlers that capture these sources must record "
+        "capture_metadata['parsed_records'] alongside parse_status.",
+        getattr(summary, "unknown_baseline", 0),
+        total,
+    )
+
+
 @_with_db_fail_fast_guard
 @_with_lock_skip_guard
 def snapshot_drift_check_job() -> None:
@@ -1206,6 +1256,7 @@ def snapshot_drift_check_job() -> None:
                 fail_max=fail_max,
             )
             logger.info("=== Snapshot Drift Summary: %s ===", summary.to_dict())
+            _warn_when_drift_is_unmeasurable(summary)
 
             if summary.ok:
                 apply_incidents([], resolve_keys=[SNAPSHOT_DRIFT_INCIDENT_KEY])

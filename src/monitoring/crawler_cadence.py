@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 #: scheduler actually registered, including the jobs registered outside
 #: `job_specs()`.
 CRAWLER_JOBS: dict[str, str] = {
-    # crawl_daily_games (03:00) -> run_daily_update: schedule, then game details
+    # crawl_daily_games (00:00) -> run_daily_update: schedule, then game details
     # and the relay for each collected game, then player movements. Four crawlers
     # behind one job, so they share its period. `relay` also runs during live
     # polling, which only makes its series fresher than this window expects.
@@ -56,7 +56,7 @@ CRAWLER_JOBS: dict[str, str] = {
     "schedule": "crawl_daily_games",
     "relay": "crawl_daily_games",
     "player_movement": "crawl_daily_games",
-    # heal_pbp (04:30) -> heal_unverified_pbp_job -> PBPCrawler.
+    # heal_pbp (01:30) -> heal_unverified_pbp_job -> PBPCrawler.
     "pbp": "heal_pbp",
     # crawl_p0_non_game (06:20) -> roster movements.
     "roster_transactions": "crawl_p0_non_game",

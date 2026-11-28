@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.db.bulk_insert import chunk_for_bind
 from src.db.engine import get_database_type, get_db_session
 from src.models.player import PlayerSeasonBatting
 from src.utils.player_season_stat_validation import filter_valid_season_stat_payloads
@@ -112,6 +113,11 @@ def _inserted_update_dict(stmt: object, rows: list[dict[str, Any]]) -> dict[str,
 
 
 def _save_sqlite_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    """Upsert every row, in chunks one statement can carry."""
+    return sum(_save_sqlite_chunk(session, chunk) for chunk in chunk_for_bind(rows))
+
+
+def _save_sqlite_chunk(session: Session, rows: list[dict[str, Any]]) -> int:
     stmt = sqlite_insert(PlayerSeasonBatting).values(rows)
     stmt = stmt.on_conflict_do_update(index_elements=BATTING_CONFLICT_KEYS, set_=_excluded_update_dict(stmt, rows))
     try:
@@ -131,6 +137,11 @@ def _save_sqlite_rows(session: Session, rows: list[dict[str, Any]]) -> int:
 
 
 def _save_mysql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    """Upsert every row, in chunks one statement can carry."""
+    return sum(_save_mysql_chunk(session, chunk) for chunk in chunk_for_bind(rows))
+
+
+def _save_mysql_chunk(session: Session, rows: list[dict[str, Any]]) -> int:
     stmt = mysql_insert(PlayerSeasonBatting).values(rows)
     stmt = stmt.on_duplicate_key_update(_inserted_update_dict(stmt, rows))
     try:
@@ -147,6 +158,11 @@ def _save_mysql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
 
 
 def _save_postgresql_rows(session: Session, rows: list[dict[str, Any]]) -> int:
+    """Upsert every row, in chunks one statement can carry."""
+    return sum(_save_postgresql_chunk(session, chunk) for chunk in chunk_for_bind(rows))
+
+
+def _save_postgresql_chunk(session: Session, rows: list[dict[str, Any]]) -> int:
     stmt = postgresql_insert(PlayerSeasonBatting).values(rows)
     stmt = stmt.on_conflict_do_update(index_elements=BATTING_CONFLICT_KEYS, set_=_excluded_update_dict(stmt, rows))
     try:

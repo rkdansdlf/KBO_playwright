@@ -34,6 +34,19 @@ class DlqStatus(StrEnum):
     IGNORED = "ignored"
 
 
+#: Dead-letter states that mean the question is answered. ``exhausted`` spent its
+#: retry budget and ``ignored`` was an operator's decision to stop; re-selecting
+#: either spends the budget again and refills the queue it just emptied. It lives
+#: beside the statuses because both the repair path and the collection path have to
+#: agree on it -- a filter applied to only one of them is how the 2024 Premier12
+#: games came back after they had been settled.
+#:
+#: ``requeue`` is the way back in: it returns a letter to ``pending``, which this
+#: tuple deliberately does not contain, so an operator who knows the source has
+#: recovered can put the game back in front of both.
+SETTLED_DLQ_STATUSES = (DlqStatus.EXHAUSTED.value, DlqStatus.IGNORED.value)
+
+
 class CrawlDeadLetter(Base, TimestampMixin):
     """A replayable unit of unfinished work, awaiting another attempt.
 

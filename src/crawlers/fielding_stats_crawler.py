@@ -123,11 +123,47 @@ def _go_to_page(page: Page, current_page: int, policy: RequestPolicy) -> None:
             (link for link in paging_elem.query_selector_all("a") if link.inner_text().strip() == str(current_page)),
             None,
         )
-        if page_link:
-            with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
-                page_link.click()
-            page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
-            policy.delay()
+        if not page_link:
+            return
+
+        # 이전 페이지의 첫 번째 행 데이터 캡처
+        prev_first_player = page.evaluate("""() => {
+            const row = document.querySelector('table.tData01 tbody tr, .tbl-type02 tbody tr');
+            if (!row) return '';
+            const link = row.querySelector('a');
+            if (link) return link.getAttribute('href') || link.textContent.trim();
+            const cell = row.querySelector('td:nth-child(2)');
+            return cell ? (cell.textContent || '').trim() : '';
+        }""")
+
+        with page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
+            page_link.click()
+        page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+
+        # 다음 페이지 클릭 후 실제 테이블 첫 번째 행이 이전과 달라질 때까지 Explicit Wait
+        try:
+            page.wait_for_function(
+                """({ prevPlayer }) => {
+                    const row = document.querySelector('table.tData01 tbody tr, .tbl-type02 tbody tr');
+                    if (!row) return false;
+                    const link = row.querySelector('a');
+                    let currPlayer = '';
+                    if (link) {
+                        currPlayer = link.getAttribute('href') || link.textContent.trim();
+                    } else {
+                        const cell = row.querySelector('td:nth-child(2)');
+                        currPlayer = cell ? (cell.textContent || '').trim() : '';
+                    }
+                    if (!currPlayer) return false;
+                    return prevPlayer ? currPlayer !== prevPlayer : true;
+                }""",
+                arg={"prevPlayer": prev_first_player},
+                timeout=SEL_TIMEOUT,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning("페이지 이동 후 테이블 갱신 대기 타임아웃 (%sp), 계속 진행합니다", current_page)
+
+        policy.delay()
     except CRAWLER_EXCEPTIONS:
         logger.exception("   ⚠️ 페이지 %s 이동 중 오류", current_page)
 
@@ -196,9 +232,49 @@ def _crawl_team_fielding_basic(ctx: FieldingCrawlContext) -> None:
         ctx.page.select_option(FIELDING_STATS.position_dropdown, value="")
         ctx.policy.delay()
 
+        # 팀 드롭다운 변경 전 첫 번째 행 선수 캡처
+        prev_first_player = ctx.page.evaluate("""() => {
+            const row = document.querySelector('table.tData01 tbody tr, .tbl-type02 tbody tr');
+            if (!row) return '';
+            const link = row.querySelector('a');
+            if (link) return link.getAttribute('href') || link.textContent.trim();
+            const cell = row.querySelector('td:nth-child(2)');
+            return cell ? (cell.textContent || '').trim() : '';
+        }""")
+
         with ctx.page.expect_response("**/Record/Player/Defense/Basic.aspx", timeout=RESP_TIMEOUT):
             ctx.page.select_option(FIELDING_STATS.team_dropdown, value=ctx.team_val)
         ctx.page.wait_for_load_state("networkidle", timeout=SEL_TIMEOUT)
+
+        # 구단 변경 후 테이블 첫 번째 행이 이전과 달라질 때까지 Explicit Wait
+        try:
+            ctx.page.wait_for_function(
+                """({ teamVal, prevPlayer }) => {
+                    const select = document.querySelector(
+                        'select[name="ctl00$ctl00$ctl00$cphContents$cphContents$cphContents$ddlTeam$ddlTeam"]'
+                    );
+                    if (!select || select.value !== teamVal) return false;
+                    const row = document.querySelector('table.tData01 tbody tr, .tbl-type02 tbody tr');
+                    if (!row) return true; // 결과 행이 없는 팀일 경우 통과
+                    const link = row.querySelector('a');
+                    let currPlayer = '';
+                    if (link) {
+                        currPlayer = link.getAttribute('href') || link.textContent.trim();
+                    } else {
+                        const cell = row.querySelector('td:nth-child(2)');
+                        currPlayer = cell ? (cell.textContent || '').trim() : '';
+                    }
+                    if (prevPlayer && currPlayer && currPlayer === prevPlayer) {
+                        return false;
+                    }
+                    return Boolean(currPlayer);
+                }""",
+                arg={"teamVal": ctx.team_val, "prevPlayer": prev_first_player},
+                timeout=SEL_TIMEOUT,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning("구단 선택 후 테이블 갱신 대기 타임아웃 (%s), 계속 진행합니다", ctx.team_name)
+
         ctx.policy.delay()
 
         pagination = ctx.page.query_selector(FIELDING_STATS.paging)

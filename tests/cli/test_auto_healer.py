@@ -574,6 +574,9 @@ class TestRunHealerAsync:
             patch("src.cli.auto_healer._find_stuck_games") as mock_stuck,
             patch("src.cli.auto_healer._find_inconsistent_games") as mock_incon,
             patch("src.cli.auto_healer._find_pa_formula_inconsistent_games") as mock_pa,
+            # The clean branch also sweeps quarantines, which needs the app schema;
+            # that side effect is not what this test measures.
+            patch("src.cli.auto_healer.reconcile_pending_quarantines", return_value=0),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_stuck.return_value = []
@@ -591,6 +594,9 @@ class TestRunHealerAsync:
             patch("src.cli.auto_healer._find_stuck_games", return_value=[mock_game]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+            # See test_returns_zero_when_no_anomalies: the quarantine sweep needs
+            # the app schema and is not what this test measures.
+            patch("src.cli.auto_healer.reconcile_pending_quarantines", return_value=0),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_mgr = MagicMock()
@@ -607,6 +613,9 @@ class TestRunHealerAsync:
             patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
             patch("src.cli.auto_healer._run_recovery", new_callable=AsyncMock) as mock_recovery,
+            # See test_returns_zero_when_no_anomalies: the quarantine sweep needs
+            # the app schema and is not what this test measures.
+            patch("src.cli.auto_healer.reconcile_pending_quarantines", return_value=0),
         ):
             mock_mgr = MagicMock()
             mock_mgr_cls.return_value = mock_mgr
@@ -620,6 +629,9 @@ class TestRunHealerAsync:
             patch("src.cli.auto_healer._find_stuck_games", return_value=[]),
             patch("src.cli.auto_healer._find_inconsistent_games", return_value=[]),
             patch("src.cli.auto_healer._find_pa_formula_inconsistent_games", return_value=[]),
+            # See test_returns_zero_when_no_anomalies: the quarantine sweep needs
+            # the app schema and is not what this test measures.
+            patch("src.cli.auto_healer.reconcile_pending_quarantines", return_value=0),
             patch("src.cli.auto_healer.RecoveryManager") as mock_mgr_cls,
         ):
             mock_mgr = MagicMock()

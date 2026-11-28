@@ -193,7 +193,7 @@ def test_reconcile_postgame_range_marks_cancelled_miss(monkeypatch):
             },
         )
 
-    def _fake_update_status(game_id: str, status: str):
+    def _fake_update_status(game_id: str, status: str, *, allow_historical: bool = False, reason: str = ""):
         with SessionLocal() as session:
             game = session.query(Game).filter(Game.game_id == game_id).one()
             game.game_status = status
