@@ -1087,10 +1087,13 @@ skipped**(상태 히트). 스팸 수정이 실제로 동작한다.
 
 **설정 절차 (DB 복구 후) — 실행 체크리스트**
 
-사전 확인 (2026-11-20 실측): `gh secret list`에는 `DATABASE_URL`, `KBO_*`, `OCI_*`, `ORACLE_*`, `TELEGRAM_*`만 있고
-`TS_OAUTH_CLIENT_ID` · `TS_OAUTH_SECRET` · `LIVE_DB_READONLY_URL` 3종이 없다. 워치독은 11-17~19 연속 failure(최근 실행 11-19 09:14 UTC)였고
-로그는 전부 `Secret ... is not set`(self-check 게이트)였다. 즉 DB가 복구됐는지 **밖에서 확인할 수 없는 상태**다.
-Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 터미널에서 해야 한다(에이전트는 비밀 값을 읽지 않는다).
+사전 확인 (2026-11-29 재측정): `gh secret list`에 `LIVE_DB_READONLY_URL`은 **11-24 등록됨**.
+남은 것은 `TS_OAUTH_CLIENT_ID` · `TS_OAUTH_SECRET` **2종뿐**이다. 워치독은 11-26~28에도 연속 failure였고
+최근 로그(11-28 09:55 UTC run)의 원인도 딱 그 2개 — `Secret TS_OAUTH_CLIENT_ID is not set` /
+`Secret TS_OAUTH_SECRET is not set`(self-check 게이트)다. DB 자체는 11-28 실측에서 살아 있었다
+(`bega_prod` · game 26,525 · PostgreSQL 16.16), 즉 **DB는 정상인데 밖에서 확인할 수만 없는 상태**다.
+Test Suite CI는 정상이다. 아래 2번(OAuth 클라이언트)과 4번의 시크릿 등록은 운영자 터미널에서 해야 한다
+(에이전트는 비밀 값을 읽지 않는다).
 
 - [ ] **1. DB 호스트 복구 확인.** 역할 생성은 DB가 살아 있어야 하므로 복구가 선행 조건이다.
       사용자 영역 프로세스가 멈춘 상태라면 §17.6~17.7(현장 재부팅)이 유일한 수단이고 코드로 해결되지 않는다.
@@ -1106,14 +1109,15 @@ Test Suite CI는 정상이다. 아래 4~5번의 시크릿 등록은 운영자 �
       ```
       `pg_read_all_data`는 PostgreSQL 14+의 전역 읽기 권한(운영 DB 16.x). 이 역할로 DML/DDL이 되면 안 된다 —
       쓰기 가능한 역할을 쓰면 5번의 `--require-readonly-role`이 실패한다.
-- [ ] **4. 저장소 시크릿 3종 등록.** 값은 stdin으로 넘겨 argv에 남기지 않는다:
+- [ ] **4. 저장소 시크릿 2종 등록** (`LIVE_DB_READONLY_URL`은 이미 있음). 값은 stdin으로 넘겨 argv에 남기지 않는다:
       ```bash
       # read -p 는 zsh 에서 "no coprocess" 로 실패하므로 printf 프롬프트를 쓴다 (bash/zsh 공통).
-      printf 'TS_OAUTH_CLIENT_ID: ' >&2;    read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_CLIENT_ID; unset V
-      printf 'TS_OAUTH_SECRET: ' >&2;       read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_SECRET; unset V
-      printf 'LIVE_DB_READONLY_URL: ' >&2; read -rs V; printf '%s' "$V" | gh secret set LIVE_DB_READONLY_URL; unset V
-      gh secret list   # 이름만 출력됨; 3종이 추가됐는지 확인
+      printf 'TS_OAUTH_CLIENT_ID: ' >&2; read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_CLIENT_ID; unset V
+      printf 'TS_OAUTH_SECRET: ' >&2;    read -rs V; printf '%s' "$V" | gh secret set TS_OAUTH_SECRET; unset V
+      gh secret list   # 이름만 출력됨; 2종이 추가됐는지 확인
       ```
+      OAuth 클라이언트는 2번에서 만든 `tag:ci`용 것의 **client id / secret**을 쓴다. `LIVE_DB_READONLY_URL`을
+      다시 넣을 필요는 없지만, 값이 새 호스트(`100.108.105.65`)·읽기 전용 역할을 가리키는지만 확인한다.
       URL 형식:
       `postgresql+psycopg://kbo_ci_ro:<pw>@100.108.105.65:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`
       `&`가 포함되므로 반드시 따옴표로 감싼다. keepalives를 빼면 유휴 연결이 도중에 끊겨 spurious
@@ -1241,9 +1245,10 @@ exit 0. 따라서 **(B) 는 기각**되고, **이 저장소 `.env` 의 값이 �
    ```
    (공식 이미지의 `pg_hba.conf` 는 **로컬 소켓을 trust** 로 두므로 컨테이너 안 `psql` 은
    비밀번호 없이 들어간다. 호스트 `.env` 도 함께 바꾸고 `api-server`·`scheduler` 를 재기동한다.)
-4. **CI 시크릿도 함께 본다.** `gh secret list` 의 `DATABASE_URL` 은 **2026-10-20** 에 설정된
-   값이라 11-20 이전 주소를 가리킨다. 즉 CI 는 지금 **죽은 호스트**를 본다. 값이 확보되면
-   `gh secret set DATABASE_URL` 로 갱신하고, 읽기 전용 경로는 §17.12 체크리스트를 따른다.
+4. **CI 시크릿도 함께 본다.** `gh secret list` 의 `DATABASE_URL` 은 **2026-11-22** 에 갱신됐다
+   (11-15 기록의 10-20 값은 더 이상 현재가 아니다). 설정 **시각만**으로 주소가 새 호스트인지
+   확정할 수는 없다 — 비밀 값은 읽지 않는다. §18.1의 새 주소를 가리키는지는 CI job으로 확인하고,
+   읽기 전용 경로는 §17.12 체크리스트를 따른다.
 
 ### 18.7 하지 않은 것
 
