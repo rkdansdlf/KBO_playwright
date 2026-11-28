@@ -1325,5 +1325,41 @@ postgres 컨테이너自身는 307MB/2.84GB로 여유가 있어도 VM 상한이 
   `damage 0`, `incomplete 5,708`은 그대로
 
 즉 **데이터 갭은 닫혔고, 남은 것은 물리 인덱스 하나다.** 인덱스가 없는 동안 dense
-검색은 exact scan으로 동작하므로 정확도는 유지되지만 지연이 크게 늘어난다. 메모리
-여유가 생기면 `lists`를 낮춘 소규모 ivfflat을 유지보수 창에 감시를 붙여 시도한다.
+검색은 exact scan으로 동작하므로 정확도는 유지되지만 지연이 크게 늘어난다. 그 뒤
+같은 날 재생성에 성공했다 — 아래 절을 참조한다.
+
+#### 11-28 인덱스 재생성 성공 (lists=100, 6.3분)
+
+`migrations/postgresql/068`의 `lists=400` 대신 **측정된 조합인 `lists=100`**으로 만들었다.
+`memory required is 120 MB`는 `lists × 50` 표본(20,000행 × 1536차원 × 4B)의 요구량이므로
+400에서만 발생한다. 100이면 31MB라 기본 `maintenance_work_mem` 안에 들어간다.
+또한 `ANN_PROBES=5`는 **lists=100에서 측정된 값**이고, lists만 올리면 방문 비율이 5%→1.25%
+로 줄어 재현율이 오히려 내려간다. 재현율이 부족하면 lists가 아니라 런타임 probes를 올린다.
+
+실행 (이 Mac에서, 워치독 붙음):
+
+```bash
+python3 -m scripts.maintenance.build_hnsw_index_guarded \
+  --kind ivfflat --lists 100 --mem 128MB --concurrently --max-minutes 45
+```
+
+`max_parallel_maintenance_workers=0`이 핵심이다. 11-28 실패는 512MB × 2 워커가 3GB
+WSL VM을 넘긴 것이고, `/dev/shm`도 그 워커 세그먼트를 못 담았다. 프로브는 6~277ms로
+워치독 임계(3,000ms)를 한 번도 넘지 않았고, **6.3분**에 완료됐다.
+
+결과:
+
+- `idx_rag_chunks_embedding_ivfflat` **유효**, **2,958MB**, `vector_cosine_ops`, `lists=100`
+- `audit_rag_index` **exit 0** — `missing_search_indexes []`, `damage 0`,
+  `incomplete 5,708`(119 missing + 5,589 stale)은 그대로, `consistent true`
+- `audit_rag_coverage` exit 0, `missing 0`
+- 골든셋 vector: **Recall@5 0.9462** (11-07 기준과 동일), MRR 0.8389, hit 0.9667
+
+지연은 개선이 더 필요하다. 골든셋 p50 533ms / p95 3,162ms이며, 여기에는 OpenRouter
+질의 임베딩 왕복(실측 648~1,222ms)이 포함된다. DB 단독은 필터 없이 2,395ms,
+`source_table` 필터 282ms, `game_date` 필터 179ms다. HNSW(ef_search=200)가 지연 면에서는
+우위였으므로, 500ms SLA를 맞춰야 하면 별도 유지보수 창에서 guarded HNSW 빌드를 검토한다.
+
+도구 수정: 같은 실행의 마지막 보고 단계에서 `:n::regclass` 캐스트가 SQLAlchemy 바인딩과
+충돌해 **빌드는 성공했는데 exit 1**이 났다. `CAST(:n AS regclass)`로 고치고, 보고 실패가
+빌드 성공을 뒤집지 않도록 보고 블록을 `try/except`로 분리했다(회귀 테스트 9건).

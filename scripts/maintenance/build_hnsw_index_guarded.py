@@ -1,8 +1,8 @@
-"""Build the HNSW index while watching what it costs the searches sharing the server.
+"""Build a dense vector index while watching what it costs the readers sharing the server.
 
-The first attempt (2026-10-31, 75 minutes) was cancelled because the build saturated
-this host's I/O: the lightweight BM25 candidate query went from 0.20 s to 165 s, an
-800x regression for every reader. The build itself was still at
+The first HNSW attempt (2026-10-31, 75 minutes) was cancelled because the build
+saturated this host's I/O: the lightweight BM25 candidate query went from 0.20 s to
+165 s, an 800x regression for every reader. The build itself was still at
 ``building index: loading tuples`` with 100% of blocks read, waiting on ``WALWrite``
 over and over -- the signature of a graph being paged to disk faster than the server
 can flush, which is what a small ``maintenance_work_mem`` produces.
@@ -23,9 +23,19 @@ The watchdog is the point. A build that cannot finish without making search unus
 is not one this repository should start unattended, and the decision to keep going
 belongs to a measurement rather than a guess about how much time is left.
 
+Since 2026-11-28 the same guard also builds an ivfflat index. That path exists
+because the 11-28 ivfflat attempt used ``lists=400``, which pgvector rejects below
+``maintenance_work_mem=120MB`` (``lists * 50`` sample tuples x 1536 dims x 4 bytes),
+and 512MB x two parallel workers killed a backend inside the 3GB WSL VM. The
+measured combination in this repository is ``lists=100`` with ``ANN_PROBES=5``
+(``vector_search_repository.py``), so that is the default here -- raising ``lists``
+without raising the runtime probe count would *reduce* recall.
+
 Usage:
     python3 -m scripts.maintenance.build_hnsw_index_guarded
     python3 -m scripts.maintenance.build_hnsw_index_guarded --mem 1GB --max-minutes 60
+    python3 -m scripts.maintenance.build_hnsw_index_guarded --kind ivfflat --lists 100
+    python3 -m scripts.maintenance.build_hnsw_index_guarded --kind ivfflat --lists 100 --concurrently
 """
 
 from __future__ import annotations
@@ -41,7 +51,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.db.engine import Engine
 
-INDEX_NAME = "idx_rag_chunks_embedding_hnsw"
+INDEX_PREFIX = "idx_rag_chunks_embedding"
 PROBE_SECONDS = 15
 #: A healthy server answers the probe in ~14 ms. The cancelled build pushed it past
 #: 100,000 ms, so the line is drawn well inside the healthy range and well below the
@@ -58,13 +68,52 @@ PROBE_SQL = "SELECT count(*) FROM rag_chunks WHERE game_date = '2026-10-26'"
 #: Recall is slightly lower and still far better than the ivfflat scan it replaces.
 DEFAULT_M = 8
 DEFAULT_EF_CONSTRUCTION = 32
+DEFAULT_LISTS = 100
+INDEX_KINDS = ("hnsw", "ivfflat")
 
 
-def _create_sql(m: int, ef_construction: int) -> str:
-    """Return the CREATE INDEX statement for the given build parameters."""
+def _index_name(kind: str) -> str:
+    """Return the physical index name for a supported index kind."""
+    if kind not in INDEX_KINDS:
+        msg = f"unsupported index kind: {kind}"
+        raise ValueError(msg)
+    return f"{INDEX_PREFIX}_{kind}"
+
+
+def _create_sql(
+    kind: str,
+    *,
+    m: int,
+    ef_construction: int,
+    lists: int,
+    concurrently: bool = False,
+) -> str:
+    """Return the CREATE INDEX statement for the given build parameters.
+
+    Args:
+        kind: ``hnsw`` or ``ivfflat``.
+        m: HNSW edges per node; ignored for ivfflat.
+        ef_construction: HNSW construction effort; ignored for ivfflat.
+        lists: ivfflat list count; ignored for HNSW. The runtime probe count is a
+            separate GUC (``ANN_PROBES``) and is not changed here.
+        concurrently: whether to avoid blocking writers. This takes two scans and
+            leaves an invalid index behind on failure, so the caller must check
+            ``indisvalid`` afterwards either way.
+
+    Returns:
+        The DDL statement, without a trailing semicolon.
+
+    """
+    name = _index_name(kind)
+    concurrent = "CONCURRENTLY " if concurrently else ""
+    if kind == "hnsw":
+        return (
+            f"CREATE INDEX {concurrent}{name} ON rag_chunks USING hnsw (embedding vector_cosine_ops) "
+            f"WITH (m = {m}, ef_construction = {ef_construction})"
+        )
     return (
-        f"CREATE INDEX {INDEX_NAME} ON rag_chunks USING hnsw (embedding vector_cosine_ops) "
-        f"WITH (m = {m}, ef_construction = {ef_construction})"
+        f"CREATE INDEX {concurrent}{name} ON rag_chunks USING ivfflat (embedding vector_cosine_ops) "
+        f"WITH (lists = {lists})"
     )
 
 
@@ -92,13 +141,14 @@ def _progress(conn) -> str:
 
 
 def _build_backend_pid(conn) -> int | None:
+    """Find the CREATE INDEX backend for either index kind; name is not enough."""
     return conn.execute(
-        text("SELECT pid FROM pg_stat_activity WHERE query LIKE 'CREATE INDEX%hnsw%' AND state <> 'idle' LIMIT 1"),
+        text("SELECT pid FROM pg_stat_activity WHERE query LIKE 'CREATE INDEX%embedding%' AND state <> 'idle' LIMIT 1"),
     ).scalar()
 
 
-def _index_exists(conn) -> bool:
-    return bool(conn.execute(text("SELECT 1 FROM pg_class WHERE relname = :n"), {"n": INDEX_NAME}).first())
+def _index_exists(conn, name: str) -> bool:
+    return bool(conn.execute(text("SELECT 1 FROM pg_class WHERE relname = :n"), {"n": name}).first())
 
 
 def _cancel_build(conn) -> None:
@@ -132,13 +182,20 @@ def _watch_build(watch_conn, build_thread: threading.Thread, started: float, max
     return False
 
 
-def _report_index(conn) -> None:
+def _report_index(conn, name: str) -> None:
     """Print the index's size and what the planner does with it now."""
-    if not _index_exists(conn):
-        print(f"   {INDEX_NAME} does not exist (cancelled or failed)")
+    valid = conn.execute(
+        text("SELECT i.indisvalid FROM pg_index i WHERE i.indexrelid = CAST(:n AS regclass)"),
+        {"n": name},
+    ).scalar()
+    if valid is None:
+        print(f"   {name} does not exist (cancelled or failed)")
         return
-    size = conn.execute(text("SELECT pg_size_pretty(pg_relation_size(:n::regclass))"), {"n": INDEX_NAME}).scalar()
-    print(f"   {INDEX_NAME} exists — {size}")
+    size = conn.execute(
+        text("SELECT pg_size_pretty(pg_relation_size(CAST(:n AS regclass)))"),
+        {"n": name},
+    ).scalar()
+    print(f"   {name} exists — {size} (indisvalid={not bool(valid)})")
     vec = conn.execute(text("SELECT embedding::text FROM rag_chunks WHERE embedding IS NOT NULL LIMIT 1")).scalar()
     for label, predicate in (
         ("no filter (27 s case)", ""),
@@ -177,7 +234,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-minutes", type=int, default=DEFAULT_MAX_MINUTES)
     parser.add_argument("--m", type=int, default=DEFAULT_M, help="HNSW m (edges per node)")
     parser.add_argument("--ef", type=int, default=DEFAULT_EF_CONSTRUCTION, help="HNSW ef_construction")
+    parser.add_argument("--kind", choices=INDEX_KINDS, default="hnsw", help="Dense index implementation")
+    parser.add_argument("--lists", type=int, default=DEFAULT_LISTS, help="ivfflat lists (ignored for HNSW)")
+    parser.add_argument(
+        "--concurrently",
+        action="store_true",
+        help="Avoid blocking writers; costs a second scan and can leave an invalid index on failure",
+    )
     args = parser.parse_args(argv)
+    name = _index_name(args.kind)
+    sql = _create_sql(
+        args.kind,
+        m=args.m,
+        ef_construction=args.ef,
+        lists=args.lists,
+        concurrently=args.concurrently,
+    )
 
     url = _connection_url()
     # Two connections: the build holds one for its whole life and the watchdog needs
@@ -189,18 +261,23 @@ def main(argv: list[str] | None = None) -> int:
     result: dict[str, str] = {}
     cancelled = False
     with build_engine.connect() as build_conn:
+        if _index_exists(build_conn, name):
+            print(f"{name} already exists — inspect indisvalid before retrying")
+            return 2
         build_conn.execute(text(f"SET maintenance_work_mem = '{args.mem}'"))
         build_conn.execute(text("SET max_parallel_maintenance_workers = 0"))
         build_conn.execute(text("SET lock_timeout = '90s'"))
         build_conn.execute(text("SET statement_timeout = '0'"))
         print(
-            f"[{datetime.now(UTC):%H:%M:%S}Z] build starting (mem={args.mem}, parallel=0, max={args.max_minutes} min)"
+            f"[{datetime.now(UTC):%H:%M:%S}Z] {args.kind} build starting "
+            f"(index={name}, mem={args.mem}, parallel=0, concurrent={args.concurrently}, "
+            f"max={args.max_minutes} min)"
         )
         sys.stdout.flush()
 
         build_thread = threading.Thread(
             target=_run_build,
-            args=(build_conn, result, _create_sql(args.m, args.ef)),
+            args=(build_conn, result, sql),
             daemon=True,
         )
         build_thread.start()
@@ -214,9 +291,14 @@ def main(argv: list[str] | None = None) -> int:
     elapsed_min = (time.monotonic() - started) / 60
     print(f"\n[{datetime.now(UTC):%H:%M:%S}Z] finished in {elapsed_min:.1f} min — {result.get('outcome', 'unknown')}")
 
-    with watch_engine.connect() as conn:
-        conn.execute(text("SET statement_timeout = '120s'"))
-        _report_index(conn)
+    # Reporting is auxiliary: a broken EXPLAIN must not turn a successful build
+    # into a failed command. The build outcome is the only thing that sets the code.
+    try:
+        with watch_engine.connect() as conn:
+            conn.execute(text("SET statement_timeout = '120s'"))
+            _report_index(conn, name)
+    except (SQLAlchemyError, OSError) as exc:
+        print(f"   index report failed ({type(exc).__name__}: {str(exc)[:120]})")
     return 0 if (not cancelled and result.get("outcome") == "ok") else 1
 
 
