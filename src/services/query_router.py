@@ -41,6 +41,8 @@ STRUCTURED_SOURCE_TABLES: frozenset[str] = frozenset({"awards", "game", "team_hi
 AWARD_TERMS = ("수상자", "MVP", "골든글러브", "신인상", "수비상")
 TEAM_HISTORY_TERMS = ("팀 역사", "역사", "순위와 구장")
 TEAM_INFO_TERMS = ("연고지", "홈구장", "구장")
+#: "경기 일정" asks for fixtures; the game table holds results. Keep it DOCUMENT.
+GAME_RESULT_TERMS = ("결과", "스코어", "대진")
 
 
 def infer_structured_source(
@@ -57,6 +59,13 @@ def infer_structured_source(
     a second copy of the signals.
     """
     if intent is QueryIntent.GAME_QUERY and extracted.game_date:
+        return "game"
+    if (
+        intent is QueryIntent.GAME_QUERY
+        and extracted.season_year
+        and extracted.team_id
+        and _has_any(query, GAME_RESULT_TERMS)
+    ):
         return "game"
     if extracted.season_year and _has_any(query, AWARD_TERMS):
         return "awards"

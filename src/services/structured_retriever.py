@@ -259,16 +259,27 @@ class StructuredRetriever:
         ]
 
     def _game(self, plan: QueryPlan, top_k: int) -> list[StructuredSearchResult]:
-        """Return the final game row for a dated matchup question."""
+        """Return final game rows for a dated matchup or a season/team result question."""
         game_date = plan.entities.extracted.game_date or plan.filters.get("game_date")
-        if not game_date:
-            return []
-        try:
-            target_date = date.fromisoformat(str(game_date)[:10])
-        except ValueError:
-            return []
-        stmt = select(Game).where(Game.game_date == target_date, Game.game_status.in_(("COMPLETED", "DRAW")))
+        season = plan.entities.extracted.season_year
         codes = self._team_codes(plan)
+        status_filter = Game.game_status.in_(("COMPLETED", "DRAW"))
+        if game_date:
+            try:
+                target_date = date.fromisoformat(str(game_date)[:10])
+            except ValueError:
+                return []
+            stmt = select(Game).where(Game.game_date == target_date, status_filter)
+            order_by = (Game.game_id.asc(),)
+        elif season and codes:
+            stmt = select(Game).where(
+                status_filter,
+                Game.game_date >= date(season, 1, 1),
+                Game.game_date <= date(season, 12, 31),
+            )
+            order_by = (Game.game_date.desc(), Game.game_id.desc())
+        else:
+            return []
         if len(codes) > 1:
             stmt = stmt.where(
                 or_(
@@ -278,7 +289,7 @@ class StructuredRetriever:
             )
         elif codes:
             stmt = stmt.where(or_(Game.home_team.in_(codes), Game.away_team.in_(codes)))
-        rows = list(self.session.execute(stmt.order_by(Game.game_id)).scalars())[:top_k]
+        rows = list(self.session.execute(stmt.order_by(*order_by)).scalars())[:top_k]
         return [
             StructuredSearchResult(
                 chunk_id=f"structured:game:{game.game_id}",

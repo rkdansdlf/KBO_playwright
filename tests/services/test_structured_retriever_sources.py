@@ -34,6 +34,7 @@ def _session() -> Session:
                 stadium_name="광주-KIA 챔피언스필드",
             ),
             Team(team_id="HH", team_name="한화 이글스", team_short_name="한화", city="대전", stadium_name="이글스파크"),
+            Team(team_id="LG", team_name="LG 트윈스", team_short_name="LG", city="서울", stadium_name="종합운동장"),
             TeamHistory(
                 id=1,
                 franchise_id=1,
@@ -71,6 +72,36 @@ def _session() -> Session:
                 home_team="HH",
                 away_score=1,
                 home_score=2,
+                game_status="COMPLETED",
+            ),
+            Game(
+                id=3,
+                game_id="20240701LGKI0",
+                game_date=date(2024, 7, 1),
+                away_team="LG",
+                home_team="KIA",
+                away_score=2,
+                home_score=5,
+                game_status="COMPLETED",
+            ),
+            Game(
+                id=4,
+                game_id="20240702KILG0",
+                game_date=date(2024, 7, 2),
+                away_team="KIA",
+                home_team="LG",
+                away_score=3,
+                home_score=4,
+                game_status="COMPLETED",
+            ),
+            Game(
+                id=5,
+                game_id="20240703HHKI0",
+                game_date=date(2024, 7, 3),
+                away_team="HH",
+                home_team="KIA",
+                away_score=1,
+                home_score=7,
                 game_status="COMPLETED",
             ),
         ]
@@ -185,6 +216,54 @@ def test_all_four_sources_route_to_structured() -> None:
         ):
             plan = QueryRouter(session).plan(query, filters={"source_table": source_table})
             assert plan.route is RetrievalRoute.STRUCTURED, source_table
+    finally:
+        session.close()
+
+
+def test_a_season_team_result_works_without_a_date() -> None:
+    """A season summary question returns that team's completed games, newest first."""
+    session = _session()
+    try:
+        plan = QueryRouter(session).plan("2024년 KIA 경기 결과")
+        assert plan.route is RetrievalRoute.STRUCTURED
+        results = StructuredRetriever(session).retrieve(plan, 5)
+        assert [result.source_row_id for result in results] == [
+            "20240703HHKI0",
+            "20240702KILG0",
+            "20240701LGKI0",
+        ]
+    finally:
+        session.close()
+
+
+def test_a_season_head_to_head_requires_both_teams() -> None:
+    """A 대진 question must not include games involving only one of the two teams."""
+    session = _session()
+    try:
+        plan = QueryRouter(session).plan("2024년 KIA LG 대진 결과")
+        assert plan.route is RetrievalRoute.STRUCTURED
+        results = StructuredRetriever(session).retrieve(plan, 5)
+        assert [result.source_row_id for result in results] == ["20240702KILG0", "20240701LGKI0"]
+    finally:
+        session.close()
+
+
+def test_a_schedule_question_stays_a_document_query() -> None:
+    """Fixtures are not results; the game branch must not answer '일정'."""
+    session = _session()
+    try:
+        plan = QueryRouter(session).plan("2023년 두산 경기 일정")
+        assert plan.route is RetrievalRoute.DOCUMENT
+    finally:
+        session.close()
+
+
+def test_a_season_question_without_a_team_stays_a_document_query() -> None:
+    """A league-wide question has no team key for the game branch."""
+    session = _session()
+    try:
+        plan = QueryRouter(session).plan("2024년 한국시리즈 경기 결과")
+        assert plan.route is RetrievalRoute.DOCUMENT
     finally:
         session.close()
 
