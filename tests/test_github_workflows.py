@@ -18,6 +18,9 @@ MIN_ACTION_MAJORS = {
     "actions/cache": 5,
     "actions/upload-artifact": 4,
     "actions/download-artifact": 4,
+    # setup-uv@v5 targets Node 20; every job using it emitted a deprecation
+    # annotation on 2026-11-19. v7 is already used by security_audit.yml.
+    "astral-sh/setup-uv": 7,
 }
 
 _USES_REF = re.compile(r"uses:\s*([\w.\-/]+)@v(\d+)")
@@ -220,9 +223,13 @@ def test_github_ci_uses_node24_compatible_action_versions():
     python_env = _read(ACTION_DIR / "python-env/action.yml")
     _assert_major_at_least(python_env, "actions/setup-python", "python-env/action.yml")
     _assert_major_at_least(python_env, "actions/cache", "python-env/action.yml")
+    _assert_major_at_least(python_env, "astral-sh/setup-uv", "python-env/action.yml")
 
     security_audit = _read(WORKFLOW_DIR / "security_audit.yml")
     _assert_major_at_least(security_audit, "actions/setup-python", "security_audit.yml")
+    # Only files that actually use setup-uv are constrained; most workflows get
+    # it through the composite action above and never pin it themselves.
+    _assert_major_at_least(security_audit, "astral-sh/setup-uv", "security_audit.yml")
 
     test_suite = _read(WORKFLOW_DIR / "test_suite.yml")
     assert 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"' in test_suite
