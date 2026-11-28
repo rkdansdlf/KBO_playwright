@@ -3,8 +3,9 @@
 # This replaces the Oracle ADB acceptance run. That job has failed every Sunday
 # since 2026-09-27 with DPY-6005 (service not registered with the listener):
 # the Oracle free-tier capacity is exhausted and Oracle is being phased out.
-# Production data now lands in PostgreSQL on the Windows host ch806-08, which is
-# reachable only over Tailscale (Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md).
+# Production data now lands in PostgreSQL on the Windows host 돈통
+# (100.108.105.65, moved 2026-11-20), reachable only over Tailscale
+# (Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md §18).
 #
 # Read-only by design. The job connects with LIVE_DB_READONLY_URL, a role that
 # cannot write (setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4). The script it runs
@@ -99,8 +100,9 @@ jobs:
           except OSError as exc:
               print(
                   "::error::Cannot open a TCP connection to the PostgreSQL host "
-                  f"({type(exc).__name__}). Check the Tailscale ACL for tag:ci and the Windows "
-                  "firewall rule on ch806-08 (Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md)."
+                  f"({type(exc).__name__}). Check the Tailscale ACL for tag:ci to "
+                  "100.108.105.65:5432 and the Windows firewall rule on 돈통 "
+                  "(Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md §18)."
               )
               sys.exit(1)
           print("PostgreSQL port is reachable over Tailscale.")
