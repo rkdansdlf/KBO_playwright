@@ -189,6 +189,39 @@ def test_all_four_sources_route_to_structured() -> None:
         session.close()
 
 
+def test_natural_language_questions_reach_the_new_branches() -> None:
+    """The inferred source routes and answers questions without an explicit filter."""
+    session = _session()
+    try:
+        cases = (
+            ("KIA 타이거즈의 연고지와 홈구장은 어디야?", "teams", "KIA"),
+            ("2025년 KBO MVP 수상자는 누구야?", "awards", "1"),
+            ("2003년 기아 타이거즈의 팀 역사는 어땠어?", "team_history", "1"),
+            ("2026년 7월 21일 한화와 KIA 경기 결과", "game", "20260721HHKI0"),
+        )
+        for query, source_table, row_id in cases:
+            plan = QueryRouter(session).plan(query)
+            assert plan.route is RetrievalRoute.STRUCTURED, query
+            assert plan.filters.get("source_table") == source_table, query
+            results = StructuredRetriever(session).retrieve(plan, 5)
+            assert [result.source_row_id for result in results] == [row_id], query
+    finally:
+        session.close()
+
+
+def test_a_caller_filter_overrides_the_inference() -> None:
+    """An explicit source_table must win over the inferred one."""
+    session = _session()
+    try:
+        plan = QueryRouter(session).plan(
+            "KIA 타이거즈의 연고지와 홈구장은 어디야?", filters={"source_table": "no_such_table"}
+        )
+        assert plan.route is not RetrievalRoute.STRUCTURED
+        assert plan.filters["source_table"] == "no_such_table"
+    finally:
+        session.close()
+
+
 def test_an_unknown_source_table_does_not_invent_rows() -> None:
     """An unrecognized source filter falls back to the existing behavior."""
     session = _session()

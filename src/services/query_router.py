@@ -12,6 +12,8 @@ from src.services.kbo_entity_resolver import ResolvedKboEntities, resolve_kbo_en
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from src.utils.kbo_entity_extractor import ExtractedKboEntities
+
 
 class QueryIntent(StrEnum):
     """Classify the dominant information need in a KBO question."""
@@ -36,6 +38,33 @@ class RetrievalRoute(StrEnum):
 #: Explicit source filters the structured retriever can answer from a table.
 #: An unrecognized source must not be promoted to STRUCTURED.
 STRUCTURED_SOURCE_TABLES: frozenset[str] = frozenset({"awards", "game", "team_history", "teams"})
+AWARD_TERMS = ("수상자", "MVP", "골든글러브", "신인상", "수비상")
+TEAM_HISTORY_TERMS = ("팀 역사", "역사", "순위와 구장")
+TEAM_INFO_TERMS = ("연고지", "홈구장", "구장")
+
+
+def infer_structured_source(
+    query: str,
+    extracted: ExtractedKboEntities,
+    intent: QueryIntent,
+) -> str | None:
+    """Infer which structured table can answer a natural-language question.
+
+    The signals are deliberately narrow: a dated game, an award winner with a
+    season, a season/team history, or a team's ballpark. The 100-case routing
+    golden set contains none of them, so this does not change its contract.
+    Both the router and the retriever call this one function instead of keeping
+    a second copy of the signals.
+    """
+    if intent is QueryIntent.GAME_QUERY and extracted.game_date:
+        return "game"
+    if extracted.season_year and _has_any(query, AWARD_TERMS):
+        return "awards"
+    if extracted.season_year and extracted.team_id and _has_any(query, TEAM_HISTORY_TERMS):
+        return "team_history"
+    if extracted.team_id and _has_any(query, TEAM_INFO_TERMS):
+        return "teams"
+    return None
 
 
 STAT_TERMS = (
@@ -197,6 +226,9 @@ class QueryRouter:
         resolver_ms = round((time.perf_counter() - resolve_started) * 1000, 3)
         merged_filters = entities.to_filters()
         merged_filters.update(explicit_filters)
+        inferred_source = infer_structured_source(query, entities.extracted, intent)
+        if inferred_source and "source_table" not in explicit_filters:
+            merged_filters["source_table"] = inferred_source
 
         if category:
             merged_filters["document_type"] = category
@@ -213,9 +245,10 @@ class QueryRouter:
         else:
             route = RetrievalRoute.DOCUMENT
 
-        # An explicit, supported source_table filter is a statement about where
-        # the answer lives; free-text classification alone cannot see it.
-        if explicit_filters.get("source_table") in STRUCTURED_SOURCE_TABLES:
+        # An explicit or inferred supported source_table is a statement about
+        # where the answer lives; free-text intent classification alone cannot
+        # see it. Caller-supplied filters always win over the inference.
+        if merged_filters.get("source_table") in STRUCTURED_SOURCE_TABLES:
             route = RetrievalRoute.STRUCTURED
 
         return QueryPlan(
