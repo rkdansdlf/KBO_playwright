@@ -796,3 +796,36 @@ def test_docker_build_check_builds_without_pushing_on_pull_requests():
     assert "push: true" not in workflow
     assert "docker push" not in workflow
     assert "login-action" not in workflow
+
+
+_WORKFLOW_NAME = re.compile(r"`([A-Za-z0-9_-]+\.ya?ml)`")
+
+
+def test_documented_workflow_inventory_matches_the_repository():
+    """README and AGENTS.md must name every workflow and state the right count.
+
+    The 2026-11 watchdog was absent from both inventories, so the only external
+    detector of a silent database outage was invisible to someone reading the
+    docs. A stale count is the same defect as a stale list: it tells the reader
+    the inventory is complete when it is not.
+    """
+    files = {path.name for path in _workflow_files()}
+    readme = _read(ROOT / "README.md")
+    agents = _read(ROOT / "AGENTS.md")
+
+    readme_rows = {
+        name for line in readme.splitlines() if line.startswith("| `") for name in _WORKFLOW_NAME.findall(line)
+    }
+    assert files == readme_rows, (
+        f"README workflow table drift: missing={sorted(files - readme_rows)}, extra={sorted(readme_rows - files)}"
+    )
+
+    agents_names = set(_WORKFLOW_NAME.findall(agents))
+    assert files <= agents_names, f"AGENTS.md does not mention: {sorted(files - agents_names)}"
+
+    readme_count = re.search(r"(\d+) GitHub Actions workflows", readme)
+    agents_count = re.search(r"uses (\d+) workflows", agents)
+    assert readme_count, "README no longer states a workflow count"
+    assert agents_count, "AGENTS.md no longer states a workflow count"
+    assert int(readme_count[1]) == len(files), f"README says {readme_count[1]}, repository has {len(files)}"
+    assert int(agents_count[1]) == len(files), f"AGENTS.md says {agents_count[1]}, repository has {len(files)}"

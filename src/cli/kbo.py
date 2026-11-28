@@ -283,6 +283,37 @@ def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.
     )
     p_rag_census.add_argument("--json", action="store_true", help="Render the summary as JSON")
 
+    p_rag_nec = rag_subs.add_parser(
+        "necessity",
+        help="Measure how much retrieval is standing in for a SQL lookup (read-only).",
+    )
+    p_rag_nec.add_argument(
+        "--dataset",
+        "-g",
+        type=str,
+        default="Docs/references/rag_golden_queries.json",
+        help="Golden query JSON array to classify.",
+    )
+    p_rag_nec.add_argument(
+        "--routing-dataset",
+        type=str,
+        default=None,
+        help="Optional routing golden set whose expectedRoute distribution is also reported.",
+    )
+    p_rag_nec.add_argument(
+        "--require-sql-covered",
+        type=float,
+        default=None,
+        metavar="RATIO",
+        help="Exit 1 when the share of already SQL-servable cases falls below RATIO (0..1).",
+    )
+    p_rag_nec.add_argument(
+        "--fail-on-unknown",
+        action="store_true",
+        help="Exit 1 when any case omits the source_table that decides its bucket.",
+    )
+    p_rag_nec.add_argument("--json", action="store_true", help="Output JSON format.")
+
     # 12. Simulate
 
     # 12. Simulate
@@ -486,7 +517,7 @@ def build_master_parser() -> argparse.ArgumentParser:
 def _rag_dispatcher(sub_args: list[str]) -> int:
     """Dispatch the ``kbo rag`` sub-subcommands lazily."""
     if not sub_args:
-        print("Usage: kbo rag <query|evaluate|census> [options]")
+        print("Usage: kbo rag <query|evaluate|census|necessity> [options]")
         return 1
     subcmd = sub_args[0]
     rest = sub_args[1:]
@@ -502,7 +533,11 @@ def _rag_dispatcher(sub_args: list[str]) -> int:
         from src.cli.rag.census_rag_identity import main as census_main
 
         return census_main(rest)
-    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', or 'census'.")
+    if subcmd == "necessity":
+        from src.cli.rag.audit_retrieval_necessity import main as necessity_main
+
+        return necessity_main(rest)
+    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', 'census', or 'necessity'.")
     return 1
 
 

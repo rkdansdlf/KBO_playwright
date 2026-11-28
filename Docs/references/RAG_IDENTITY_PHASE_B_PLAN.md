@@ -638,3 +638,60 @@ movements에서 "legacy가 길다"를 "더 풍부하다"로 읽은 것과 같은
 
 **재측정 필요**: 방화벽이 개발 Mac에 열리면 team_history 정리 전후를 다시 비교해야
 한다(해당 청크는 골든셋 참조가 아니다 — 갱신된 참조는 `player_movements:2018-12-07_SS_…`).
+
+## 15. 재측정 (2026-11-23) — 호스트에서 넷 다 통과, 두 수치는 판정되지 않았다
+
+**실행 위치**: Windows 호스트(`돈통`). 이 저장소 Mac의 `.env` 값은 11-20 호스트 이전 뒤
+낡아서 `28P01`로 거부되므로(`WINDOWS_DB_HOST_RECOVERY.md` §18.4), DB를 만지는 명령은
+지금 **호스트에서** 돈다. 아래는 그 실행 결과다.
+
+| 게이트 | 결과 |
+| --- | --- |
+| `apply_postgres_migrations --check` | exit 0 — 스키마 정합 |
+| `kbo rag census` | exit 0 — `orphan_rows 0`, `collision 19키/39행`, **`unsafe 8,959`** |
+| `rag.audit_rag_index --json` | `damage 0`, `consistent true`, `primary = vector = 380,477` |
+| `rag.audit_rag_coverage --require-recent 2` | exit 0 — `missing_count 0`, `gaps []` |
+
+### 15.1 `unsafe 8,959`는 이번 실행에서 판정된 값이 아니다
+
+`unsafe`는 `disposition != SAFE_REKEY`인 항목 수이고(`IdentityCensusReport.unsafe_entry_count`),
+게이트는 `--fail-on-unsafe`를 줬을 때만 그 값을 exit code로 바꾼다 —
+`return 1 if args.fail_on_unsafe and report.unsafe_entry_count else 0`. 이번 실행에는
+그 플래그가 없었으므로 **exit 0은 이 값에 대해 아무 말도 하지 않는다.**
+
+값 자체는 §2-B의 실측과 같은 자리다(`TARGET_EXISTS_CONTENT_MISMATCH` **8,951**, 2026-11-02).
+그 절의 결론이 그대로 적용된다: **이 집단의 disposition은 중복의 증거가 아니다** —
+`id=N`을 원천 `id`로 조회한 결과이고, 그 짝은 awards·player_movements에서 틀린 것으로
+측정됐다. 8,951 → 8,959의 +8도 **추세로 읽지 말 것**: 이번 실행은 집계만 남겼고
+소스별·disposition별 구성은 측정하지 않았다(매니페스트를 쓰지 않았다).
+
+구성을 보려면 매니페스트를 남긴다(읽기 전용, unsafe>0이므로 exit 1이 정상):
+
+```
+kbo rag census --output /tmp/phase_b_manifest.json --fail-on-unsafe
+```
+
+`collision 19키/39행`은 두 원천 행이 같은 legacy id를 공유한다는 뜻이고, 그 키들은
+판정 없이 rekey 대상에서 제외된다(§2-A).
+
+### 15.2 커버리지 갭이 닫혔다
+
+`audit_rag_coverage`의 `missing 0 · gaps []`는 2026-10-27에 기록한 **10,632건 백로그**
+(1982~2017 과거분 약 9,900 + 2025분 736)가 해소됐다는 뜻이다. 단 `--require-recent 2`는
+**최근 2년만** 게이트하므로, "전 시즌 0"은 게이트가 강제한 값이 아니라 보고된 JSON의
+성질이다.
+
+### 15.3 인덱스 총계가 380,477이다 — 구성은 미분해
+
+10-27 기록의 165,031 대비 **+215,446**이다. `primary = vector`가 같으므로 두 저장소의
+정합은 유지되지만, 이 증가의 구성을 이번에 분해하지 않았다(재인덱싱·역사 백필·분할 키가
+섞여 있을 수 있다). **`RAG_EVALUATION.md`의 지연 측정은 207,305청크 시절 값이므로
+현재 코퍼스 기준으로 다시 재야 한다.** §2-A의 Phase B 산정(23,191 임베딩)보다 증가폭이
+훨씬 크므로, 재개 전에 소스별 분포를 먼저 확인한다.
+
+### 15.4 이번에도 확인하지 못한 것
+
+- **team_history 정리 전후 비교**(§13 말미의 재측정 요청): 집계만 받아 소스별 비교가 아니다.
+- **Phase B 잔여**: §14의 원칙(생성기가 사베르메트릭스를 먼저 담은 뒤 재인덱싱)이 그대로
+  유효하다. 이번 게이트 통과는 그 원칙을 실행했다는 뜻이 아니다.
+- **로컬(Mac) 접속**: `.env`가 낡아 여전히 불가. 호스트 실행으로 대체했다.

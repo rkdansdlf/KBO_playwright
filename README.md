@@ -78,7 +78,7 @@ Get-Content .\logs\scheduler.log -Tail 50
 
 ## CI/CD Pipeline
 
-14 GitHub Actions workflows under `.github/workflows/`:
+19 GitHub Actions workflows under `.github/workflows/`:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
@@ -89,10 +89,16 @@ Get-Content .\logs\scheduler.log -Tail 50
 | `full_recalculation.yml` | Manual | Full season stat recalculation |
 | `kbo_automation.yml` | Manual | 8-phase: pregame, live, finalize, freshness, quality, gap, backfill, recalc |
 | `test_suite.yml` | CI on push | Ruff lint + pytest (3.14) |
+| `agent_harness.yml` | Push/PR on Harness paths, manual | Harness gate + execution gate (`tools/agent_harness/**`, `tests/agent_harness/**`, `.agent-harness/**`) |
+| `docker_build_check.yml` | PR on Dockerfile, manual | Build runtime image without pushing (push-only pipeline is `docker_build.yml`) |
 | `periodic_extras.yml` | Manual / reviewed schedule | Periodic data sync |
 | `kbo_smart_polling.yml` | Manual / reviewed schedule | Game-finish polling and daily update |
 | `text_relay_docker.yml` | Schedule + manual | Text relay Docker job |
+| `pitcher_backfill.yml` | Manual (cron commented out) | Live pitcher stat backfill during game hours |
 | `backfill_season_team_codes.yml` | Manual | Futures season team-code repair |
+| `db_availability_watchdog.yml` | Every 30 min + manual | Host-independent PostgreSQL watchdog; transition-only alerts (first failure / recovery) |
+| `live_db_verification.yml` | Weekly Mon 04:00 KST + manual | Read-only live acceptance against PostgreSQL (`LIVE_DB_READONLY_URL`) |
+| `oci_connection_probe.yml` | Manual | Legacy Oracle ADB read-only connection probe |
 | `security_audit.yml` | Scheduled + manual | Dependency security audit |
 | `docker_build.yml` | Manual / push | Container build and publish |
 
@@ -150,6 +156,7 @@ Configure via `.env`:
 - **[Docs/](Docs/)**: Runbooks, URL patterns, limitations
 - **[Docs/runbooks/WINDOWS_SCHEDULER.md](Docs/runbooks/WINDOWS_SCHEDULER.md)**: Scheduler operations on the Windows server
 - **[Docs/references/COMMAND_REFERENCE.md](Docs/references/COMMAND_REFERENCE.md)**: CLI command guide
+- **[Docs/references/PIPELINE_QUALITY_MAP.md](Docs/references/PIPELINE_QUALITY_MAP.md)**: Current code-level map of the crawl → save → quality-gate pipeline
 - **[Docs/schema/](Docs/schema/)**: Database schema documentation
 - **[tests/factories/](tests/factories/)**: Model factory helpers for test development
 
