@@ -16,6 +16,7 @@ from src.db.engine import get_db_session
 from src.rag.evaluation import RagEvaluator
 from src.services.hybrid_retriever import HybridRetriever
 from src.services.query_router import QueryRouter, RetrievalRoute
+from src.services.rag_query_log import record_query_request
 from src.services.structured_retriever import StructuredRetriever
 
 if TYPE_CHECKING:
@@ -265,6 +266,15 @@ def rag_ask(request: RagSearchRequest) -> dict[str, Any]:
                     "structured_fallback": plan.route in {RetrievalRoute.STRUCTURED, RetrievalRoute.MIXED}
                     and not structured_results,
                 }
+            # The routing decision is final at this point. Record it before answer
+            # construction so a downstream model failure cannot erase the
+            # observation; the recorder swallows its own errors by contract.
+            record_query_request(
+                request.query,
+                plan=plan,
+                results=results,
+                retrieval=retrieval,
+            )
             return _build_rag_answer(
                 request.query,
                 results,

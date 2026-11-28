@@ -137,6 +137,12 @@ UNREFERENCED_METRIC_EXEMPTIONS = {
         "in BUG-002, which had no incident at all, a rule here would page a second time for one "
         "condition -- see BH0_CONTRACTS.md BUG-001 section"
     ),
+    "kbo_rag_query_log_failures_total": (
+        "query-event logging is best-effort by contract: a failed audit write must never change the "
+        "answer the API returned. The counter exists for `kbo incidents metrics` style investigation "
+        "and for the read-only traffic report's blind spot; paging on it would alert on the "
+        "measurement, not on the RAG behaviour it measures"
+    ),
 }
 
 

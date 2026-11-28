@@ -826,6 +826,30 @@ def notification_retention_job() -> None:
             logger.exception("Notification retention job failed")
 
 
+@_with_db_fail_fast_guard
+@_with_lock_skip_guard
+def rag_query_log_retention_job() -> None:
+    """Weekly prune of the L3 query ledger (Sunday 03:50 KST).
+
+    No alert is sent: this follows ``notification_retention_job``. A prune
+    failure is logged, and the ledger is best-effort by design -- turning it
+    into a notification would make observation noisier than the thing observed.
+    """
+    with _scheduler_job_lock(MAINTENANCE_LOCK):
+        logger.info("=== Starting RAG Query Log Retention Job ===")
+        try:
+            from src.services.rag_query_log import DEFAULT_RETENTION_DAYS, prune_rag_query_events
+
+            days = _env_int("RAG_QUERY_LOG_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)
+            now = datetime.now(UTC).replace(tzinfo=None)
+            with SessionLocal() as session:
+                deleted = prune_rag_query_events(session, before=now - timedelta(days=days))
+                session.commit()
+            logger.info("=== RAG Query Log Retention Completed (%d rows > %dd) ===", deleted, days)
+        except SCHEDULER_JOB_EXCEPTIONS:
+            logger.exception("RAG query log retention job failed")
+
+
 def trim_scheduler_logs_job() -> None:
     """Trim scheduler log files to prevent unbounded growth (weekly)."""
     logger.info("=== Starting Scheduler Log Trim ===")

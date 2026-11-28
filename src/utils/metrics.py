@@ -161,6 +161,15 @@ KBO_NOTIFICATION_DELIVERY_RETRIES_TOTAL = Counter(
     ["channel"],
 )
 
+#: Query-log writes are best-effort. A failure must never change the answer the
+#: API returned, so the only signal is this process-local counter plus a log line.
+RAG_QUERY_LOG_FAILURES_METRIC = "kbo_rag_query_log_failures_total"
+
+KBO_RAG_QUERY_LOG_FAILURES_TOTAL = Counter(
+    RAG_QUERY_LOG_FAILURES_METRIC,
+    "Total count of RAG query-event audit writes that failed (the answer is unaffected)",
+)
+
 
 # Dead letter queue metrics: gauges are a projection of current DB state and are
 # refreshed after each worker/recovery/operator batch; counters accumulate events.
@@ -255,6 +264,11 @@ def record_notification_delivery_persisted(channel: str, *, attempt_count: int) 
 def record_notification_delivery_audit_failure() -> None:
     """Record a failed delivery audit write (the transport outcome is preserved)."""
     KBO_NOTIFICATION_DELIVERY_AUDIT_FAILURES_TOTAL.inc()
+
+
+def record_rag_query_log_failure() -> None:
+    """Record a failed query-event audit write (the API answer is preserved)."""
+    KBO_RAG_QUERY_LOG_FAILURES_TOTAL.inc()
 
 
 def record_incident_apply_failure() -> None:

@@ -269,6 +269,11 @@ TABLE_REGISTRY: list[TableMeta] = [
     TableMeta("pa_unrecoverable", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["player_id"]),
     TableMeta("notification_incidents", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["incident_key"]),
     TableMeta("notification_deliveries", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["id"]),
+    # L3 measurement ledger. Append-only like the other audit tables: an upsert on
+    # `id` would let a later replication overwrite an earlier observation. The
+    # operational copy lives in PostgreSQL; this entry only keeps the legacy
+    # registry's "every ORM table is known" contract honest.
+    TableMeta("rag_query_events", level=3, strategy=SyncStrategy.APPEND_ONLY, natural_keys=["id"]),
     TableMeta("matchup_batter_home_away", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_splits", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),
     TableMeta("matchup_batter_stadium_split", level=3, strategy=SyncStrategy.INCREMENTAL, natural_keys=["id"]),

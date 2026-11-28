@@ -70,6 +70,7 @@ from src.scheduler.jobs.maintenance import (
     heal_unverified_pbp_job,
     notification_retention_job,
     rag_identity_drift_job,
+    rag_query_log_retention_job,
     recalc_milestones_and_rag_job,
     relay_state_cleanup_job,
     schema_drift_check_job,
@@ -507,6 +508,12 @@ def _start_scheduler(args: argparse.Namespace) -> None:
             trigger_cls(day_of_week="sun", hour=3, minute=30),
             "cleanup_stale_data_weekly",
             7200,
+        ),
+        (
+            rag_query_log_retention_job,
+            trigger_cls(day_of_week="sun", hour=3, minute=50),
+            "rag_query_log_retention_weekly",
+            3600,
         ),
         (
             trim_scheduler_logs_job,

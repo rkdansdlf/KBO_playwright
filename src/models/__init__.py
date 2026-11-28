@@ -76,6 +76,7 @@ from .projection import PlayerProjection as PlayerProjection
 from .quarantine import QuarantinedRecord as QuarantinedRecord
 from .rag_chunk import RagChunk as RagChunk
 from .rag_chunk_term import RagChunkTerm as RagChunkTerm
+from .rag_query_event import RagQueryEvent as RagQueryEvent
 from .rankings import StatRanking as StatRanking
 from .roster_transaction import RosterTransaction as RosterTransaction
 from .season import KboSeason as KboSeason

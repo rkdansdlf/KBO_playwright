@@ -314,6 +314,19 @@ def _add_rag_and_sim_subparsers(subparsers: argparse._SubParsersAction[argparse.
     )
     p_rag_nec.add_argument("--json", action="store_true", help="Output JSON format.")
 
+    p_rag_traffic = rag_subs.add_parser(
+        "traffic",
+        help="Report observed rag_ask routing distribution (read-only).",
+    )
+    p_rag_traffic.add_argument("--days", type=int, default=30, help="Window length in days.")
+    p_rag_traffic.add_argument(
+        "--min-events",
+        type=int,
+        default=100,
+        help="Refuse to conclude below this many events.",
+    )
+    p_rag_traffic.add_argument("--json", action="store_true", help="Output JSON format.")
+
     # 12. Simulate
 
     # 12. Simulate
@@ -516,29 +529,24 @@ def build_master_parser() -> argparse.ArgumentParser:
 
 def _rag_dispatcher(sub_args: list[str]) -> int:
     """Dispatch the ``kbo rag`` sub-subcommands lazily."""
+    modules = {
+        "query": "src.cli.rag.query",
+        "evaluate": "src.cli.rag.evaluate",
+        "census": "src.cli.rag.census_rag_identity",
+        "necessity": "src.cli.rag.audit_retrieval_necessity",
+        "traffic": "src.cli.rag.traffic",
+    }
     if not sub_args:
-        print("Usage: kbo rag <query|evaluate|census|necessity> [options]")
+        print(f"Usage: kbo rag <{'|'.join(modules)}> [options]")
         return 1
-    subcmd = sub_args[0]
-    rest = sub_args[1:]
-    if subcmd == "query":
-        from src.cli.rag.query import main as q_main
+    subcmd, rest = sub_args[0], sub_args[1:]
+    module_path = modules.get(subcmd)
+    if module_path is None:
+        print(f"Unknown rag subcommand: {subcmd}. Use {', '.join(modules)}.")
+        return 1
+    from importlib import import_module
 
-        return q_main(rest)
-    if subcmd == "evaluate":
-        from src.cli.rag.evaluate import main as eval_main
-
-        return eval_main(rest)
-    if subcmd == "census":
-        from src.cli.rag.census_rag_identity import main as census_main
-
-        return census_main(rest)
-    if subcmd == "necessity":
-        from src.cli.rag.audit_retrieval_necessity import main as necessity_main
-
-        return necessity_main(rest)
-    print(f"Unknown rag subcommand: {subcmd}. Use 'query', 'evaluate', 'census', or 'necessity'.")
-    return 1
+    return int(import_module(module_path).main(rest))
 
 
 def _lazy_certify(args: list[str]) -> int:

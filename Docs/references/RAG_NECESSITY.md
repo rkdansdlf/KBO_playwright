@@ -133,9 +133,11 @@ STRUCTURED=60 DOCUMENT=35 MIXED=5 → retrieved_share=0.40
 
 ### 4.2 이 수치가 말하지 않는 것
 
-**L3 — 실사용 질의 분포 — 는 측정 불가다.** API와 `RagAnswerService` 어디에도
-질의 로그나 질의 테이블이 없다(`grep` 0건). 그러므로 위 비율은 **골든셋의 성질**이지
-**트래픽의 성질**이 아니다.
+**L3 — 실사용 질의 분포 — 는 이 절을 쓴 시점에는 측정 불가였다.** API와
+`RagAnswerService` 어디에도 질의 로그나 질의 테이블이 없었다(`grep` 0건). 그러므로
+위 비율은 **골든셋의 성질**이지 **트래픽의 성질**이 아니다. 이후 부록 D의 원장을
+붙였지만, 측정은 배포 시점부터 시작하므로 **오늘의 실측값은 여전히 없다** — 새
+도구가 오늘 반환하는 정답은 `undetermined`이다.
 
 이 구분을 무시하면 두 방향으로 틀린다.
 
@@ -284,7 +286,7 @@ pgvector 0.8의 `hnsw.iterative_scan`이나 (팀·시즌·경기일) → ID 집�
 
 | # | 항목 | 상태 |
 | --- | --- | --- |
-| 1 | **L3 실사용 질의 로그 부재** — 비율이 트래픽의 성질인지 말할 수 없다 | 미해결. 질의 로그 테이블이 필요 |
+| 1 | **L3 실사용 질의 로그 부재** — 비율이 트래픽의 성질인지 말할 수 없다 | 도구는 붙였다(부록 D). 표본이 쌓이기 전까지 미해결 |
 | 2 | `rag_configured_evaluation.json` 골든셋이 30건 고정 | 표본이 작다. 산문이 3건이면 1건 차이가 3.3%p |
 | 3 | 라우팅 `route_accuracy=1.0`이 표본 내(in-sample) 값 | 표본 밖 측정 없음 |
 | 4 | `relational_no_template` 11건의 SQL 비용 미산정 | `game`·`awards` 등 분기 추가 시 JOIN 깊이·인덱스 비용 측정 필요 |
@@ -362,6 +364,95 @@ pgvector 0.8의 `hnsw.iterative_scan`이나 (팀·시즌·경기일) → ID 집�
 
 검증: 신규 계약 테스트 4건(시즌 단일팀·대진·일정 유지·팀 없는 질문 유지), 전체
 스위트 **15,722 passed / 20 skipped**.
+
+---
+
+## 부록 D. L3 실사용 질의 분포 측정 (원장 + 집계 CLI)
+
+### D.1 측정 단위와 원문 미저장
+
+`rag_query_events` 한 행 = `rag_ask` 한 건이다. 호스트 로그가 아니라 표를 쓴 이유는
+세 가지다: CI에서 조회할 수 없고, 시간창 GROUP BY가 안 되고, 보존이 수동이었다.
+`notification_deliveries`가 같은 모양(append-only + 자체 트랜잭션 + 보존 잡)으로
+이 문제를 이미 풀었다.
+
+**원문 질의는 저장하지 않는다.** 공백을 정규화한 문자열의 sha256(`query_hash`)과
+길이(`query_chars`)만 남긴다. 덕분에 `COUNT(DISTINCT query_hash)`로 반복 호출을
+볼 수 있지만, 감사 표가 사용자 입력과 유출된 키를 담는 저장소가 되지는 않는다.
+이 저장소는 이미 과거에 Telegram 토큰이 `httpx` INFO 로그에 평문으로 남았던
+전례가 있고, 같은 실수를 새 표로 반복하지 않는다.
+
+마이그레이션은 PostgreSQL `070`, SQLite `071`이다. **Oracle은 넣지 않는다** —
+이 표를 읽는 유일한 경로는 FastAPI고 그 프로세스는 PostgreSQL만 본다.
+`Base.metadata.create_all`이 새 표는 어느 dialect에서든 만들기 때문에 SQLite
+파일의 역할은 운영 배포가 아니라 **PG 서버 없이 컬럼·인덱스 계약을 검사하는
+픽스처**다.
+
+### D.2 분류 계약
+
+| outcome | 조건 |
+| --- | --- |
+| `structured_answered` | structured 행이 실제로 응답에 포함됨 |
+| `structured_fallback` | SQL 분기를 탔는데 structured 결과가 0건 → 문서 검색 |
+| `document_table_rows` | 문서 경로 + 지배 출처가 `STRUCTURED_SOURCE_TABLES` 소속 |
+| `document_prose` | 문서 경로 + 지배 출처가 산문 |
+| `empty` | 결과 0건 |
+| `unknown` | 출처를 결정할 수 없음 |
+
+`STRUCTURED_SOURCE_TABLES`는 `query_router`에서 **import**한다. 목록을 복사하면
+분기가 하나 늘어날 때 사본이 낡고, 그건 과거 4개월간 포스트시즌이 인덱스에서
+빠졌던 사고와 같은 종류다.
+
+**지배 출처**는 top-k의 `source_table` 최빈값이고 **동률이면 `unknown`**이다.
+표 행과 산문이 섞여 돌아온 질의를 억지로 한쪽으로 밀지 않는다. `unknown`은
+분모에서 빠지고 별도로 보고하며, `unknown/total > 0.10`이면 verdict는
+`undetermined`다.
+
+### D.3 집계 CLI
+
+```
+python3 -m src.cli.kbo rag traffic [--days 30] [--min-events 100] [--json]
+```
+
+읽기 전용이다. `structured_share`·`fallback_share`·`document_table_rows_share`·
+`document_prose_share`·`unknown_share`·`prose_share_of_classified`·
+`sql_answerable_share`를 출력하고 헤드라인은
+`(structured_answered + document_table_rows) / classified`다.
+
+판정 밴드는 `audit_retrieval_necessity.decide_verdict`를 **import 해서** 쓴다
+(임계값 복사 금지). 단 `basis` 필드를 `served_chunks`로 명시한다. 골든셋 도구는
+`relevant_chunk`를 보는데 **같은 밴드, 다른 측정**이기 때문이다. `total <
+--min-events`면 사유와 함께 `undetermined`를 반환한다. 3건으로 결론을 만들지 않는다.
+
+보존은 `RAG_QUERY_LOG_RETENTION_DAYS`(기본 90)와 일요일 03:50의
+`rag_query_log_retention_weekly`가 맡는다. 야간 체인(00:00~02:40) 뒤다.
+
+### D.4 이 측정이 말하지 않는 것
+
+1. **프록시다.** `document_table_rows`는 "검색이 서빙 가능한 표의 행을 반환했다"이지
+   "사용자가 그 행을 원했다"가 아니다.
+2. **라우터 편향은 양방향이다.** 우리 라우터가 DOCUMENT로 보낸 질의만 문서 경로로
+   관측된다. 따라서 `prose_share`는 진짜 산문 필요도의 **상한**,
+   `document_table_rows`는 SQL 가능성의 **하한**이다.
+3. **API 트래픽만 본다.** CLI와 직접 DB 접근은 보이지 않는다. 실제 소비자가
+   프론트엔드의 `/api/v1/rag/ask`인지 확인해야 표본이 의미를 갖는다.
+4. **배포 전에는 0이다.** 유의미한 판정에는 최소 100건, 현실적으로 2~4주가 필요하다.
+   그 전까지 `undetermined`이 **정답**이다.
+5. **골든셋과 다른 질문에 답한다.** 어긋나면 L3가 "무엇을 만들 것인가"를 이기고,
+   골든셋은 회귀 게이트로 남는다.
+6. **트래픽이 적으면 그것도 답이다.** 90일간 100건이 안 되면 검색기를 교체할
+   근거 자체가 없다.
+
+### D.5 검증과 운영 순서
+
+순수 분류 8건, recorder 4건, CLI 4건, 마이그레이션 3건 = **21건 통과**.
+뮤테이션 5건 — unknown을 classified에 합치기 / commit 제거 / 표 행을 prose로 /
+min-events 게이트 제거 / 원문 저장 — 이 **전부 실패를 생성**했다.
+
+운영 순서: (1) `apply_postgres_migrations --check`로 pending 1건 확인,
+(2) **명시 승인 후** DDL 적용, (3) 배포 직후 `rag traffic`를 read-only로 실행해
+이벤트 0건과 `undetermined` 확인. (4) 최소 2주 뒤 `--min-events 100`으로
+첫 판정. 벡터 인덱스 재생성은 호스트 메모리 여유가 생기기 전까지 새로 시도하지 않는다.
 
 ---
 
