@@ -335,3 +335,66 @@ class TestTheScheduleTableWaitSignature:
         assert (ok, reason) == (True, "ok")
         assert recorded["kwargs"].get("arg") == "11"
         assert "timeout" in recorded["kwargs"]
+
+
+class TestTheParseWindowTravelsWithTheCount:
+    """The conditions a count was produced under have to be stored beside it.
+
+    The drift check re-parses weeks later. Without the window the parser falls back
+    to ``datetime.now(KST)`` and the parser's own ``CUTOFF_DAYS`` default (60) — the
+    crawler uses ``days_back`` (30) — so a page whose events are all older than 30
+    days re-parses as a different count and the gate calls the calendar drift.
+    """
+
+    def _config(self) -> dict:
+        return {"url": "https://lg.com/page={page}", "link_prefix": "https://lg.com"}
+
+    @mark.asyncio
+    async def test_the_cutoff_days_are_recorded(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", return_value=[]),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert pages[0]["capture_metadata"]["cutoff_days"] == crawler.days_back
+
+    @mark.asyncio
+    async def test_the_fetch_time_is_recorded(self, crawler):
+        pages: list[dict] = []
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", return_value=[]),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        fetched = pages[0]["capture_metadata"]["fetched_at"]
+        assert isinstance(fetched, str) and fetched, "the window's anchor is a timestamp, not a flag"
+
+    @mark.asyncio
+    async def test_the_stored_time_is_the_one_the_parser_was_given(self, crawler):
+        """A different timestamp on the row than in the parse would anchor nothing."""
+        pages: list[dict] = []
+        seen: list[dict] = []
+
+        def _capture(html, source_key, metadata):
+            seen.append(dict(metadata))
+            return []
+
+        with (
+            patch.object(crawler, "_raw_pages", pages),
+            patch("src.crawlers.team_event_crawler.parse_team_events", side_effect=_capture),
+        ):
+            crawler._fetch_page = AsyncMock(return_value=_ok("<html/>"))
+
+            await crawler._crawl_team("LG", self._config())
+
+        assert pages[0]["capture_metadata"]["fetched_at"] == seen[0]["fetched_at"]
+        assert pages[0]["capture_metadata"]["cutoff_days"] == seen[0]["cutoff_days"], (
+            "the stored window must be the parsed window, not a second expression of it"
+        )

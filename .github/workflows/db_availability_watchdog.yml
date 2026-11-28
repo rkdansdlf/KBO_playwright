@@ -1,0 +1,246 @@
+# 30-minute PostgreSQL reachability watchdog, run from a host that is not the
+# database host.
+#
+# Why it exists: the 2026-11-07/08 outage ran about two and a half days before
+# anyone acted. The repo's own alerting lives on the database host (the scheduler
+# sends the Telegram alerts and exposes the metrics), so it dies with the
+# machine; the backend stack kept firing its own alerts into a different
+# audience. Nothing outside the host was asking "is the database answering", so
+# nothing said no. Detection has to come from outside.
+#
+# Alerting is on transitions, not on probes, and the trouble state is remembered
+# in TWO Actions caches because the two troubles are different:
+#
+# * ``db-watchdog-outage`` -- the database did not answer. The first failure
+#   notifies once; later failures stay silent (their runs still end red, so the
+#   run history shows the duration); the first success after an outage notifies
+#   once and clears the state.
+# * ``db-watchdog-selfcheck`` -- the watchdog itself could not run (missing
+#   secrets, Tailscale). Announced once too: the first version of this workflow
+#   had no state for this path, and with the repository secrets unset it sent a
+#   notification every 30 minutes for six days (2026-11-09..15). A watchdog that
+#   spams is the alert fatigue it exists to fight.
+#
+# The split keeps the messages honest: fixing the configuration while the
+# database is still down announces the database trouble, instead of inheriting
+# the configuration one's "already announced" state.
+#
+# Both alert paths stand down when the state cache cannot be read: announcing a
+# "first" failure on every run without knowing what was already sent is exactly
+# the spam this design prevents. The red runs remain either way.
+#
+# GitHub's schedule is best-effort: measured 2026-11-09..15, this */30 cron fired
+# only 3-4 times a day (4-8 hour gaps). Treat this as an hours-latency backup
+# layer, not a 30-minute monitor -- the external heartbeat (§17.11) is the fast
+# layer once configured.
+#
+# Read-only by design: LIVE_DB_READONLY_URL is the same role the weekly live
+# verification uses (setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4), and the
+# probe runs a single SELECT 1. See Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md
+# §17.12 for how this complements the external heartbeat (§17.11).
+
+name: DB Availability Watchdog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: read
+  # The trouble-state caches are cleared through the caches REST API on recovery.
+  actions: write
+
+concurrency:
+  group: db-availability-watchdog
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: PostgreSQL Reachability Probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LIVE_DB_URL: ${{ secrets.LIVE_DB_READONLY_URL }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Restored before anything else can fail: the state has to be known even on
+      # the runs that die at the secrets check.
+      - name: Restore outage state
+        id: outage
+        uses: actions/cache/restore@v6
+        with:
+          path: .watchdog-state
+          key: db-watchdog-outage
+
+      - name: Restore self-check state
+        id: selfcheck
+        uses: actions/cache/restore@v6
+        with:
+          path: .watchdog-selfcheck
+          key: db-watchdog-selfcheck
+
+      - name: Check required secrets
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          LIVE_DB_READONLY_URL: ${{ secrets.LIVE_DB_READONLY_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          missing=0
+          for name in TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET LIVE_DB_READONLY_URL TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set (setup: Docs/runbooks/OPERATIONAL_RUNBOOK.md §4)."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          hostname: gha-kbo-db-watchdog-${{ github.run_id }}
+
+      # Its own step so a dependency-install failure lands in the self-check
+      # branch, not in "PostgreSQL is not answering".
+      - name: Install psycopg
+        run: python3 -m pip install --quiet "psycopg[binary]>=3.1"
+
+      - name: Probe PostgreSQL
+        id: probe
+        continue-on-error: true
+        run: python3 scripts/verification/check_db_availability.py --json
+
+      # --- the database trouble -----------------------------------------------
+      - name: Alert on the first failure
+        if: >-
+          steps.outage.outcome == 'success'
+          && steps.probe.outcome == 'failure'
+          && steps.outage.outputs.cache-hit != 'true'
+        uses: ./.github/actions/notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          status: failure
+          workflow: 'DB Watchdog: PostgreSQL is not answering (next alert on recovery)'
+          channels: telegram
+
+      - name: Record the outage
+        if: >-
+          steps.outage.outcome == 'success'
+          && steps.probe.outcome == 'failure'
+          && steps.outage.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .watchdog-state
+          date -u +%FT%TZ > .watchdog-state/since
+
+      - name: Save the outage state
+        if: >-
+          steps.outage.outcome == 'success'
+          && steps.probe.outcome == 'failure'
+          && steps.outage.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: .watchdog-state
+          key: db-watchdog-outage
+
+      # --- the watchdog's own trouble -----------------------------------------
+      - name: Alert when the watchdog itself cannot run
+        if: >-
+          steps.selfcheck.outcome == 'success'
+          && failure()
+          && steps.probe.outcome != 'failure'
+          && steps.selfcheck.outputs.cache-hit != 'true'
+        uses: ./.github/actions/notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          status: failure
+          workflow: 'DB Watchdog could not run (check Tailscale/secrets)'
+          channels: telegram
+
+      - name: Record the self-check failure
+        if: >-
+          steps.selfcheck.outcome == 'success'
+          && failure()
+          && steps.probe.outcome != 'failure'
+          && steps.selfcheck.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .watchdog-selfcheck
+          date -u +%FT%TZ > .watchdog-selfcheck/since
+
+      - name: Save the self-check state
+        if: >-
+          steps.selfcheck.outcome == 'success'
+          && failure()
+          && steps.probe.outcome != 'failure'
+          && steps.selfcheck.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: .watchdog-selfcheck
+          key: db-watchdog-selfcheck
+
+      # --- recovery ------------------------------------------------------------
+      - name: Notify recovery
+        if: steps.probe.outcome == 'success' && steps.outage.outputs.cache-hit == 'true'
+        uses: ./.github/actions/notify
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          status: success
+          workflow: 'DB Watchdog: PostgreSQL is answering again'
+          channels: telegram
+
+      - name: Clear the outage state
+        if: steps.probe.outcome == 'success' && steps.outage.outputs.cache-hit == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/caches?key=db-watchdog-outage")
+          echo "cache delete status: $status"
+          case "$status" in
+            2*|404) ;;
+            *) echo "::warning::Could not clear the outage state cache (HTTP $status); the next outage may stay silent until it expires." ;;
+          esac
+
+      # A run that got far enough to probe means the mechanism works again,
+      # whether or not the database answered; cleared silently because the
+      # outage path above owns the message.
+      - name: Clear the self-check state
+        if: >-
+          success()
+          && steps.selfcheck.outcome == 'success'
+          && steps.selfcheck.outputs.cache-hit == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/caches?key=db-watchdog-selfcheck")
+          echo "cache delete status: $status"
+          case "$status" in
+            2*|404) ;;
+            *) echo "::warning::Could not clear the self-check state cache (HTTP $status)." ;;
+          esac
+
+      - name: Keep the run red while the database is unreachable
+        if: steps.probe.outcome == 'failure'
+        run: |
+          echo "::error::PostgreSQL probe failed; see the probe output above."
+          exit 1

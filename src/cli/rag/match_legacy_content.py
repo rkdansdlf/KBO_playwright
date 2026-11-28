@@ -44,6 +44,7 @@ from src.services.rag_legacy_content_match import (
     DUPLICATE,
     MATCHED,
     REKEY,
+    UNMATCHED,
     LegacyMatchOutcome,
     LegacySourceRow,
     disposition,
@@ -76,8 +77,6 @@ SAMPLE_LIMIT = 5
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from src.services.rag_legacy_content_match import LegacyMatchOutcome
-
 
 def _movement_index(session: Session) -> dict:
     """Index movement rows by ``(date, player, section)``, with their team code and snapshot."""
@@ -89,19 +88,21 @@ def _movement_index(session: Session) -> dict:
     statement = select(
         PlayerMovement.id,
         PlayerMovement.movement_date,
+        PlayerMovement.canonical_team_id,
         PlayerMovement.team_code,
         PlayerMovement.player_name,
         PlayerMovement.section,
     )
     for row in session.execute(statement).yield_per(1_000):
-        identity = stable_player_movement_source_row_id(row[1], row[2], row[3], row[4])
-        snap = hashlib.sha256(repr((row[0], str(row[1]), row[2], row[3], row[4])).encode("utf-8")).hexdigest()
-        index.setdefault((str(row[1]), row[3], row[4]), []).append(
+        canonical = row[2] or row[3]
+        identity = stable_player_movement_source_row_id(row[1], canonical, row[4], row[5])
+        snap = hashlib.sha256(repr((row[0], str(row[1]), canonical, row[4], row[5])).encode("utf-8")).hexdigest()
+        index.setdefault((str(row[1]), row[4], row[5]), []).append(
             LegacySourceRow(
                 int(row[0]),
                 identity,
-                team_code=row[2],
-                player_name=row[3],
+                team_code=canonical,
+                player_name=row[4],
                 source_snapshot_hash=snap,
             ),
         )
@@ -235,7 +236,9 @@ def _match_one(source_table: str, content: str, indexes: dict) -> LegacyMatchOut
     if source_table == "awards":
         exact, by_year_type = indexes["awards"]
         return match_award(content, exact, by_year_type)
-    return match_team_history(content, indexes["team_history"])
+    if source_table == "team_history":
+        return match_team_history(content, indexes["team_history"])
+    return LegacyMatchOutcome(UNMATCHED)
 
 
 def build_report(

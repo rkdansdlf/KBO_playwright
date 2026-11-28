@@ -22,7 +22,13 @@ from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.crawlers.run_origin import CRAWL_RUN_ORIGINS, CrawlRunOrigin
+from src.crawlers.run_origin import (
+    CRAWL_RUN_ORIGINS,
+    RUN_ORIGIN_ENV_VAR,
+    CrawlRunOrigin,
+    current_run_origin,
+    use_run_origin,
+)
 from src.models.crawl_execution import RUN_STATUS_RUNNING, CrawlExecutionRun
 from src.repositories.crawl_execution_repository import CrawlExecutionRepository, CrawlRunSpec
 from src.services.crawl_run_service import CrawlRunService
@@ -285,3 +291,86 @@ class TestOriginAndReplayLineageStayIndependent:
         assert stored is not None
         assert stored.started_at.tzinfo is None
         assert stored.started_at <= datetime.now(UTC).replace(tzinfo=None)
+
+
+class TestTheAmbientCallerIsUsedWhenTheSpecHasNone:
+    """Entry points that know who they are claim it; the ledger reads the claim.
+
+    Threading a caller argument through every crawler's ``run()`` was the
+    alternative, rejected because most call sites cannot name themselves anyway:
+    the claim is made once at the boundary (``use_run_origin``), travels with the
+    call stack, and the spec keeps its own value for callers that speak for one
+    run -- the replay paths. Neither is a guess, which is why a row with no claim
+    and no spec value still stays NULL.
+    """
+
+    def test_an_ambient_claim_is_recorded(self, session):
+        with use_run_origin(CrawlRunOrigin.LIVE_CRAWLER):
+            run = CrawlExecutionRepository(session).start_run(_spec())
+
+        assert run.origin == "live_crawler"
+
+    def test_an_explicit_spec_value_beats_the_ambient_claim(self, session):
+        """A replay knows exactly what it is; the ambient pipeline must not relabel it."""
+        with use_run_origin(CrawlRunOrigin.DAILY_UPDATE):
+            run = CrawlExecutionRepository(session).start_run(_spec(origin=CrawlRunOrigin.REPLAY))
+
+        assert run.origin == "replay"
+
+    def test_the_claim_does_not_outlive_its_block(self, session):
+        """The scheduler reuses worker threads; a stale claim would mislabel the next job."""
+        with use_run_origin(CrawlRunOrigin.SCHEDULER):
+            pass
+
+        run = CrawlExecutionRepository(session).start_run(_spec())
+
+        assert run.origin is None
+
+    def test_the_environment_override_is_read_for_child_processes(self, session, monkeypatch):
+        """A child process cannot inherit a context variable; the env is its claim."""
+        monkeypatch.setenv(RUN_ORIGIN_ENV_VAR, CrawlRunOrigin.DAILY_UPDATE.value)
+
+        run = CrawlExecutionRepository(session).start_run(_spec())
+
+        assert run.origin == "daily_update"
+
+    def test_an_unknown_environment_value_is_not_recorded(self, session, monkeypatch):
+        """The set is closed; a typo is ignored rather than becoming a new label."""
+        monkeypatch.setenv(RUN_ORIGIN_ENV_VAR, "not-a-real-origin")
+
+        run = CrawlExecutionRepository(session).start_run(_spec())
+
+        assert run.origin is None
+
+
+class TestTheOriginContextHelper:
+    def test_the_context_beats_the_environment(self, monkeypatch):
+        monkeypatch.setenv(RUN_ORIGIN_ENV_VAR, CrawlRunOrigin.SCHEDULER.value)
+
+        with use_run_origin(CrawlRunOrigin.LIVE_CRAWLER):
+            assert current_run_origin() == "live_crawler"
+
+        assert current_run_origin() == "scheduler"
+
+    def test_no_claim_and_no_environment_means_none(self, monkeypatch):
+        monkeypatch.delenv(RUN_ORIGIN_ENV_VAR, raising=False)
+
+        assert current_run_origin() is None
+
+    def test_the_claim_is_released_when_the_block_raises(self):
+        with pytest.raises(RuntimeError, match="job failed"):
+            with use_run_origin(CrawlRunOrigin.SCHEDULER):
+                message = "job failed"
+                raise RuntimeError(message)
+
+        assert current_run_origin() is None
+
+    def test_an_unknown_origin_is_a_programming_error(self):
+        """The set is closed; an unknown label is not a new kind of caller."""
+        with pytest.raises(ValueError, match="unknown crawl run origin"):
+            with use_run_origin("not-a-real-origin"):
+                pass  # pragma: no cover - the context manager raises on entry
+
+    def test_the_member_and_its_wire_value_are_equivalent(self):
+        with use_run_origin(CrawlRunOrigin.CLI):
+            assert current_run_origin() == CrawlRunOrigin.CLI.value

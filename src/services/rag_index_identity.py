@@ -92,7 +92,16 @@ def stable_player_movement_source_row_id(
     player_name: str,
     section: str,
 ) -> str:
-    """Build a natural key from the player movement source unique tuple."""
+    """Build a natural key from the player movement source unique tuple.
+
+    ``team_code`` must be the **canonical** club code (``player_movements.canonical_team_id``),
+    not the raw ``team_code`` column. That column holds Korean names (``롯데``, ``삼성``) and
+    era codes (``HT``, ``SK``) as well, so reading it directly spread one fact across three
+    spellings of the same key -- measured 2026-11-05, the 6,401 movement chunks used 2,922
+    canonical keys, 2,724 Korean-name keys and 755 era-code keys, and 1,504 of them were the
+    same movement stored twice. Callers that read the raw column should pass
+    ``canonical_team_id or team_code``.
+    """
     parts = tuple(_identity_part(value) for value in (movement_date, team_code, player_name, section))
     readable = "_".join(parts)
     return f"{readable}_{_identity_digest(parts)[:16]}"

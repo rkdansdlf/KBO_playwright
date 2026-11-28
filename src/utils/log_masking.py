@@ -13,30 +13,82 @@ forgets.
 The id before the colon is left in place: it names the bot and is not the
 secret. Only the part after it is replaced, so a masked line still says which
 bot was addressed.
+
+Not every secret has a shape a pattern can recognise. A heartbeat ping URL is a
+credential whose only distinguishing feature is that it exists, so callers
+register the exact value with :func:`register_secret` and it is replaced
+verbatim. That is equality, not inference: the caller knows what it handed to
+``httpx``, and guessing which part of an opaque URL is secret is how half of it
+stays in the log.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import threading
 
 #: ``/bot<digits>:<secret>`` -> ``/bot<digits>:***``
 _TELEGRAM_TOKEN = re.compile(r"/bot(\d+):[A-Za-z0-9_-]+")
 
 _MASKED = r"/bot\1:***"
 
+#: Literal substituted for a registered secret.
+_MASK = "***"
 
-def mask_text(value: str) -> str:
-    """Return ``value`` with any Telegram bot token masked.
+#: Exact values to replace, longest first.
+#:
+#: Order matters: replacing ``abc`` before ``abcdef`` leaves ``***def`` in the
+#: log, so a secret that is a prefix of another would leak its tail. Sorted at
+#: registration rather than on every record, because ``mask_text`` runs for
+#: every log line and the registry holds one or two entries.
+_REGISTERED_SECRETS: tuple[str, ...] = ()
+
+_REGISTERED_LOCK = threading.Lock()
+
+
+def register_secret(value: str | None) -> None:
+    """Mask ``value`` wherever it appears in a log record from now on.
+
+    Registering the whole value rather than a pattern is the point: a ping URL
+    is a credential with no fixed shape, and a pattern would have to guess which
+    part is secret. The caller knows exactly what it put in the URL, so the mask
+    is an equality substitution.
+
+    Idempotent, because a job that pings every ten minutes would otherwise grow
+    the tuple without bound.
 
     Args:
-        value: Text that may contain a send URL.
-
-    Returns:
-        The text with the secret part replaced by ``***``.
+        value: The exact secret to mask. Empty or ``None`` is ignored, so a
+            missing environment variable cannot turn every log line into a mask.
 
     """
-    return _TELEGRAM_TOKEN.sub(_MASKED, value) if "bot" in value else value
+    if not value:
+        return
+    global _REGISTERED_SECRETS  # noqa: PLW0603
+    with _REGISTERED_LOCK:
+        if value in _REGISTERED_SECRETS:
+            return
+        _REGISTERED_SECRETS = tuple(sorted((*_REGISTERED_SECRETS, value), key=len, reverse=True))
+
+
+def mask_text(value: str) -> str:
+    """Return ``value`` with any registered secret or Telegram bot token masked.
+
+    Args:
+        value: Text that may contain a secret.
+
+    Returns:
+        The text with each secret replaced by ``***``.
+
+    """
+    secrets = _REGISTERED_SECRETS
+    if secrets:
+        for secret in secrets:
+            value = value.replace(secret, _MASK)
+    if "bot" in value:
+        return _TELEGRAM_TOKEN.sub(_MASKED, value)
+    return value
 
 
 def _mask_argument(value: object) -> object:

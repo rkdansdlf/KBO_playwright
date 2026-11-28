@@ -354,6 +354,65 @@ def settled_game_ids(session: Session, game_ids: Iterable[str]) -> set[str]:
     return {gid for row in rows for gid in row if gid in wanted}
 
 
+def relay_finished_game_ids(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the subset of ``game_ids`` whose relay reached its closing marker.
+
+    The companion to :func:`settled_game_ids` for callers that apply the collection
+    path's ``or_(~settled_dead_letter, finished_relay)`` rule to a list of ids rather
+    than an ``EXISTS`` over ``game``. A settled letter says an earlier attempt gave
+    up; a finished relay says the game happened anyway and its data is still wanted,
+    and the relay outranks the giving-up (``20261026HTSS0``).
+
+    Args:
+        session: Session the play-by-play rows are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids with a play-by-play row carrying the closing marker.
+
+    """
+    wanted = {gid for gid in game_ids if gid}
+    if not wanted:
+        return set()
+    rows = session.execute(
+        select(GamePlayByPlay.game_id)
+        .where(
+            GamePlayByPlay.game_id.in_(list(wanted)),
+            GamePlayByPlay.play_description.like(f"%{FINAL_PBP_MARKER}%"),
+        )
+        .distinct(),
+    ).all()
+    return {row[0] for row in rows if row[0] in wanted}
+
+
+def settled_unless_relay_finished(session: Session, game_ids: Iterable[str]) -> set[str]:
+    """Return the ids whose game_detail letter is settled and whose relay has not finished.
+
+    This is the exclusion an automatic pass applies: a settled letter is the record
+    of an answered question -- the source could not supply this game -- and asking
+    again spends the retry budget and writes another letter. The collection loader
+    writes the same rule as ``or_(~settled_dead_letter, finished_relay)``; this is
+    for callers that already hold a list of ids (the healer's anomaly sets, the
+    post-crawl audit's heal targets).
+
+    ``requeue`` remains the way back in -- it returns a letter to ``pending``, which
+    this does not match -- and a finished relay keeps the game in front of the
+    caller even though an earlier attempt gave up.
+
+    Args:
+        session: Session the dead letters and play-by-play rows are read from.
+        game_ids: Candidate game ids.
+
+    Returns:
+        The ids to leave out: settled and without a finished relay.
+
+    """
+    settled = settled_game_ids(session, game_ids)
+    if not settled:
+        return set()
+    return settled - relay_finished_game_ids(session, settled)
+
+
 def load_game_targets_from_db(year: int, month: int | None = None) -> list[GameCollectionTarget]:
     """Load game targets from db.
 

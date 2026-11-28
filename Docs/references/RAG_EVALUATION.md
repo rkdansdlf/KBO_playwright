@@ -6,7 +6,7 @@
 > 현재 구성이 아니다.
 >
 > **현재 배포(2026-10-10 실측)**: RAG 저장소는 **PostgreSQL + pgvector**다 —
-> `DATABASE_URL`(운영, `100.81.73.13:5432`)과 `PGVECTOR_URL`(`100.81.73.13:55433`),
+> `DATABASE_URL`(운영, 당시 `100.81.73.13:5432` → 2026-11-20부터 `100.108.105.65:5432`)과 `PGVECTOR_URL`(당시 `100.81.73.13:55433`),
 > 양쪽 `rag_chunks`의 identity 집합을 대조해 왔고, 행 수는 **재색인이 진행 중이라 변동한다**(223,114 → 228,681). `RAG_INDEX_DB_URL`은 미설정이다.
 > `build_rag_index`가 "Oracle production builds must not use PGVECTOR_URL"로 두 구성을
 > 상호 배타로 강제하므로, `PGVECTOR_URL`이 설정된 이 배포는 Oracle 빌드가 아니다.
@@ -568,3 +568,82 @@ p50 408ms         p95 17.2s     max 29.2s
 The quality result is accepted. The remote-client p95 is highly variable and
 is not promoted to a hard latency gate until measured from the production
 server or an ADB-adjacent runner.
+
+### PostgreSQL 단일 저장소 — awards 인덱싱 후 재측정 (2026-11-04)
+
+> 아래 절까지는 Oracle/ADB 시절 측정이다. 이 절은 **현행 PostgreSQL 단일
+> 저장소**(`rag_chunks` 377,423행, `damage 0`) 기준이며, 변형은 `bm25`다.
+
+`awards` 원천이 재크롤로 정리된 뒤(§RAG_IDENTITY_PHASE_B_PLAN.md §10) 미인덱싱
+87건을 채웠다. 채우기 전후를 같은 조건(30 쿼리, `--top-k 5`, configured
+embeddings)으로 비교했다:
+
+```text
+                     recall@5   mrr      hit_rate   missing 참조   p50      p95
+인덱싱 전              0.8795     0.7844   0.9000     1             225ms    405ms
+인덱싱 후 (1회차)        0.9462     0.8511   0.9667     0             260ms    6,165ms
+인덱싱 후 (2회차)        0.9462     0.8511   0.9667     0             65ms     130ms
+```
+
+**세 지표가 모두 올랐고 참조 누락이 0이 됐다.** 87건은 수비상 28건 전부,
+올스타전MVP·한국시리즈MVP 8건, 1982~1999 골든글러브(외야수 2·3번째와 지명타자)
+등이었다 — 즉 **골든셋이 아니라 검색 인덱스가 그만큼 비어 있었다.**
+
+**p95 6,165ms는 콜드 캐시다.** 같은 조건으로 다시 돌리면 `130ms`가 나온다.
+이 문서 앞 절들이 p95를 "측정 시점에 따라 흔들리는 값"으로 취급한 이유와 같은
+현상이며, 두 번째 실행을 기준으로 읽어야 한다(첫 실행은 원격 저장소에서
+임베딩·하이드레이션 캐시를 채운다).
+
+**야간 잡은 이 갭을 채우지 않는다(기록)**: `_iter_award_chunks`가 `--season`을
+필터로 쓰는데 `rag_incremental_invocations`는 항상 `--season <올해>`를 붙인다.
+따라서 **과거 연도의 awards는 원천이 바뀌어도 야간에 갱신되지 않는다** —
+2026년 시상은 처리되지만, 재크롤로 과거가 수정되면 수동으로
+`build_rag_index --source awards`(시즌 없이)를 돌려야 한다. 이번 87건이 그
+경로로 채워졌다.
+
+**골든셋 참조 `awards:2025_MVP_NONE_폰세`가 이제 존재한다.** 이 키가 가리키는
+것은 야구나라 행(포지션 없음)이며, 위키 행(`코디 폰세`, `투수`)은
+`2025_MVP_투수_코디 폰세`로 따로 인덱싱된다. 두 소스가 이름과 포지션을 모두
+다르게 쓰는 4쌍이 그래서 청크 4건으로 갈라져 있고(§10의 알려진 한계), 그것이
+`missing 0`과 양립한다 — 참조가 **실재하는 청크**를 가리키면 된다.
+
+### PostgreSQL 단일 저장소 — movements/team_history 정리 후 재측정 (2026-11-07)
+
+> 아래 절까지는 Oracle/ADB 시절 측정이다. 이 절은 **현재 PostgreSQL 단일
+> 저장소**(`rag_chunks`, `damage 0`) 기준이며, 변형은 `bm25`다.
+
+`player_movements` 키가 세 표기로 갈린 것을 통일한 뒤(2026-11-05, 자연 키가
+canonical 2,922 / 한글명 2,724 / 시대코드 755로 나뉘어 있었고 1,504건이 같은
+이동의 중복이었다), 총 **7,227행**(legacy `id=N` 4,503 + 한글명 키 2,724)을
+`DELETED`로 옮기고 `team_history` legacy 10행도 지웠다. 같은 조건(30 쿼리,
+`--top-k 5`)으로 확인했다.
+
+```text
+                      recall@5   mrr      hit_rate   missing   p95
+awards 인덱싱 직후        0.9462     0.8511   0.9667     0         130ms
+movements 정리 직후       0.9128     0.8344   0.9333     0         1,107ms
+golden set 참조 갱신 후   0.9462     0.8511   0.9667     0         390ms
+team_history 정리 후      미측정(DB 접근 불가 — 아래 참조)
+```
+
+**정리 직후 Recall이 0.9128로 떨어졌는데 아무것도 이유를 말하지 않았다.**
+원인은 골든셋이 삭제된 청크를 가리키고 있던 것이었다:
+`player_movements:2018-12-07_삼성_김동엽…`은 한글명 키였고, canonical 대응
+`2018-12-07_SS_김동엽…`가 이미 존재했다. 참조를 canonical 키로 갱신하자
+**0.9462로 회복**했다.
+
+이 사건이 드러낸 것은 **커버리지 검사의 사각지대**였다. `_lookup_rows`가
+`index_status`를 보지 않아 `DELETED`도 "존재"로 셌으므로, 7,227행이 검색
+표면에서 사라지는 동안에도 커버리지는 초록이었다. 이제 `ACTIVE`만 센다 —
+검색이 건너뛰는 상태는 커버리지가 아니다.
+
+**재개성(restartability)이 원자성보다 값지다**: 한 트랜잭션으로 7,227행을
+지우는 시도가 두 번 모두 `could not receive data from server: Operation timed
+out`으로 죽었는데, 서버는 락도 없이 유휴였다 — 연결이 끊긴 것이다(이 세션
+동안 Tailscale이 여러 차례 들락날락했고, 11-06에는 방화벽 변경으로 개발
+Mac이아예 5432 접근을 잃었다). 이제 배치마다 커밋하므로 끊겨도 그 배치만
+잃고, 같은 명령을 다시 돌리면 나머지만 처리한다.
+
+**재측정 요청**: 방화벽이 개발 Mac에 열리면 `evaluate_rag_retrieval`로
+team_history 정리 전후를 다시 비교해야 한다(예상: 변화 없음 — 해당 청크는
+골든셋 참조가 아니다).

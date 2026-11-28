@@ -33,6 +33,7 @@ from src.services.crawl_run_service import track_crawl_run
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
     from sqlalchemy.orm import Session
 
@@ -178,6 +179,10 @@ class _SnapshotView:
     content_hash: str | None
     parser_version: str | None
     baseline_count: int | None
+    #: The parse conditions the baseline count was produced under, replayed on
+    #: re-parse so a time-windowed parser reads the same window twice.
+    capture_metadata: dict | None = None
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -290,6 +295,17 @@ def load_snapshot_text(raw_path: str | None, *, allowed_root: Path | None = None
     return resolved.read_text(encoding="utf-8", errors="replace")
 
 
+#: Parse-condition keys a crawler records in ``capture_metadata`` and the drift
+#: check replays. ``team_event_parser`` derives its cutoff window from
+#: ``fetched_at`` and ``cutoff_days``; without them a re-parse reads *today's*
+#: window against a weeks-old artifact and reports the calendar moving as drift.
+#: Measured 2026-11-04: 6 of 8 drifted snapshots were exactly this -- the crawler
+#: parses with ``days_back=30`` while the parser's default is ``CUTOFF_DAYS=60``,
+#: so a page whose events are all older than 30 days crawls as 0 records and
+#: re-parses as N.
+REPLAYED_PARSE_CONTEXT_KEYS = ("fetched_at", "cutoff_days")
+
+
 def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _ParserResult:
     try:
         text = load_snapshot_text(view.raw_path)
@@ -299,6 +315,14 @@ def _run_parser(view: _SnapshotView, parser: Callable[..., list[dict]]) -> _Pars
             "content_hash": view.content_hash,
             "target_domain": view.target_domain,
         }
+        captured = dict(view.capture_metadata or {})
+        if "fetched_at" not in captured and view.created_at is not None:
+            captured["fetched_at"] = view.created_at.isoformat()
+        if "cutoff_days" not in captured:
+            captured["cutoff_days"] = 30
+        for key in REPLAYED_PARSE_CONTEXT_KEYS:
+            if captured.get(key) is not None:
+                metadata[key] = captured[key]
         parsed = parser(text, view.source_key or "", metadata)
     except SnapshotReplayError as exc:
         return _ParserResult((), str(exc))
@@ -329,6 +353,8 @@ def _load_view(session: Session, snapshot_id: int) -> _SnapshotView:
         content_hash=snapshot.content_hash,
         parser_version=snapshot.parser_version,
         baseline_count=_baseline_count(snapshot.capture_metadata),
+        capture_metadata=snapshot.capture_metadata,
+        created_at=snapshot.created_at,
     )
 
 

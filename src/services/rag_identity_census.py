@@ -309,6 +309,7 @@ def _movement_records(session: Session, season: int | None) -> Iterator[SourceId
     statement = select(
         PlayerMovement.id,
         PlayerMovement.movement_date,
+        PlayerMovement.canonical_team_id,
         PlayerMovement.team_code,
         PlayerMovement.player_name,
         PlayerMovement.section,
@@ -319,7 +320,7 @@ def _movement_records(session: Session, season: int | None) -> Iterator[SourceId
         yield SourceIdentityRecord(
             "player_movements",
             str(row[0]),
-            stable_player_movement_source_row_id(row[1], row[2], row[3], row[4]),
+            stable_player_movement_source_row_id(row[1], row[2] or row[3], row[4], row[5]),
         )
 
 

@@ -11,7 +11,7 @@ This repository is a Playwright-based KBO data crawler with a two-track pipeline
 
 ## Current Database Contract
 - **Primary operational database**: PostgreSQL, reached over Tailscale via `DATABASE_URL=postgresql://...`. It hosts all production baseball data and RAG.
-- **Prod/dev split**: `bega_prod` (100.81.73.13:5432) is primary; `bega_dev` (host 5435) is a weekly snapshot via `scripts/resync_bega_dev.py` (Sundays 04:30). Vector store `kbo_rag` lives alongside prod; nightly `rag_vector_backfill` (02:30) closes identity gaps. Nightly `KBO_PG_Backup` (04:00) dumps all three to `D:/kbo_backup` (keep 3).
+- **Prod/dev split**: `bega_prod` (100.108.105.65:5432 — host moved 2026-11-20, see anchored summary) is primary; `bega_dev` (host 5435) is a weekly snapshot via `scripts/resync_bega_dev.py` (Sundays 04:30). Vector store `kbo_rag` lives alongside prod; nightly `rag_vector_backfill` (02:30) closes identity gaps. Nightly `KBO_PG_Backup` (04:00) dumps all three to `D:/kbo_backup` (keep 3).
 - **Keepalives are required, not optional**: the host is remote, so `DATABASE_URL` carries `keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5`. Dropping them lets idle connections be reaped mid-transaction, which surfaces as a spurious `PERSIST_TIMEOUT` rather than as a connectivity complaint.
 - **Migration runners are per-dialect and hardcoded**: `python3 -m src.cli.apply_postgres_migrations` applies `migrations/postgresql/`; `python3 -m src.cli.apply_oracle_migrations` applies `migrations/oracle/`. Neither takes a `--dialect` switch, so the module you pick is what decides the chain. Both are idempotent; re-run to confirm, and `--check` exits non-zero while anything is pending.
 - **SQLite**: Local tests and scratch data only. `migrations/sqlite/` and `migrations/pgvector/` are separate chains. Never point a production write at SQLite.
@@ -226,7 +226,7 @@ These modules are operational or diagnostic entrypoints that are less frequently
 
 ## GitHub Actions Automation
 
-The CI/CD pipeline uses 14 workflows and 3 composite actions under `.github/`:
+The CI/CD pipeline uses 19 workflows and 3 composite actions under `.github/` (count = `.github/workflows/*.yml`; `tests/test_github_workflows.py::test_documented_workflow_inventory_matches_the_repository` keeps this inventory honest):
 
 ### Composite Actions
 - `.github/actions/python-env/`: Shared setup — checkout, setup-python (3.14), pip install, Playwright (cached via actions/cache, ~5s on hit), init-db + seed (optional). Used via `uses: ./.github/actions/python-env` with `playwright`, `init-db` boolean inputs.
@@ -258,14 +258,22 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ### Other Workflows
 - `daily_preview.yml`: Pregame batch and live crawl (day-of-game cron windows)
+- `kbo_smart_polling.yml`: Game-finish polling and daily update (cron windows on game days)
 - `pitcher_backfill.yml`: Live pitcher stat backfill during game hours
 - `weekly_maintenance.yml`: Sunday 05:00 KST — futures profiles, player enrichment
 - `periodic_extras.yml`: Monthly 1st — periodic data sync
 - `full_recalculation.yml`: Manual dispatch — season stat recalculation against the configured database
 - `kbo_automation.yml`: Manual dispatch — 8 phases: pregame, live, finalize, freshness, quality-report, gap-report, backfill, recalc-stats
+- `backfill_season_team_codes.yml`: Manual — futures season team-code repair
+- `text_relay_docker.yml`: Scheduled + manual — text relay Docker job
 - `test_suite.yml`: CI on push/PR — ruff lint + pytest matrix (3.14)
+- `agent_harness.yml`: Push/PR on `tools/agent_harness/**`, `tests/agent_harness/**`, `.agent-harness/**` or composite actions, plus manual dispatch — Harness gate + execution gate
+- `docker_build_check.yml`: PR-stage runtime image build check — builds without pushing (push-only path is `docker_build.yml`)
 - `docker_build.yml`: Docker image build and push
 - `security_audit.yml`: Vulnerability scanning
+- `live_db_verification.yml`: Weekly Sunday 19:00 UTC (Monday 04:00 KST) + manual — read-only live acceptance against PostgreSQL with `LIVE_DB_READONLY_URL`; replaces the retired Oracle acceptance run
+- `oci_connection_probe.yml`: Manual — legacy Oracle ADB read-only connection probe (never use `OCI_DB_URL` as the primary URL)
+- `db_availability_watchdog.yml`: 30분 주기 PostgreSQL 도달성 워치독 — 호스트 독립(GitHub Actions), 전이 알림(첫 실패·회복만), 상태는 Actions 캐시. DB 만 침묵하는 상태(포트는 열리고 PG 무응답)를 밖에서 잡는다 (`Docs/runbooks/WINDOWS_DB_HOST_RECOVERY.md` §17.12)
 
 ### Required Secrets
 - `DATABASE_URL`: PostgreSQL URL for the Tailscale-hosted operational database. Carry the `keepalives` query parameters; without them idle connections get reaped mid-transaction.
@@ -280,7 +288,51 @@ All six backfill types are defined in a single `backfill.yml` using a job matrix
 
 ## Anchored Summary
 
-Last updated: 2026-11-02
+Last updated: 2026-11-28
+
+### 2026-11-28: 로컬 DB 복구 · 인덱스 재생성 실패 · 데이터 갭만 닫힘
+- **로컬 접속 복구**: `set_db_password.py`(저장 전 SCRAM 검증)로 `.env`를 갱신해 `bega_prod_user/bega_prod`, game 26,525건 확인. NordVPN은 계속 꺼둘 것(켜지면 TCP만 전부 죽는 증상 재현).
+- **호스트 11-23 게이트는 11-26 재구성 이전 값이었다**: `pg_postmaster_start_time()=11-26 18:33 UTC`, 청크 380,477 → 380,356. `schema_migrations`에는 068·069가 11-01 `applied`인데 `vector_cosine_ops` 인덱스가 **0개** — **마이그레이션 이력은 인덱스 존재를 증명하지 않는다.** `apply_postgres_migrations --check`(exit 0)와 `audit_rag_index`(exit 1)는 서로 대신할 수 없다.
+- **벡터 인덱스 빌드는 중단했다**: `maintenance_work_mem=64MB`로는 120MB 필요로 즉시 거부, 512MB로 `CREATE INDEX CONCURRENTLY` 시도 중 backend가 `exit code 2`로 죽고 약 2분간 `in recovery mode`. postmaster는 살아 있었다(`pg_postmaster_start_time()` 불변). 제약은 컨테이너가 아니라 **WSL VM 전체**(memory=3GB, vmmemWSL 3,117MB, 호스트 가용 639MB, E: 약 10MB/s). 재시도 금지.
+- **무효 인덱스 정리**: 실패한 빌드가 `indisvalid=false` 인덱스 416MB를 남겨 `IF NOT EXISTS`가 속이지 않게 `DROP INDEX CONCURRENTLY`로 제거(가드로 `indisvalid`·DDL 확인). 데이터 변경 없음.
+- **데이터 갭 해소**: KS 3경기(`20261106/07/08KTSS0`)는 dry-run으로 3청크 확인 후 쓰기 가드 3종으로 재인덱싱 → **380,359**, `audit_rag_coverage` exit 0·`missing 0`. **`audit_rag_index`는 exit 1 유지 — 유일한 사유는 벡터 인덱스 부재**, `damage 0`. 인덱스 없는 exact scan은 동작하므로 정확도는 유지, 지연만 증가.
+- **census `unsafe 8,956`은 판정이 아니다**: `existing_natural_target`과 정확히 일치 = 자연키 청크가 이미 있음. 실제 재키 대상은 51건뿐. `collision 20키/42행`, `orphan 0`.
+- **StructuredRetriever 4분기 확장 완료**(`RAG_NECESSITY.md` 부록 C): `awards`·`game`·`team_history`·`teams` 추가로 SQL 커버리지 **16/30 → 24/30 = 80%**, 미커버는 `game_highlights`·`game_play_by_play`·`player_movements` 3종. `verdict`는 그대로 `sql_expansion_warranted` — 판정은 산문 비율(10%)로 정하지 SQL 커버리지로 정하지 않는다. **80%는 템플릿이 존재한다는 뜻이지 자연어 트래픽의 80%가 SQL로 간다는 뜻이 아니다.** 같은 날 `query_router.infer_structured_source()`로 날짜 있는 경기·시즌+수상자·시즌+팀+역사·팀+연고지/홈구장 네 좁은 신호를 자연어에서 인식하게 했고(라우터·리트리버가 같은 함수 사용, 골든 100건 계약 무변경), 골든 4건이 필터 없이 SQL로 답한다. 이어서 `game` 분기를 **시즌+팀**으로 확장하고 라우팅 골든 10건(`game_061·062·064·065·066·068·069·070·071·072`)의 기대 경로를 `STRUCTURED`로 재분류 — 분포 `STRUCTURED=70 DOCUMENT=25 MIXED=5`, `retrieved_share=0.30`. **경기 일정 3건과 팀 없는 시즌 질문 3건은 DOCUMENT 유지**(결과 테이블로 답할 수 없는 질문). 재분류는 트래픽 측정이 아니라 라벨 변경이고, 갱신된 라벨에서 `route_accuracy=1.0`. 구현 함정: 리졸버가 "수상자"를 선수명으로 오추출 → awards는 명시 필터만 신뢰. 테스트 16건 신규 + 뮤테이션 8건 전부 실패, 전체 스위트 15,722 passed.
+
+### 2026-11-23: 호스트가 `돈통`으로 옮겨졌고, 이 Mac의 `.env`는 낡았다 — DB 접속은 호스트에서 한다
+- **연결 불가의 원인은 로컬 VPN이었다**: `NordVPN - NordLynx`가 `utun6`을 잡고 기본 경로와 `128.0/1`을 가져가 킬스위치가 모든 TCP를 막았다. `scutil --nc stop "NordVPN - NordLynx"`로 인터페이스를 제거하자 즉시 복구(`100.108.105.65:5432` 14ms). 판별 신호는 **"ICMP·TSMP는 통과하는데 TCP SYN만 전부 죽는다"**(테일넷 자체 주소 `100.100.100.100:80`까지 죽으면 확정). `utunN` 번호는 부팅마다 달라지므로 번호로 판정하지 않는다.
+- **호스트 이전(11-20)은 호스트만 바뀌었다**: `ch806-08`(`100.81.73.13`) → `돈통`(`node.tail2a897d.ts.net`, `100.108.105.65`). `.env`와 `KBO_platform/.env.prod`·백업본의 `bega_prod_user` 비밀번호 지문이 **동일**하고 주소만 다르다. 즉 그 시점에 비밀번호는 바뀌지 않았다.
+- **그 뒤 이 Mac의 값과 서버의 값이 갈렸다 — 이 Mac이 낡았다**: 서버는 `28P01`로 거부하는데 **호스트에서 같은 host:port·같은 역할로 exit 0**(`kbo_readonly`도 exit 0). 드라이버를 배제하려고 `psycopg` 없이 **손으로 쓴 SCRAM-SHA-256 클라이언트**로 재현했고 `E/28P01`을 받았으며, 기계적 변형 17종(줄바꿈·CRLF·공백·따옴표·`unquote`·재인코딩·대소문자·1~2자 절단·base64)도 전부 거부됐다. 92조합 추측은 실패했고 더 넓히지 않았다(브루트포스).
+- **`28P01`이 말하지 않는 것**: 역할 부재도 같은 코드이고(존재하지 않는 역할로 확인), 서버 사망도 아니며(SCRAM 교환이 성립 = verifier 계산됨), 포트 재매핑도 아니다(`inet_server_addr()=172.18.0.4` = `kbo_postgres`). 순서는 **(1) 핸드셰이크 성립 → (2) 어느 인스턴스인가 → (3) 값이 맞는가**.
+- **호스트로 들어갈 원격 채널이 없다**: `22`·`3389`·`5985/5986`·`2375/2376` 전부 닫힘, SMB `445`는 인증 거부. 남은 자격증명 전달 경로는 **사람이 한 번 옮기는 것**이고, 그래서 값을 채팅·셸 히스토리에 남기지 않는 `getpass` 기반 `.env` 갱신기를 만들어 두었다(저장 **전에** SCRAM 검증, 실패 시 무기록, host·port·role 3중 일치 URL만 갱신, `.env.bak_<UTC>` 백업).
+- **API는 자격증명 없이도 관측 지점이다**: `:8000`이 실데이터를 서빙한다(`/status` games 26,525·players 8,066·latest_game_date 2026-11-11, `/api/v1/rag/ask`가 `provenance.record_key` 반환). 단 `/api/pipeline/defects`는 500과 함께 SQL 전문을 반환하므로 응답 본문을 옮길 때 확인할 것.
+- **재측정(호스트 실행, 4개 게이트 통과)**: `migrations --check` exit 0 · `rag census` `orphan 0`/`collision 19키·39행`/`unsafe 8,959` · `audit_rag_index` `damage 0`·`primary=vector=380,477` · `audit_rag_coverage` `missing 0`(10-27의 **10,632 백로그가 닫혔다**).
+- **`unsafe`는 판정된 값이 아니다**: `unsafe_entry_count`는 `disposition != SAFE_REKEY`의 합이고 게이트는 `--fail-on-unsafe`를 줬을 때만 exit code로 바꾼다(`return 1 if args.fail_on_unsafe and ...`). 이번 실행에는 플래그가 없었으므로 **exit 0은 그 값에 대해 아무 말도 하지 않는다**. 8,959는 11-02의 8,951과 같은 자리이고 그 절의 결론(**이 집단의 disposition은 중복의 증거가 아니다** — `id=N` 짝이 틀렸다)이 그대로 적용된다. 소스별 구성은 이번에 측정하지 않았다.
+- **지연 측정은 코퍼스가 커진 뒤의 값이 아니다**: 165,031(10-27) → **380,477**청크. `RAG_EVALUATION.md`의 p95는 207,305청크 시절 값이므로 현재 코퍼스에서 다시 재야 한다. 증가분의 구성은 미분해(재인덱싱·역사 백필·분할 키 혼재 추정).
+- **CI 시크릿**: `DATABASE_URL`은 2026-10-20 설정값이라 **죽은 호스트**를 가리키고 있었다(11-23 갱신 완료). `LIVE_DB_READONLY_URL`·`TS_OAUTH_CLIENT_ID`·`TS_OAUTH_SECRET`은 여전히 없어 `db_availability_watchdog`은 시크릿 게이트에서 실패한다 — 워치독이 DB 상태를 본 적은 11-20 이후 한 번도 없다.
+- **회전 권고**: 노출된 값은 11-03 이후 바뀌지 않았고 진단 과정에서 한 번 평문으로 출력됐다. 그리고 지금 인증되지 않으므로 회전이 자연스러운 해소책이다(호스트에서 `ALTER ROLE ... WITH PASSWORD`, 이어서 호스트 `.env`·api-server·scheduler 재기동).
+
+### 2026-11-20: RAG 필요성 측정 — 질의의 90%는 SQL로 답할 수 있었다 (AtlasKV 교체 기각)
+- **측정 도구 신규**: `src/cli/rag/audit_retrieval_necessity.py` (`kbo rag necessity`). **읽기 전용** — DB 접속·쓰기·네트워크 없음. 입력은 골든셋과 코드뿐이다. `evaluate_rag_retrieval`이 "검색이 정확한가"를 묻는 반면 이 도구는 **"그 질문은 SQL로 답할 수 있었는가"**를 묻는다. `player_season_batting` 한 행이 relevant chunk인 질문은 테이블 조회이고, 벡터 검색으로 도착한 것은 우연이다.
+- **실측 (30건, `rag_golden_queries.json`)**: `sql_covered=16`(선수 시즌 타격 5·투구 5·팀 순위 5·프로필 1) · `relational_no_template=11`(game 2·teams 2·awards 2·team_history 2·하이라이트·PBP·이적 각 1) · **`prose=3`**(규정 2·용어 1) · `unknown=0`. **`prose_share=0.1000` → `sql_expansion_warranted`.** RAG가 하는 일의 90%는 테이블 행 조회의 우회로이고, 그중 16/30은 **이미 `StructuredRetriever` 분기가 있다**. 다음 투자는 검색기 교체가 아니라 **`StructuredRetriever` 확장**이다(1순위 4개 테이블 추가로 16 → 24/30 = 80%).
+- **RAG 폐기가 아니다**: 남은 3건은 텍스트 인덱스 없이는 **0%**가 되는 질문이다. 그것을 SQL로 바꾸는 일은 규정 문서를 파싱해 규칙 엔진을 만드는 것이고, 검색을 없애는 게 아니라 다른 종류의 취약성을 추가한다.
+- **경계는 소유한 코드에서 유도한다(같은 교훈의 네 번째 적용)**: 산문 집합은 `build_rag_index._MARKDOWN_SOURCE_TABLES`, 인덱싱 집합은 `_SOURCE_TABLE_BY_SOURCE.values()`, SQL 커버리지는 `structured_retriever.py`의 `source_table=` 리터럴 **AST 스캔**. 이 파일에 목록을 적으면 사본이 하나 더 생기고, 사본이 낡는 방식이 곧 **4개월간 전 시즌 포스트시즌이 인덱스에서 빠져 있던 사고**다. 뮤테이션 M4(SQL 목록 하드코딩)·M8(산문 목록 하드코딩)이 실패를 생성한다.
+- **`unknown`은 0이 아니다**: `filters.source_table`을 선언하지 않은 케이스는 어느 쪽으로도 세지 않고, 비율은 **분류된 케이스**에 대해서만 계산한다(미분류가 10%를 넘으면 `undetermined`). 빈 유도는 `RuntimeError`다 — 빈 집합으로 분류하면 전 케이스가 "템플릿 없음"이 되고, 그것은 발견이 아니라 **측정 실패**다(M5가 3건 실패).
+- **잘못된 데이터셋은 이름으로 거부한다**: 라우팅 골든셋 100건에는 `source_table`이 없다. `--dataset`으로 넘기면 전건 unknown이 되어 도구가 고장난 것처럼 보인다. 대신 **exit 2** + "the routing dataset answers a different question (use `--routing-dataset`)". 라우팅 분포는 별도 축으로만 보고한다: `STRUCTURED=60 DOCUMENT=35 MIXED=5 → retrieved_share=0.40`. 그 `DOCUMENT 35` 중 **16건이 `GAME_QUERY`**(테이블 행 조회인데 문서 경로로 감)다.
+- **`uncovered_tables`는 "분기 필요"만 뜻한다**: 집합 차집합으로 계산하면 **존재하지 않는 테이블 이름**이 목록에 올라가 없는 테이블에 SQL을 쓰라고 권한다. `relational_no_template` **판정**에서 유도한다(뮤테이션 M9). 같은 이유로 `by_source_table`은 미선언 케이스에 빈 키를 만들지 않는다(M10).
+- **AtlasKV/HiKVP 교체 기각** — 근거는 `Docs/references/RAG_NECESSITY.md` 부록 A: ① 207,305청크에서 서브리니어 이득은 **이미 HNSW**(`idx_rag_chunks_embedding_hnsw` 2.9GB, 10-31)로 확보했고, 논문의 네 자리수 이득은 `M≈10⁹`에서 성립한다(`M^(1/3)≈59`) ② "RAG 제거"가 아니라 **검색을 GPU로 옮기는 것**이다(3단 프루닝 = 계층 ANN, ivfflat의 3단 버전) ③ 상위 1회 오판이 `k_R`개 서브트리 손실로 **증폭**되고 그 오판은 **관측 불가능**하다 — 이 저장소가 4개월 겪은 `league_type_code=0` 누락보다 나쁘다(그것은 `EXPLAIN`으로 보였다) ④ 측정 축이 다르다(ACC@k·peak VRAM vs wall-clock p95, 동시성 미보고, 오프라인 인코딩 비용 제외) ⑤ GPU는 `Docs/references/SKILL_LICENSE_REVIEW.md`가 프로젝트 범위 밖으로 명시.
+- **남은 공백(정직하게)**: **L3 — 실사용 질의 분포 — 는 측정 불가**다. API·`RagAnswerService`에 질의 로그도 테이블도 없다(grep 0건). 그러므로 10%는 **트래픽의 성질이 아니라 골든셋의 성질**이고 방향 지표다(`promotion_approved=false`, 골든셋 `status: staging_acceptance_pending_*`와 같은 이유). 라우팅 `route_accuracy=1.0`도 **표본 내** 값이다.
+- **검증**: 계약 테스트 **53건** + 뮤테이션 10건 전부 실패 생성, `ruff check`/`ruff format --check` 통과, 전체 스위트 **15,702 passed, 20 skipped**.
+
+### 2026-11-15: 8일째 DB 호스트 정지 · 호스트 밖 워치독(스팸 사고 포함) · 통합 마커가 가린 CI red
+- **장애 지속(11-07~)**: Windows 호스트의 사용자 영역 프로세스가 멈춰 Docker 백엔드(Docker Desktop·WSL2·Chrome 원격 데스크톱)가 함께 섰다(런북 §17). 커널·네이티브 서비스만 응답하고 원격 채널(RDP·SMB·WinRM·Docker API·AMT)은 전부 닫혀 **현장 재부팅만이 수단**이다(§17.6) — 복구 후 §17.7. 실측: 백엔드 실패 스트릭 17,973(≈8.3일).
+- **감지 공백의 실체**: 백엔드 Alertmanager 의 telegram 발송은 정상이었고(요청 107건 중 실패 2건, `BackendHikariAcquireSlow` 11-07부터 firing) — 문제는 그 채널이 BEGA 운영 대상이고 KBO 감시 스택은 피감시자와 같은 호스트에 있다는 것. §17.11 하트비트(설정 대기)의 보완으로 **호스트 밖에서 DB 응답 자체를 보는** `db_availability_watchdog.yml`(30분, `LIVE_DB_READONLY_URL`+`tag:ci`, `tcp_unreachable`/`postgres_silent` 구분, 전이 알림)을 신설(`198989cd`).
+  - **스팸 사고·교훈**: 첫 버전은 자체 고장 경로에 상태가 없어, 시크릿 3종(`TS_OAUTH_*`·`LIVE_DB_READONLY_URL`) 부재 상태에서 11-09~15 동안 30분마다 **약 300건**을 보냈다. trouble 상태를 `db-watchdog-outage`/`db-watchdog-selfcheck` 두 캐시로 분리하고 복원을 checkout 직후로 이동해 해결(`a718aaa6`). **1회성 알림에는 그 1회를 기억할 상태가 있어야 한다.**
+  - 주간 `live_db_verification` 도 같은 시크릿 게이트에서 매주 실패 중. 순서: DB 복구 → `kbo_ci_ro` 역할(§4) → 시크릿 3종 등록 → 수동 1회 확인.
+- **통합 마커가 가린 CI red 6건(`b0e3363d`)**: 로컬 권위 명령(`-m "not integration"`)이 integration 잡의 red(`reason=` fake 2 + auto_healer 순서 의존 4)를 세 번의 push 동안 가렸다. **터치 영역에 integration 마커가 있으면 `-m integration` 도 함께 돌린다** — CI 가 처음 보는 실패를 로컬이 못 보는 구조였다.
+- **시간폭탄(`313ad806`)**: `build_inventory` 에 참조 시각 경로가 없어 고정 스탬프 테이블이 실시계로 노화 — 10-08+30일을 넘긴 11-08 21:00 KST부터 전체 스위트 red. `now=` 를 꿰어 테스트를 참조 시각에 고정. **픽스처가 고정 스탬프면 측정도 참조 시각이어야 한다.**
+- **11-09 커밋(선행)**: auto_healer 정착 필터(`8664aa36` — 정착 letter 재크롤 churn 차단, stuck 예외·`requeue` 복귀)·`auto_healer` 인시던트 supersession(`ae788364`)·런 원장 `origin` 배선(`6a8c08a1` — `use_run_origin` 컨텍스트+env 폴백+등록 래핑, replay 명시값 우선)·병행 하트비트(`9572a223`).
+- **검증 기준(갱신)**: 비통합 **15,648 passed**; 통합(`-m integration -n 2`) **242 passed**; actionlint·워크플로 계약·프로브 16건 통과. push CI(`43714231313`) green.
 
 ### 2026-11-02: 야간 파이프라인 자정(00:00) 시작으로 이동 — 주간·월간 잡은 체인 뒤로
 - **배경**: 야간 파이프라인이 03:00-05:40에 흩어져 있었다. 운영 요청으로 **체인 전체를 00:00 KST 시작**으로 -3시간 이동했다(`src/scheduler/registry.py`).

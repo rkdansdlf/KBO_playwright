@@ -1,8 +1,20 @@
 # Local-only override for `docker-compose.dev.yml` (Windows/Docker Desktop host).
 #
-# 127.0.0.1 inside a container is the container itself, so services reach
-# the host databases via explicit host IPs. Credentials come from `.env`
-# (`BEGA_PROD_PASSWORD`) — this file contains no secrets and is safe to share.
+# Containers reach the database by its container DNS name (`kbo_postgres`), not
+# by the host IP. Both are reachable, but the host IP routes through Docker
+# Desktop's userland port proxy, and that proxy was reprogrammed onto the wrong
+# container after a host reboot (2026-11-05: 100.81.73.13:5432 — the address in use
+# then; it is 100.108.105.65 since 2026-11-20 — landed on
+# `bega_dev`, which has no `bega_prod_user` role, so scheduler and api-server
+# crash-looped on "password authentication failed" while the credentials were
+# in fact correct). Container DNS has no such indirection: it resolves to the
+# bridge address of the named container and cannot drift.
+#
+# The host-side `.env` deliberately keeps the tailnet host-address form (`100.108.105.65:5432`), because
+# the host itself cannot resolve container DNS names.
+#
+# Credentials come from `.env` (`BEGA_PROD_PASSWORD`) — this file contains no
+# secrets and is safe to share.
 #
 # Start with:
 #   docker compose -f docker-compose.dev.yml -f docker-compose.local.yml up -d api-server
@@ -10,7 +22,11 @@
 services:
   scheduler:
     environment:
-      DATABASE_URL: postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+      DATABASE_URL: postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD:?BEGA_PROD_PASSWORD must be set}@kbo_postgres:5432/bega_prod
+      # The RAG paths read PGVECTOR_URL directly (src/cli/rag/*) and env_file
+      # would otherwise hand them the host-IP form. Same database as
+      # DATABASE_URL today; only the host differs, for the reason above.
+      PGVECTOR_URL: "postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD:?BEGA_PROD_PASSWORD must be set}@kbo_postgres:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5"
       # Temporary safe-operation profile (2026-10-16): no startup backfill and
       # no automatic remediation until the historical-write guards are verified
       # in production. See issue #32.
@@ -23,7 +39,8 @@ services:
       - ./docs:/app/docs
   api-server:
     environment:
-      DATABASE_URL: postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD}@100.81.73.13:5432/bega_prod
+      DATABASE_URL: postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD:?BEGA_PROD_PASSWORD must be set}@kbo_postgres:5432/bega_prod
+      PGVECTOR_URL: "postgresql+psycopg://bega_prod_user:${BEGA_PROD_PASSWORD:?BEGA_PROD_PASSWORD must be set}@kbo_postgres:5432/bega_prod?keepalives=1&keepalives_idle=60&keepalives_interval=10&keepalives_count=5"
   # Pinned digests in docker-compose.dev.yml drifted from locally cached
   # images and the registry is unreachable from here — use local images.
   browserless:

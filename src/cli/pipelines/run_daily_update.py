@@ -39,6 +39,7 @@ from src.crawlers.player_batting_all_series_crawler import BattingSeriesCrawlReq
 from src.crawlers.player_movement_crawler import PlayerMovementCrawler
 from src.crawlers.player_pitching_all_series_crawler import PitchingSeriesCrawlRequest, crawl_pitcher_series
 from src.crawlers.roster_transaction_crawler import RosterTransactionCrawler
+from src.crawlers.run_origin import RUN_ORIGIN_ENV_VAR, CrawlRunOrigin, use_run_origin
 from src.crawlers.schedule_crawler import ScheduleCrawler
 from src.crawlers.team_batting_stats_crawler import TeamBattingStatsCrawler
 from src.crawlers.team_event_crawler import TeamEventCrawler
@@ -61,6 +62,7 @@ from src.services.game_collection_service import (
     GameCollectionItemResult,
     crawl_and_save_game_details,
     settled_game_ids,
+    settled_unless_relay_finished,
 )
 from src.services.game_write_contract import GameWriteContract
 from src.services.p0_readiness import P0ReadinessOptions, build_p0_readiness, format_p0_readiness_summary
@@ -396,7 +398,14 @@ def _failure_status(target_date: str, failure_reason: str | None, today: date) -
 def _run_python_step(argv: Sequence[str]) -> None:
     import subprocess
 
-    subprocess.run([sys.executable, *argv], check=True)
+    # The step runs as a child process, which cannot inherit the context claim
+    # (``use_run_origin``) -- the ledger reads the environment override instead,
+    # so the runs a step records are still attributed to the daily pipeline.
+    subprocess.run(
+        [sys.executable, *argv],
+        check=True,
+        env={**os.environ, RUN_ORIGIN_ENV_VAR: CrawlRunOrigin.DAILY_UPDATE.value},
+    )
 
 
 def _without_settled_detail_games(game_ids: set[str]) -> set[str]:
@@ -430,6 +439,40 @@ def _without_settled_detail_games(game_ids: set[str]) -> set[str]:
     if settled:
         logger.info("   \u23ed\ufe0f Skipping %s queued game(s) whose detail dead letter is settled", len(settled))
     return game_ids - settled
+
+
+def _without_settled_unless_relay_finished(game_ids: list[str]) -> list[str]:
+    """Drop the ids whose game_detail dead letter is settled and whose relay has not finished.
+
+    The post-crawl audit heals the logic violations it finds by re-crawling the
+    games behind them. For a game whose letter already reached ``exhausted`` or
+    ``ignored`` that only spends the retry budget again and writes one more letter
+    per night -- the same loop the collection loader and the healer's own target
+    list already refuse. The relay exception is theirs too: a finished relay says
+    the game happened and its data is still wanted (``20261026HTSS0``), so it keeps
+    the game in front of the audit's heal.
+
+    A database failure keeps every id: the check is a filter, and a filter that
+    cannot run must not silently drop the work that should happen.
+
+    Args:
+        game_ids: The audit's game ids.
+
+    Returns:
+        The ids the heal should target.
+
+    """
+    if not game_ids:
+        return game_ids
+    try:
+        with SessionLocal() as session:
+            blocked = settled_unless_relay_finished(session, set(game_ids))
+    except SQLAlchemyError:
+        logger.exception("   ⚠️ Could not check settled dead letters; keeping every audit target")
+        return game_ids
+    if blocked:
+        logger.info("   ⏭️  Skipping %s audit game(s) whose game_detail dead letter is settled", len(blocked))
+    return [game_id for game_id in game_ids if game_id not in blocked]
 
 
 def _collect_past_scheduled_recovery_targets(today: date) -> list[dict[str, str]]:
@@ -1309,9 +1352,12 @@ async def _step_10_7_enrichment(ctx: _RunContext) -> None:
                 len(violations),
                 len(inconsistent_ids),
             )
-            logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(inconsistent_ids[:5]))
-
-            await run_healer_async(target_game_ids=inconsistent_ids)
+            heal_ids = _without_settled_unless_relay_finished(inconsistent_ids)
+            if heal_ids:
+                logger.info("   🚀 Triggering targeted self-healing for: %s...", ", ".join(heal_ids[:5]))
+                await run_healer_async(target_game_ids=heal_ids)
+            else:
+                logger.info("   ⏭️  No healable target left: every audit game's game_detail dead letter is settled")
 
             logger.info("   \U0001f50d Re-auditing after repair...")
             violations_after = audit_game_logic(year=ctx.year)
@@ -1586,6 +1632,11 @@ def _finalize_run_update(ctx: _RunContext) -> dict[str, Any]:
         "summary_path": str(summary_path),
         "stability": stability_summary,
         "p0_readiness": p0_readiness,
+        # The Master DAG consumes this to avoid recomputing the same derived
+        # tables in its processing/analytics stages. Step 8 appends a name only
+        # after its CLI call succeeded, so a failed step leaves the DAG fallback
+        # in place.
+        "derived_refresh": list(ctx.derived_refresh),
     }
 
 
@@ -1738,6 +1789,11 @@ def _build_daily_update_dag(ctx: _RunContext) -> PipelineDAG:
 
 async def run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
     """Handle main orchestration logic for postgame finalize and daily reconciliation."""
+    with use_run_origin(CrawlRunOrigin.DAILY_UPDATE):
+        return await _run_update(target_date, options)
+
+
+async def _run_update(target_date: str, options: DailyUpdateOptions | None = None) -> dict[str, Any]:
     options = options or DailyUpdateOptions()
     ctx = _RunContext(
         target_date=target_date,

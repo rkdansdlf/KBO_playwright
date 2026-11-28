@@ -233,3 +233,91 @@ class TestSettledGameIds:
 
         with session_factory() as session:
             assert settled_game_ids(session, {GAME_ID}) == set()
+
+
+class TestRelayFinishedGameIds:
+    """The batch half of the collection query's ``finished_relay`` EXISTS.
+
+    The rule is not new -- ``load_game_targets_from_db`` has always kept a settled
+    game while its relay ran to the closing marker -- but callers that hold a list
+    of ids could not express it. Splitting it out let the healer's automatic sets
+    and the post-crawl audit apply the same exception instead of inventing their
+    own.
+    """
+
+    def test_a_closing_marker_row_counts(self, session_factory) -> None:
+        from src.services.game_collection_service import relay_finished_game_ids
+
+        _game(session_factory, finished_relay=True)
+
+        with session_factory() as session:
+            assert relay_finished_game_ids(session, {GAME_ID}) == {GAME_ID}
+
+    def test_a_relay_without_the_marker_does_not_count(self, session_factory) -> None:
+        """A relay in progress is not a finished one."""
+        from src.services.game_collection_service import relay_finished_game_ids
+
+        _game(session_factory)
+        with session_factory() as session:
+            session.add(GamePlayByPlay(game_id=GAME_ID, inning=1, play_description="1회초 볼넷"))
+            session.commit()
+
+        with session_factory() as session:
+            assert relay_finished_game_ids(session, {GAME_ID}) == set()
+
+    def test_an_empty_input_asks_nothing(self, session_factory) -> None:
+        from src.services.game_collection_service import relay_finished_game_ids
+
+        with session_factory() as session:
+            assert relay_finished_game_ids(session, set()) == set()
+
+    def test_ids_that_are_not_asked_about_are_not_returned(self, session_factory) -> None:
+        from src.services.game_collection_service import relay_finished_game_ids
+
+        _game(session_factory, game_id="20241123TWJP0", finished_relay=True)
+
+        with session_factory() as session:
+            assert relay_finished_game_ids(session, {GAME_ID}) == set()
+
+
+class TestSettledUnlessRelayFinished:
+    """The composed exclusion an automatic pass applies.
+
+    ``settled_game_ids`` alone is the wrong filter for a caller that is about to
+    spend a crawl attempt: it drops the ``20261026HTSS0`` class -- settled letter,
+    finished relay, boxscore still wanted -- along with the genuinely dead ones.
+    """
+
+    def test_settled_without_a_relay_is_returned(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_unless_relay_finished
+
+        _game(session_factory)
+        _letter(session_factory, status=DlqStatus.EXHAUSTED.value)
+
+        with session_factory() as session:
+            assert settled_unless_relay_finished(session, {GAME_ID}) == {GAME_ID}
+
+    def test_a_finished_relay_keeps_the_game_out_of_the_exclusion(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_unless_relay_finished
+
+        _game(session_factory, finished_relay=True)
+        _letter(session_factory, status=DlqStatus.EXHAUSTED.value)
+
+        with session_factory() as session:
+            assert settled_unless_relay_finished(session, {GAME_ID}) == set()
+
+    def test_a_pending_letter_is_not_returned(self, session_factory) -> None:
+        """``requeue`` produces ``pending``; that has to be the way back in."""
+        from src.services.game_collection_service import settled_unless_relay_finished
+
+        _game(session_factory)
+        _letter(session_factory, status=DlqStatus.PENDING.value)
+
+        with session_factory() as session:
+            assert settled_unless_relay_finished(session, {GAME_ID}) == set()
+
+    def test_an_empty_input_asks_nothing(self, session_factory) -> None:
+        from src.services.game_collection_service import settled_unless_relay_finished
+
+        with session_factory() as session:
+            assert settled_unless_relay_finished(session, set()) == set()

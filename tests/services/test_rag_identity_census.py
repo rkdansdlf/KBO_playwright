@@ -353,6 +353,40 @@ class TestIterSourceIdentityRecords:
             "player_season_pitching",
         )
 
+    def test_movement_identities_use_the_canonical_club_code(self) -> None:
+        """The census must compute the key the builder writes, or the re-key misses.
+
+        ``player_movements.team_code`` holds Korean names and era codes, so reading
+        that column here would produce identities the index does not contain --
+        measured 2026-11-05, 3,479 of 6,401 movement chunks were keyed that way.
+        """
+        from datetime import date
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        from src.models.player import PlayerMovement
+
+        engine = create_engine("sqlite://")
+        PlayerMovement.__table__.create(engine)
+        with Session(engine) as session:
+            session.add(
+                PlayerMovement(
+                    movement_date=date(2024, 7, 18),
+                    section="부상자 명단",
+                    team_code="기아",
+                    canonical_team_id="KIA",
+                    player_name="이우성(외야수)",
+                ),
+            )
+            session.commit()
+
+            records = list(iter_source_identity_records(session, "player_movements"))
+
+        assert len(records) == 1
+        assert "_KIA_" in records[0].natural_source_row_id
+        assert "기아" not in records[0].natural_source_row_id
+
     def test_the_season_aggregate_builders_are_registered(self) -> None:
         """A declared source with no builder raises on the first row request."""
         mock_session = Mock()

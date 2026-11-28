@@ -503,7 +503,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--role", default="bega_prod_user", help="Role whose password is replaced")
     parser.add_argument("--database", default="bega_prod", help="Database the role connects to")
     parser.add_argument("--container", default="kbo_postgres", help="Container holding the PostgreSQL server")
-    parser.add_argument("--host", default="100.81.73.13", help="Host used for the post-change verification query")
+    parser.add_argument(
+        "--host",
+        default="100.108.105.65",
+        help="Host used for the post-change verification query (follows DATABASE_URL; host moved 2026-11-20)",
+    )
     parser.add_argument("--port", type=int, default=5432, help="Port used for the post-change verification query")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Env file to update")
     parser.add_argument("--password-file", type=Path, default=None, help="File whose contents are the new password")

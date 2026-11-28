@@ -28,19 +28,25 @@ class _Fixture:
         self.engine = create_engine("sqlite://")
         with self.engine.begin() as connection:
             connection.execute(
-                text("CREATE TABLE rag_chunks (source_table TEXT, source_row_id TEXT, content_hash TEXT)")
+                text(
+                    "CREATE TABLE rag_chunks ("
+                    "source_table TEXT, source_row_id TEXT, content_hash TEXT, index_status TEXT DEFAULT 'ACTIVE')",
+                ),
             )
 
     def session(self) -> Session:
         """Return a session bound to the store."""
         return Session(bind=self.engine)
 
-    def insert(self, table: str, row_id: str) -> None:
+    def insert(self, table: str, row_id: str, index_status: str = "ACTIVE") -> None:
         """Add one chunk."""
         with self.engine.begin() as connection:
             connection.execute(
-                text("INSERT INTO rag_chunks (source_table, source_row_id, content_hash) VALUES (:t, :r, 'h')"),
-                {"t": table, "r": row_id},
+                text(
+                    "INSERT INTO rag_chunks (source_table, source_row_id, content_hash, index_status) "
+                    "VALUES (:t, :r, 'h', :s)",
+                ),
+                {"t": table, "r": row_id, "s": index_status},
             )
 
 
@@ -63,6 +69,33 @@ class TestCoverage:
         report = check_golden_set_coverage(fixture.session(), ["awards:470"])
         assert not report.is_clean
         assert report.missing_ids == ("awards:470",)
+
+    def test_a_deleted_chunk_is_reported_as_missing(self) -> None:
+        """The row still exists, but search will never return it.
+
+        Measured 2026-11-05: the movement cleanup deleted 7,227 rows and this check
+        stayed green while one of them was a golden-set answer -- recall fell and
+        nothing said why. A status the retriever skips is not coverage.
+        """
+        fixture = _Fixture()
+        fixture.insert("player_movements", "2018-12-07_삼성_김동엽(외야수)_트레이드_53ef4827f2294e4a", "DELETED")
+
+        report = check_golden_set_coverage(
+            fixture.session(),
+            ["player_movements:2018-12-07_삼성_김동엽(외야수)_트레이드_53ef4827f2294e4a"],
+        )
+
+        assert not report.is_clean
+        assert report.missing_count == 1
+
+    def test_a_pending_deletion_is_also_missing(self) -> None:
+        """DELETE_PENDING is already off the surface while the delete completes."""
+        fixture = _Fixture()
+        fixture.insert("player_movements", "id=970", "DELETE_PENDING")
+
+        report = check_golden_set_coverage(fixture.session(), ["player_movements:id=970"])
+
+        assert report.missing_count == 1
 
     def test_a_table_the_store_lacks_is_reported_separately(self) -> None:
         """Distinguish a missing table from a missing chunk."""

@@ -451,3 +451,247 @@ direction, the generator emitting the rich form.
 **Still unapplied**: the 10 `team_history` DUPLICATE rows. `TARGET_EXISTS_CONTENT_MISMATCH`
 means the natural key is already indexed, so re-keying would merge two identities;
 whether to delete them is §2-C's rich-form question.
+
+## 10. P4 outcome — the awards source was wrong, not the matcher (2026-11-04)
+
+The 36 `field_conflict` rows §9 left behind were not a matcher problem. The
+**crawler had been dropping cells**, and re-crawling fixed what matching could
+not.
+
+**The defect**: the 위키 골든글러브 table declares ``외야수`` and ``지명 타자``
+with **`colspan=4` each** while its data rows carry **twelve cells**. The crawler
+took the header's *cell* count (9) as the grid width and truncated there, so the
+third outfielder and the DH were dropped and the second outfielder was labelled
+``지명 타자`` (that header sat at index 8). Measured: 1982~2021 stored **8 rows a
+year** with one outfielder; 2022~2025 stored 10 because 야구나라 filled them.
+**About 80 rows across 40 seasons were missing.** The other three tables
+(MVP 6/6, 신인상 6/6, 수비상 10/10) and the draft tables are unaffected — none of
+them use `colspan`.
+
+The fix expands a header label across the columns it spans, and that is **all** it
+does. A data-width guard and header padding were written first and reverted —
+mutations could not kill them, because `_render_table` already truncates and pads
+every row to the grid width, and widening `headers` would have changed
+`draft_wiki_crawler`'s pick-order arithmetic, which reads `len(headers)`.
+
+**The second defect**: `_dedup` compared the category verbatim, so the two sources'
+spellings let the same winner through twice. ``지명 타자`` (위키) vs ``지명타자``
+(야구나라) — 4 rows, 2022~2025, each with a different `team_name` too, so
+`uq_award_record` did not catch them. And 야구나라 carries no position for MVP and
+신인상, so those rows entered as `category=None` and split from Wikipedia's —
+5 rows (2022 이정후·정철원, 2023 문동주, 2024 김도영·김택연). Both are fixed at
+dedup, folding **spaces only**: 수비상's 좌익수/중견수/우익수 stay distinct because
+the source distinguishes them (the matcher folds them later because the legacy
+chunks say only ``OF``; that is a comparison rule, not a storage rule).
+
+**The cleanup**: re-crawl took `awards` 486 → 616. Then 52 rows the current crawler
+would never emit were deleted — 40 mislabelled ``지명 타자`` and 12 second copies
+from the `team_name` split (`KIA` vs `KIA 타이거즈`). **616 − 52 = 564, exactly the
+crawl's own output.** The rows are in
+`data/repair_backups/awards_cleanup_20261104.csv` and the deletion is recorded in
+`correction_audit_trail` (`entity_type='award'`, `field_name='row_deleted'`).
+
+**The result**: re-matching awards legacy (112 rows left after §9) gave **106
+matched, `field_conflict` 0** — the 36 conflicts were collateral damage from the
+crawler, all of them, and re-keying fixed them. 106 more identities moved.
+
+**Six rows remain unmatched, and they are not a matcher problem either**: the
+source has no such winner. The names disagree across eras and languages —
+2014 `밴헤켄`/`헤켄` (the Dutch surname), 1998·1999·1994 `류지현`/`유지현` (the
+spelling changed after 두음법칙 reform; the wiki table uses the period form), 2004
+`이진영` (that year's outfielders are 브룸바·이병규·박한이), and 1982 신인상 is `-`
+in the chunk with no row at all. **No name-guessing rule was added** — partial
+matching would resurrect exactly the false confidence the numeric census had.
+They keep their embeddings and stay searchable.
+
+**Golden set: unchanged** (Recall@5 0.8795, MRR 0.7844, hit_rate 0.9000). This work
+made the *source* accurate; it did not change the reference identities, so the
+30-query set cannot see it. The one absent reference is still
+`awards:2025_MVP_NONE_폰세` — no legacy MVP chunk exists for 2025, which only
+running the generator can fix (§2-C).
+
+**Known limit, recorded not fixed**: the two sources also spell player names
+differently (``에릭 페디``/``페디``, ``코디 폰세``/``폰세``), so those two winners
+still have two rows (2023 and 2025 MVP). Deciding "same person" from a partial
+string is a guess, and the crawl stage is the wrong place to guess.
+
+## 11. P2 outcome — the movements key was three keys at once (2026-11-05)
+
+`player_movements.team_code` holds Korean names (`롯데`, `삼성`), era codes (`HT`,
+`SK`) and canonical codes (`KIA`) -- and the natural key was built from that column.
+So one movement was indexed under up to three spellings. Measured on the 6,401
+natural-key chunks: **canonical 2,922 · Korean-name 2,724 · era-code 755**, and
+**1,504 of them were the same movement stored twice**. Meanwhile 2,821 canonical
+keys had no chunk at all.
+
+`canonical_team_id` was already in the source (2,776 rows differ from `team_code`).
+Four call sites now pass `canonical_team_id or team_code`: the builder, the rekey
+matcher, the census, and the cleanup tool. They must compute the same bytes -- a
+rekey swaps one identity for another, so a matcher that disagrees with the builder
+produces keys the index does not contain.
+
+**A bug found while reading the index**: `_movement_index` had been giving
+`player_name` the column that holds the team code (a column added in the same
+edit shifted the tuple). Name-based matching was quietly comparing against the
+wrong field. One test in `tests/cli/test_match_legacy_content_movement.py` now
+pins that column.
+
+**What was deleted, and what had to be true first**: 7,227 rows -- 4,503 legacy
+(`id=N`) and 2,724 Korean-name keys. The legacy half was verified row by row
+(4,503/4,503): every one has a natural-key chunk with the same `(date, player,
+section)`, every note it carries is in that counterpart, and the source's
+`remarks` is at most 28 characters so the generator's `remarks[:150]` truncation
+loses nothing. **The first pass read the legacy form as richer because it is
+longer** -- it writes a header line and five labelled fields where the natural key
+writes one line. Length is not information.
+
+**Resumability, not atomicity, was the answer.** Two attempts to delete all 7,227
+in one transaction died with `could not receive data from server: Operation timed
+out` while the server sat idle with no locks: the connection was being dropped by
+a Tailscale link that has been flapping all session (it also produced a
+`password authentication failed` episode and two offline periods). The path now
+commits every 200 rows, so a drop costs the batch in flight and the same command
+resumes -- an id already off the surface is counted as `already_done`.
+
+**A second silence**: the golden-set coverage check stayed **green** through the
+delete while one of the deleted chunks was a golden-set answer. `_lookup_rows` did
+not look at `index_status`, so `DELETED` counted as present. Recall fell 0.9462 →
+0.9128 and nothing said why -- the same silence this check exists to break. It now
+counts only `ACTIVE`, and the golden set's `2018-12-07_삼성_김동엽…` reference was
+updated to its canonical `2018-12-07_SS_김동엽…` (the source holds **two rows** that
+day -- `넥센`/`SK→넥센` and `삼성`/`넥센→삼성` -- so keeping both canonical keys is
+correct; the fixture was pointing at the old name).
+
+**Result**: absent references 0 · **Recall@5 0.9462 · MRR 0.8511 · hit_rate 0.9667 ·
+p95 390ms** -- unchanged from before the cleanup, with 7,227 duplicate rows gone.
+Audit: `damage 0`, `consistent true`, `deleted 9,604`.
+
+**Still open**: one new movement (the crawler keeps adding) is unindexed until the
+nightly run; `update_status`-style last-write inspection is not part of this work.
+
+## 12. P8 outcome — team_history 10 duplicate legacy chunks retired (2026-11-07)
+
+`team_history`의 legacy 10건(2026년 10개 구단 청크: `id=311`, `356`, `358`, `360`,
+`362`, `365`, `368`, `371`, `375`, `379`)을 전수 값 비교 검증(10/10) 후 삭제 완료
+(commit `8bc5b30c`).
+
+* **검증 내용**: legacy가 `구단/시즌/순위/도시/주경기장/현재 구단명` 6개 필드를
+  갖고 자연 키(`2026_XX`)는 한 줄 요약 형태를 띄나, `현재 구단명`은 원천 컬럼이 아닌
+  생성기 반복 필드였으며 10건 모두 2026년이라 두 값이 동일함. 나머지 5개 값 및
+  `team_code`는 자연 키 청크에 100% 온전히 보존됨(누락 0건).
+* **조치**: `purge_duplicate_movement_chunks.py`에 `--source team_history`를 추가하여
+  동일한 가드(`KBO_ALLOW_RAG_CHUNK_DELETE=1`)와 톰스톤 전이(`ACTIVE → DELETE_PENDING → DELETED`)를
+  거쳐 안전하게 10행 삭제 완료.
+* **결과**: `team_history` 활성 자연키 385건 유지, 레거시 활성 청크 0건.
+
+## 13. P9 outcome — awards legacy duplicate verification & purge tooling (2026-11-07)
+
+`awards`에 남아있던 레거시 6건(`id=64`, `199`, `308`, `355`, `365`, `88`)에 대한
+전수 분석 및 정리 도구화 완료:
+
+* **정식 표기 및 등록명 매핑**:
+  - `1994_신인상_유격수_유지현` ↔ `id=64` (1994 Rookie of the Year 류지현)
+  - `1998_골든글러브_유격수_유지현` ↔ `id=365` (1998 Golden Glove 류지현)
+  - `1999_골든글러브_유격수_유지현` ↔ `id=355` (1999 Golden Glove 류지현)
+  - `2014_골든글러브_투수_헤켄` ↔ `id=199` (2014 Golden Glove 밴헤켄)
+  위 4건은 자연 키 청크가 이미 완벽하게 생성·임베딩되어 있으며, 본문 사실이 온전히
+  보존됨을 확인하여 `duplicate_of_natural_key`로 확정.
+* **비정상 청크의 엄격한 거부 (Fail-Closed)**:
+  - `id=308` (2004 Golden Glove 이진영): 원천 테이블에 수상 사실이 없는 허위 청크로,
+    단순 중복이 아니므로 중복 정리 목록에서 정당하게 제외(`refused`).
+  - `id=88` (1982 Rookie of the Year -): 수상자 없는 공백 플레이스홀더 청크로 거부(`refused`).
+* **도구화**: `purge_duplicate_movement_chunks.py --source awards` 및 전용 테스트
+  스위트(`TestAwardDuplicates`) 구현 완료.
+
+## 14. Remaining Frontier — player_season_batting / pitching architecture
+
+* **원칙 재확인 (§8)**: 레거시 청크가 담고 있는 ISO, BABIP, XR, wRC+ 등
+  사베르메트릭스 정보가 신규 생성기(`build_rag_index.py`)의 자연 키 청크에 먼저
+  구현(`[TL;DR]` / `[핵심 문장]` / `[상세]` / `[META]`)된 후 재인덱싱을 거쳐야만
+  기존 분할/레거시 청크의 안전한 퇴역이 가능함.
+* **현 상태 유지**: 정보 손실 없는 생성기 고도화 전까지는 단순 재키나 삭제를
+  엄격히 차단(Fail-Closed)하여 검색 품질 및 메타데이터 무결성을 영구 보존함.
+
+## 13. P3 narrow start — team_history legacy removed (2026-11-06)
+
+`team_history` legacy 10건(2026년 10개 구단)도 지웠다. **처음엔 지우면 안 된다고
+읽었다** — legacy가 `구단/시즌/순위/도시/주경기장/현재 구단명` 여섯 필드를 라벨
+붙여 쓰고 자연 키는 한 줄이라, legacy에만 `현재 구단명`이 있다고 판단했던 것이다.
+
+**값을 비교하니 반대였다**:
+- `현재 구단명`은 **원천 컬럼이 아니다**(스키마 `id, franchise_id, season, team_name,
+  team_code, logo_url, ranking, stadium, city, color, created_at, updated_at`).
+  legacy 생성기가 `구단`을 그대로 반복한 것이고, 10건이 전부 2026년이라 두 값이
+  같다.
+- 나머지 다섯 값은 전부 자연 키 청크에 있다. 자연 키는 `team_code`(`SS`)까지 더 갖는다.
+- **전수 검증 10/10에서 빠진 값 0건.**
+
+movements에서 "legacy가 길다"를 "더 풍부하다"로 읽은 것과 같은 실수였다 — 필드
+목록이 아니라 값을 비교해야 한다.
+
+도구는 `--source`로 일반화했다(`player_movements` | `team_history`, `plan_team_history_duplicates`).
+**판정만 소스별이고 백업·가드·전이·감사 경로는 공유한다** — 파괴적인 절반이 하나로
+남아 감사 가능성이 같다.
+
+실행: 10행 삭제, ACTIVE 385, `2026_XX` canonical 10건 유지, 감사 10행.
+뮤테이션: M1(값 검사 제거) 1 failed · M2(키를 team_name로) 2 failed. 회귀 16건.
+
+**재측정 필요**: 방화벽이 개발 Mac에 열리면 team_history 정리 전후를 다시 비교해야
+한다(해당 청크는 골든셋 참조가 아니다 — 갱신된 참조는 `player_movements:2018-12-07_SS_…`).
+
+## 15. 재측정 (2026-11-23) — 호스트에서 넷 다 통과, 두 수치는 판정되지 않았다
+
+**실행 위치**: Windows 호스트(`돈통`). 이 저장소 Mac의 `.env` 값은 11-20 호스트 이전 뒤
+낡아서 `28P01`로 거부되므로(`WINDOWS_DB_HOST_RECOVERY.md` §18.4), DB를 만지는 명령은
+지금 **호스트에서** 돈다. 아래는 그 실행 결과다.
+
+| 게이트 | 결과 |
+| --- | --- |
+| `apply_postgres_migrations --check` | exit 0 — 스키마 정합 |
+| `kbo rag census` | exit 0 — `orphan_rows 0`, `collision 19키/39행`, **`unsafe 8,959`** |
+| `rag.audit_rag_index --json` | `damage 0`, `consistent true`, `primary = vector = 380,477` |
+| `rag.audit_rag_coverage --require-recent 2` | exit 0 — `missing_count 0`, `gaps []` |
+
+### 15.1 `unsafe 8,959`는 이번 실행에서 판정된 값이 아니다
+
+`unsafe`는 `disposition != SAFE_REKEY`인 항목 수이고(`IdentityCensusReport.unsafe_entry_count`),
+게이트는 `--fail-on-unsafe`를 줬을 때만 그 값을 exit code로 바꾼다 —
+`return 1 if args.fail_on_unsafe and report.unsafe_entry_count else 0`. 이번 실행에는
+그 플래그가 없었으므로 **exit 0은 이 값에 대해 아무 말도 하지 않는다.**
+
+값 자체는 §2-B의 실측과 같은 자리다(`TARGET_EXISTS_CONTENT_MISMATCH` **8,951**, 2026-11-02).
+그 절의 결론이 그대로 적용된다: **이 집단의 disposition은 중복의 증거가 아니다** —
+`id=N`을 원천 `id`로 조회한 결과이고, 그 짝은 awards·player_movements에서 틀린 것으로
+측정됐다. 8,951 → 8,959의 +8도 **추세로 읽지 말 것**: 이번 실행은 집계만 남겼고
+소스별·disposition별 구성은 측정하지 않았다(매니페스트를 쓰지 않았다).
+
+구성을 보려면 매니페스트를 남긴다(읽기 전용, unsafe>0이므로 exit 1이 정상):
+
+```
+kbo rag census --output /tmp/phase_b_manifest.json --fail-on-unsafe
+```
+
+`collision 19키/39행`은 두 원천 행이 같은 legacy id를 공유한다는 뜻이고, 그 키들은
+판정 없이 rekey 대상에서 제외된다(§2-A).
+
+### 15.2 커버리지 갭이 닫혔다
+
+`audit_rag_coverage`의 `missing 0 · gaps []`는 2026-10-27에 기록한 **10,632건 백로그**
+(1982~2017 과거분 약 9,900 + 2025분 736)가 해소됐다는 뜻이다. 단 `--require-recent 2`는
+**최근 2년만** 게이트하므로, "전 시즌 0"은 게이트가 강제한 값이 아니라 보고된 JSON의
+성질이다.
+
+### 15.3 인덱스 총계가 380,477이다 — 구성은 미분해
+
+10-27 기록의 165,031 대비 **+215,446**이다. `primary = vector`가 같으므로 두 저장소의
+정합은 유지되지만, 이 증가의 구성을 이번에 분해하지 않았다(재인덱싱·역사 백필·분할 키가
+섞여 있을 수 있다). **`RAG_EVALUATION.md`의 지연 측정은 207,305청크 시절 값이므로
+현재 코퍼스 기준으로 다시 재야 한다.** §2-A의 Phase B 산정(23,191 임베딩)보다 증가폭이
+훨씬 크므로, 재개 전에 소스별 분포를 먼저 확인한다.
+
+### 15.4 이번에도 확인하지 못한 것
+
+- **team_history 정리 전후 비교**(§13 말미의 재측정 요청): 집계만 받아 소스별 비교가 아니다.
+- **Phase B 잔여**: §14의 원칙(생성기가 사베르메트릭스를 먼저 담은 뒤 재인덱싱)이 그대로
+  유효하다. 이번 게이트 통과는 그 원칙을 실행했다는 뜻이 아니다.
+- **로컬(Mac) 접속**: `.env`가 낡아 여전히 불가. 호스트 실행으로 대체했다.

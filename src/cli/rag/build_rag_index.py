@@ -1286,7 +1286,7 @@ def _iter_movement_chunks(session: Session, season: int | None, limit: int | Non
             "source_table": "player_movements",
             "source_row_id": stable_player_movement_source_row_id(
                 mv.movement_date,
-                mv.team_code,
+                mv.canonical_team_id or mv.team_code,
                 mv.player_name,
                 mv.section,
             ),

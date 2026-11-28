@@ -768,9 +768,15 @@ python3 -m src.cli.kbo snapshot replay --snapshot-id 123 --persist --strict
 
 | Job id | Trigger | Lock | `max_instances` | Notes |
 | --- | --- | --- | --- | --- |
-| `crawl_dead_letter_retry` | every 10 min | `MAINTENANCE_LOCK` | 1 | works due letters; alerts on `exhausted`/`errored` |
+| `crawl_dead_letter_retry` | every 10 min | `MAINTENANCE_LOCK` | 1 | works up to `DLQ_RETRY_BATCH_SIZE` due letters per pass (default 5); alerts on `exhausted`/`errored` |
 | `crawl_dead_letter_recovery` | every 30 min | `MAINTENANCE_LOCK` | 1 | rescues stale `retrying` letters, finalizes interrupted replay runs |
 | `snapshot_drift_check` | daily 06:45 | `MAINTENANCE_LOCK` | 1 | validates `SNAPSHOT_DRIFT_SAMPLE_LIMIT` snapshots; opens a single `drift:snapshot` incident |
+
+`DLQ_RETRY_BATCH_SIZE` can be set to a positive integer to tune the retry batch;
+invalid values use the default, and values below 1 are clamped to 1. Batching
+spreads a backlog across scheduler ticks instead of holding `MAINTENANCE_LOCK`
+for one unbounded sweep. It bounds the number of letters, not wall-clock time:
+individual replay handlers must still have bounded network timeouts.
 
 The three jobs are registered in `src/scheduler/registry.py`; confirm registration
 in `logs/scheduler.launchd.err.log` (`Registered job: crawl_dead_letter_retry`).
